@@ -241,6 +241,7 @@ typedef struct sql_comp_s
   dk_set_t sc_dfg_stages;
   data_source_t *sc_qf_first;	/* the qn that has the loc ts for the first stage of qf/dfg */
   query_frag_t *sc_qf;
+  query_frag_t *sc_qf_ret;
   fun_ref_node_t *sc_outer_fref;
   int sc_chash_in_ctr;
   char sc_nest_non_colocated;
@@ -294,6 +295,12 @@ typedef struct sql_comp_s
   char sc_no_lit_param;		/* a lit in this place will not be a param even if the same lit is so elsewhere */
   char sc_is_rdf_type_p;
   qf_level_t *sc_qfl;
+  dk_set_t sc_temp_tables;
+  id_hash_t *sc_cset_col_subst;
+  dk_set_t sc_all_csets;
+  dk_hash_t *sc_tree_to_dfe;
+  dk_hash_t *sc_cset_param;
+  state_slot_t *sc_cset_o_scan_mode;
 } sql_comp_t;
 
 
@@ -739,6 +746,7 @@ void sqlg_process_all_eq (sql_comp_t * sc, code_vec_t cv);
 void sqlg_ks_eqs (sql_comp_t * sc, key_source_t * ks);
 col_partition_t *cp_copy (col_partition_t * cp, int col_id);
 key_partition_def_t *kpd_copy (key_partition_def_t * kpd);
+
 
 
 #endif /* _SQLCMPS_H */

@@ -458,7 +458,15 @@ qi_vec_init_nodes (query_instance_t * qi, int n_sets, query_t * qr, dk_set_t nod
   {
     if (qn->src_sets)
       QST_BOX (int *, inst, qn->src_sets) = (int *) mp_alloc_box_ni (qi->qi_mp, n_sets * sizeof (int), DV_BIN);
-    if (IS_QN (qn, subq_node_input))
+    if (IS_TS (qn) && ((table_source_t *) qn)->ts_csts)
+      {
+	QNCAST (table_source_t, ts, qn);
+	cset_ts_t *csts = ts->ts_csts;
+	int n_sets = box_length (csts->csts_qi_sets) / sizeof (ssl_index_t), inx;
+	for (inx = 0; inx < n_sets; inx++)
+	  QST_BOX (int *, inst, csts->csts_qi_sets[inx]) = (int *) mp_alloc_box_ni (qi->qi_mp, n_sets * sizeof (int), DV_BIN);
+      }
+    else if (IS_QN (qn, subq_node_input))
       qi_vec_init_nodes (qi, n_sets, ((subq_source_t *) qn)->sqs_query, NULL);
   }
   END_DO_SET ();
@@ -1689,11 +1697,44 @@ itc_param_order_nulls (it_cursor_t * itc)
   itc->itc_n_sets = fill;
 }
 
+void
+itc_set_is_cset (it_cursor_t * itc, cset_mode_t * csm)
+{
+  search_spec_t *g_sp;
+  int s_eq = 0, g_eq = 0;
+  if (tb_is_rdf_quad (itc->itc_insert_key->key_table))
+    return;
+  if (itc->itc_key_spec.ksp_spec_array && CMP_EQ == itc->itc_key_spec.ksp_spec_array->sp_min_op)
+    {
+      s_eq = 1;
+      g_sp = itc->itc_key_spec.ksp_spec_array->sp_next;
+      if (g_sp && CMP_EQ == g_sp->sp_min_op)
+	g_eq = 1;
+    }
+  if (!s_eq)
+    itc->itc_is_cset = ITC_CSET_SCAN;
+  if (s_eq && g_eq)
+    itc->itc_is_cset = ITC_CSET_SG;
+  else if (s_eq)
+    itc->itc_is_cset = ITC_CSET_S;
+  if (!s_eq)
+    {
+      oid_t g_col_id = ((dbe_column_t *) itc->itc_insert_key->key_parts->next->data)->col_id;
+      for (g_sp = itc->itc_row_specs; g_sp; g_sp = g_sp->sp_next)
+	if (CMP_EQ == g_sp->sp_min_op && g_sp->sp_cl.cl_col_id == g_col_id)
+	  {
+	    itc->itc_is_cset = ITC_CSET_G;
+	    break;
+	  }
+    }
+}
+
 
 void
 itc_param_sort (key_source_t * ks, it_cursor_t * itc, int is_del_with_nulls)
 {
   /* the height isthe height of the last cast column */
+  cset_mode_t *csm;
   int *param_nos;
   caddr_t *inst = itc->itc_out_state;
   table_source_t *ts = ks->ks_ts;
@@ -1736,15 +1777,34 @@ itc_param_sort (key_source_t * ks, it_cursor_t * itc, int is_del_with_nulls)
       QST_BOX (int *, inst, ks->ks_param_nos) = param_nos;
     }
   itc->itc_param_order = param_nos;
-  if (is_del_with_nulls)
+  if (IS_TS (ks->ks_ts) && (csm = ks->ks_ts->ts_csm))
+    {
+      if (csm->csm_posg_cset_pos)
+	goto general;
+      itc_set_is_cset (itc, csm);
+      if (itc->itc_is_cset)
+	{
+	  if (ITC_CSET_G == itc->itc_is_cset || ITC_CSET_SCAN == itc->itc_is_cset)
+	    goto general;
+	  itc_cset_s_param_nos (itc);
+	}
+      else if (!itc_cset_exc_param_nos (itc))
+	goto general;
+      if (!itc->itc_n_sets)
+	return;
+    }
+  else if (is_del_with_nulls)
     {
       itc_param_order_nulls (itc);
       if (!itc->itc_n_sets)
 	return;
     }
   else
-    for (inx = 0; inx < n_params; inx++)
-      param_nos[inx] = inx;
+    {
+    general:
+      for (inx = 0; inx < n_params; inx++)
+	param_nos[inx] = inx;
+    }
   itc->itc_asc_eq = ks->ks_vec_asc_eq;
   if (itc->itc_n_vec_sort_cols && !ks->ks_oby_order)
     {
@@ -1809,6 +1869,8 @@ ks_vec_new_results (key_source_t * ks, caddr_t * inst, it_cursor_t * itc)
 	    }
 	}
     }
+  if (IS_TS (ts) && ts->ts_csm)
+    dc_reset_array (inst, (data_source_t *) ts, ts->ts_csm->csm_exc_bits_out, batch);
 }
 
 void
@@ -2747,6 +2809,8 @@ ts_thread (table_source_t * ts, caddr_t * inst, it_cursor_t * itc, int aq_state,
     GPF_T1 ("cannot reuse a qi for qp.  Make new instead");
   qis[inx] = cp_inst;
   cp_qi = (query_instance_t *) cp_inst;
+  if (ts->ts_csm)
+    qr_cset_adjust_dcs (ts->src_gen.src_query, cp_inst);
   if (ts->ts_in_sdfg)
     {
       stage_node_t *stn = qn_next_stn ((data_source_t *) ts);
@@ -3415,6 +3479,13 @@ ts_initial_itc (table_source_t * ts, caddr_t * inst, it_cursor_t * itc)
   QST_BOX (caddr_t, inst, ts->ts_order_cursor->ssl_index) = NULL;	/* the other thread will take the itc */
   ts_thread (ts, inst, itc, ts_aq_mode, last + 1);
   ts_sdfg_run (ts, inst);
+  if (ts->ts_csm && TS_CSET_POSG == ts->ts_csm->csm_role)
+    {
+      cset_mode_t *csm = ts->ts_csm;
+      QST_BOX (caddr_t, inst, csm->csm_posg_cset_pos) = (caddr_t) - 1;
+      SRC_IN_STATE (ts, inst) = inst;
+      posg_special_o (ts, inst);
+    }
   if (last > 0)
     qi_inc_branch_count (qi, 10000, -last);
   if (ts->ts_agg_node && IS_QN (ts->ts_agg_node, fun_ref_node_input))

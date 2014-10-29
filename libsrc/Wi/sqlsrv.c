@@ -1676,6 +1676,7 @@ cli_set_start_times (client_connection_t * cli)
   if (prof_on)
     dt_now ((caddr_t) & cli->cli_start_dt);
   cli->cli_start_time = get_msec_real_time ();
+  cli->cli_ws_check_time = cli->cli_start_time;
   cli->cli_cl_start_ts = rdtsc ();
   cli->cli_activity.da_thread_time = 0;
 }
@@ -3977,6 +3978,7 @@ srv_global_init (char *mode)
   ddl_repl_init ();
 
   ddl_fk_init ();
+  bif_rng_init ();
   db_replay_registry_sequences ();
   local_commit (bootstrap_cli);
   shcompo_init ();
@@ -4034,6 +4036,7 @@ srv_global_init (char *mode)
     }
   if (!f_read_from_rebuilt_database)
     {
+      cset_init ();
       srv_global_init_plugin_actions (&srv_global_init_pre_log_actions, mode);
       log_init (wi_inst.wi_master);
     }

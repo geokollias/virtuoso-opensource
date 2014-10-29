@@ -127,7 +127,7 @@
 #define AMMSC_COUNTSUM		(ptrlong)6
 #define AMMSC_USER		(ptrlong)7
 #define AMMSC_ONE (long)8	/* return of scalar subq in vectored exec, align set no to calling outside subq  sets */
-
+#define AMMSC_TRANS ((ptrlong)9)
 #define ORDER_BY		(ptrlong)111
 
 #define TABLE_DEF		(ptrlong)500
@@ -197,6 +197,10 @@
 #define NEW_ALIAS		(ptrlong)627
 #define REMOTE_ROUTINE_DECL	(ptrlong)628
 #define PROC_COST (ptrlong)633
+#define TRANS_STMT ((ptrlong)634)
+#define TRANS_CLAUSE ((ptrlong)635)
+#define FROM_STMT ((ptrlong)636)
+#define TEMP_TABLE ((ptrlong)637)
 
 #define IN_MODE			(ptrlong)1
 #define OUT_MODE		(ptrlong)2
@@ -355,6 +359,7 @@ Note: bitwise OR of all these masks should be less than SMALLEST_POSSIBLE_POINTE
 #define OPT_EST_TIME ((ptrlong)950)
 #define OPT_EST_SIZE ((ptrlong)951)
 #define OPT_NO_EXISTS_JOIN ((ptrlong)960)
+#define GROUP_BY_EXEC ((ptrlong)970)
 
 #define LIT_PARAM ((ptrlong)990)
 /* GROUPING SETS */
@@ -550,6 +555,13 @@ typedef struct sql_tree_s
       ST **cols;
       ptrlong flags;
     } table_def;
+    struct
+    {
+      caddr_t name;
+      ST **cols;
+      ST *part;
+      ptrlong flags;
+    } t_table;
     struct
     {
       caddr_t name;
@@ -786,10 +798,27 @@ typedef struct sql_tree_s
     } vect_decl;
     struct
     {
+      ST **cols;
+      caddr_t name;
+      ST *filter;
+      ST *stmt;
+    } gb_ext;
+    struct
+    {
       ST **decl;
       ST *body;
       ptrlong modify;
     } for_vec;
+    struct
+    {
+      ST *init;
+      ST **clauses;
+    } trans_stmt;
+    struct
+    {
+      caddr_t temp;
+      ST *stmt;
+    } trans_clause;
     struct
     {
       ptrlong nth;

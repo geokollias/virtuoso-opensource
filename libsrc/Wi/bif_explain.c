@@ -682,8 +682,9 @@ cmp_op_text (int cmp)
       return (">=");
 
     case CMP_NULL:
-      return ("IS NULL");
-
+      return ("is null");
+    case CMP_NON_NULL:
+      return "is not null";
     case CMP_LIKE:
       return ("LIKE");
     }
@@ -717,11 +718,15 @@ sp_list_print (search_spec_t * sp)
 {
   while (sp)
     {
-
       if (sp->sp_col)
 	stmt_printf ((" %s", sp->sp_col->col_name));
       else
 	stmt_printf (("col#%ld", sp->sp_cl.cl_col_id));
+      if (CMP_HASH_RANGE == sp->sp_min_op)
+	{
+	  hrng_print (sp->sp_min_ssl, sp);
+	  goto next;
+	}
       if (sp->sp_min_op != CMP_NONE)
 	{
 	  stmt_printf ((" %s ", cmp_op_text (sp->sp_min_op)));
@@ -739,7 +744,7 @@ sp_list_print (search_spec_t * sp)
 	}
       if (sp->sp_next)
 	stmt_printf ((" "));
-
+    next:
       if ((sp = sp->sp_next))
 	stmt_printf ((", "));
     }
@@ -1214,6 +1219,24 @@ predicate_name_of_gsop (int gsop)
 
 
 void
+csa_print (cset_align_node_t * csa)
+{
+  int n = csa->csa_ssls ? box_length (csa->csa_ssls) / sizeof (cset_align_t) : 0;
+  int inx;
+  stmt_printf (("cset align\n"));
+  for (inx = 0; inx < n; inx++)
+    {
+      cset_align_t *csal = &csa->csa_ssls[inx];
+      ssl_print (csal->csa_res);
+      stmt_printf (("= "));
+      ssl_print (csal->csa_first);
+      ssl_print (csal->csa_second);
+      stmt_printf (("\n"));
+    }
+}
+
+
+void
 node_print_0 (data_source_t * node)
 {
   qn_input_fn in;
@@ -1649,6 +1672,8 @@ node_print_0 (data_source_t * node)
 	  stmt_printf (("outer {\n"));
 	}
     }
+  else if (IS_QN (node, cset_align_input))
+    csa_print ((cset_align_node_t *) node);
 #ifdef BIF_XML
   else if (in == (qn_input_fn) txs_input)
     {
@@ -3470,6 +3495,8 @@ node_print_xml (QI * qi, dk_session_t * s, data_source_t * qn)
 	SES_PRINT (s, "<outer>\n");
       ses_sprintf (s, "<sctr sctr_ose='%d'/>", ose ? ose->src_gen.src_sets : 0);
     }
+  else if (IS_QN (qn, cset_align_input))
+    csa_print ((cset_align_node_t *) qn);
   else if (IS_QN (qn, txs_input))
     {
       QNCAST (text_node_t, txs, qn);

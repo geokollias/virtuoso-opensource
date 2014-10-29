@@ -1207,6 +1207,8 @@ cha_new_gb (setp_node_t * setp, caddr_t * inst, db_buf_t ** key_vecs, chash_t * 
   hash_area_t *ha = setp->setp_ha;
   int nth_col, n_cols;
   int64 *row = cha_new_row (ha, cha, 0);
+  if (setp->setp_trans_any)
+    QST_BOX (ptrlong, inst, setp->setp_trans_any->ssl_index) = 1;
   for (nth_col = 0; nth_col < ha->ha_n_keys; nth_col++)
     {
       if (DV_ANY == cha->cha_sqt[nth_col].sqt_dtp)
@@ -3922,6 +3924,26 @@ chash_read_setp (table_source_t * ts, caddr_t * inst, setp_node_t ** setp_ret, h
     }
 }
 
+#define TN_BEFORE 1		/* skip pages until first with chp_prev_start */
+#define TN_INSIDE 2		/* read all up to chp_prev_fill */
+#define TN_STOP 3		/* stop reading */
+#define TN_ACTIVE_BIT 4		/* read all with active bit on */
+
+char
+cha_tn_mode (table_source_t * ts, caddr_t * inst, int is_start)
+{
+  trans_read_t *trr = ts->ts_trans_read;
+  int sst;
+  if (trr->trr_active_bit)
+    return TN_ACTIVE_BIT;
+  if (!is_start)
+    return TN_INSIDE;
+  sst = unbox (QST_GET_V (inst, trr->trr_superstep));
+  if (0 == sst)
+    return TN_INSIDE;
+  return TN_BEFORE;
+}
+
 
 void
 chash_read_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
@@ -3957,6 +3979,8 @@ chash_read_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
       data_col_t *dc = QST_BOX (data_col_t *, inst, ha->ha_tree->ssl_index);
       n_sets = dc->dc_n_values;
     }
+  if (state && ts->ts_trans_read && ts->ts_trans_read->trr_is_step)
+    cha_next_superstep (ts, inst);
   if (!state && -1 == QST_INT (inst, ts->clb.clb_nth_set))
     state = inst;
   if (state)
@@ -4065,15 +4089,32 @@ next_batch:
       n_cols = BOX_ELEMENTS (ha->ha_slots);
       for (part = part; part < MAX (1, cha->cha_n_partitions); part++)
 	{
+	  char tn_mode = 0;
 	  chash_t *cha_p = CHA_PARTITION (cha, part);
 	  if (!chp)
 	    {
 	      chp = cha_p->cha_init_page;
 	      row = 0;
+	      if (ts->ts_trans_read)
+		tn_mode = cha_tn_mode (ts, inst, 1);
 	    }
+	  else if (ts->ts_trans_read)
+	    tn_mode = cha_tn_mode (ts, inst, 0);
 	  for (chp = chp; chp; chp = chp->h.h.chp_next)
 	    {
-	      for (row = row; row < chp->h.h.chp_fill; row += cha->cha_first_len)
+	      int fill = chp->h.h.chp_prev_fill;
+	      if (!fill)
+		fill = chp->h.h.chp_fill;
+	      if (TN_BEFORE == tn_mode && !chp->h.h.chp_prev_start)
+		continue;
+	      if (TN_BEFORE == tn_mode && chp->h.h.chp_prev_start)
+		{
+		  tn_mode = TN_INSIDE;
+		  row = chp->h.h.chp_prev_start;
+		}
+	      if (TN_INSIDE == tn_mode && chp->h.h.chp_prev_fill)
+		tn_mode = TN_STOP;
+	      for (row = row; row < fill; row += cha->cha_first_len)
 		{
 		  int k_inx = 0;
 		  int64 *ent = (int64 *) & chp->chp_data[row];
@@ -4121,6 +4162,8 @@ next_batch:
 		    }
 		}
 	      row = 0;
+	      if (TN_STOP == tn_mode)
+		break;
 	    }
 	}
       if (!all_survived || !any_result)
@@ -7581,13 +7624,13 @@ void
 sp_set_last (search_spec_t ** list_ret, search_spec_t ** sp_ret)
 {
   search_spec_t **prev = list_ret;
-  search_spec_t *sp = *list_ret;
+  search_spec_t *sp = *list_ret, *move_sp = *sp_ret;
+  if (!move_sp->sp_next)
+    return;			/* alrteady last */
   for (sp = *list_ret; sp; (prev = &sp->sp_next, sp = sp->sp_next));
-  if (prev == sp_ret)
-    return;
-  *sp_ret = (*sp_ret)->sp_next;
-  (*sp_ret)->sp_next = NULL;
-  *prev = *sp_ret;
+  *sp_ret = move_sp->sp_next;
+  move_sp->sp_next = NULL;
+  *prev = move_sp;
 }
 
 void
@@ -7603,7 +7646,7 @@ itc_hash_spec_order (search_spec_t ** sp_ret)
 	  QNCAST (hash_range_spec_t, hrng, sp->sp_min_ssl);
 	  if ((HRNG_SEC & hrng->hrng_flags))
 	    sec = prev;
-	  else if (!hrng->hrng_hs && hrng->hrng_hs->hs_ha->ha_n_deps)
+	  else if (hrng->hrng_hs && hrng->hrng_hs->hs_ha->ha_n_deps)
 	    val = prev;
 	}
     }

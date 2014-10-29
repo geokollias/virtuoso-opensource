@@ -1126,6 +1126,8 @@ sc_free (sql_comp_t * sc)
   if (sc->sc_safe_g)
     hash_table_free (sc->sc_safe_g);
   sc_dfr_free (sc);
+  if (sc->sc_cset_param)
+    hash_table_free (sc->sc_cset_param);
 }
 
 query_t *

@@ -3772,8 +3772,11 @@ itc_col_insert_rows (it_cursor_t * itc, buffer_desc_t * buf, int is_update)
 	if (nth < key->key_n_significant)
 	  goto next_col;
 	for (row = 0; row < itc->itc_range_fill; row++)
-	  if (COL_UPD_NO_CHANGE != itc->itc_vec_rds[itc->itc_col_first_set + row]->rd_values[rdinx])
-	    goto updated;
+	  {
+	    int r = itc->itc_param_order ? itc->itc_param_order[itc->itc_col_first_set + row] : itc->itc_col_first_set + row;
+	    if (COL_UPD_NO_CHANGE != itc->itc_vec_rds[r]->rd_values[rdinx])
+	      goto updated;
+	  }
 	goto next_col;
       }
   updated:
@@ -3987,7 +3990,10 @@ upd_col_pk (update_node_t * upd, caddr_t * inst)
   ITC_INIT (itc, NULL, qi->qi_trx);
   itc_from (itc, key, qi->qi_client->cli_slice);
   itc->itc_vec_rds = NULL;
+  itc->itc_out_state = inst;
   itc_col_init (itc);
+  if (upd->upd_cset_psog)
+    upd_cset_delete_unmatched (upd, inst, itc);
   while (nth < n_sets)
     {
       int place_set = sslr_set_no (inst, upd->upd_place, nth);
@@ -4064,7 +4070,13 @@ upd_col_pk (update_node_t * upd, caddr_t * inst)
 	    int_asc_fill (itc->itc_param_order, itc->itc_n_sets + 100, 0);
 	  }
 	qi->qi_n_affected += itc->itc_n_sets;
-	itc_col_insert_rows (itc, buf, 1);
+	if (upd->upd_cset_psog)
+	  {
+	    itc->itc_cset_first_set = nth;
+	    upd_cset_delete_rows (upd, itc, buf);
+	  }
+	else
+	  itc_col_insert_rows (itc, buf, 1);
 	itc_clear_col_refs (itc);
 	nth = next;
 	itc->itc_range_fill = 0;
@@ -4479,13 +4491,15 @@ int col_ins_error = 0;
 int dbf_col_ins_dbg_log = 0;
 
 
-void
+int
 itc_col_ins_dups (it_cursor_t * itc, buffer_desc_t * buf, insert_node_t * ins)
 {
   row_no_t point = 0, next = 0;
   int inx, fill = 0;
   col_row_lock_t *clk;
   int first_set = itc->itc_col_first_set;
+  if (itc->itc_insert_key->key_table->tb_cset)
+    return itc_cset_update (itc, buf, ins);
   if (!ins || INS_SOFT == ins->ins_mode || itc->itc_insert_key->key_distinct)
     {
       for (inx = 0; inx < itc->itc_range_fill; inx++)
@@ -4498,9 +4512,9 @@ itc_col_ins_dups (it_cursor_t * itc, buffer_desc_t * buf, insert_node_t * ins)
 		  log_error ("insert of col-wise inx would be out of order, exiting.  Key %s slice %d",
 		      itc->itc_insert_key->key_name, itc->itc_tree->it_slice);
 		  itc_col_dbg_log (itc);
-		  return;
+		  return 0;
 		}
-	      return;
+	      return 0;
 	      GPF_T1 ("ranges to insert must have a non-decreasing r_first");
 	    }
 	  if (itc->itc_ranges[inx].r_first != itc->itc_ranges[inx].r_end)
@@ -4557,6 +4571,7 @@ itc_col_ins_dups (it_cursor_t * itc, buffer_desc_t * buf, insert_node_t * ins)
 	}
       itc->itc_range_fill = fill;
     }
+  return 0;
 }
 
 
@@ -4726,7 +4741,11 @@ itc_col_vec_insert (it_cursor_t * itc, insert_node_t * ins)
 	itc->itc_rl = NULL;
       if (itc->itc_pl)
 	itc->itc_rl = pl_row_lock_at (itc->itc_pl, itc->itc_map_pos);
-      itc_col_ins_dups (itc, buf, ins);
+      if (itc_col_ins_dups (itc, buf, ins))
+	{
+	  n_ranges = 0;
+	  goto reset;
+	}
       if (itc->itc_log_actual_ins)
 	itc_col_log_insert (itc);
       if (enable_pogs_check && !col_ins_error && key_is_seg_check (itc->itc_insert_key->key_id))
@@ -4785,6 +4804,8 @@ itc_col_vec_insert (it_cursor_t * itc, insert_node_t * ins)
       if (itc->itc_n_sets > 1)
 	itc_set_param_row (itc, itc->itc_set);
     }
+  if (ins && ins->ins_table->tb_cset)
+    itc_check_cset_quad (itc, ins, 0);
 }
 
 

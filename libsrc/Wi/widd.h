@@ -141,6 +141,8 @@ struct dbe_table_s
   dbe_schema_t *tb_schema;
   struct triggers_s *tb_triggers;
   dk_hash_t *tb_grants;
+  struct cset_s *tb_cset;
+  struct cset_s *tb_closest_cset;	/* if this is a stand-in for a cset, physical cset here */
   oid_t tb_owner_col_id;
   char tb_any_blobs;
   char tb_is_rdf_quad;
@@ -298,6 +300,7 @@ struct dbe_column_s
   char col_is_misc_cont;	/* true for a misc container, e.g. E_MISC of VXML_ENTITY */
   char col_is_text_index;
   char col_is_geo_index;
+  char col_is_cset_opt;		/* if col stands for an optional in a cset stand-in table */
   index_tree_t *col_it;
   caddr_t col_lang;
   caddr_t col_enc;
@@ -315,6 +318,8 @@ struct dbe_column_s
   caddr_t *col_options;		/* max column value */
   long col_avg_len;		/* average column length */
   long col_avg_blob_len;
+  struct cset_p_s *col_csetp;
+  iri_id_t col_cset_iri;
 };
 
 /* col_is_key_part */
@@ -449,6 +454,8 @@ struct dbe_key_s
   char key_no_compression;	/* no key part is compressed in any version of key */
   char key_is_dropped;
   char key_is_elastic;		/* key_storage->dbs_type == DBS_ELASTIC */
+  char key_rdf_order;
+  char key_is_cset_temp;
   key_id_t key_migrate_to;
   key_id_t key_super_id;
   dbe_key_t **key_versions;
@@ -526,6 +533,11 @@ fragment instead of searching for the the fragment actually needed. */
   uint64 key_segs_sampled;
   uint64 key_rows_in_sampled_segs;
   int64 key_count;		/* if distinct proj, count is not the table count */
+  dbe_table_t *key_cset_rdf_quad;
+  struct cset_s *key_cset;
+  /* for imaginary key that stands for a union of csets */
+  dk_set_t key_over_csets;
+  caddr_t key_cset_prefix;
 };
 
 
@@ -607,6 +619,49 @@ typedef struct triggers_s
   dk_set_t trig_list;
 } triggers_t;
 
+
+typedef struct ir_range_s
+{
+  iri_id_t irng_start;
+  int irng_n_slices;
+  int irng_first_free_slice;
+  char irng_slice_bits;
+  unsigned short irng_seq[2048];	/* short per slice, used if bit in irng_at_end is 0 */
+} ir_range_t;
+
+typedef struct _id_range_s
+{
+  caddr_t ir_name;
+  int64 ir_id;
+  cluster_map_t *ir_clm;
+  int ir_mode;
+  int ir_allocator_host;
+  int ir_hist_depth;		/* n range sets to remember */
+  int ir_n_slices;
+  char ir_n_way_txn;
+  char ir_slice_bits;
+  int64 ir_chunk;
+  uint64 ir_start;
+  caddr_t ir_seq;
+  iri_id_t ir_max;
+  dk_mutex_t ir_mtx;
+  ir_range_t ***ir_ranges;	/*[txn][nth_historical] */
+  dk_set_t ir_waiting;
+} id_range_t;
+/* ir_mode */
+#define IRM_ALL_ALL 1		/* all hosts have their own ranges from which they may allocate any slice */
+#define IRM_LOCAL 2		/* all hosts have the same ranges but each allocs only own slices */
+
+
+
+extern dk_hash_t id_to_ir;
+
+
+/* the range id givenn to ir_ functions gives the desired slice in the high 16 and the range id in the low 32 bits */
+#define IR_ID_SLICE(id) ((uint64)(id) >> 48)
+#define IR_ID_HAS_SLICE(id) (((uint64)(id)) & (1L << 47))
+#define IR_ID_ID(id) (((uint64)(id)) & 0xffffffff)
+#define IR_ID_WAY(id) ((((uint64)(id)) >> 32) & 31)
 
 
 /*
@@ -815,5 +870,7 @@ dbe_key_t *tb_text_key (dbe_table_t * tb);
 void key_add_part (dbe_key_t * key, oid_t col);
 void sqt_max_desc (sql_type_t * res, sql_type_t * arg);
 int dbe_cols_are_valid (db_buf_t row, dbe_key_t * key, int throw_error);
+
+#include "emergent.h"
 
 #endif

@@ -2703,12 +2703,13 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
   search_spec_t *sp;
   data_col_t *prev_dc = NULL;
   row_range_t rng;
+  int init_n_results = itc->itc_n_results;
   int n_keys = itc->itc_insert_key->key_n_significant, n_out, row, n, init_out_dc_fill;
   int col_inx, n_used, stop_in_mid_seg = 0, nth_page, r, target;
   int end, rows_in_seg = -1;
   int initial_set = itc->itc_set, initial_n_matches = 0, nth_sp;
   int64 check_start_ts = 0;
-  char do_sp_stat = itc->itc_n_row_specs > 1;
+  char do_sp_stat = itc->itc_n_row_specs > 1, cset_inited = 0;
   /*memzero (&cpo, sizeof (cpo)); */
   cpo.cpo_range = &itc->itc_ranges[itc->itc_set - itc->itc_col_first_set];
   if (!is_singles && itc->itc_rl)
@@ -2770,6 +2771,8 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
   itc->itc_match_in = 0;
   if (!is_singles)
     itc->itc_n_matches = 0;
+  if (itc->itc_is_cset)
+    itc_init_exc_bits (itc, buf);
   for (nth_sp = 0; nth_sp < itc->itc_n_row_specs; nth_sp++)
     {
       int row = 0;
@@ -2862,6 +2865,8 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
 	}
       if (sp->sp_is_reverse && CMP_LIKE != sp->sp_min_op)
 	itc_cp_pre_negate (itc, rows_in_seg, nth_sp, &prev_matches);
+      else if (itc->itc_is_cset && sp->sp_col && sp->sp_col->col_csetp && sp->sp_col->col_csetp->csetp_n_bloom)
+	itc_cp_pre_negate (itc, rows_in_seg, nth_sp, &prev_matches);
       if (do_sp_stat)
 	{
 	  check_start_ts = rdtsc ();
@@ -2912,6 +2917,8 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
 	  itc->itc_sp_stat[nth_sp].spst_out += itc->itc_match_out;
 	  itc->itc_sp_stat[nth_sp].spst_time += rdtsc () - check_start_ts;
 	}
+      if (itc->itc_is_cset)
+	itc_cset_except (itc, buf, prev_matches, rows_in_seg);
       if (itc->itc_match_out <= 0)
 	{
 	  ITC_COL_ZERO (itc);
@@ -3145,6 +3152,8 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
 	    dk_free_tree (key_vals[nth]);
 	}
     }
+  if (itc->itc_is_cset)
+    itc_cset_bit_final (itc, init_n_results);
   if (!stop_in_mid_seg)
     {
       cpo.cpo_range->r_first = 0;
@@ -3315,7 +3324,14 @@ start:
     return DVC_MATCH;
   itc->itc_read_hook = itc_col_read_hook;
   if (!itc->itc_ks->ks_oby_order)
-    itc_col_search (itc, buf);
+    {
+      itc_col_search (itc, buf);
+      if (ITC_CSET_S == itc->itc_is_cset || ITC_CSET_SG == itc->itc_is_cset)
+	{
+	  if (itc_cset_unmatched_by_s (itc))
+	    return DVC_MATCH;
+	}
+    }
   else
     {
       /* if params not reordered asc, then do a single set at a time, itc_next_set will do random seek */

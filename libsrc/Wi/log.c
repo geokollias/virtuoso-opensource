@@ -1857,7 +1857,10 @@ log_replay_sequence (lock_trx_t * lt, dk_session_t * in)
 {
   caddr_t text = (caddr_t) scan_session (in);
   long count = read_long (in);
-  sequence_set (text, count, SET_IF_GREATER, OUTSIDE_MAP);
+  if (DV_LONG_INT == DV_TYPE_OF (text))
+    ir_replay (unbox (text), count);
+  else
+    sequence_set (text, count, SET_IF_GREATER, OUTSIDE_MAP);
   log_sequence (lt, text, count);
   dk_free_box (text);
   return ((caddr_t) SQL_SUCCESS);
@@ -1869,7 +1872,10 @@ log_replay_sequence_64 (lock_trx_t * lt, dk_session_t * in)
 {
   caddr_t text = (caddr_t) scan_session (in);
   caddr_t count = (caddr_t) scan_session_boxing (in);
-  sequence_set (text, unbox (count), SET_IF_GREATER, OUTSIDE_MAP);
+  if (DV_LONG_INT == DV_TYPE_OF (text))
+    ir_replay (unbox (text), unbox (count));
+  else
+    sequence_set (text, unbox (count), SET_IF_GREATER, OUTSIDE_MAP);
   dk_free_box (text);
   dk_free_box (count);
   return ((caddr_t) SQL_SUCCESS);
@@ -2284,6 +2290,110 @@ log_key_ins_del_qr (dbe_key_t * key, caddr_t * err_ret, int op, int ins_mode, in
     }
   return res;
 }
+
+#ifdef CSET
+
+void
+cset_col_names (cset_t * cset, caddr_t ** names_ret, int *n_ret)
+{
+  caddr_t *names = (caddr_t *) dk_alloc_box_zero (sizeof (caddr_t) * cset->cset_p.ht_count, DV_ARRAY_OF_POINTER);
+  DO_HT (iri_id_t, iri, cset_p_t *, csetp, &cset->cset_p)
+  {
+    names[csetp->csetp_nth] = csetp->csetp_col->col_name;
+  }
+  END_DO_HT;
+  *names_ret = names;
+  *n_ret = cset->cset_p.ht_count;
+}
+
+
+query_t *
+cset_ins_qr (cset_t * cset, caddr_t * err_ret)
+{
+  query_t *res;
+  dbe_table_t *key_table = cset->cset_table;
+  string_buffer sb;
+  caddr_t err;
+  char temp1[MAX_NAME_LEN], temp2[MAX_NAME_LEN], temp3[MAX_NAME_LEN];
+  sb_init (&sb);
+  {
+    int n_cols, k;
+    caddr_t *names;
+    sb_printf (&sb, "INSERT soft \"%s\".\"%s\".\"%s\" (S, G",
+	ESC (key_table->tb_qualifier, 1), ESC (key_table->tb_owner, 2), ESC (key_table->tb_name_only, 3));
+    cset_col_names (cset, &names, &n_cols);
+    for (k = 0; k < n_cols; k++)
+      {
+	sb_printf (&sb, ", ");
+	sb_printf (&sb, "\"%s\"", ESC (names[k], 1));
+      }
+    sb_printf (&sb, " ) VALUES (?, ?");
+    for (k = 0; k < n_cols; k++)
+      {
+	sb_printf (&sb, ", ");
+	sb_printf (&sb, "?");
+      }
+    sb_printf (&sb, ")");
+    dk_free_box (names);
+  }
+
+  res = sql_compile (sb.sb_buf, bootstrap_cli, &err, SQLC_DEFAULT);
+  if (err != SQL_SUCCESS)
+    {
+      err_log_error (err);
+      if (err_ret)
+	{
+	  *err_ret = err;
+	  return NULL;
+	}
+      GPF_T1 ("in get_vec_query() 2");
+    }
+  return res;
+}
+
+
+query_t *
+cset_del_qr (cset_t * cset, caddr_t * err_ret)
+{
+  query_t *res;
+  dbe_table_t *key_table = cset->cset_table;
+  string_buffer sb;
+  caddr_t err;
+  char temp1[MAX_NAME_LEN], temp2[MAX_NAME_LEN], temp3[MAX_NAME_LEN];
+  int n_cols, k;
+  int comma = 0;
+  caddr_t *names;
+  sb_init (&sb);
+  sb_printf (&sb, "update \"%s\".\"%s\".\"%s\" set ",
+      ESC (key_table->tb_qualifier, 1), ESC (key_table->tb_owner, 2), ESC (key_table->tb_name_only, 3));
+  cset_col_names (cset, &names, &n_cols);
+  for (k = 0; k < n_cols; k++)
+    {
+      if (comma)
+	sb_printf (&sb, ", ");
+
+      else
+	comma = 1;
+      sb_printf (&sb, "\"%s\" = :%d", ESC (names[k], 1), k + 2);
+    }
+  sb_printf (&sb, " where s = :0 and g = :1 ");
+  dk_free_box (names);
+  res = sql_compile (sb.sb_buf, bootstrap_cli, &err, SQLC_DEFAULT);
+  if (err != SQL_SUCCESS)
+    {
+      err_log_error (err);
+      if (err_ret)
+	{
+	  *err_ret = err;
+	  return NULL;
+	}
+      GPF_T1 ("in get_vec_query() 2");
+    }
+  return res;
+}
+
+#endif
+
 
 id_hash_t *upd_replay_cache;
 

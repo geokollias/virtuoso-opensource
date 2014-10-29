@@ -1355,6 +1355,14 @@ ce_filter (col_pos_t * cpo, int row, dtp_t flags, db_buf_t val, int len, int64 o
 	  goto filter_done;
 	goto found;
       }
+    case CMP_NULL:
+    case CMP_NON_NULL:
+      {
+	int is_null = CET_ANY == (flags & CE_DTP_MASK) && DV_DB_NULL == val[0];
+	if ((is_null && CMP_NULL == cpo->cpo_min_op) || (!is_null && CMP_NON_NULL == cpo->cpo_min_op))
+	  goto found;
+	goto filter_done;
+      }
     default:
       rc = ce_col_cmp (val, offset, flags, cpo->cpo_cl, cpo->cpo_cmp_min);
       if (!(rc & cpo->cpo_min_op))

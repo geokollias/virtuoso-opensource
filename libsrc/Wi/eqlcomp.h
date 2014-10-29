@@ -73,6 +73,7 @@ state_slot_t *ssl_new_column (comp_context_t * cc, const char *cr_name, dbe_colu
 state_slot_t *ssl_new_inst_variable (comp_context_t * cc, const char *name, dtp_t dtp);
 state_slot_t *ssl_new_vec (comp_context_t * cc, const char *name, dtp_t dtp);
 state_slot_t *ssl_new_tree (comp_context_t * cc, const char *name);
+int cc_new_sets_slot (comp_context_t * cc);
 
 extern state_slot_t *ssl_new_constant (comp_context_t * cc, caddr_t val);
 extern state_slot_t *ssl_new_big_constant (comp_context_t * cc, caddr_t val);

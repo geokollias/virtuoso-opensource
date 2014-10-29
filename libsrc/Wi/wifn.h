@@ -1066,6 +1066,11 @@ void dbs_locate_free_bit (dbe_storage_t * dbs, dp_addr_t near_dp,
 #define sequence_set(name,value,mode,in_map) sequence_set_1(name,value,mode,in_map, NULL)
 #define sequence_next_inc(name,in_map,inc_by) sequence_next_inc_1(name,in_map,inc_by, NULL)
 
+     int64 ir_new_id (caddr_t * inst, int64 ir_id, int64 * log_id);
+     void ir_replay (int64 id, int64 n);
+     void ir_set_data (int64 id, caddr_t data);
+
+
 EXE_EXPORT (caddr_t, registry_get, (const char *name));
      caddr_t dbs_registry_get (dbe_storage_t * dbs, const char *name);
      void registry_set_1 (const char *name, const char *value, int is_boxed, caddr_t * err_ret);

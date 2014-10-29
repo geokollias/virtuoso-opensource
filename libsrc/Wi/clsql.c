@@ -936,9 +936,15 @@ sqlg_qn_env (sql_comp_t * sc, data_source_t * qn, dk_set_t qn_stack, dk_hash_t *
   else if ((qn_input_fn) trans_node_input == qn->src_input && ((trans_node_t *) qn)->tn_inlined_step)
     {
       QNCAST (trans_node_t, tn, qn);
+      if (tn->tn_init)
+	sqlg_qn_env (sc, tn->tn_init, NULL, refs);
       sqlg_qn_env (sc, tn->tn_inlined_step->qr_head_node, t_cons ((void *) qn, qn_stack), refs);
       if (tn->tn_complement)
-	sqlg_qn_env (sc, tn->tn_complement->tn_inlined_step->qr_head_node, t_cons ((void *) qn, qn_stack), refs);
+	{
+	  if (tn->tn_complement->tn_init)
+	    sqlg_qn_env (sc, tn->tn_complement->tn_init, NULL, refs);
+	  sqlg_qn_env (sc, tn->tn_complement->tn_inlined_step->qr_head_node, t_cons ((void *) qn, qn_stack), refs);
+	}
     }
   else if ((qn_input_fn) union_node_input == qn->src_input)
     {
@@ -1742,6 +1748,31 @@ ks_find_ssl (key_source_t * ks, oid_t col_id)
   if (-1 == pos)
     return NULL;
   return (state_slot_t *) dk_set_nth (ks->ks_out_slots, pos);
+}
+
+
+state_slot_t *
+ks_find_eq_sp_ssl (key_source_t * ks, oid_t col_id)
+{
+  /* if the specs have an equality on col, return the ssl that col is supposed to match */
+  search_spec_t *sp;
+  for (sp = ks->ks_spec.ksp_spec_array; sp; sp = sp->sp_next)
+    {
+      if (sp->sp_cl.cl_col_id != col_id)
+	continue;
+      if (sp->sp_min_op != CMP_EQ)
+	return 0;
+      return sp->sp_min_ssl;
+    }
+  for (sp = ks->ks_row_spec; sp; sp = sp->sp_next)
+    {
+      if (sp->sp_cl.cl_col_id != col_id)
+	continue;
+      if (sp->sp_min_op != CMP_EQ)
+	return 0;
+      return sp->sp_min_ssl;
+    }
+  return NULL;
 }
 
 

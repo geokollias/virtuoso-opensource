@@ -245,6 +245,13 @@ libwi_la_SOURCES = \
 	sqlcost.c \
 	sqlcr.c \
 	sqldf.c \
+	sqldfcset.c \
+	csetgen.c \
+	cset.c \
+	csetins.c \
+	bif_rng.c \
+	rdfjoin.c \
+	bsp.c \
 	sqlexp.c \
 	sqlgen.c \
 	sqlhash.c \
@@ -394,6 +401,13 @@ libwi_odbc_la_SOURCES = \
 	sqlcost.c \
 	sqlcr.c \
 	sqldf.c \
+	sqldfcset.c \
+	csetgen.c \
+	cset.c \
+	csetins.c \
+	bif_rng.c \
+	rdfjoin.c \
+	bsp.c \
 	sqlexp.c \
 	sqlgen.c \
 	sqlhash.c \
@@ -696,6 +710,7 @@ SQL_FILES_SPARQL	= \
 	$(srcdir)/sparql_colstore.sql \
 	$(srcdir)/sparql.sql \
 	$(srcdir)/sparql_io.sql \
+	$(srcdir)/cset.sql \
 	$(srcdir)/rdf_sponge.sql \
 	$(srcdir)/rdf_schema_objects.sql \
 	$(srcdir)/rdf_void.sql \

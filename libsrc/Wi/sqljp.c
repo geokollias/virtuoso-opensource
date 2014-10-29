@@ -206,6 +206,12 @@ sqlo_rdfs_type_card (df_elt_t * tb_dfe, df_elt_t * p_dfe, df_elt_t * o_dfe)
 
 
 int
+st_ignore_pred (ST * tree)
+{
+  return st_is_call (tree, "isiri_id", 1) || st_is_call (tree, "is_named_iri_id", 1);
+}
+
+int
 dfe_is_iri_id_test (df_elt_t * pred)
 {
   df_elt_t *rhs;
@@ -215,8 +221,8 @@ dfe_is_iri_id_test (df_elt_t * pred)
   if (DFE_BOP_PRED != pred->dfe_type || BOP_EQ != pred->_.bin.op || 0 != unbox ((ccaddr_t) pred->_.bin.left->dfe_tree))
     return 0;
   rhs = pred->_.bin.right;
-  if (st_is_call (rhs->dfe_tree, "isiri_id", 1)
-      || (DFE_BOP == rhs->dfe_type && rhs->_.bin.right && st_is_call (rhs->_.bin.right->dfe_tree, "isiri_id", 1)))
+  if (st_ignore_pred (rhs->dfe_tree)
+      || (DFE_BOP == rhs->dfe_type && rhs->_.bin.right && st_ignore_pred (rhs->_.bin.right->dfe_tree)))
     return 1;
   return 0;
 }

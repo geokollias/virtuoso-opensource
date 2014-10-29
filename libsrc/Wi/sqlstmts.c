@@ -805,6 +805,33 @@ sqlc_ins_del_val (sql_comp_t * sc, insert_node_t * ins, int inx)
   return crr->crr_col_ref = (ST *) t_list (3, COL_DOTTED, NULL, t_box_string (str));
 }
 
+void
+sqlc_cset_ssls (sql_comp_t * sc, state_slot_t *** cset_psog, state_slot_t *** cset_posg, state_slot_t *** cset_op)
+{
+  if (cset_psog)
+    {
+      *cset_psog = (state_slot_t **) dk_alloc_box (sizeof (caddr_t) * 4, DV_BIN);
+      (*cset_psog)[0] = ssl_new_vec (sc->sc_cc, "P", DV_IRI_ID);
+      (*cset_psog)[1] = ssl_new_vec (sc->sc_cc, "S", DV_IRI_ID);
+      (*cset_psog)[2] = ssl_new_vec (sc->sc_cc, "O", DV_ANY);
+      (*cset_psog)[3] = ssl_new_vec (sc->sc_cc, "G", DV_IRI_ID);
+    }
+  if (cset_posg)
+    {
+      *cset_posg = (state_slot_t **) dk_alloc_box (sizeof (caddr_t) * 4, DV_BIN);
+      (*cset_posg)[0] = ssl_new_vec (sc->sc_cc, "P", DV_IRI_ID);
+      (*cset_posg)[2] = ssl_new_vec (sc->sc_cc, "S", DV_IRI_ID);
+      (*cset_posg)[1] = ssl_new_vec (sc->sc_cc, "O", DV_ANY);
+      (*cset_posg)[3] = ssl_new_vec (sc->sc_cc, "G", DV_IRI_ID);
+    }
+  if (cset_op)
+    {
+      *cset_op = (state_slot_t **) dk_alloc_box (sizeof (caddr_t) * 4, DV_BIN);
+      (*cset_op)[1] = ssl_new_vec (sc->sc_cc, "P", DV_IRI_ID);
+      (*cset_op)[1] = ssl_new_vec (sc->sc_cc, "O", DV_ANY);
+    }
+}
+
 
 void
 sqlc_insert (sql_comp_t * sc, ST * tree)
@@ -867,7 +894,8 @@ sqlc_insert (sql_comp_t * sc, ST * tree)
     }
     END_DO_BOX;
     ins->ins_col_ids = col_ids;
-
+    if (ins->ins_table->tb_cset)
+      sqlc_cset_ssls (sc, &ins->ins_cset_psog, &ins->ins_cset_posg, &ins->ins_cset_op);
     if (ST_P (tree->_.insert.vals, SELECT_STMT))
       {
 	ST *sel = tree->_.insert.vals;
@@ -1504,6 +1532,8 @@ sqlc_update_searched (sql_comp_t * sc, ST * tree)
 	sql_node_append (&sc->sc_cc->cc_query->qr_head_node, (data_source_t *) upd);
 	sqlg_qr_env (sc, sc->sc_cc->cc_query);
       }
+      if (upd->upd_table->tb_cset)
+	sqlc_cset_ssls (sc, &upd->upd_cset_psog, &upd->upd_cset_posg, NULL);
       sqlc_upd_param_types (sc, upd);
       upd_optimize (sc, upd);
     }

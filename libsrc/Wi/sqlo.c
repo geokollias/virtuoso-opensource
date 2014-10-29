@@ -84,6 +84,22 @@
      }
 
 
+dbe_table_t *
+so_name_to_table (sqlo_t * so, caddr_t name)
+{
+  dbe_table_t *tb;
+  DO_SET (dbe_table_t *, tb, &so->so_sc->sc_temp_tables)
+  {
+    if (!CASEMODESTRCMP (tb->tb_name, name))
+      return tb;
+  }
+  END_DO_SET ();
+  tb = sch_name_to_table (so->so_sc->sc_cc->cc_schema, name);
+  if (tb && tb_is_rdf_quad (tb))
+    so->so_any_rdf_quad = 1;
+  return tb;
+}
+
 dbe_column_t *
 ot_is_defd (op_table_t * ot, ST * col_ref)
 {
@@ -205,7 +221,7 @@ next:;
   END_DO_SET ();
   if (!n_found && SCO_THIS_QUAL == mode && strchr (col_ref->_.col_ref.prefix, '.'))
     {
-      dbe_table_t *prefix_table = sch_name_to_table (sco->sco_so->so_sc->sc_cc->cc_schema,
+      dbe_table_t *prefix_table = so_name_to_table (sco->sco_so,
 	  col_ref->_.col_ref.prefix);
       DO_SET (op_table_t *, ot, &sco->sco_tables)
       {
@@ -853,7 +869,7 @@ sqlo_add_table_ref (sqlo_t * so, ST ** tree_ret, dk_set_t * res)
     case TABLE_DOTTED:
       {
 	ST *with_view = sqlo_with_decl (so, tree);
-	dbe_table_t *tb = with_view ? NULL : sch_name_to_table (so->so_sc->sc_cc->cc_schema, tree->_.table.name);
+	dbe_table_t *tb = with_view ? NULL : so_name_to_table (so, tree->_.table.name);
 	ST *view;
 	if (!tb && !with_view)
 	  sqlc_error (so->so_sc->sc_cc, "S0002", "No table %s", tree->_.table.name);
@@ -3377,7 +3393,21 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
 		so->so_bin_op_is_negate = so_bin_op_is_negate;
 		sqlo_subq_convert_to_exists (so, ptree);
 	      }
-
+	  case COMPOUND_STMT:
+	  case IF_STMT:
+	  case WHILE_STMT:
+	    {
+	      int inx, len = BOX_ELEMENTS (tree);
+	      int old_rescope = so->so_is_rescope;
+	      so->so_is_rescope = 1;
+	      for (inx = 1; inx < len; inx++)
+		sqlo_scope (so, &((ST **) tree)[inx]);
+	      so->so_is_rescope = old_rescope;
+	      break;
+	    }
+	  case LABELED_STMT:
+	    sqlo_scope (so, (ST **) & tree->_.op.arg_2);
+	    break;
 	  }
       }
 
@@ -3412,7 +3442,23 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
 	END_DO_BOX;
       }
 
-
+      void sqlo_map_st_ref (ST ** ptree, tree_ref_cb_t cb, void *cd)
+      {
+	ST *tree = *ptree;
+	int inx;
+	dtp_t dtp = DV_TYPE_OF (tree);
+	if (DV_ARRAY_OF_POINTER != dtp)
+	  return;
+	if (ST_P (tree, QUOTE))
+	  return;
+	if (cb (ptree, cd))
+	  return;
+	DO_BOX (ST *, sub, inx, tree)
+	{
+	  sqlo_map_st_ref (&((ST **) tree)[inx], cb, cd);
+	}
+	END_DO_BOX;
+      }
 
 
       void sqlo_unused_cols (sqlo_t * so, ST * tree)

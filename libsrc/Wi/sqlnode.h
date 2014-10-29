@@ -401,6 +401,7 @@ struct query_s
   dk_set_t qr_unrefd_data;	/* garbage, free when freeing qr */
   dk_set_t qr_proc_result_cols;	/* needed by SQLProcedureColumns */
   dk_set_t qr_subq_queries;
+  dk_set_t qr_temp_tables;	/* list of dbe_table_t in scope for qr only */
 
   query_t *qr_module;
   dk_set_t qr_temp_keys;
@@ -691,7 +692,13 @@ struct key_source_s
   state_slot_t *ks_top_oby_skip;
   search_spec_t *ks_top_oby_spec;
   int ks_top_oby_nth;		/* if gby + top oby on top with grouping col, pos of the grouping col in the gby */
-  ssl_index_t *ks_hs_partition_spec;
+  ssl_index_t ks_hs_partition_spec;
+  ssl_index_t ks_any_in_set;	/* bit of set is set if at least on in set */
+  ssl_index_t ks_multiple_in_set;	/* bit of set is set if set has more than one result */
+  ssl_index_t ks_cset_bits;
+  short ks_cset_nth_bit;
+  short ks_cset_n_bits;
+  ssl_index_t ks_cset_state;
 };
 
 /*ks_is_flood */
@@ -753,8 +760,100 @@ typedef struct inx_op_s
   int iop_first_at_end;		/* true if the leftmost term is read to end */
 } inx_op_t;
 
+typedef struct trans_read_s
+{
+  state_slot_t *trr_ext_sets;	/* for trans gby reader, from in trans to ext set nos */
+  state_slot_t *trr_path_no_ret;
+  state_slot_t *trr_step_no_ret;
+  state_slot_t *trr_superstep;
+  ssl_index_t trr_nth_ext_set;	/* place in ext set array for trans gby */
+  ssl_index_t trr_nth_t_state;	/* place in enum of alt states of trans gby */
+  ssl_index_t trr_nth_t_step;	/* place in enum of path in trans gby */
+  short trr_path_col;		/* pos of path set dv in trans gby */
+  char trr_active_bit;
+  char trr_is_step;		/* the reader before the superstep */
+  char trr_exclude_init;
+  char trr_step_flags;
+  char trr_t_mode;
+} trans_read_t;
+/* trr_step_flags */
+#define TRR_ACTIVE_BIT 1	/* read the rows with active bit on */
+#define TRR_PREV_STEP 2		/* read rows inserted by previous step */
+#define TRR_NEW_ACTIVE 4	/* when adding a row, set as active, when changing step reset active */
+
+/* trr_t_mode */
+#define TRR_T_STATES 1
+#define TRR_T_STEPS 2
+
 
 typedef int (*ts_alt_func_t) (struct table_source_s * ts, caddr_t * inst, caddr_t * state);
+
+
+typedef struct cset_ts_s
+{
+  char csts_is_scan;
+  ssl_index_t csts_nth_cset;	/* which cset was the scan left at */
+  ssl_index_t csts_qr_key;
+  ssl_index_t csts_qr;
+  ssl_index_t csts_cset_mode;	/* mode, e.g. table, exception only, table g mix etc */
+  ssl_index_t csts_s_sets;	/* if s given, the set nos that fall in the same cset */
+  state_slot_t *csts_lookup_csets;	/* for heterogenous s, csets to cover all values */
+  state_slot_t *csts_o_scan_mode;	/* if csts is by s given from posg.  If cset o doed not figure in posg, then this is set to force a scan for the o for the cset given here */
+  state_slot_t *csts_s;		/* if s is given, this is the s that gives the cset */
+  state_slot_t *csts_prev_last_cset_s;	/* in cset scan, the last s found in the cset table for previous batch */
+  state_slot_t *csts_last_cset_s;	/* in cset scan the last s of this batch */
+  state_slot_t *csts_last_s_chash;	/* the s values from cset, to avoid when looking for exception-only hits */
+  dk_hash_t csts_cset_plan;	/* from cset no to executable plan */
+  dk_mutex_t csts_mtx;
+  iri_id_t *csts_reqd_ps;	/* if one of these p's does not exist in a cset, the cset can be skipped */
+  state_slot_t **csts_vec_ssls;	/* vec places for use in cset specific plans */
+  state_slot_t **csts_scalar_ssls;
+  ssl_index_t *csts_qi_places;
+  ssl_index_t *csts_qi_sets;
+} cset_ts_t;
+
+
+typedef struct cset_mode_s
+{
+  /* an expansion of a cset abstract ts has cset behaviors coded here */
+  char csm_role;
+  ssl_index_t csm_mode;
+  ssl_index_t csm_optional_state;	/* if exception lookup optional, flag set if returning the nulls for the missed */
+  ssl_index_t csm_last_outer;	/* where left off if returning optional nulls in more than one batch */
+  cset_t *csm_cset;
+  state_slot_t **csm_exc_bits_in;
+  state_slot_t **csm_exc_bits_out;
+  ssl_index_t csm_exc_tmp_bits;
+  state_slot_t *csm_cset_o;
+  state_slot_t *csm_rq_o;
+  state_slot_t *csm_g_out;	/* in the non-unq s mode the g is fetched even if the qr does not return it */
+  short csm_bit;		/* in quad, the bit of the p */
+  short csm_n_bits;
+  short csm_cset_bit_bytes;
+  ssl_index_t csm_exc_s_row;	/* row no of each s in csm_exc_s */
+  short csm_s_col_pos;		/* 0 for key starts with s, 1 for cset row starts with an o for o clustering */
+  state_slot_t *csm_exc_s;
+  v_out_map_t *csm_s_om;
+  search_spec_t csm_cset_s_spec;
+  search_spec_t csm_cset_g_spec;
+  iri_id_t *csm_reqd_ps;	/* for cset ps, a row is dropped if any of these does not match and there is no possibility of exception quad for the p */
+  /* for posg rq */
+  ssl_index_t csm_posg_last_set;
+  ssl_index_t csm_posg_cset_pos;
+  state_slot_t *csm_o_scan_mode;	/* a posg rq detects scannable o, sets this to cset no to guide subsequent cset abstract to do a scan */
+  short *csm_cset_col_bits;
+} cset_mode_t;
+
+/* csm_role */
+#define TS_CSET_PSOG 1
+#define TS_CSET_POSG 2
+#define TS_CSET_SG 3
+
+
+/* csm_mode */
+#define CSM_CSET_DIRECT 1	/* all columns and conds are resolved from the cset table */
+#define CSM_EXCEPT 2		/* ts against psog considers only psog, accessing cset exceptions */
+#define CSM_CSET_COL 3 /* use psog if s not in cset, use the cset table if s in cset */ 2
 
 typedef struct table_source_s
 {
@@ -768,8 +867,15 @@ typedef struct table_source_s
   key_source_t *ts_main_ks;
   state_slot_t *ts_order_cursor;
   state_slot_t *ts_current_of;
+  state_slot_t *ts_cset_in;
+  state_slot_t *ts_cset_out;
+  state_slot_t *ts_cset_s;	/* use for reading the s col in cset for exception check */
+  ssl_index_t ts_set_card_bits;	/* 2 bits per set, 0 if no hit, 1 if 1, 2 if more */
   int ts_batch_sz;
   short ts_qp_max;
+  bitf_t ts_is_cset:3;
+  bitf_t ts_is_cset_exc:1;	/* is a cset exception lookup in quad */
+  bitf_t ts_is_cset_exc_opt:1;	/* cset exception lookup for optional col */
   bitf_t ts_is_unique:1;	/* Only one hit expected, do not look for more */
   bitf_t ts_is_outer:1;
   bitf_t ts_is_random:1;	/* random search */
@@ -811,6 +917,9 @@ typedef struct table_source_s
   state_slot_t *ts_alternate_cd;
   caddr_t ts_sort_read_mask;	/* array of char flags.  Set if in reading sort temp the item at the place goes into the output */
   struct file_source_s *ts_fs;
+  cset_ts_t *ts_csts;
+  cset_mode_t *ts_csm;
+  trans_read_t *ts_trans_read;
   short ts_max_rows;		/* if last of top n and a single state makes this many, then can end whole set */
   short ts_prefetch_rows;	/* recommend cluster end batch   after this many because top later */
 } table_source_t;
@@ -840,6 +949,22 @@ typedef struct ts_alt_split_s
   table_source_t *tssp_alt_ts;
 } ts_split_node_t;
 
+
+typedef struct cset_align_s
+{
+  state_slot_t *csa_res;
+  state_slot_t *csa_first;
+  state_slot_t *csa_second;
+} cset_align_t;
+
+typedef struct cset_align_node_s
+{
+  data_source_t src_gen;
+  ssl_index_t csa_mode;
+  table_source_t *csa_model_ts;
+  state_slot_t **csa_exc_bits;
+  cset_align_t *csa_ssls;
+} cset_align_node_t;
 
 typedef table_source_t sort_read_node_t;
 typedef table_source_t chash_read_node_t;
@@ -1244,6 +1369,9 @@ typedef struct insert_node_s
   v_out_map_t *ins_v_out_map;	/* output cols if fetching insert */
   ssl_index_t ins_set_mask;	/* in cluster local branch, indicates which rows in the cast in the iks are for delete, i.e. local */
   data_source_t *ins_del_node;	/* for replacing vectored */
+  state_slot_t **ins_cset_psog;	/* for inserting cset exceptions */
+  state_slot_t **ins_cset_posg;	/* for inserting cset exceptions */
+  state_slot_t **ins_cset_op;	/* for inserting cset exceptions */
 } insert_node_t;
 
 
@@ -1302,6 +1430,8 @@ typedef struct update_node_s
   char upd_any_blob;
   ins_key_t **upd_keys;
   ssl_index_t upd_set_mask;
+  state_slot_t **upd_cset_psog;
+  state_slot_t **upd_cset_posg;
 } update_node_t;
 
 
@@ -1327,6 +1457,8 @@ typedef struct delete_node_s
 typedef struct end_node_s
 {
   data_source_t src_gen;
+  state_slot_t *en_stack;	/* if can reset in mid exec and must continue */
+  ssl_index_t en_set_no;	/* if scalar after code and can reset, next set to run */
 } end_node_t;
 
 
@@ -1498,6 +1630,8 @@ typedef struct setp_node_s
   char setp_set_no_in_key;	/* multistate group by with set no as 1st grouping col */
   char setp_multistate_oby;
   char setp_top_gby;		/* gby followed by top k oby with first order on a grouping col, allow fetching the top k limit from the gby */
+  char setp_extra_bits;
+  int setp_tn_min_step;
   int setp_top_gby_nth_col;
   state_slot_t *setp_top;
   state_slot_t *setp_top_skip;
@@ -1541,7 +1675,9 @@ typedef struct setp_node_s
   char setp_in_union;
   char setp_fill_right_oj;	/* if hash filler for a right oj trhat needs hit flags */
   char setp_ht_no_drop;		/* for a hash join build, add extra ref so hash survives the creating qi */
+  char setp_is_trans;
   short setp_stream_col_pos;	/* ordinal position of streaming ssl in gby keys */
+  state_slot_t *setp_trans_any;	/* set if adding an item for next trans superstep */
   state_slot_t *setp_last_streaming_value;
   state_slot_t *setp_streaming_ssl;	/* if grouping cols are ordering cols but have duplicates, this is the col to check for distinguishing known complete groups from possible incomplete groups */
   table_source_t *setp_streaming_ts;	/* for order gby, the ts that has the order */
@@ -1552,6 +1688,7 @@ typedef struct setp_node_s
   search_spec_t *setp_hash_part_spec;	/* if hash join filler must make many partitions because too large, then this sp is applied to limit the probes si only stuff potentially in the hash is probed */
   state_slot_t *setp_chash_clrg;
   state_slot_t *setp_hash_part_ssl;
+  state_slot_t *setp_superstep;
   ssl_index_t setp_hash_fill_partitioned;
   ssl_index_t setp_fill_cha;	/* for chash join fill, the cha where the filler thread puts its rows */
   char setp_no_bloom;
@@ -1656,6 +1793,7 @@ typedef struct comp_context_s
 {
   int cc_instance_fill;
   char cc_has_vec_subq;
+  char cc_in_cset_gen;		/* making a cset specific subplan. */
   dk_set_t cc_state_slots;
   id_hash_t *cc_slots;
   query_t *cc_query;
@@ -1663,6 +1801,11 @@ typedef struct comp_context_s
   caddr_t cc_error;
   struct comp_context_s *cc_super_cc;
   dk_hash_t *cc_keep_ssl;
+  dk_set_t cc_qi_places;
+  dk_set_t cc_qi_vec_places;
+  dk_set_t cc_qi_box_places;
+  dk_set_t cc_qi_scalar_places;
+  dk_set_t cc_qi_sets_places;
 } comp_context_t;
 
 #define CC_INIT(cc, cli) \
@@ -1988,6 +2131,7 @@ typedef struct client_connection_s
   long cli_resultset_cols;	/* number of cols defined for result */
   query_instance_t *cli_result_qi;
   table_source_t *cli_result_ts;
+  db_buf_t cli_exec_set_mask;	/* may pass set mask to exec with dcs as params */
   id_hash_t *cli_globals;
   wcharset_t *cli_charset;
   struct rcc_entry_s *cli_rcons;
@@ -2015,6 +2159,7 @@ typedef struct client_connection_s
   int cli_inprocess;
 #endif
   uint32 cli_start_time;
+  uint32 cli_ws_check_time;
   caddr_t *cli_info;
   cl_thread_t *cli_clt;		/* if cli of a cluster server thread, this is the clt */
   struct aq_request_s *cli_aqr;	/* if the cli is running an aq func, this is the aqr */
@@ -2158,6 +2303,19 @@ struct user_aggregate_s
 /*! Flag whether the order of passing values to the aggregate is significant. */
   char ua_need_order;
 };
+
+typedef struct cset_uri_s
+{
+  cset_t *csu_cset;
+  char csu_type;
+  caddr_t csu_substr;
+  search_spec_t csu_sp;
+} cset_uri_t;
+
+extern cset_uri_t *cset_uri;
+
+extern int cset_uri_fill;
+
 
 
 extern int lite_mode;

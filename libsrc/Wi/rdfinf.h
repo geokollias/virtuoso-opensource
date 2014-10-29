@@ -176,12 +176,14 @@ struct trans_node_s
   state_slot_t **tn_output;
   state_slot_t **tn_target;
   state_slot_t **tn_data;
+  state_slot_t *tn_path;	/* in dfg impl, path(s) to v.  reader adds the vertex id. */
   state_slot_t *tn_path_no_ret;
   state_slot_t *tn_step_no_ret;
   state_slot_t **tn_step_out;	/* out slots for intermediate inputs when returning full path */
   state_slot_t *tn_state_ssl;	/* put the trans_state being processed here for access in the step dt */
   state_slot_t *tn_step_set_no;
   state_slot_t *tn_end_flag;
+  state_slot_t *tn_aggregator;	/* min clo for bidir shortest path, vec or single depending on multistate */
   state_slot_t *tn_relation;	/* fetched input->output tuples, list indexed on input tuple */
   state_slot_t *tn_lc;
   int tn_input_sets;		/* from distinct input to trans set */
@@ -201,10 +203,14 @@ struct trans_node_s
   char tn_step_qr_id;
 
   /* dfg implementation */
+  char tn_is_bsp;
+  char tn_is_single_state;	/* no set nos in gby's, one op only */
   char tn_is_mt_out;		/* in single server, separate continue exec in each qi slice from the trans. true if trans is first in parallel ts seq */
-  state_slot_t *tn_set_no;	/* if multistate, the external set no */
+  state_slot_t *tn_ht_id;
+  state_slot_t *tn_tree;
+  state_slot_t *tn_ext_sets;	/* if multistate, the external set nos for each distinct set */
   state_slot_t *tn_int_set_no;	/* the set no in the tn step */
-  stage_node_t *tn_init_stn;
+  data_source_t *tn_init;
   state_slot_t *tn_superstep;
   state_slot_t *tn_named_tree;
 };

@@ -41,6 +41,7 @@
 #include "rdfinf.h"
 #include "rdf_core.h"
 
+extern int enable_bsp_trans;
 
 #define TN_INIT 1
 #define TN_D0_SENT 2
@@ -1544,7 +1545,7 @@ trans_node_vec_input (trans_node_t * tn, caddr_t * inst, caddr_t * state)
 	  tn_send_d0 (tn, inst, n_sets);
 	  return;
 	}
-      if (qi->qi_client->cli_anytime_started && tn->tn_d0_sent && TN_D0_SENT != QST_INT (inst, tn->tn_d0_sent))
+      if (qi->qi_client->cli_anytime_started && !tn->tn_is_bsp && tn->tn_d0_sent && TN_D0_SENT != QST_INT (inst, tn->tn_d0_sent))
 	{
 	  QST_INT (inst, tn->tn_d0_sent) = 1;
 	  QST_INT (inst, tn->tn_state) = TN_D0_SENT;
@@ -1559,6 +1560,15 @@ trans_node_vec_input (trans_node_t * tn, caddr_t * inst, caddr_t * state)
 	}
     }
   QST_INT (inst, tn->tn_state) = TN_RESULTS;
+  if (tn->tn_is_bsp)
+    {
+      SRC_IN_STATE (tn, inst) = NULL;
+      tn_bsp_run (tn, inst);
+      for (nth_set = 0; nth_set < n_sets; nth_set++)
+	qn_result ((data_source_t *) tn, inst, nth_set);
+      qn_send_output ((data_source_t *) tn, inst);
+      return;
+    }
   tn_results (tn, inst);
 
   SRC_IN_STATE (qn, inst) = NULL;

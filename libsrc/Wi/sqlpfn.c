@@ -868,6 +868,18 @@ sqlp_infoschema_redirect_tbs (ST ** tree, ST ** where_cond)
 ST *
 sqlp_infoschema_redirect (ST * texp)
 {
+  ST *gby;
+  if ((gby = (ST *) texp->_.table_exp.group_by))
+    {
+      if (ST_P (gby, GROUP_BY_EXEC))
+	{
+	  caddr_t *gby_opt = t_list (2, GROUP_BY_EXEC, gby);
+	  texp->_.table_exp.group_by = gby->_.gb_ext.cols;
+	  texp->_.table_exp.group_by_full = (ST ***) t_listst (1, texp->_.table_exp.group_by);
+	  texp->_.table_exp.opts =
+	      texp->_.table_exp.opts ? (caddr_t *) t_box_conc (gby_opt, texp->_.table_exp.opts) : (caddr_t *) gby_opt;
+	}
+    }
   if (global_scs && sqlp_have_infoschema_views && !inside_view)
     {
       ST *new_where = NULL;

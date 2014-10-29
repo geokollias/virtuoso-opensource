@@ -222,8 +222,23 @@ itc_new_seq_col (it_cursor_t * itc, buffer_desc_t * buf, caddr_t seq_box)
   QNCAST (query_instance_t, qi, itc->itc_out_state);
   QR_RESET_CTX
   {
-    if (0 == strcmp ("RDF_URL_IID_NAMED", seq_box))
+    if (DV_LONG_INT == DV_TYPE_OF (seq_box))
       {
+	uint32 seq_no = unbox (seq_box) / 4;
+	int64 log_id;
+	if (seq_no < 1)
+	  goto named_iri;
+	res = ir_new_id (itc->itc_out_state, seq_no, &log_id);
+	if (REPL_NO_LOG != itc->itc_ltrx->lt_replicate)
+	  {
+	    caddr_t idb = box_num (log_id);
+	    log_sequence (itc->itc_ltrx, idb, res + 1);
+	    dk_free_box (idb);
+	  }
+      }
+    else if (0 == strcmp ("RDF_URL_IID_NAMED", seq_box))
+      {
+      named_iri:
 	res = rdf_new_iri_id (itc->itc_ltrx, &value_seq_name, itc->itc_ltrx->lt_trx_no, qi);
 	log_sequence (itc->itc_ltrx, value_seq_name, res + 1);
       }
@@ -279,8 +294,12 @@ itc_ins_fetch (it_cursor_t * itc, buffer_desc_t * buf, insert_node_t * ins, int 
     {
       int icol;
       int64 res;
-      caddr_t seq_box = qst_get (inst, ins->ins_seq_name);
-      if (!DV_STRINGP (seq_box))
+      caddr_t seq_box;
+      dtp_t dtp;
+      ((QI *) inst)->qi_set = itc->itc_param_order[itc->itc_set];
+      seq_box = qst_get (inst, ins->ins_seq_name);
+      dtp = DV_TYPE_OF (seq_box);
+      if (dtp != DV_STRING && dtp != DV_LONG_INT)
 	goto seq_err;
       res = itc_new_seq_col (itc, buf, seq_box);
       dc->dc_n_values = itc->itc_param_order[itc->itc_set];

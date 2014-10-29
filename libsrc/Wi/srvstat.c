@@ -211,6 +211,7 @@ extern int32 em_ra_window;
 extern int32 em_ra_threshold;
 extern int enable_top_pred;
 extern int enable_top_print;
+extern int enable_bsp_trans;
 extern int enable_g_in_sec;
 extern int64 rdf_ctx_max_mem;
 extern int64 rdf_ctx_in_use;
@@ -1805,6 +1806,7 @@ stat_desc_t dbf_descs[] = {
   {"tc_qrc_recompile", &tc_qrc_recompile, NULL},
   {"tc_qrc_plan_miss", &tc_qrc_plan_miss, NULL},
   {"enable_dfg", (long *) &enable_dfg, SD_INT32},
+  {"enable_bsp_trans", &enable_bsp_trans, SD_INT32},
   {"enable_at_print", (long *) &enable_at_print, SD_INT32},
   {"enable_min_card", (long *) &enable_min_card},
   {"enable_distinct_sas", (long *) &enable_distinct_sas, SD_INT32},
@@ -2559,7 +2561,7 @@ bif_profile_enable (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       prof_start_time = get_msec_real_time ();
       time (&prof_start_time_st);
       cli->cli_run_clocks = 0;
-      cli->cli_cl_start_ts = 0;
+      cli->cli_cl_start_ts = rdtsc ();
       da_clear (&cli->cli_activity);
       da_clear (&cli->cli_compile_activity);
     }

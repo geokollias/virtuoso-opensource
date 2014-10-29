@@ -59,6 +59,28 @@ clrg_ensure_single_clib (cl_req_group_t * clrg)
 
 
 void
+strtrap (caddr_t str, caddr_t iri, char *substr, int cset)
+{
+  if (DV_STRINGP (str) && strstr (str + 4, substr) && !strstr (str + 4, "Webpage"))
+    {
+      if (iri)
+	{
+	  iri_id_t min = (iri_id_t) cset << 53;
+	  iri_id_t max = (iri_id_t) (cset + 1) << 53;
+	  iri_id_t id = unbox_iri_id (iri);
+	  if (id < min || id >> max)
+	    bing ();
+	}
+      else
+	{
+	  int flags = box_flags (str) / 4;
+	  if (flags != cset)
+	    bing ();
+	}
+    }
+}
+
+void
 cu_local_dispatch (cucurbit_t * cu, value_state_t * vs, cu_func_t * cf, caddr_t val)
 {
   int seq = 0;
@@ -102,6 +124,7 @@ cu_local_dispatch (cucurbit_t * cu, value_state_t * vs, cu_func_t * cf, caddr_t 
   DO_BOX (caddr_t, arg, inx, args)
   {
     data_col_t *dc = (data_col_t *) clo->_.call.params[inx];
+    /*strtrap (arg, NULL, "offer", 3); */
     dc_append_box (dc, arg);
     if (dc->dc_buffer && dc->dc_buf_fill > dc->dc_buf_len)
       GPF_T1 ("write past dc end");
@@ -226,6 +249,13 @@ aq_rl_key_func_1 (caddr_t av, caddr_t * err_ret, int ins)
   query_t *qr = ins ? rl_queries[nth_key] : rl_del_qrs[nth_key];
   dk_free_box (args[1]);
   dk_free_box (av);
+  if (cu->cu_inx_bits)
+    {
+      dbe_key_t *key = (dbe_key_t *) params[BOX_ELEMENTS (params) - 1];
+      params[BOX_ELEMENTS (params) - 1] = NULL;
+      if (key && key->key_rdf_order != I_OTHER)
+	cli->cli_exec_set_mask = cu->cu_inx_bits[key->key_rdf_order];
+    }
   if (0 == ((data_col_t **) params)[0]->dc_n_values)
     *err_ret = NULL;
   else
@@ -313,6 +343,7 @@ rl_query_init (dbe_table_t * quad_tb)
   rl_graph_words_qr = sql_compile ("DB.DBA.RDF_OBJ_ADD_KEYWORD_FOR_GRAPH  (?, ?)", bootstrap_cli, &err, SQLC_DEFAULT);
   if (err)
     sqlr_resignal (err);
+  rdf_quad_key_labels (quad_tb);
   rl_query_inited = quad_tb->tb_primary_key->key_id;
 }
 
@@ -357,7 +388,7 @@ cu_rl_cols (cucurbit_t * cu, caddr_t g_iid)
   async_queue_t *aq;
   dbe_table_t *quad_tb = sch_name_to_table (wi_inst.wi_schema, "DB.DBA.RDF_QUAD");
   caddr_t err1 = NULL, err2 = NULL;
-  int nth_key = 0, inx, n_keys;
+  int nth_key = 0, inx, n_keys, any_cset;
   cl_req_group_t *clrg = cu->cu_clrg;
   data_col_t *g_dc = mp_data_col (clrg->clrg_pool, &ssl_iri_dummy, dc_batch_sz);
   data_col_t *s_dc = mp_data_col (clrg->clrg_pool, &ssl_iri_dummy, dc_batch_sz);
@@ -429,6 +460,8 @@ cu_rl_cols (cucurbit_t * cu, caddr_t g_iid)
 	dk_set_push (&set, box_copy_tree (quad));
     }
   BOX_DONE (quad, tmp);
+
+  any_cset = cset_ld_indices (clrg, s_dc, p_dc, o_dc, g_dc, is_del);
   if (set)
     rdf_repl_gs_batch (qi, (caddr_t *) list_to_array (dk_set_nreverse (set)), 1);
 
@@ -442,8 +475,9 @@ cu_rl_cols (cucurbit_t * cu, caddr_t g_iid)
     caddr_t *box;
     if (is_del && key->key_distinct)	/* delete is on full inxes */
       continue;
-    box = (caddr_t *) mp_alloc_box (clrg->clrg_pool, sizeof (caddr_t) * n_parts, DV_BIN);
+    box = (caddr_t *) mp_alloc_box (clrg->clrg_pool, sizeof (caddr_t) * (1 + n_parts), DV_BIN);
     cu->cu_cd[nth_key] = (caddr_t) box;
+    box[n_parts] = (caddr_t) key;
     DO_SET (dbe_column_t *, col, &key->key_parts)
     {
       data_col_t *dc = NULL;
@@ -628,6 +662,40 @@ l_make_ro_disp (cucurbit_t * cu, caddr_t * args, value_state_t * vs)
 }
 
 
+iri_id_t
+iri_from_ip (caddr_t * name_ret, caddr_t * box_to_delete, caddr_t * name_to_delete)
+{
+  caddr_t name = *name_ret;
+  iri_pattern_t *ip = NULL;
+  iri_id_t res = iri_from_string (*name_ret, box_length (*name_ret) - 1, &ip);
+  name = *name_ret;
+  if (!res && ip && ip->ip_cset)
+    {
+      box_flags (name) = 4 * ip->ip_cset | (box_flags (name) & 3);
+    }
+  if (res && ip->ip_int_range)
+    {
+      caddr_t bin_name;
+      if (name_to_delete && *name_to_delete)
+	{
+	  dk_free_box (*name_to_delete);
+	  *name_to_delete = NULL;
+	}
+      if (name_to_delete && *box_to_delete)
+	{
+	  dk_free_box (*box_to_delete);
+	  *box_to_delete = NULL;
+	}
+      bin_name = dk_alloc_box (9, DV_STRING);
+      INT64_SET_NA (bin_name, res);
+      *name_to_delete = bin_name;
+      box_flags (bin_name) = ip->ip_exc_range->ir_id * 4;
+      *name_ret = bin_name;
+    }
+  return res;
+}
+
+
 caddr_t
 l_iri_id_disp (cucurbit_t * cu, caddr_t name, value_state_t * vs)
 {
@@ -637,6 +705,7 @@ l_iri_id_disp (cucurbit_t * cu, caddr_t name, value_state_t * vs)
   caddr_t prefix, local;
   dtp_t dtp = DV_TYPE_OF (name);
   caddr_t box_to_delete = NULL, name_to_delete = NULL;
+  iri_id_t by_ip;
   if (!cf)
     {
       cf = cu_func ("L_I_LOOK", 1);
@@ -703,10 +772,16 @@ l_iri_id_disp (cucurbit_t * cu, caddr_t name, value_state_t * vs)
 	  name_to_delete = name = localized_name;
 	}
     }
+  if ((by_ip = iri_from_ip (&name, &box_to_delete, &name_to_delete)))
+    {
+      cu_set_value (cu, vs, box_iri_id (by_ip));
+      return NULL;
+    }
   if (!iri_split (name, &prefix, &local))
     goto return_error;		/* see below */
   dk_free_box (box_to_delete);
   dk_free_box (name_to_delete);
+  box_flags (local) = box_flags (name);
   pref_id_no = nic_name_id (iri_prefix_cache, prefix);
   if (!pref_id_no)
     {
@@ -798,11 +873,27 @@ bif_rl_dp_ids (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   caddr_t g_iid = bif_arg (qst, args, 1, "rl_ids");
   cucurbit_t *cu = clrg->clrg_cu;
   void *save;
+  bif_rdf_iri_always_cached_init (qst, NULL, NULL);
   if (!cu)
     sqlr_new_error ("42000", "CL...", "Not a dpipe daq");
   cu->cu_qst = qst;
+  clrg->clrg_inst = qst;
   save = cu->cu_ready_cb;
   cu->cu_ready_cb = NULL;	/* local exec, CBs are for clustered operation */
+
+  if (cu->cu_rdf_load_mode == RDF_LD_INS_GS || cu->cu_rdf_load_mode == RDF_LD_DEL_GS)
+    {
+      cset_ld_ids (clrg, 3, 4, 5, 2, 0);
+    }
+  else
+    {
+      /* ttlpv loader */
+      int is_gs = BOX_ELEMENTS (cu->cu_input_funcs) == 5;
+      if (is_gs)
+	cset_ld_ids (clrg, 2, 3, 4, 6, 0);
+      else
+	cset_ld_ids (clrg, 2, 3, 4, -1, g_iid);
+    }
   cu_rl_local_exec (cu);
   cu_rl_cols (cu, g_iid);
   cu->cu_ready_cb = save;

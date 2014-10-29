@@ -252,6 +252,17 @@ dc_ensure_null_bits (data_col_t * dc)
 }
 
 
+void
+dc_clr_nulls (data_col_t * dc)
+{
+  if (dc->dc_nulls)
+    {
+      dc_ensure_null_bits (dc);
+      memzero (dc->dc_nulls, ALIGN_8 (dc->dc_n_places) / 8);
+    }
+}
+
+
 #ifdef DC_BOXES_DBG
 #define DC_FREE_BOX(dc, nth) \
   { caddr_t __v = ((caddr_t*)(dc)->dc_values)[nth]; dk_free_tree (__v); if (dc->dc_mp->mp_box_to_dc) remhash ((void*)__v, dc->dc_mp->mp_box_to_dc); }

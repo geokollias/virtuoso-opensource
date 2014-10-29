@@ -1824,7 +1824,18 @@ ts_always_null (table_source_t * ts, caddr_t * inst)
 void
 ts_at_end (table_source_t * ts, caddr_t * inst)
 {
-  if (ts->ts_stream_setp)
+  if (ts->ts_csm && TS_CSET_POSG == ts->ts_csm->csm_role)
+    {
+      int aq_state = ts->ts_aq_state ? QST_INT (inst, ts->ts_aq_state) : TS_AQ_COORD;
+      if (TS_AQ_COORD != aq_state)
+	{
+	  SRC_IN_STATE (ts, inst) = NULL;
+	  return;
+	}
+      QST_BOX (caddr_t, inst, ts->ts_csm->csm_posg_cset_pos) = (caddr_t) - 1;
+      SRC_IN_STATE (ts, inst) = inst;
+    }
+  else if (ts->ts_stream_setp)
     {
       SRC_IN_STATE (ts, inst) = inst;
       QST_INT (inst, ts->ts_stream_flush_only) = 1;
@@ -1937,6 +1948,11 @@ ts_top_oby_limit (table_source_t * ts, caddr_t * inst, it_cursor_t * itc)
   ITC_P_VEC (itc, nth) = NULL;
 }
 
+#define POSG_SPEC_O(ts) \
+  if (ts->ts_csm && TS_CSET_POSG == ts->ts_csm->csm_role) \
+    posg_special_o (ts, inst);
+
+
 
 void
 table_source_input (table_source_t * ts, caddr_t * inst, caddr_t * volatile state)
@@ -1945,6 +1961,27 @@ table_source_input (table_source_t * ts, caddr_t * inst, caddr_t * volatile stat
   volatile int any_passed = 1;
   query_instance_t *qi = (query_instance_t *) inst;
   int rc, start;
+  if (ts->ts_csm)
+    {
+      if (TS_CSET_PSOG == ts->ts_csm->csm_role)
+	{
+	  cset_psog_input (ts, inst, state);
+	  return;
+	}
+      if (TS_CSET_POSG == ts->ts_csm->csm_role)
+	{
+	  if (state)
+	    {
+	      qst_set (inst, ts->ts_csm->csm_o_scan_mode, NULL);
+	      QST_BOX (caddr_t, inst, ts->ts_csm->csm_posg_cset_pos) = NULL;
+	    }
+	  if (!state && QST_BOX (caddr_t, inst, ts->ts_csm->csm_posg_cset_pos))
+	    {
+	      posg_special_o (ts, inst);
+	      return;
+	    }
+	}
+    }
   if (!state && ts_stream_flush_ck (ts, inst))
     return;
   if (ts->ts_alternate_test && ts->ts_alternate_test (ts, inst, state))
@@ -1957,6 +1994,14 @@ table_source_input (table_source_t * ts, caddr_t * inst, caddr_t * volatile stat
   if (ts->ts_fs)
     {
       file_source_input (ts, inst, state);
+      return;
+    }
+  if (ts->ts_csts)
+    {
+      if (ts->ts_csts->csts_is_scan)
+	table_source_cset_scan_input (ts, inst, state);
+      else
+	table_source_cset_lookup_input (ts, inst, state);
       return;
     }
   for (;;)
@@ -2047,9 +2092,11 @@ table_source_input (table_source_t * ts, caddr_t * inst, caddr_t * volatile stat
 		  qn_ts_send_output ((data_source_t *) ts, inst, ts->ts_after_join_test);
 		  ts_stream_flush_ck (ts, inst);
 		  ts_aq_final (ts, inst, order_itc);
+		  POSG_SPEC_O (ts);
 		  return;
 		}
 	      ts_aq_final (ts, inst, NULL);
+	      POSG_SPEC_O (ts);
 	      return;
 	    }
 #ifndef NDEBUG
@@ -2125,6 +2172,7 @@ table_source_input (table_source_t * ts, caddr_t * inst, caddr_t * volatile stat
 		  }
 		ts_stream_flush_ck (ts, inst);
 		ts_aq_final (ts, inst, NULL);
+		POSG_SPEC_O (ts);
 		return;
 	      }
 	  }
@@ -4348,6 +4396,8 @@ qr_exec (client_connection_t * cli, query_t * qr,
 	  qi->qi_g_id = cli->cli_user->usr_g_id;
 	}
       qi->qi_non_txn_insert = cli->cli_non_txn_insert;
+      qi->qi_set_mask = cli->cli_exec_set_mask;
+      cli->cli_exec_set_mask = NULL;
     }
   else
     {

@@ -67,7 +67,63 @@ cc_new_instance_slot (comp_context_t * cc)
   cc = cc->cc_super_cc;
   if (cc->cc_instance_fill > MAX_STATE_SLOTS)
     GPF_T1 ("qi with state slots over the limit.");
+  if (cc->cc_in_cset_gen)
+    {
+      int inx = (ptrlong) dk_set_pop (&cc->cc_qi_places);
+      if (!inx)
+	sqlc_new_error (cc, "NCSSL", "NCSSL", "Nott enough unspecialized qi places for cset plan");
+      return inx;
+    }
   return (cc->cc_instance_fill++);
+}
+
+
+int
+cc_new_ssl_slot (comp_context_t * cc, ssl_index_t * box_inx_ret)
+{
+  int inx;
+  cc = cc->cc_super_cc;
+  if (!cc->cc_in_cset_gen)
+    return cc_new_instance_slot (cc);
+  if (box_inx_ret)
+    {
+      inx = (ptrlong) dk_set_pop (&cc->cc_qi_box_places);
+      if (!inx)
+	sqlc_new_error (cc, "CSNSL", "VCSNSL", "Not enough cset qi places for making cset plan");
+      *box_inx_ret = inx;
+    }
+  inx = (ptrlong) dk_set_pop (&cc->cc_qi_vec_places);
+  if (!inx)
+    sqlc_new_error (cc, "CSNSL", "VCSNSL", "Not enough cset qi places for making cset plan");
+  return inx;
+}
+
+int
+cc_new_sets_slot (comp_context_t * cc)
+{
+  int inx;
+  cc = cc->cc_super_cc;
+  if (!cc->cc_in_cset_gen)
+    return cc_new_instance_slot (cc);
+  inx = (ptrlong) dk_set_pop (&cc->cc_qi_sets_places);
+  if (!inx)
+    sqlc_new_error (cc, "CSNSL", "VCSNSL", "Not enough cset qi qn sets places for making cset plan");
+  return inx;
+}
+
+
+
+int
+cc_new_scalar_slot (comp_context_t * cc)
+{
+  int inx;
+  cc = cc->cc_super_cc;
+  if (!cc->cc_in_cset_gen)
+    return cc_new_instance_slot (cc);
+  inx = (ptrlong) dk_set_pop (&cc->cc_qi_scalar_places);
+  if (!inx)
+    sqlc_new_error (cc, "CSNSL", "VCSNSL", "Not enough cset qi scalar places for making cset plan");
+  return inx;
 }
 
 
@@ -674,7 +730,7 @@ ssl_new_column (comp_context_t * cc, const char *cr_name, dbe_column_t * col)
       snprintf (temp, sizeof (temp), "%s.%s", cr_name, colname_or_null (col->col_name));
       sl->ssl_sqt = col->col_sqt;
     }
-  sl->ssl_index = cc_new_instance_slot (cc);
+  sl->ssl_index = cc_new_ssl_slot (cc, &sl->ssl_box_index);
   sl->ssl_name = box_dv_uname_string (temp);
   sl->ssl_type = SSL_COLUMN;
 
@@ -689,7 +745,7 @@ ssl_new_variable (comp_context_t * cc, const char *name, dtp_t dtp)
 {
   NEW_VARZ (state_slot_t, sl);
 
-  sl->ssl_index = cc_new_instance_slot (cc);
+  sl->ssl_index = cc_new_ssl_slot (cc, &sl->ssl_box_index);
   sl->ssl_name = box_dv_uname_string (name);
   sl->ssl_type = SSL_VARIABLE;
   sl->ssl_dtp = dtp;
@@ -703,7 +759,7 @@ ssl_new_inst_variable (comp_context_t * cc, const char *name, dtp_t dtp)
 {
   NEW_VARZ (state_slot_t, sl);
 
-  sl->ssl_index = cc_new_instance_slot (cc);
+  sl->ssl_index = cc_new_ssl_slot (cc, &sl->ssl_box_index);
   sl->ssl_name = box_dv_uname_string (name);
   sl->ssl_type = SSL_VARIABLE;
   sl->ssl_dtp = dtp;
@@ -854,7 +910,7 @@ state_slot_t *
 ssl_new_itc (comp_context_t * cc)
 {
   NEW_VARZ (state_slot_t, sl);
-  sl->ssl_index = cc_new_instance_slot (cc);
+  sl->ssl_index = cc_new_scalar_slot (cc);
   sl->ssl_type = SSL_ITC;
   SSL_ADD_TO_QR (sl);
   return sl;
@@ -1511,6 +1567,8 @@ ts_free (table_source_t * ts)
   dk_free_box ((caddr_t) ts->ts_branch_sets);
   dk_free_box ((caddr_t) ts->ts_sdfg_params);
   dk_free_box ((caddr_t) ts->ts_sdfg_param_refs);
+  if (ts->ts_csts)
+    csts_free (ts->ts_csts);
 }
 
 
@@ -1764,6 +1822,9 @@ ins_free (insert_node_t * ins)
   ik_array_free (ins->ins_keys);
   dk_free_box (ins->ins_key_only);
   qr_free (ins->ins_policy_qr);
+  dk_free_box ((caddr_t) ins->ins_cset_psog);
+  dk_free_box ((caddr_t) ins->ins_cset_posg);
+  dk_free_box ((caddr_t) ins->ins_cset_op);
 }
 
 
@@ -1950,6 +2011,8 @@ key_source_om (comp_context_t * cc, key_source_t * ks)
   int inx = 0;
   int n_out = dk_set_length (ks->ks_out_slots);
   out_map_t *om;
+  if (ks->ks_key->key_is_cset_temp)
+    return;
   if (!n_out)
     return;
   om = (out_map_t *) dk_alloc_box (sizeof (out_map_t) * n_out, DV_BIN);
@@ -2159,6 +2222,8 @@ upd_free (update_node_t * upd)
   dk_free_box ((caddr_t) upd->upd_fixed_cl);
   ik_array_free (upd->upd_keys);
   qr_free (upd->upd_policy_qr);
+  dk_free_box ((caddr_t) upd->upd_cset_psog);
+  dk_free_box ((caddr_t) upd->upd_cset_posg);
 }
 
 

@@ -846,6 +846,26 @@ fn_card_t fn_cards[] = { {"isiri_id", 1, 0.001},
 {NULL, 0, 0}
 };
 
+int
+sqlo_null_pred_unit (df_elt_t * pred, float *u1, float *a1, df_elt_t * in_tb)
+{
+  /* column null and not null */
+  float tb_count, non_nulls;
+  dbe_column_t *col;
+  if (DFE_BOP_PRED != pred->dfe_type || BOP_NULL != pred->_.bin.op || DFE_COLUMN != pred->_.bin.left->dfe_type)
+    return 0;
+  col = pred->_.bin.left->_.col.col;
+  tb_count = dbe_key_count (col->col_defined_in->tb_primary_key);
+  non_nulls = col->col_count / tb_count;
+  if (non_nulls > 1)
+    non_nulls = 1;
+  *u1 = 0.0001;
+  *a1 = pred->_.bin.is_not ? non_nulls : 1 - non_nulls;
+  if (*a1 < 1e-4)
+    *a1 = 1e-4;
+  return 1;
+}
+
 
 int
 sqlo_fn_pred_unit (df_elt_t * pred, float *u1, float *a1, df_elt_t * in_tb)
@@ -1237,6 +1257,8 @@ sqlo_pred_unit_1 (df_elt_t * lower, df_elt_t * upper, df_elt_t * in_tb, float *u
   else
     *u1 = COL_PRED_COST;
   if (sqlo_in_list_unit (in_tb, lower, u1, a1))
+    return;
+  if (sqlo_null_pred_unit (lower, u1, a1, in_tb))
     return;
   if (sqlo_fn_pred_unit (lower, u1, a1, in_tb))
     return;
@@ -2581,6 +2603,8 @@ dfe_const_rhs (search_spec_t * sp, df_elt_t * pred, it_cursor_t * itc, int *v_fi
       right = pred->_.bin.right;
       left = pred->_.bin.left;
     }
+  if (CMP_NULL == sp->sp_min_op || CMP_NON_NULL == sp->sp_min_op)
+    return KS_CAST_OK;
   if (DFE_CONST == right->dfe_type
       || sqlo_iri_constant_name (right->dfe_tree) || sqlo_rdf_obj_const_value (right->dfe_tree, NULL, NULL))
     {
@@ -2625,6 +2649,11 @@ dfe_const_to_spec (df_elt_t * lower, df_elt_t * upper, dbe_key_t * key, search_s
 	  sp->sp_max_op = CMP_NONE;
 	  sp->sp_min_op = op;
 	  sp->sp_is_reverse = lower->_.bin.is_not;	/* not like */
+	  if (sp->sp_is_reverse && CMP_NULL == op)
+	    {
+	      sp->sp_is_reverse = 0;
+	      sp->sp_min_op = CMP_NON_NULL;
+	    }
 	  res = dfe_const_rhs (sp, lower, itc, v_fill);
 	  sp->sp_min = *v_fill - 1;
 	}
@@ -4344,7 +4373,7 @@ int sqlo_pred_indexable (df_elt_t * lower, df_elt_t * upper);
 
 
 void
-dfe_table_cost_ic_1 (df_elt_t * dfe, index_choice_t * ic, int inx_only)
+dfe_table_cost_ic_2 (df_elt_t * dfe, index_choice_t * ic, int inx_only)
 {
   float *u1 = &ic->ic_unit;
   float *a1 = &ic->ic_arity;
@@ -4679,16 +4708,67 @@ dfe_table_cost_ic_1 (df_elt_t * dfe, index_choice_t * ic, int inx_only)
 }
 
 
-void
-dfe_table_cost_1 (df_elt_t * dfe, float *u1, float *a1, float *overhead_ret, int inx_only)
+dbe_column_t *
+dfe_cset_equiv_col (df_elt_t * dfe, df_elt_t * left_col)
 {
-  index_choice_t ic;
-  memset (&ic, 0, sizeof (ic));
-  ic.ic_op = IC_AS_IS;
-  dfe_table_cost_ic_1 (dfe, &ic, inx_only);
-  *u1 = ic.ic_unit;
-  *a1 = ic.ic_arity;
-  *overhead_ret += ic.ic_overhead;
+  dbe_table_t *cset_tb = dfe->_.table.ot->ot_table->tb_closest_cset->cset_table;
+  dbe_column_t *same_col = tb_name_to_column (cset_tb, left_col->_.col.col->col_name);
+  if (!same_col)
+    return left_col->_.col.col;
+  return same_col;
+}
+
+
+void
+dfe_table_cost_ic_1 (df_elt_t * dfe, index_choice_t * ic, int inx_only)
+{
+  int fill = 0;
+  if (!inx_only && dfe->dfe_unit > 0)
+    {
+      /* do not recompute if already known */
+      ic->ic_arity = dfe->dfe_arity;
+      ic->ic_unit = dfe->dfe_unit;
+      if (dfe->_.table.hash_role == HR_REF)
+	{
+	  float fu1, fa1, fo1;
+	  IC_SAVE;
+	  dfe_hash_fill_cost (dfe, &fu1, &fa1, &fo1);
+	  IC_RESTORE;
+	  ic->ic_overhead += fu1;
+	}
+      if (dfe->_.table.join_test)
+	{
+	  float p_cost, p_arity;
+	  dfe_pred_body_cost (dfe->_.table.join_test, &p_cost, &p_arity, &ic->ic_overhead, dfe);
+	}
+      return;
+    }
+  if (dfe->_.table.ot->ot_table->tb_closest_cset)
+    {
+      dk_hash_t col_bk[100];
+      dbe_key_t *save_key = dfe->_.table.key;
+      hash_table_init (col_bk, 11);
+      dfe->_.table.key = dfe->_.table.ot->ot_table->tb_closest_cset->cset_table->tb_primary_key;
+      DO_SET (df_elt_t *, cp, &dfe->_.table.col_preds)
+      {
+	df_elt_t *left_col = dfe_left_col (dfe, cp);
+	if (!left_col)
+	  continue;
+	if (!gethash ((void *) left_col, &col_bk))
+	  {
+	    sethash ((void *) left_col, &col_bk, left_col->_.col.col);
+	    left_col->_.col.col = dfe_cset_equiv_col (dfe, left_col);
+	  }
+      }
+      END_DO_SET ();
+      dfe_table_cost_ic_2 (dfe, ic, inx_only);
+      DO_HT (df_elt_t *, left_col, dbe_column_t *, cset_col, &col_bk) left_col->_.col.col = cset_col;
+      END_DO_HT;
+      hash_table_destroy (&col_bk);
+      dfe->_.table.key = save_key;
+    }
+  else
+    dfe_table_cost_ic_2 (dfe, ic, inx_only);
 }
 
 
@@ -5207,7 +5287,7 @@ sqlo_pred_indexable (df_elt_t * lower, df_elt_t * upper)
   if (!lower)
     return 1;
   if (DFE_BOP_PRED == lower->dfe_type && (BOP_NEQ == lower->_.bin.op || BOP_LIKE == lower->_.bin.op
-	  || BOP_NOT_LIKE == lower->_.bin.op))
+	  || BOP_NOT_LIKE == lower->_.bin.op || BOP_NULL == lower->_.bin.op || BOP_NOT == lower->_.bin.op))
     return 0;
   if (lower->_.bin.is_in_subrange)
     return 0;

@@ -779,7 +779,10 @@ ceic_del_ins_rbe (ce_ins_ctx_t * ceic, int nth_range, db_buf_t dv)
   it_cursor_t *itc = ceic->ceic_itc;
   db_buf_t dvc;
   int len, r = itc->itc_ranges[nth_range].r_first;
-  col_row_lock_t *clk = itc_clk_at (itc, r, &point, &next);
+  col_row_lock_t *clk;
+  if (itc->itc_non_txn_insert)
+    return;
+  clk = itc_clk_at (itc, r, &point, &next);
   if (!clk)
     GPF_T1 ("setting a del+ins rb entry  where there is no clk");
   if (!clk->clk_rbe)

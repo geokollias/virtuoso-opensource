@@ -392,7 +392,18 @@ db_replay_registry_sequences (void)
       if (pdata && *pdata)
 	{
 	  caddr_t err = NULL;
-	  db_replay_registry_setting (*pdata, &err);
+	  if (pkey && *pkey)
+	    {
+	      caddr_t k = *pkey;
+	      if (DV_STRINGP (k) && 0 == strncmp ("__rng:", k, 6))
+		{
+		  int64 i;
+		  if (1 == sscanf (k + 6, "%ld", &i))
+		    ir_set_data (i, *pdata);
+		}
+	    }
+	  else
+	    db_replay_registry_setting (*pdata, &err);
 	  if (IS_BOX_POINTER (err))
 	    {
 	      log_error ("Error reading registry: %s: %s\n%s",
@@ -486,6 +497,16 @@ registry_update_sequences (void)
   id_hash_iterator_t it;
   caddr_t *name;
   boxint *value;
+  DO_HT (ptrlong, id, id_range_t *, ir, &id_to_ir)
+  {
+    caddr_t box;
+    char tmp[100];
+    snprintf (tmp, sizeof (tmp), "__rng:%ld", id);
+    box = box_dv_short_string (tmp);
+    registry_set_1 (box, ir->ir_ranges, 1, NULL);
+    dk_free_box (box);
+  }
+  END_DO_HT;
   if (!sequences)
     return;
   id_hash_iterator (&it, sequences);
@@ -605,7 +626,8 @@ db_log_registry (dk_session_t * log)
 	  dk_free_box (the_id);
 	  continue;
 	}
-      if (0 == strncmp (*k, "__key__", 7) || 0 == strncmp (*k, "__EM:__key__", 12) || 0 == strncmp (*k, "__EMC:", 6))
+      if (0 == strncmp (*k, "__key__", 7)
+	  || 0 == strncmp (*k, "__EM:__key__", 12) || 0 == strncmp (*k, "__EMC:", 6) || 0 == strncmp (*k, "__rng:", 6))
 	{
 	  dk_free_box (the_id);
 	  continue;
@@ -636,13 +658,13 @@ registry_set_1 (const char *name, const char *value, int is_boxed, caddr_t * err
   ASSERT_IN_TXN;
   ENSURE_REGISTRY;
 
-  if (is_boxed && !DV_STRINGP (value))
+  if (is_boxed && !DV_STRINGP (value) && DV_ARRAY_OF_POINTER != DV_TYPE_OF (value))
     GPF_T1 ("setting non-string in registry");
   place = (caddr_t *) id_hash_get (registry, (caddr_t) & name);
   if (place)
     {
-      dk_free_box (*place);
-      *place = is_boxed ? box_copy (value) : box_dv_short_string (value);
+      dk_free_tree (*place);
+      *place = is_boxed ? box_copy_tree (value) : box_dv_short_string (value);
     }
   else
     {
@@ -659,7 +681,7 @@ registry_set_1 (const char *name, const char *value, int is_boxed, caddr_t * err
 	}
 
       copy_name = box_string (name);
-      copy_value = is_boxed ? box_copy (value) : box_dv_short_string (value);
+      copy_value = is_boxed ? box_copy_tree (value) : box_dv_short_string (value);
       id_hash_set (registry, (caddr_t) & copy_name, (caddr_t) & copy_value);
     }
 }

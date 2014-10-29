@@ -948,6 +948,37 @@ sqlc_not_vectored_stmt (sql_comp_t * sc, ST * stmt)
   sc->sc_cc->cc_query->qr_head_node = save_qn;
 }
 
+void
+sqlc_qr_compound_stmt (sql_comp_t * sc, ST * stmt)
+{
+  data_source_t *save_qn;
+  dk_set_t save;
+  save = sc->sc_routine_code;
+  sc->sc_routine_code = NULL;
+  sc->sc_cc->cc_query->qr_proc_vectored = 0;
+  sqlc_compound_stmt (sc, stmt, SC_LEAVE_SCOPE);
+  save_qn = sc->sc_cc->cc_query->qr_head_node;
+  sc->sc_routine_code = save;
+  sc->sc_cc->cc_query->qr_head_node = save_qn;
+}
+
+
+void
+sqlc_trans_stmt (sql_comp_t * sc, ST * stmt)
+{
+  end_node_t en;
+  data_source_t *save_qn;
+  dk_set_t save;
+  int inx, cinx;
+  NEW_INSTR (ins, INS_TRANS, &sc->sc_routine_code);
+  DO_BOX (ST *, clause, cinx, stmt->_.trans_stmt.clauses)
+  {
+
+  }
+  END_DO_BOX;
+}
+
+
 
 void
 sqlc_vec_qnode (sql_comp_t * sc, data_source_t ** qn_ret)

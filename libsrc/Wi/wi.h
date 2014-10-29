@@ -35,6 +35,7 @@
 //#define VOS
 #define NO_CL GPF_T1 ("not available without cluster support")
 
+#define CSET 1
 #ifdef MALLOC_DEBUG
 //#define DC_BOXES_DBG
 #endif
@@ -440,7 +441,9 @@ typedef struct chash_page_s
     struct
     {
       short chp_flags;
-      int chp_fill;
+      short chp_prev_start;	/* if rd and wr of same chash in trans, prev pass starts here */
+      short chp_prev_fill;	/* if rd and wr of same chash in trans, prev pass filled up to this */
+      short chp_fill;
       struct chash_page_s *chp_next;
     } h;
     dtp_t pad[16];
@@ -703,6 +706,9 @@ struct search_spec_s
   struct state_slot_s *sp_min_ssl;	/* state slot for initing   the cursor's  itc_search_params[sp_min] */
   struct state_slot_s *sp_max_ssl;
   collation_t *sp_collation;
+  float sp_selectivity;
+  unsigned char sp_ordinal;
+  char sp_is_cset_opt;
   char sp_like_escape;
 };
 
@@ -920,6 +926,7 @@ struct it_cursor_s
   bitf_t itc_log_actual_ins:1;	/* if log ins soft, fetch  or distinct key, log only if actual insert */
   bitf_t itc_count_scan:1;	/* update table count as result of a full scan. add rows into the da  */
   bitf_t itc_range_opt:2;
+  bitf_t itc_is_cset:3;
   char itc_split_search_res;
   char itc_prev_split_search_res;	/* if exact params repeat, store how it was with the previous set */
   unsigned char itc_n_vec_sort_cols;	/* how many first params to use for sorting the param rows */
@@ -1011,12 +1018,20 @@ struct it_cursor_s
   buffer_desc_t *itc_col_leaf_buf;	/* The row-wise leaf page on which the itc is landed.  */
   caddr_t *itc_anify_cache;	/* If params are boxed, as in constants, and col ops want a dv string, use this to keep dv string versions */
   int itc_anify_fill;
+  int itc_cset_first_set;
   int itc_match_sz;
   int itc_n_matches;
   int itc_match_in;
   int itc_match_out;
   sp_stat_t *itc_sp_stat;
+  short *itc_cset_null_ctr;	/* in cset upd/del, how many nulls on each row */
+  mem_pool_t *itc_upd_mp;
+  db_buf_t itc_cset_bits;	/* temp cset col match mask within a seg */
+  db_buf_t itc_cset_res_bits;	/* consolidated batch-wide cset match masks for each result row in batch */
+  int itc_last_cset_unmatched_set;
   search_spec_t *itc_col_range_spec;	/* range cond on first ordering col */
+  data_col_t *itc_s_dc;
+  row_no_t *itc_s_dc_row;
   db_buf_t itc_last_cmp_ce;
   int64 itc_last_cmp_value;
   int itc_last_cmp_row;
@@ -1059,6 +1074,14 @@ struct it_cursor_s
   } itc_st;
 
 };
+
+/*itc_is_cset */
+#define ITC_CSET_NONE 0
+#define ITC_CSET_S 1
+#define ITC_CSET_G 2
+#define ITC_CSET_SG 3
+#define ITC_CSET_SCAN 4
+
 
 /* itc_row_hash_spec */
 #define RSP_CHECKED 1

@@ -706,6 +706,8 @@ struct cucurbit_s
   id_hash_t *cu_ld_graphs;	/* distinct graphs */
   dk_set_t cu_ld_rows;		/* resolved rows of ids */
   caddr_t *cu_cd;
+  dk_hash_t *cu_csi;
+  db_buf_t *cu_inx_bits;	/* bits marking which lines of the cu go to which indices in cset load */
 };
 
 #if (SIZEOF_VOID_P == 4)
@@ -851,6 +853,7 @@ typedef struct cl_self_message_s
 #define CL_ADMIN 34		/* internal admin action like resync or disable of failed */
 #define CL_SET_BLOOM 35		/* shipping bloom filter for partitioned hash table */
 #define CL_SET_TOP 36
+#define CL_SET_RNG 37
 
    /* enlist flag for CL_ATATOMIC */
 #define  CL_AC_SYNC 3
@@ -1104,6 +1107,9 @@ index_tree_t *cha_bloom_only (uint64 id, uint64 bloom_bytes);
 
 
 /**add vec */
+
+int cset_ld_indices (cl_req_group_t * clrg, data_col_t * s, data_col_t * p, data_col_t * o, data_col_t * g, int is_del);
+void cset_ld_ids (cl_req_group_t * clrg, int s_col, int p_col, int o_col, int g_col, iri_id_t fixed_g);
 
 void clo_free_from_in_parsed (cl_op_t * clo);
 void cl_chash_filled (fun_ref_node_t * fref, caddr_t * inst, int is_first, uint32 bf_size);
@@ -1623,7 +1629,8 @@ void cl_refresh_status (query_instance_t * qi, int mode);
 void cst_fill_local (cl_status_t * cst);
 extern int32 cl_n_hosts;
 extern int32 cl_max_hosts;
-boxint cl_sequence_next (query_instance_t * qi, caddr_t seq, int step, boxint sz, int in_map, caddr_t * err_ret);
+boxint cl_sequence_next (query_instance_t * qi, caddr_t seq, int step, boxint sz, int in_map, caddr_t * err_ret, int64 ir_id,
+    int mode);
 
 extern int32 cl_stage;		/* during init, how far come, one of the values of ch_status */
 

@@ -185,6 +185,94 @@ create table DB.DBA.RDF_QUAD_SECURITY_LOG
 )
 ;
 
+
+create table RDF_CSET (
+  cset_id int primary key,
+  cset_range int, -- value in cset bit field of id
+  cset_id_range bigint, -- fk to sys_id_ranges for dfault id range
+  cset_name varchar,
+  cset_table varchar,
+  cset_rq_table varchar,
+  cset_options any
+)
+alter index rdf_cset on rdf_cset partition cluster REPLICATED
+;
+
+
+-- calculating clustering no for s of a subject by its properties
+create table RDF_CSET_P_CLUSTER (
+  rpcl_cset int,
+  rpcl_p iri_id_8,
+  rpcl_cl_func varchar,
+  rpcl_cl_scale int,
+  primary key (rpcl_cset, rpcl_p))
+alter index rdf_cset_p_cluster  on rdf_cset_p_cluster partition cluster REPLICATED
+;
+
+
+
+-- from the clustering no to the corresponding id seq
+create table RDF_P_CLUSTER_RNG (
+  rpclr_cset int,
+  rpclr_n int,
+  rpclr_rng bigint,
+  primary key (rpclr_cset, rpclr_n))
+alter index rdf_p_cluster_rng on rdf_p_cluster_rng partition cluster REPLICATED
+;
+
+create table RDF_CSET_P (
+  csetp_cset int,
+  csetp_nth int,
+  csetp_iid iri_id_8,
+  csetp_col varchar,
+  csetp_flags int,
+  csetp_options any,
+  primary key (csetp_cset, csetp_nth))
+alter index rdf_cset_p on rdf_cset_p partition cluster REPLICATED
+;
+
+
+create table RDF_CSET_P_NI (
+  csni_cset int,
+  csni_iid iri_id_8,
+  csni_o any,
+  primary key (csni_cset, csni_iid, csni_o))
+alter index RDF_CSET_P_NI on RDF_CSET_P_NI partition cluster REPLICATED
+;
+
+
+create table RDF_CSET_TYPE (
+  cst_type iri_id_8,
+  cst_cset int,
+  primary key (cst_type, cst_cset))
+alter index rdf_cset_type on rdf_cset_type partition cluster REPLICATED
+;
+
+
+create table RDF_CSET_URI (
+  csu_order int,
+  csu_cset int,
+  csu_pattern varchar,
+  primary key (csu_order, csu_cset, csu_pattern))
+alter index rdf_cset_uri on rdf_cset_uri partition cluster REPLICATED
+;
+
+
+create table RDF_IRI_PATTERN (rip_pattern varchar primary key,
+  rip_start iri_id_8,
+  rip_fields any,
+  rip_cset int,
+  rip_int_range int,
+  rip_exc_range int)
+alter index rdf_iri_pattern on rdf_iri_pattern partition cluster REPLICATED
+;
+
+select count (iri_pattern_def (rip_pattern, rip_start, rip_fields, rip_cset, rip_int_range, rip_exc_range))  from rdf_iri_pattern
+;
+iri_pattern_changed ()
+;
+
+
 insert soft DB.DBA.SYS_IDONLY_ONE (ID) values (0)
 ;
 

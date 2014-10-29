@@ -332,5 +332,31 @@ index_tree_t *rdf_ctx_hash (query_instance_t * qi, caddr_t str, caddr_t params);
 void rdf_sec_init ();
 void rdf_g_sec_check (caddr_t * inst, iri_id_t * g, int n_g);
 
+typedef struct ip_field_s
+{
+  int64 irif_low;
+  int64 irif_high;
+  caddr_t irif_string;
+} ip_field_t;
+
+
+typedef struct iri_pattern_s
+{
+  caddr_t ip_pattern;
+  ip_field_t *ip_fields;
+  iri_id_t ip_start;
+  iri_id_t ip_end;
+  id_range_t *ip_int_range;	/* if matches pattern but ids should be allocated from a seq because sparse 1 */
+  id_range_t *ip_exc_range;	/* if matches pattern but fields overflow, get id from this */
+  uint64 ip_pref_hash;
+  int ip_cset;
+} iri_pattern_t;
+
+
+iri_id_t iri_from_string (char *str, int len, iri_pattern_t ** ip_ret);
+caddr_t iri_to_string (iri_id_t iri, iri_pattern_t ** ip_ret);
+iri_id_t iri_from_ip (caddr_t * name_ret, caddr_t * box_to_delete, caddr_t * name_to_delete);
+caddr_t bif_rdf_iri_always_cached_init (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args);
+
 
 #endif

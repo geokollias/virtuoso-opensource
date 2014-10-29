@@ -2148,6 +2148,7 @@ setp_refd_slots (sql_comp_t * sc, setp_node_t * setp, dk_hash_t * res, dk_hash_t
   END_DO_SET ();
   REF_SSL (res, setp->setp_top);
   REF_SSL (res, setp->setp_top_skip);
+  REF_SSL (res, setp->setp_superstep);
   if ((HA_ORDER == op && setp->setp_multistate_oby) || (HA_GROUP == op && setp->setp_set_no_in_key))
     REF_SSL (res, setp->setp_ssa.ssa_set_no);
   REF_SSL (res, setp->setp_top_id);
@@ -2214,6 +2215,26 @@ ks_refd_slots (sql_comp_t * sc, key_source_t * ks, dk_hash_t * res, dk_hash_t * 
   REF_SSL (res, ks->ks_ht_id);
 }
 
+void
+ts_cset_refd_slots (table_source_t * ts, dk_hash_t * res, dk_hash_t * all_res)
+{
+  int inx;
+  if (ts->ts_csm)
+    {
+      cset_mode_t *csm = ts->ts_csm;
+      ref_ssls (res, csm->csm_exc_bits_in);
+      DO_BOX (state_slot_t *, ssl, inx, csm->csm_exc_bits_out) ASG_SSL (res, all_res, ssl);
+      END_DO_BOX;
+      REF_SSL (res, csm->csm_cset_o);
+      ASG_SSL (res, all_res, csm->csm_rq_o);
+    }
+  if (ts->ts_csts)
+    {
+      cset_ts_t *csts = ts->ts_csts;
+      REF_SSL (res, csts->csts_o_scan_mode);
+    }
+}
+
 
 void
 qf_refd_slots (sql_comp_t * sc, query_frag_t * qf, dk_hash_t * res, dk_hash_t * all_res, int *non_cl_local)
@@ -2243,6 +2264,8 @@ qn_refd_slots (sql_comp_t * sc, data_source_t * qn, dk_hash_t * res, dk_hash_t *
       cv_refd_slots (sc, ts->ts_after_join_test, res, all_res, non_cl_local);
       ks_refd_slots (sc, ts->ts_order_ks, res, all_res, non_cl_local);
       ks_refd_slots (sc, ts->ts_main_ks, res, all_res, non_cl_local);
+      if (ts->ts_csm || ts->ts_csts)
+	ts_cset_refd_slots (ts, res, all_res);
       if (ts->ts_alternate)
 	{
 	  qn_refd_slots (sc, (data_source_t *) ts->ts_alternate, res, all_res, non_cl_local);

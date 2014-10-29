@@ -97,9 +97,17 @@ create procedure RL_I2ID_NP (inout pref varchar, inout name varchar, inout id ir
 create procedure rl_i2id (inout name varchar, inout id iri_id_8)
 {
   vectored;
-  declare id_fetched int;
+  declare id_fetched, flags int;
+  flags := __box_flags (name);
+  if (flags > 0hex80000000)
+    {
+      insert into RDF_N_IRI index RDF_N_IRI option (fetch id by flags set id_fetched) (riN_INT_ID, rin_EXT_id) values (str_bin_iri (name), id);
+      if (0 = id_fetched)
+	insert into RDF_N_IRI index RI_N_REV (RIN_INT_ID, RIn_EXT_ID) values (id, str_bin_iri (name));
+      return;
+    }
 
-  insert into rdf_iri index rdf_iri option (fetch id by 'RDF_URL_IID_NAMED' set id_fetched) (ri_name, ri_id) values (name, id);
+  insert into rdf_iri index rdf_iri option (fetch id by flags set id_fetched) (ri_name, ri_id) values (name, id);
   if (0 = id_fetched)
     insert into RDF_IRI index DB_DBA_RDF_IRI_UNQC_RI_ID (RI_ID, RI_NAME) values (id, name);
   rdf_cache_id ('i', name, id);
@@ -635,6 +643,13 @@ create procedure ID_TO_IRI_VEC (in id iri_id)
         return sprintf_iri ('nodeID://b%ld', idn-4611686018427387904);
       return sprintf_iri ('nodeID://%ld', idn);
     }
+ name := iri_ip_to_string (id);
+  if (name <> 0)
+    {
+      if (name = 1)
+	return iri_ip_to_string ((select rin_ext_id from rdf_n_iri where rin_int_id = id));
+      return name;
+    }
   name := rdf_cache_id_to_name ('i', idn, 0);
   if (0 = name)
     {
@@ -670,6 +685,13 @@ create procedure ID_TO_IRI_VEC_NS (in id any array)
       if (idn >= 4611686018427387904)
         return sprintf_iri ('nodeID://b%ld', idn-4611686018427387904);
       return sprintf_iri ('nodeID://%ld', idn);
+    }
+ name := iri_ip_to_string (id);
+  if (name <> 0)
+    {
+      if (name = 1)
+	return iri_ip_to_string ((select rin_ext_id from rdf_n_iri where rin_int_id = id));
+      return name;
     }
   name := rdf_cache_id_to_name ('i', idn, 0);
   if (0 = name)

@@ -523,6 +523,10 @@
 %type <box> array_modifier
 %type <tree> cost_decl
 %type <tree> vectored_decl
+%type <tree> trans_statement
+%type <list> trans_clause_list
+%type <tree> trans_clause
+%type <tree> from_statement
 %type <list> cost_number_list
 %type <box> cost_number
 %type <tree> cluster_def
@@ -961,6 +965,7 @@ column_def_opt
 	| UNIQUE '(' index_option_list ')'		 {  dk_set_t opts = t_CONS (t_box_string ("unique"), $3);
 	   $$ = t_listst (5, UNIQUE_DEF, NULL, NULL, NULL,
 			  (ST *) t_list_to_array (opts)); }
+	|  FOR TRANSITIVE { $$ = t_listst (1, TRANS_STMT); }
 	;
 
 column_xml_schema_def
@@ -1417,6 +1422,8 @@ cursor_def
 				{
 				  $$ = t_listst (5, CURSOR_DEF, $2, $6, (ptrlong) $3, NULL);
 				}
+	| DECLARE identifier TABLE '(' base_table_element_commalist ')'  { $$ = t_listst (5, TEMP_TABLE, $2, $5, NULL, 0); }
+	| DECLARE identifier TABLE '(' base_table_element_commalist ')' PARTITION opt_cluster col_part_list  { $$ = t_listst (5, TEMP_TABLE, $2, $5, t_listst (5, PARTITION_DEF, NULL, NULL, $8, $9), 0); }
 	;
 
 opt_order_by_clause
@@ -2290,6 +2297,8 @@ opt_group_by_clause
 			}
 		  $$ = (ST*) t_list_to_array (group_by_full);
 		}
+	| GROUP BY ordering_spec_commalist EXECUTE compound_statement { $$ = t_listst (1, t_listst (4, GROUP_BY_EXEC, $3, NAME, $5)); }
+	| GROUP BY ordering_spec_commalist INTO NAME EXECUTE compound_statement { $$ = t_listst (1, t_listst (4, GROUP_BY_EXEC, $3, $5, $7)); }
 	;
 
 /* pmn
@@ -3417,6 +3426,24 @@ vectored_decl
 	: VECTORED { $$ = (ST *) t_list (1, OPT_VECTORED); }
 	;
 
+trans_statement
+: TRANSITIVE compound_statement trans_clause_list { $$ = t_listst (3, TRANS_STMT, $2, t_list_to_array ($3)); }
+	;
+
+trans_clause_list
+	: trans_clause  { $$ = t_CONS ($1, NULL); }
+	| trans_clause_list trans_clause { $$ = t_NCONC ($1, t_CONS ($2, NULL)); }
+	;
+
+trans_clause
+	: FROM NAME compound_statement { $$ = t_listst (3, TRANS_CLAUSE, $2, $3); }
+	;
+
+from_statement
+	: FROM table_exp { $$ = t_listst (5, SELECT_STMT, NULL, t_listst (0), NULL, $2); }
+	;
+
+
 
 routine_statement
 	: selectinto_statement
@@ -3432,6 +3459,8 @@ routine_statement
 	| commit_statement
 	| cost_decl
 	| vectored_decl
+	| trans_statement
+	| from_statement
 	| /* empty */				{ $$ = t_listst (1, NULL_STMT); }
 	;
 

@@ -42,7 +42,19 @@ sdfg_key_partition (sql_comp_t * sc, setp_node_t * setp, state_slot_t ** ssl_ret
 	  best_score = score;
 	}
     }
-
+  if (setp->setp_is_trans)
+    {
+      if (setp->setp_set_no_in_key)
+	{
+	  best_inx = 0;
+	  best_ssl = setp->setp_keys_box[1];
+	}
+      else
+	{
+	  best_inx = 0;
+	  best_ssl = setp->setp_keys_box[0];
+	}
+    }
   *nth_ret = best_inx;
   *ssl_ret = best_ssl;
   {
@@ -325,6 +337,8 @@ ts_sliced_reader (table_source_t * ts, caddr_t * inst, hash_area_t * ha)
   END_DO_BOX;
   qi->qi_set = 0;
   ts_sdfg_run (ts, inst);
+  if (ts->ts_trans_read && ts->ts_trans_read->trr_is_step)
+    return;
   fref = (fun_ref_node_t *) ts->ts_agg_node;
   if (fref && fref->fnr_setp && fref->fnr_setp->setp_partitioned)
     return;

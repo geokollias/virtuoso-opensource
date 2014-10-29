@@ -132,7 +132,19 @@ typedef struct op_table_s
   char ot_is_right_oj;		/* for a dt ot, set if trying a right hash oj plan.  Only hash join is considered */
   char ot_has_top_test;
   char ot_invariant_placed;
+  char ot_is_cset_dt;
+  iri_id_t ot_fixed_p;
+  dk_set_t ot_csets;
+  df_elt_t *ot_cset_inx_dfe;	/* if this ot stands for a cset and cset accessed by posg of indexed o, this is rdf quad posg tb dfe */
+  df_elt_t *ot_cset_inx_s_eq;	/* if ot of a posg for a cset by indexed o, this is the eq between the cset s and the s from posg */
+  df_elt_t *ot_cset_inx_p_eq;
+  struct csg_col_s *ot_csgc;
 } op_table_t;
+
+/* ot_is_cset_dt */
+#define OT_CSET_SCAN 1
+#define OT_CSET_S 2
+
 #define OT_RIGHT_OJ_REJECTED 2
 
 
@@ -218,6 +230,16 @@ typedef struct trans_layout_s
 #define DFE_S_SAS_DISTINCT 2
 
 
+typedef struct cset_col_s
+{
+  df_elt_t *cscol_dfe;
+  df_elt_t *cscol_quad_dfe;
+  df_elt_t *cscol_out_col;
+  dk_set_t cscol_preds;
+  cset_p_t *cscol_csetp;
+  char cscol_optional;
+} cset_pred_t;
+
 
 struct df_elt_s
 {
@@ -288,6 +310,7 @@ struct df_elt_s
       bitf_t cl_colocated:1;	/* always same partition as previous table in cluster */
       bitf_t no_in_on_index:1;
       bitf_t joins_pk:2;
+      bitf_t cset_role:2;
       /* XPATH & FT members */
       df_elt_t *text_pred;
       df_elt_t *xpath_pred;
@@ -302,6 +325,8 @@ struct df_elt_s
       df_elt_t **hash_filler_after_code;
       df_elt_t *hash_filler_of;	/* ref from filler to hash source dfe */
       op_table_t *late_proj_of;
+      df_elt_t *cset_by_o;	/* table dfe on rdf posg if this is a cset accessed on by indexed o */
+      struct csg_col_s *so_csgc;
       float in_arity;
       float inx_card;
       float hit_spacing;	/* 1 if consec rows, 2 if every 2nd, 0.5 if each repeats twice before mext */
@@ -455,6 +480,9 @@ struct df_elt_s
   } _;
 };
 
+/* table.cset_role */
+#define CSR_POSG 1
+
 #define DF_ELT_HEAD_SZ ((ptrlong)&((df_elt_t*)0)->_)
 
 
@@ -594,9 +622,10 @@ struct sqlo_s
   char so_mark_gb_dep;
   char so_placed_outside_dt;
   char so_no_dt_cache;
-
+  char so_any_rdf_quad;
 
   st_lit_state_t *so_stl;	/* if gathering literals for use as params */
+
 };
 
 typedef struct lp_col_s
@@ -1071,6 +1100,8 @@ int sqlo_is_unq_preserving (caddr_t name);
 
 typedef int (*tree_cb_t) (ST * tree, void *cd);
 void sqlo_map_st (ST * tree, tree_cb_t cb, void *cd);
+typedef int (*tree_ref_cb_t) (ST ** ptree, void *cd);
+void sqlo_map_st_ref (ST ** ptree, tree_ref_cb_t cb, void *cd);
 int box_is_subtree (caddr_t box, caddr_t subtree);
 void sqlg_unplace_ssl (sqlo_t * so, ST * tree);
 char sqlc_geo_op (sql_comp_t * sc, ST * op);
@@ -1109,6 +1140,16 @@ int64 sqlo_inx_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, d
 float arity_scale (float ar);
 caddr_t sqlo_rdf_lit_const (ST * tree);
 caddr_t sqlo_rdf_obj_const_value (ST * tree, caddr_t * val_ret, caddr_t * lang_ret);
+
+/* cset */
+void dfe_list_cost (df_elt_t * dfe, float *unit_ret, float *arity_ret, float *overhead_ret, locus_t * loc);
+dbe_column_t *dfe_cset_equiv_col (df_elt_t * dfe, df_elt_t * left_col);
+void sqlo_cset_choose_index (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * col_preds, dk_set_t * after_preds);
+id_hash_t *sqlo_allocate_df_elts (int size);
+df_elt_t *dfe_left_col (df_elt_t * tb_dfe, df_elt_t * pred);
+float dfe_join_score (sqlo_t * so, op_table_t * ot, df_elt_t * tb_dfe, dk_set_t * res);
+df_elt_t *sqlo_add_csets (sqlo_t * so, ST ** ptree);
+
 
 /* qrc */
 
@@ -1199,5 +1240,11 @@ uint32 sqlo_subq_id_hash (ST * tree);
 caddr_t sqlo_new_prefix (sqlo_t * so);
 void dfe_pred_body_cost (df_elt_t ** body, float *unit_ret, float *arity_ret, float *overhead_ret, df_elt_t * in_tb);
 int sqlo_has_node (ST * tree, int type);
+
+
+/* bsp */
+void sqlg_bsp_trans (sql_comp_t * sc, df_elt_t * dt_dfe, trans_node_t * tn);
+void sdfg_setp_loc_ts (sql_comp_t * sc, setp_node_t * setp);
+int sqlg_union_all_list (subq_source_t * sqs, dk_set_t * res);
 
 #endif /* _SQLO_H */

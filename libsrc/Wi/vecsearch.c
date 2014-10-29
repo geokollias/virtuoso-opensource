@@ -866,6 +866,18 @@ itc_vec_row_check (it_cursor_t * itc, buffer_desc_t * buf)
 				      sp->sp_like_escape, st, pt)))
 			    return DVC_LESS;
 			}
+		      else if (CMP_NULL == op)
+			{
+			  if (DV_DB_NULL == DV_TYPE_OF (col->col_default))
+			    goto next_sp;
+			  return DVC_LESS;
+			}
+		      else if (CMP_NON_NULL == op)
+			{
+			  if (DV_DB_NULL != DV_TYPE_OF (col->col_default))
+			    goto next_sp;
+			  return DVC_LESS;
+			}
 		      if (sp->sp_max_op != CMP_NONE
 			  && (0 == (sp->sp_max_op & cmp_boxes (col->col_default, itc->itc_search_params[sp->sp_max],
 				      sp->sp_collation, sp->sp_collation))))
@@ -877,7 +889,11 @@ itc_vec_row_check (it_cursor_t * itc, buffer_desc_t * buf)
 	    }
 
 	  if (ITC_NULL_CK (itc, sp->sp_cl))
-	    return DVC_LESS;
+	    {
+	      if (CMP_NULL == op)
+		goto next_sp;
+	      return DVC_LESS;
+	    }
 	  if (DVC_CMP_MASK & op)
 	    {
 	      int res = page_col_cmp_1 (buf, itc->itc_row_data, &sp->sp_cl, itc->itc_search_params[sp->sp_min]);
@@ -890,6 +906,10 @@ itc_vec_row_check (it_cursor_t * itc, buffer_desc_t * buf)
 		return DVC_LESS;
 	      goto next_sp;
 	    }
+	  else if (CMP_NULL == op)
+	    return DVC_LESS;
+	  else if (CMP_NON_NULL == op)
+	    goto next_sp;
 	  else if (CMP_HASH_RANGE == op)
 	    {
 	      if ((sp->sp_is_reverse ? DVC_LESS : DVC_MATCH) != itc_hash_compare (itc, buf, sp))
@@ -1083,6 +1103,8 @@ skip_bitmap:
 	  it->itc_desc_serial_landed = 0;
 	}
       while (DVC_MATCH == itc_next_set_before_search (it, buf_ret));
+      if (it->itc_is_cset)
+	itc_cset_opt_nulls (it);
       return rc;
     }
 }

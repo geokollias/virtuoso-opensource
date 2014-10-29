@@ -411,6 +411,8 @@ qn_top_setp (data_source_t * qn, setp_node_t ** top)
   /* find the top limiting setp.  Can be a group by if followed by oby on a grouping col */
   for (qn = qn; qn; qn = qn_next (qn))
     {
+      if (IS_QN (qn, cset_align_input))
+	qn = (data_source_t *) ((cset_align_node_t *) qn)->csa_model_ts;
       if (IS_QN (qn, setp_node_input))
 	{
 	  QNCAST (setp_node_t, setp, qn);

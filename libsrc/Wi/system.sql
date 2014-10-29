@@ -6852,3 +6852,32 @@ in newline varchar :=  '\n', in esc varchar := null, in skip_rows int := 1)
   ft_set_file (tb, fname, delimiter, newline, esc, skip_rows);
 }
 ;
+
+create procedure ir_init (in name varchar, in seq varchar, in  txn_n_ways int := null, in slice_bits int := null,
+			  in n_slices int := null, in hist_depth int := 5, in chunk int := 1, in mode int := 1, in ir_max int := 0)
+{
+  declare id, ign, mx, seq_start int;
+ mx := ir_max;
+ id := 1 + sequence_next ('__range_id_id');
+  if (txn_n_ways is null)
+  txn_n_ways := sys_stat ('iri_seqs_used');
+  if (0 = sys_stat ('cl_run_local_only'))
+    {
+      if (n_slices is null)
+      n_slices := 2048;
+      if (slice_bits is null)
+      slice_bits := 8;
+    }
+  else
+    {
+    n_slices := 2048;
+    slice_bits := 8;
+    }
+  seq_start := sequence_set (seq, 0, 2);
+  insert into sys_id_range (ir_id, ir_name, ir_N_way_txn, ir_n_slices, ir_slice_bits, ir_hist_depth, ir_chunk, ir_main_seq, ir_cluster, ir_mode, ir_allocator_host, ir_max, ir_start, ir_options)
+    values (id, name, txn_n_ways, n_slices, slice_bits, hist_depth, bit_shift (1, slice_bits) * n_slices * chunk, seq, '', mode, 0, mx, seq_start, vector ());
+  log_text ('select ir_def (ir_name, ir_id, ir_cluster, ir_mode , ir_n_way_txn, ir_allocator_host, ir_main_seq, ir_slice_bits, ir_chunk, ir_max, ir_hist_depth, ir_n_slices, ir_start, ir_options) from sys_id_range where ir_id = ?', id);
+  select ir_def (ir_name, ir_id, ir_cluster, ir_mode , ir_n_way_txn, ir_allocator_host, ir_main_seq, ir_slice_bits, ir_chunk, ir_max, ir_hist_depth, ir_n_slices, ir_start, ir_options) into ign from sys_id_range where ir_id = id;
+  return id;
+}
+;

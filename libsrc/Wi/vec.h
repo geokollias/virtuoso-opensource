@@ -37,6 +37,7 @@ typedef struct v_out_map_s
   dbe_col_loc_t om_cl;
   char om_is_null;
   unsigned char om_ce_op;
+  unsigned char om_cset_bit;
 } v_out_map_t;
 
 
@@ -245,6 +246,7 @@ void vec_qst_set_temp_box (caddr_t * qst, state_slot_t * ssl, caddr_t data);
   ((DCT_NUM_INLINE & (dc)->dc_type) || DV_DATETIME == dtp_canonical[(dc)->dc_dtp])
 
 void dc_ensure_null_bits (data_col_t * dc);
+void dc_clr_nulls (data_col_t * dc);
 db_buf_t itcp (it_cursor_t * itc, int ip, int set);
 caddr_t box_mt_copy_tree (caddr_t box);
 int dc_is_null (data_col_t * dc, int set);

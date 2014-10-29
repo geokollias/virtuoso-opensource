@@ -594,6 +594,7 @@ cu_set_value (cucurbit_t * cu, value_state_t * vs, caddr_t value)
   if (vs->vs_is_value)
     sqlr_new_error ("42000", "CL...", "Only one operation for a dpipe value  may return a result.");
   vs->vs_is_value = 1;
+  /*strtrap (vs->vs_org_value, value, "offer", 3); */
   vs->vs_result = value;
   DO_SET (uptrlong, place, &vs->vs_references)
   {
@@ -724,6 +725,7 @@ cu_value (cucurbit_t * cu, cu_func_t * cf, caddr_t arg, int irow, caddr_t * row,
 	  cu_value_known (cu, irow, row, ret, vs->vs_result);
 	  return V_DONE;
 	}
+      *ret = vs->vs_org_value;
       mp_set_push (pool, &vs->vs_references, (void *) VPLACE (cu, ret, irow));
       return V_PENDING;
     }
@@ -731,6 +733,7 @@ cu_value (cucurbit_t * cu, cu_func_t * cf, caddr_t arg, int irow, caddr_t * row,
     value_state_t *vs = (value_state_t *) mp_alloc (pool, sizeof (value_state_t));
     memset (vs, 0, sizeof (value_state_t));
     vs->vs_org_value = mp_full_box_copy_tree (pool, arg);
+    *ret = vs->vs_org_value;
     id_hash_set (cul->cul_values, (caddr_t) & vs->vs_org_value, (caddr_t) & vs);
     mp_set_push (pool, &vs->vs_references, (void *) VPLACE (cu, ret, irow));
     cu_dispatch (cu, vs, cf, arg);

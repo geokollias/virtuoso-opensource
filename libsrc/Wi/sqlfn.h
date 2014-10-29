@@ -143,6 +143,7 @@ int box_is_string (char **box, char *str, int from, int len);
 void deref_node_input (deref_node_t * ins, caddr_t * inst, caddr_t * state);
 
 void end_node_input (end_node_t * ins, caddr_t * inst, caddr_t * state);
+void end_node_input_bsp (end_node_t * ins, caddr_t * inst, caddr_t * state);
 
 void op_node_input (op_node_t * ins, caddr_t * inst, caddr_t * state);
 
@@ -722,6 +723,10 @@ void set_ctr_input (set_ctr_node_t * sctr, caddr_t * inst, caddr_t * state);
 void set_ctr_free (set_ctr_node_t * sctr);
 void outer_seq_end_input (outer_seq_end_node_t * ose, caddr_t * inst, caddr_t * state);
 void ose_free (outer_seq_end_node_t * ose);
+void cset_align_input (cset_align_node_t * csa, caddr_t * inst, caddr_t * state);
+void csa_free (cset_align_node_t * csa);
+void table_source_cset_scan_input (table_source_t * ts, caddr_t * inst, caddr_t * state);
+void table_source_cset_lookup_scan_input (table_source_t * ts, caddr_t * inst, caddr_t * state);
 
 void breakup_node_input (breakup_node_t * brk, caddr_t * inst, caddr_t * state);
 void breakup_node_free (breakup_node_t * brk);
@@ -1322,6 +1327,8 @@ void ri_outer_output (rdf_inf_pre_node_t * ri, state_slot_t * any_flag, caddr_t 
 void rdf_inf_pre_input (rdf_inf_pre_node_t * ri, caddr_t * inst, caddr_t * volatile state);
 void trans_node_input (trans_node_t * tn, caddr_t * inst, caddr_t * state);
 void tn_qn_init (data_source_t * qn, caddr_t * inst);
+void tn_bsp_run (trans_node_t * tn, caddr_t * inst);
+void cha_next_superstep (table_source_t * ts, caddr_t * inst);
 
 void query_frag_input (query_frag_t * qf, caddr_t * inst, caddr_t * state);
 void query_frag_free (query_frag_t * qf);
@@ -1722,4 +1729,33 @@ extern caddr_t rdfs_type;
 
 #define TA_QRC_LIT_PARAMS 6000
 extern int chash_block_size;
+
+
+/*cset */
+void itc_cset_s_param_nos (it_cursor_t * itc);
+void posg_special_o (table_source_t * ts, caddr_t * inst);
+void cset_psog_input (table_source_t * ts, caddr_t * inst, caddr_t * state);
+void csts_free (cset_ts_t * csts);
+
+void ts_at_end (table_source_t * ts, caddr_t * inst);
+void ts_top_oby_limit (table_source_t * ts, caddr_t * inst, it_cursor_t * itc);
+int ts_stream_flush_ck (table_source_t * ts, caddr_t * inst);
+int itc_cset_update (it_cursor_t * itc, buffer_desc_t * buf, insert_node_t * ins);
+void itc_check_cset_quad (it_cursor_t * itc, insert_node_t * ins, int min);
+void itc_check_col_bits (it_cursor_t * itc, int rows_in_seg);
+int itc_cset_unmatched_by_s (it_cursor_t * itc);
+void itc_init_exc_bits (it_cursor_t * itc, buffer_desc_t * buf);
+void itc_cset_except (it_cursor_t * itc, buffer_desc_t * buf, int prev_matches, int rows_in_seg);
+void qi_ensure_array (caddr_t * inst, caddr_t * place, int n_bytes, int copy_content);
+void itc_ensure_array (it_cursor_t * itc, caddr_t * place, int n_bytes, int copy_content);
+int itc_cset_exc_param_nos (it_cursor_t * itc);
+void itc_cset_bit_final (it_cursor_t * itc, int prev_n_results);
+void itc_cset_opt_nulls (it_cursor_t * itc);
+query_t *cset_ins_qr (cset_t * cset, caddr_t * err_ret);
+query_t *cset_del_qr (cset_t * cset, caddr_t * err_ret);
+void rdf_quad_key_labels (dbe_table_t * tb);
+query_t *csg_query (cset_t * cset, table_source_t * ts, int mode, caddr_t * err);
+void qr_cset_adjust_dcs (query_t * qr, caddr_t * inst);
+
+
 #endif /* _SQLFN_H */
