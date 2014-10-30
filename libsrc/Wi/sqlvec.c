@@ -649,6 +649,8 @@ qn_add_prof (sql_comp_t * sc, data_source_t * qn)
       || IS_QN (qn, union_node_input))
     return;
   cc = sc->sc_cc->cc_super_cc;
+  if (cc->cc_in_cset_gen)
+    return;
   qn->src_stat = cc->cc_instance_fill;
   cc->cc_super_cc->cc_instance_fill += sizeof (src_stat_t) / sizeof (caddr_t);
 }
@@ -4256,7 +4258,7 @@ qn_vec_slots (sql_comp_t * sc, data_source_t * qn, dk_hash_t * res, dk_hash_t * 
   else if (IS_QN (qn, cset_align_input))
     {
       QNCAST (cset_align_node_t, csa, qn);
-      int n = csa->csa_ssls ? box_length (csa->csa_ssls) / sizeof (cset_align_t), inx : 0;
+      int n = csa->csa_ssls ? box_length (csa->csa_ssls) / sizeof (cset_align_t) : 0, inx;
       for (inx = 0; inx < n; inx++)
 	{
 	  REF_SSL (NULL, csa->csa_ssls[inx].csa_first);

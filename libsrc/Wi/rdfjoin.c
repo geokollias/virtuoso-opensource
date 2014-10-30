@@ -842,6 +842,9 @@ itc_cset_exc_param_nos (it_cursor_t * itc)
   data_col_t *s_dc = ITC_P_VEC (itc, 1);
   iri_id_t *s_arr = (iri_id_t *) s_dc->dc_values;
   cset_p_t *csetp = (cset_p_t *) gethash ((void *) p, &cset->cset_p);
+  caddr_t *inst = itc->itc_out_state;
+  int n_from_cset = QST_INT (inst, ts->src_gen.src_out_fill);
+  itc->itc_n_results = n_from_cset;	/*if bindings from cset table, do make a full batch, these are in the same batch with the exceptions, so this many are already in results */
   if (!csetp)
     return 1;
   if (!csetp->csetp_n_bloom)
@@ -1053,6 +1056,7 @@ cset_psog_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
     }
   if (PSOG_CSET_VALUES == QST_INT (inst, csm->csm_mode))
     {
+      ks_vec_new_results (ts->ts_order_ks, inst, NULL);
       state = inst;
     }
   if (state)

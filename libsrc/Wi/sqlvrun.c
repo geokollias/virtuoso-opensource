@@ -1740,7 +1740,7 @@ itc_param_sort (key_source_t * ks, it_cursor_t * itc, int is_del_with_nulls)
   table_source_t *ts = ks->ks_ts;
   QNCAST (query_instance_t, qi, inst);
   data_col_t *last_dc = NULL;
-  int n_params = 0, inx, was_sorted = 0;
+  int n_params = 0, inx, was_sorted = 0, org_out_fill;
   if (ks->ks_from_temp_tree && SSL_TREE == ks->ks_from_temp_tree->ssl_type)
     n_params = 1;
   else if (ks->ks_last_vec_param)
@@ -1768,6 +1768,8 @@ itc_param_sort (key_source_t * ks, it_cursor_t * itc, int is_del_with_nulls)
   if (n_params > 1)
     itc->itc_read_hook = itc_dive_read_hook;
   itc->itc_batch_size = MAX (itc->itc_n_sets, dc_batch_sz);
+  /* a cset exception ts can already have results  */
+  org_out_fill = QST_INT (inst, ts->src_gen.src_out_fill);
   QST_INT (inst, ts->src_gen.src_out_fill) = 0;
   param_nos = QST_BOX (int *, inst, ks->ks_param_nos);
   itc->itc_n_vec_sort_cols = ks->ks_n_vec_sort_cols;
@@ -1788,10 +1790,13 @@ itc_param_sort (key_source_t * ks, it_cursor_t * itc, int is_del_with_nulls)
 	    goto general;
 	  itc_cset_s_param_nos (itc);
 	}
-      else if (!itc_cset_exc_param_nos (itc))
-	goto general;
-      if (!itc->itc_n_sets)
-	return;
+      else if (TS_CSET_PSOG == csm->csm_role)
+	{
+	  QST_INT (inst, ts->src_gen.src_out_fill) = org_out_fill;	/* a cset exception ts may have results from the cset at this point */
+	  itc_cset_exc_param_nos (itc);
+	  if (!itc->itc_n_sets)
+	    return;
+	}
     }
   else if (is_del_with_nulls)
     {

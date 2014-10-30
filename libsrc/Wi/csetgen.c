@@ -558,6 +558,7 @@ found2:;
   }
   END_DO_SET ();
   csa = (cset_align_node_t *) qn_next_qn ((data_source_t *) ts, (qn_input_fn) cset_align_input);
+  csa->src_gen.src_stat = model_ts->src_gen.src_stat;
   s_iter = model_ts->ts_order_ks->ks_out_slots;
   DO_SET (dbe_column_t *, col, &model_ts->ts_order_ks->ks_out_cols)
   {
@@ -693,7 +694,7 @@ csg_extra_specs (sqlo_t * so, cset_t * cset, query_t * qr, table_source_t * mode
 	  if (rq_in_cset || !is_rq)
 	    {
 	      csm->csm_exc_tmp_bits = tmp_bits;
-	      csm->csm_exc_bits_in = exc_bits;
+	      csm->csm_exc_bits_in = (state_slot_t **) box_copy ((caddr_t) exc_bits);
 	      exc_bits = csm->csm_exc_bits_out = csg_exc_bits (sc, csgc, n_in_cset);
 	      csm->csm_n_bits = 64 * BOX_ELEMENTS (exc_bits);
 	    }
