@@ -212,6 +212,7 @@ extern int32 em_ra_threshold;
 extern int enable_top_pred;
 extern int enable_top_print;
 extern int enable_bsp_trans;
+extern int enable_cset;
 extern int enable_g_in_sec;
 extern int64 rdf_ctx_max_mem;
 extern int64 rdf_ctx_in_use;
@@ -1807,6 +1808,7 @@ stat_desc_t dbf_descs[] = {
   {"tc_qrc_plan_miss", &tc_qrc_plan_miss, NULL},
   {"enable_dfg", (long *) &enable_dfg, SD_INT32},
   {"enable_bsp_trans", &enable_bsp_trans, SD_INT32},
+  {"enable_cset", &enable_cset, SD_INT32},
   {"iri_seqs_used", &iri_seqs_used, SD_INT32},
   {"enable_at_print", (long *) &enable_at_print, SD_INT32},
   {"enable_min_card", (long *) &enable_min_card},

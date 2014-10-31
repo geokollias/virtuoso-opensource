@@ -854,7 +854,7 @@ ssl_insert_cast (insert_node_t * ins, caddr_t * inst, int nth_col, caddr_t * err
 	  else if (8 == elt_sz)
 	    {
 	      int64 val = ((int64 *) from_dc->dc_values)[row];
-	      if (is_prec && !(val >= prec_lower && val <= prec_upper) && !DC_IS_NULL (from_dc, row))
+	      if (is_prec && !DC_IS_NULL (from_dc, row) && !(val >= prec_lower && val <= prec_upper))
 		{
 		  *err_ret = srv_make_new_error ("22023", "SR346",
 		      "Integer out of range for column %s", sch_id_to_col_name (wi_inst.wi_schema, cl->cl_col_id));
@@ -2435,6 +2435,7 @@ itc_copy (it_cursor_t * itc)
   cp->itc_n_branches = itc->itc_n_branches;
   cp->itc_multistate_row_specs = itc->itc_multistate_row_specs;
   cp->itc_page = itc->itc_page;
+  cp->itc_is_cset = itc->itc_is_cset;
   cp->itc_map_pos = itc->itc_map_pos;
   for (inx = 0; inx < itc->itc_search_par_fill; inx++)
     {
@@ -3954,9 +3955,11 @@ it_print_wired (index_tree_t * it)
 
 
 int
-cha_mergeable (chash_t * ch1, chash_t * ch2)
+cha_mergeable (setp_node_t * setp, chash_t * ch1, chash_t * ch2)
 {
   int inx, n_sqt = box_length (ch1->cha_sqt) / sizeof (sql_type_t);
+  hash_area_t *ha = setp->setp_ha;
+  int dep_inx = ha->ha_n_keys;
   for (inx = 0; inx < n_sqt; inx++)
     {
       if (ch1->cha_sqt[inx].sqt_dtp != ch2->cha_sqt[inx].sqt_dtp)
@@ -3964,6 +3967,14 @@ cha_mergeable (chash_t * ch1, chash_t * ch2)
       if (DV_ARRAY_OF_POINTER == ch1->cha_sqt[inx].sqt_dtp)
 	return 0;
     }
+  DO_SET (gb_op_t *, go, &setp->setp_gb_ops)
+  {
+    state_slot_t *ssl = setp->setp_dependent_box[dep_inx - ha->ha_n_keys];
+    if (go->go_op != AMMSC_COUNT && !IS_NUM_DTP (ch1->cha_sqt[dep_inx].sqt_dtp))
+      return 0;
+    dep_inx++;
+  }
+  END_DO_SET ();
   return 1;
 }
 
@@ -4004,7 +4015,7 @@ vec_fref_chash_result (fun_ref_node_t * fref, table_source_t * ts, caddr_t * ins
 	    return 0;
 	  if (!first_tree)
 	    first_tree = local_tree ? local_tree : tree;
-	  if (!cha_mergeable (first_tree->it_hi->hi_chash, tree->it_hi->hi_chash))
+	  if (!cha_mergeable (setp, first_tree->it_hi->hi_chash, tree->it_hi->hi_chash))
 	    return 0;
 	}
 	END_DO_BOX;
@@ -4272,13 +4283,26 @@ qi_add_stats (QI * qi, QI ** qis, query_t * qr)
 }
 
 
+query_t *
+ts_query (table_source_t * ts)
+{
+  if (ts->ts_csm)
+    {
+      cset_align_node_t *csa = (cset_align_node_t *) qn_next_qn ((data_source_t *) ts, (qn_input_fn) cset_align_input);
+      if (csa)
+	ts = csa->csa_model_ts;
+    }
+  return ts->src_gen.src_query;
+}
+
+
 void
 ts_aq_result (table_source_t * ts, caddr_t * inst)
 {
   /* a ts completed itts branches.  Add up the results.  Can be in a fref or a scalar/exists subq. */
   if (prof_on)
     {
-      qi_add_stats ((QI *) inst, qst_get (inst, ts->ts_aq_qis), ts->src_gen.src_query);
+      qi_add_stats ((QI *) inst, qst_get (inst, ts->ts_aq_qis), ts_query (ts));
     }
   if (!ts->ts_agg_node)
     return;

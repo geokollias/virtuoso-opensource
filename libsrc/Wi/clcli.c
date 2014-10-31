@@ -433,6 +433,7 @@ clo_destroy (cl_op_t * clo)
       break;
     case CLO_SEC_TOKEN:
       dk_free_tree ((caddr_t) clo->_.sec.g_wr);
+      dk_free_tree ((caddr_t) clo->_.sec.g_rd);
       break;
     }
   return 0;

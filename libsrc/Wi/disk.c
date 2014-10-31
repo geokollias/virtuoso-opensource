@@ -1634,7 +1634,6 @@ bp_make_buffer_list (int n)
 	  if (!buffers_space)
 	    GPF_T1 ("Cannot allocate memory for Database buffers, try to decrease NumberOfBuffers INI setting");
 	  buffers_space = (db_buf_t) ALIGN_8K (buffers_space);
-	  memset (buffers_space, 0, ALIGN_VOIDP (PAGE_SZ) * n_bufs);
 #if HAVE_SYS_MMAN_H && !defined(__FreeBSD__)
 	  if (cf_lock_in_mem)
 	    {

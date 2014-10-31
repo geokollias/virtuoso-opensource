@@ -3865,6 +3865,8 @@ sparp_simplify_builtin (sparp_t * sparp, SPART * tree, int *trouble_ret)
       break;
     case SPAR_BIF_REGEX:
       break;
+    case SPAR_BIF_REMOVE_UNICODE3_ACCENTS:
+      break;
     case SPAR_BIF_REPLACE:
       break;
     case SPAR_BIF_ROUND:

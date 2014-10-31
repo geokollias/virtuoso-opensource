@@ -3393,6 +3393,7 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
 		so->so_bin_op_is_negate = so_bin_op_is_negate;
 		sqlo_subq_convert_to_exists (so, ptree);
 	      }
+	    break;
 	  case COMPOUND_STMT:
 	  case IF_STMT:
 	  case WHILE_STMT:

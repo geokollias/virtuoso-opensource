@@ -2693,6 +2693,23 @@ itc_g_no_perm (it_cursor_t * itc, buffer_desc_t * buf)
 }
 
 
+index_tree_t *
+itc_sec_in (it_cursor_t * itc, buffer_desc_t * buf, hash_range_spec_t * hrng)
+{
+  /*  get  the sec token's hash table for rd/wr perms */
+  index_tree_t *tree;
+  QNCAST (QI, qi, itc->itc_out_state);
+  cl_op_t *sec = qi->qi_client->cli_sec;
+  if (!sec)
+    itc_g_no_perm (itc, buf);
+  tree = (HRNG_RD_SEC & hrng->hrng_flags) ? sec->_.sec.g_rd : sec->_.sec.g_wr;
+  if (!tree)
+    itc_g_no_perm (itc, buf);
+  qst_set (itc->itc_out_state, hrng->hrng_ht, box_copy ((caddr_t) tree));
+  return tree;
+}
+
+
 extern int dbf_ignore_uneven_col;
 
 int
@@ -2799,6 +2816,8 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
 	      if (hrng->hrng_ht_id)
 		{
 		  index_tree_t *it = qst_get_chash (inst, hrng->hrng_ht, hrng->hrng_ht_id, NULL);
+		  if (!it && ((HRNG_SEC | HRNG_RD_SEC) & hrng->hrng_flags))
+		    it = itc_sec_in (itc, buf, hrng);
 		  cpo.cpo_chash = it->it_hi->hi_chash;
 		  cpo.cpo_chash_dtp = cpo.cpo_chash->cha_sqt[0].sqt_dtp;
 		}
