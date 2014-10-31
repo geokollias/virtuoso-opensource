@@ -1499,7 +1499,7 @@ void
 ts_add_cset (sql_comp_t * sc, df_elt_t * tb_dfe, table_source_t * ts)
 {
   search_spec_t *sp;
-  int inx, n_places, n_slots, n_opts, n_scalars, n_sets;
+  int inx, n_places = 0, n_slots = 0, n_opts = 0, n_scalars = 0, n_sets = 0;
   dk_hash_t *ht = hash_table_allocate (23);
   int n_reqd = 0, fill = 0;
   dk_set_t col_iter;
