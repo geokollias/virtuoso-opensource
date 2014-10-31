@@ -630,6 +630,7 @@ sqlo_add_csets (sqlo_t * so, ST ** ptree)
   sqlo_map_st_ref (ptree, sqlo_cset_cb, (void *) so);
   hash_table_free (sc->sc_tree_to_dfe);
   so->so_const_subqs = NULL;
+  *ptree = tree = (ST *) t_box_copy_tree ((caddr_t) tree);
   sqlo_scope (so, &tree);
   return sqlo_df (so, *ptree);
 }

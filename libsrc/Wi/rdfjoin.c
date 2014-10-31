@@ -913,6 +913,7 @@ cset_psog_cset_values (table_source_t * ts, caddr_t * inst)
   data_col_t *out_dc = QST_BOX (data_col_t *, inst, csm->csm_exc_bits_out[0]->ssl_index);
   uint64 *bits = (uint64 *) bit_dc->dc_values;
   uint64 *out = (uint64 *) out_dc->dc_values;
+  QST_INT (inst, ts->src_gen.src_out_fill) = 0;
   DC_CHECK_LEN (out_dc, n_sets - 1);
   if (o_dc)
     {
