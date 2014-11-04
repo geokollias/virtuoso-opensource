@@ -1546,7 +1546,7 @@ ts_add_cset (sql_comp_t * sc, df_elt_t * tb_dfe, table_source_t * ts)
   csts->csts_reqd_ps = dk_alloc_box (sizeof (iri_id_t) * ht->ht_count, DV_BIN);
   DO_HT (dbe_column_t *, col, ptrlong, ign, ht) csts->csts_reqd_ps[fill++] = col->col_cset_iri;
   END_DO_HT;
-  n_slots = 3 + ht->ht_count * 4 + (n_opts * 3);
+  n_slots = 3 + ht->ht_count * 10 + (n_opts * 3);
   n_scalars = 2 * ht->ht_count;
   csts->csts_scalar_ssls = (state_slot_t *) dk_alloc_box (sizeof (caddr_t) * n_scalars, DV_BIN);
   csts->csts_vec_ssls = (state_slot_t *) dk_alloc_box (sizeof (caddr_t) * n_slots, DV_BIN);

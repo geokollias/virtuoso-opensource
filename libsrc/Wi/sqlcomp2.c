@@ -347,7 +347,8 @@ sqlc_add_table_ref (sql_comp_t * sc, ST * tree, dk_set_t * res)
 	else
 	  {
 	    right_ct->ct_join_cond = sql_tree_and (right_ct->ct_join_cond, tree->_.join.cond);
-	    sqlc_make_and_list (right_ct->ct_join_cond, &right_ct->ct_join_preds);
+	    if (IS_BOX_POINTER (right_ct->ct_join_cond))
+	      sqlc_make_and_list (right_ct->ct_join_cond, &right_ct->ct_join_preds);
 	    if (tree->_.join.type == OJ_LEFT || tree->_.join.type == OJ_FULL)
 	      right_ct->ct_is_outer = 1;
 	  }

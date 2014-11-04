@@ -53,9 +53,9 @@ st_hash_print (id_hash_t * ht)
 {
   DO_IDHASH (ST *, t1, ST *, t2, ht)
   {
-    sqlo_box_print (t1);
+    sqlo_box_print ((caddr_t) t1);
     printf ("-> ");
-    sqlo_box_print (t2);
+    sqlo_box_print ((caddr_t) t2);
   }
   END_DO_IDHASH;
 }
@@ -138,9 +138,87 @@ sqlo_dfe_csets (sqlo_t * so, df_elt_t * dt_dfe)
 }
 
 
+int
+dfe_is_s_col (df_elt_t * dfe, df_elt_t * tb_dfe)
+{
+  return DFE_COLUMN == dfe->dfe_type && (!tb_dfe || (void *) tb_dfe->_.table.ot == dfe->dfe_tables->data)
+      && dfe->_.col.col && !stricmp ("S", dfe->_.col.col->col_name);
+}
+
+
+void
+ot_add_s_eqs (op_table_t * ot, dk_set_t preds)
+{
+  DO_SET (df_elt_t *, pred, &preds)
+      if (PRED_IS_EQ (pred) && (dfe_is_s_col (pred->_.bin.left, NULL) || dfe_is_s_col (pred->_.bin.right, NULL)))
+    t_set_push (&ot->ot_s_eqs, (void *) pred);
+  END_DO_SET ();
+}
+
+
+void
+ot_set_s_eqs (op_table_t * ot)
+{
+  DO_SET (df_elt_t *, oj, &ot->ot_from_dfes) if (DFE_TABLE == oj->dfe_type && oj->_.table.ot->ot_is_outer)
+    ot_add_s_eqs (ot, oj->_.table.ot->ot_join_preds);
+  END_DO_SET ();
+  ot_add_s_eqs (ot, ot->ot_preds);
+}
+
+
+df_elt_t *
+pred_s_value (df_elt_t * pred, df_elt_t * tb_dfe)
+{
+  /* if pred gives a value to s of tb, return this */
+  if (dk_set_member (pred->dfe_tables, (void *) tb_dfe->_.table.ot))
+    {
+      if (dfe_is_s_col (pred->_.bin.left, tb_dfe))
+	return pred->_.bin.right;
+      if (dfe_is_s_col (pred->_.bin.right, tb_dfe))
+	return pred->_.bin.left;
+    }
+  return NULL;
+}
+
+
+void
+sqlo_add_s_eq (dk_set_t * res, df_elt_t * col)
+{
+  if (DFE_COLUMN == col->dfe_type && col->dfe_tables)
+    t_set_pushnew (res, ((op_table_t *) col->dfe_tables->data)->ot_dfe);
+}
+
+
+void
+sqlo_add_ind_s_eqs (df_elt_t * dt_dfe, df_elt_t * tb_dfe, dk_set_t * res)
+{
+  /* add the tables whose s equal x where s of tb_dfe = x */
+  op_table_t *ot = dt_dfe->_.sub.ot;
+  DO_SET (df_elt_t *, pred, &ot->ot_s_eqs)
+  {
+    df_elt_t *s_dfe = pred_s_value (pred, tb_dfe);
+    if (s_dfe)
+      {
+	DO_SET (df_elt_t *, other_s, &ot->ot_s_eqs)
+	{
+	  if (other_s == pred)
+	    continue;
+	  if (other_s->_.bin.left == s_dfe)
+	    sqlo_add_s_eq (res, other_s->_.bin.right);
+	  if (other_s->_.bin.right == s_dfe)
+	    sqlo_add_s_eq (res, other_s->_.bin.left);
+	}
+	END_DO_SET ();
+      }
+  }
+  END_DO_SET ();
+}
+
+
 dk_set_t
 sqlo_s_eqs (df_elt_t * dt_dfe, df_elt_t * tb_dfe, dk_set_t res)
 {
+  sqlo_add_ind_s_eqs (dt_dfe, tb_dfe, &res);
   DO_SET (df_elt_t *, oj, &dt_dfe->_.sub.ot->ot_from_dfes)
   {
     if (DFE_TABLE == oj->dfe_type && oj->_.table.ot->ot_is_outer && oj->_.table.ot->ot_csets)
@@ -324,6 +402,7 @@ cset_temp_tables (sqlo_t * so, dk_set_t cset_tbs)
       t_id_hash_set (sc->sc_cset_col_subst, (caddr_t) & prev_col_ref, (caddr_t) & new_col_ref);
     }
     END_DO_SET ();
+    dbe_key_layout_1 (key);
   }
   END_DO_SET ();
   return res;
@@ -351,7 +430,7 @@ sqlo_oj_deps_in_from (dk_set_t placed_ojs, op_table_t * oj_ot)
   {
     DO_SET (op_table_t *, dep_ot, &join_pred->dfe_tables)
     {
-      if (dep_ot->ot_is_outer && !dk_set_member (placed_ojs, (void *) dep_ot))
+      if (dep_ot->ot_is_outer && dep_ot != oj_ot && !dk_set_member (placed_ojs, (void *) dep_ot))
 	return 0;
     }
     END_DO_SET ();
@@ -462,7 +541,7 @@ sqlo_dt_replace_csets (sqlo_t * so, df_elt_t * dt_dfe, dk_set_t all_csets, dk_se
   ST *from_st = NULL;
   ST *tree, *texp;
   sql_comp_t *sc = so->so_sc;
-  dk_set_t placed_ojs = NULL;
+  dk_set_t placed_ojs = NULL, prev_ojs;
   dk_set_t from = NULL, ojs = NULL;
   tree = dt_dfe->_.sub.ot->ot_dt;
   texp = tree->_.select_stmt.table_exp;
@@ -496,7 +575,7 @@ sqlo_dt_replace_csets (sqlo_t * so, df_elt_t * dt_dfe, dk_set_t all_csets, dk_se
   DO_SET (op_table_t *, from_ot, &from)
   {
     ST *ref =
-	from_ot->ot_table ? t_listst (3, TABLE_REF, t_listst (5, TABLE_DOTTED, from_ot->ot_table->tb_name, from_ot->ot_new_prefix,
+	from_ot->ot_table ? t_listst (3, TABLE_REF, t_listst (6, TABLE_DOTTED, from_ot->ot_table->tb_name, from_ot->ot_new_prefix,
 	    NULL, NULL, from_ot->ot_opts), from_ot->ot_new_prefix) : t_listst (4, DERIVED_TABLE, from_ot->ot_dt,
 	from_ot->ot_new_prefix, from_ot->ot_opts);
     if (!from_st)
@@ -505,21 +584,28 @@ sqlo_dt_replace_csets (sqlo_t * so, df_elt_t * dt_dfe, dk_set_t all_csets, dk_se
       from_st = t_list (6, JOINED_TABLE, 0, J_CROSS, from_st, ref, NULL);
   }
   END_DO_SET ();
-  DO_SET (op_table_t *, oj_ot, &ojs)
-  {
-    if (sqlo_oj_deps_in_from (placed_ojs, oj_ot))
+  do
+    {
+      prev_ojs = placed_ojs;
+      DO_SET (op_table_t *, oj_ot, &ojs)
       {
-	ST *jc;
-	ST *ref =
-	    oj_ot->ot_table ? t_listst (3, TABLE_REF, t_listst (5, TABLE_DOTTED, oj_ot->ot_table->tb_name, NULL, NULL, NULL),
-	    NULL) : t_listst (4, DERIVED_TABLE, oj_ot->ot_dt, oj_ot->ot_new_prefix, NULL);
-	t_set_push (&placed_ojs, (void *) oj_ot);
-	jc = oj_ot->ot_join_cond;
-	from_st = t_listst (6, JOINED_TABLE, 0, OJ_LEFT, from_st, ref, sqlo_cset_ref_replace (so, &jc));
+	if (dk_set_member (placed_ojs, oj_ot))
+	  continue;
+	if (sqlo_oj_deps_in_from (placed_ojs, oj_ot))
+	  {
+	    ST *jc;
+	    ST *ref =
+		oj_ot->ot_table ? t_listst (3, TABLE_REF, t_listst (6, TABLE_DOTTED, oj_ot->ot_table->tb_name, oj_ot->ot_new_prefix,
+		    NULL, NULL, oj_ot->ot_opts), oj_ot->ot_new_prefix) : t_listst (4, DERIVED_TABLE, oj_ot->ot_dt,
+		oj_ot->ot_new_prefix, oj_ot->ot_opts);
+	    t_set_push (&placed_ojs, (void *) oj_ot);
+	    jc = oj_ot->ot_join_cond;
+	    from_st = t_listst (6, JOINED_TABLE, 0, OJ_LEFT, from_st, ref, sqlo_cset_ref_replace (so, &jc));
+	  }
       }
-  }
-  END_DO_SET ();
-
+      END_DO_SET ();
+    }
+  while (placed_ojs != prev_ojs);
   if (!ST_P (tree, SELECT_STMT))
     SQL_GPF_T1 (sc->sc_cc, "should be a select in tree of dt dfe");
   sqlo_cset_ref_replace (so, (ST **) & tree->_.select_stmt.selection);
@@ -544,6 +630,7 @@ sqlo_eq_sets (sqlo_t * so, df_elt_t * dt_dfe)
   dk_set_t from_dfes = dt_dfe->_.sub.ot->ot_from_dfes;
   dk_set_t all_csets = NULL;
   dk_hash_t *done = hash_table_allocate (11);
+  ot_set_s_eqs (dt_dfe->_.sub.ot);
   sqlo_dfe_csets (so, dt_dfe);
   DO_SET (df_elt_t *, tb_dfe, &from_dfes)
   {
@@ -685,9 +772,30 @@ sqlo_copy_replace (ST * tree, ST * old_tree, ST * new_tree)
 
 
 void
+sqlo_cset_inx_g_eq (sqlo_t * so, df_elt_t * inx_dfe, df_elt_t * cset_dfe, df_elt_t * g_pred)
+{
+  /* if a set of triple paterns has a g in common and this ais a cset and is done by index on o then the o pattern needs to join with the g. Otherwise o index does not imply g */
+  return;
+  if (g_pred && PRED_IS_EQ (g_pred))
+    return;
+  {
+    caddr_t g = t_box_string ("G");
+    ST *tree;
+    df_elt_t *g_eq;
+    ST *r = t_listst (3, COL_DOTTED, inx_dfe->_.table.ot->ot_new_prefix, g);
+    ST *l = t_listst (3, COL_DOTTED, cset_dfe->_.table.ot->ot_new_prefix, g);
+    BIN_OP (tree, BOP_EQ, l, r);
+    g_eq = sqlo_df (so, tree);
+    t_set_pushnew (&cset_dfe->_.table.col_preds, (void *) g_eq);
+    t_set_pushnew (&inx_dfe->_.table.out_cols, (void *) g_eq->_.bin.right);
+  }
+}
+
+
+void
 sqlo_place_cset_inx (sqlo_t * so, df_elt_t * cset_dfe, df_elt_t * o_col, df_elt_t * s_pred, df_elt_t * g_pred)
 {
-  /* set the plan to have the cset by the o_cond or by s/scan is o_cond is null */
+  /* set the plan to have the cset by the o_cond or by scan is o_cond is null */
   ST *inx_s, *cset_s, *inx_eq;
   df_elt_t *inx_dfe, *inx_to_cset_pred;
   dk_set_t inx_preds = NULL, remd_preds = NULL;
@@ -746,7 +854,10 @@ sqlo_place_cset_inx (sqlo_t * so, df_elt_t * cset_dfe, df_elt_t * o_col, df_elt_
 		  t_box_string ("G")), t_listst (3, COL_DOTTED, inx_ot->ot_new_prefix, t_box_string ("G"))));
       t_set_push (&inx_dfe->_.table.col_preds, inx_g);
     }
-
+  /* the inx dfe must return the s.  I */
+  t_set_pushnew (&inx_dfe->_.table.out_cols, (void *) inx_to_cset_pred->_.bin.right);
+  sqlo_cset_inx_g_eq (so, inx_dfe, cset_dfe, g_pred);
+  inx_dfe->_.table.key = tb_px_key (inx_ot->ot_table, tb_name_to_column (inx_ot->ot_table, "O"));
 }
 
 
@@ -827,9 +938,11 @@ sqlo_cset_choose_index (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * col_preds, dk
 	dbe_column_t *col = left_col->_.col.col;
 	dbe_column_t *equiv_col = dfe_cset_equiv_col (tb_dfe, left_col);
 	cset_p_t *csp = equiv_col ? equiv_col->col_csetp : NULL;
+	if (col == s_col || col == g_col)
+	  continue;
 	if (dk_set_member (done_cols, left_col))
 	  continue;
-	if (!csp || !csp->csetp_index_o)
+	if (csp && !csp->csetp_index_o)
 	  continue;
 	memzero (&ic, sizeof (ic));
 	save_cp = tb_dfe->_.table.col_preds;

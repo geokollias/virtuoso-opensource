@@ -1732,7 +1732,7 @@ extern int chash_block_size;
 
 
 /*cset */
-void itc_cset_s_param_nos (it_cursor_t * itc);
+void itc_cset_s_param_nos (it_cursor_t * itc, int n_values);
 void posg_special_o (table_source_t * ts, caddr_t * inst);
 void cset_psog_input (table_source_t * ts, caddr_t * inst, caddr_t * state);
 void csts_free (cset_ts_t * csts);

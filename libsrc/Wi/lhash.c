@@ -1200,6 +1200,16 @@ cha_gb_dep_col (setp_node_t * setp, caddr_t * inst, hash_area_t * ha, chash_t * 
     }
 }
 
+
+void
+gby_trap (chash_t * cha, db_buf_t * row)
+{
+  if (2 == cha->cha_n_keys && DV_ANY == cha->cha_sqt[0].sqt_dtp && DV_ANY == cha->cha_sqt[1].sqt_dtp)
+    if (51136 == LONG_REF_NA (row[0] + 1) && 160 == LONG_REF_NA (row[1] + 1))
+      bing ();
+}
+
+
 int64 *
 cha_new_gb (setp_node_t * setp, caddr_t * inst, db_buf_t ** key_vecs, chash_t * cha, uint64 hash_no, int row_no, int base,
     dtp_t * nulls)
@@ -1267,6 +1277,7 @@ cha_new_gb (setp_node_t * setp, caddr_t * inst, db_buf_t ** key_vecs, chash_t * 
     }
   if (setp->setp_top_gby)
     GB_HAS_VALUE (ha, row, n_cols);	/* bit after last null flag set to indicate top gby row not deleted */
+  gby_trap (cha, row);
   return row;
 }
 

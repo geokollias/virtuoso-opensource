@@ -1788,7 +1788,7 @@ itc_param_sort (key_source_t * ks, it_cursor_t * itc, int is_del_with_nulls)
 	{
 	  if (ITC_CSET_G == itc->itc_is_cset || ITC_CSET_SCAN == itc->itc_is_cset)
 	    goto general;
-	  itc_cset_s_param_nos (itc);
+	  itc_cset_s_param_nos (itc, n_params);
 	}
       else if (TS_CSET_PSOG == csm->csm_role)
 	{

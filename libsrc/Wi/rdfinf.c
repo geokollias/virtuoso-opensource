@@ -2578,6 +2578,7 @@ sqlg_cl_bracket_outer (sqlo_t * so, data_source_t * first)
     ose->ose_is_right_oj = is_roj;
     DO_BOX (state_slot_t *, ssl, inx, ose->ose_out_slots)
     {
+      ssl->ssl_sqt.sqt_non_null = 0;
       ssl->ssl_always_vec = 1;
     }
     END_DO_BOX;

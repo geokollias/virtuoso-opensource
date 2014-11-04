@@ -1389,6 +1389,13 @@ sqlc_exp_print (sql_comp_t * sc, comp_table_t * ct, ST * exp, char *text, size_t
 	      sprintf_more (text, tlen, fill, " ");
 	      break;
 	    }
+	  if (J_CROSS == tree->_.join.type)
+	    {
+	      sqlc_exp_print (sc, NULL, tree->_.join.left, text, tlen, fill);
+	      sprintf_more (text, tlen, fill, " cross join ");
+	      sqlc_exp_print (sc, NULL, tree->_.join.right, text, tlen, fill);
+	      break;
+	    }
 	  sprintf_more (text, tlen, fill, "{oj ");
 	  sqlc_exp_print (sc, NULL, tree->_.join.left, text, tlen, fill);
 	  sprintf_more (text, tlen, fill, " %s outer join ", tree->_.join.type == OJ_LEFT ? "LEFT" : "FULL");

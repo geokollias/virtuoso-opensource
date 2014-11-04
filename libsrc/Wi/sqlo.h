@@ -138,6 +138,7 @@ typedef struct op_table_s
   df_elt_t *ot_cset_inx_dfe;	/* if this ot stands for a cset and cset accessed by posg of indexed o, this is rdf quad posg tb dfe */
   df_elt_t *ot_cset_inx_s_eq;	/* if ot of a posg for a cset by indexed o, this is the eq between the cset s and the s from posg */
   df_elt_t *ot_cset_inx_p_eq;
+  dk_set_t ot_s_eqs;		/* all preds where some s of a table in this dt is eq something else */
   struct csg_col_s *ot_csgc;
 } op_table_t;
 
@@ -1132,6 +1133,7 @@ int sqlo_has_col_ref (ST * tree);
 void sqlg_cl_ts_split (sqlo_t * so, df_elt_t * tb_dfe, table_source_t * ts);
 float dfe_exp_card (sqlo_t * so, df_elt_t * dfe);
 void sqlo_rdf_col_card (sqlo_t * so, df_elt_t * td_dfe, df_elt_t * dfe);
+extern caddr_t uname_one_of_these;
 
 #define PRED_IS_EQ(dfe) ((DFE_BOP_PRED == dfe->dfe_type || DFE_BOP == dfe->dfe_type) && BOP_EQ == dfe->_.bin.op)
 #define PRED_IS_EQ_OR_IN(dfe) ((DFE_BOP_PRED == dfe->dfe_type || DFE_BOP == dfe->dfe_type) && (BOP_EQ == dfe->_.bin.op || 1 == dfe->_.bin.is_in_list))

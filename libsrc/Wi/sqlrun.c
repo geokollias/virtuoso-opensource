@@ -2251,6 +2251,32 @@ table_source_input_unique (table_source_t * ts, caddr_t * inst, caddr_t * state)
       file_source_input (ts, inst, state);
       return;
     }
+  if (ts->ts_csm)
+    {
+      if (TS_CSET_PSOG == ts->ts_csm->csm_role)
+	{
+	  cset_psog_input (ts, inst, state);
+	  return;
+	}
+      if (TS_CSET_POSG == ts->ts_csm->csm_role)
+	{
+	  if (state)
+	    {
+	      qst_set (inst, ts->ts_csm->csm_o_scan_mode, NULL);
+	      QST_BOX (caddr_t, inst, ts->ts_csm->csm_posg_cset_pos) = NULL;
+	    }
+	  if (!state && QST_BOX (caddr_t, inst, ts->ts_csm->csm_posg_cset_pos))
+	    {
+	      posg_special_o (ts, inst);
+	      return;
+	    }
+	}
+    }
+  if (ts->ts_csts)
+    {
+      table_source_cset_lookup_input (ts, inst, state);
+      return;
+    }
   if (!state)
     {
       /* can happen when split into parallel branches and starting the branch */

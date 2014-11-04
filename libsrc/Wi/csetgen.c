@@ -284,7 +284,6 @@ csg_ts_frame (sqlo_t * so, op_table_t * top_ot, cset_t * cset, table_source_t * 
     }
   for (sp = ks->ks_row_spec; sp; sp = sp->sp_next)
     {
-      sethash ((void *) sp->sp_col, ht, (void *) 1);
       if (sp->sp_cl.cl_col_id == g_col_id)
 	{
 	  if (g_spec && CMP_EQ == g_spec->sp_min_op)
@@ -292,6 +291,10 @@ csg_ts_frame (sqlo_t * so, op_table_t * top_ot, cset_t * cset, table_source_t * 
 	  else
 	    g_spec = sp;
 	}
+      else if (sp->sp_col == (dbe_column_t *) ks->ks_key->key_parts->data
+	  || sp->sp_col == (dbe_column_t *) ks->ks_key->key_parts->next->data)
+	continue;		/* s or g specs do not make rq access */
+      sethash ((void *) sp->sp_col, ht, (void *) 1);
     }
   DO_SET (dbe_column_t *, col, &ks->ks_out_cols) if (col->col_cset_iri)	/*not s or g */
     sethash ((void *) col, ht, (void *) 2);
@@ -406,6 +409,7 @@ csg_add_row_spec (sqlo_t * so, key_source_t * ks, search_spec_t * sp)
       hash_range_spec_t *hrng = (hash_range_spec_t *) cp->sp_min_ssl;
       memcpy (hrng_cp, hrng, sizeof (hash_range_spec_t));
       cp->sp_min_ssl = (state_slot_t *) hrng_cp;
+      hrng_cp->hrng_ssls = (state_slot_t *) box_copy ((caddr_t) hrng_cp->hrng_ssls);
       dk_set_push (&ks->ks_hash_spec, (void *) cp);
     }
   else
@@ -558,7 +562,6 @@ found2:;
   }
   END_DO_SET ();
   csa = (cset_align_node_t *) qn_next_qn ((data_source_t *) ts, (qn_input_fn) cset_align_input);
-  csa->src_gen.src_stat = model_ts->src_gen.src_stat;
   s_iter = model_ts->ts_order_ks->ks_out_slots;
   DO_SET (dbe_column_t *, col, &model_ts->ts_order_ks->ks_out_cols)
   {
@@ -726,9 +729,10 @@ csg_extra_specs (sqlo_t * so, cset_t * cset, query_t * qr, table_source_t * mode
 		  ts->ts_is_outer = 1;
 		}
 	      for (sp = model_ks->ks_row_spec; sp; sp = sp->sp_next)
-		if (!csg_should_add_spec (sp))
+		if (csgc->csgc_ref_col->col_id == sp->sp_cl.cl_col_id && !csg_should_add_spec (sp))
 		  csg_add_row_spec (so, ks, sp);
-	      DO_SET (search_spec_t *, sp, &model_ks->ks_hash_spec) csg_add_row_spec (so, ks, sp);
+	      DO_SET (search_spec_t *, sp, &model_ks->ks_hash_spec) if (csgc->csgc_ref_col->col_id == sp->sp_cl.cl_col_id)
+		csg_add_row_spec (so, ks, sp);
 	      END_DO_SET ();
 	      for (sp = ks->ks_row_spec; sp; sp = sp->sp_next)
 		csg_sp_set_col (so, ts, sp, 1);
@@ -828,6 +832,7 @@ csg_query (cset_t * cset, table_source_t * ts, int mode, caddr_t * err)
     qr = sc.sc_cc->cc_query;
     qr_set_local_code_and_funref_flag (qr);
     qr->qr_proc_vectored = QR_VEC_STMT;
+    t_set_push (&sc.sc_vec_pred, (void *) ts);
     sqlg_vector (&sc, qr);
     qr->qr_head_node->src_prev = ts->src_gen.src_prev;
   }
