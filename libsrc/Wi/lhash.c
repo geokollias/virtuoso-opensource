@@ -219,10 +219,9 @@ gb_agg_any (setp_node_t * setp, caddr_t * inst, chash_t * cha, int64 ** groups, 
 	  }
 	case AMMSC_USER:
 	  {
-	    index_tree_t *tree = QST_BOX (index_tree_t *, inst, setp->setp_ha->ha_tree->ssl_index);	/* always single tree */
 	    caddr_t old_val;
 	    /* no group sets in this case, no filtering out of null params and their groups */
-	    old_val = go_ua_start (inst, op, tree, dep_ptr);
+	    old_val = go_ua_start (inst, op, NULL, dep_ptr);
 	    if (NULL == old_val)
 	      {
 		qst_set (inst, op->go_old_val, NEW_DB_NULL);
@@ -233,7 +232,7 @@ gb_agg_any (setp_node_t * setp, caddr_t * inst, chash_t * cha, int64 ** groups, 
 		code_vec_run_this_set (op->go_ua_init_setp_call, inst);
 	      }
 	    code_vec_run_this_set (op->go_ua_acc_setp_call, inst);
-	    go_ua_store (inst, op, tree, dep_ptr);
+	    go_ua_store (inst, op, NULL, cha, dep_ptr);
 	    break;
 	  }
 	}

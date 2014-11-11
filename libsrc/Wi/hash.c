@@ -1938,7 +1938,6 @@ tlsf_size (caddr_t ptr)
 caddr_t
 go_ua_start (caddr_t * inst, gb_op_t * go, index_tree_t * tree, caddr_t * dep_ptr)
 {
-  hash_index_t *hi = tree->it_hi;
   caddr_t box = QST_GET_V (inst, go->go_old_val), box2;
   if (!*dep_ptr)
     {
@@ -1950,7 +1949,7 @@ go_ua_start (caddr_t * inst, gb_op_t * go, index_tree_t * tree, caddr_t * dep_pt
     }
   box2 = box_deserialize_reusing (*dep_ptr, box);
   if (box2 != box)
-    QST_GET_V (inst, go->go_old_val) = box2;
+    QST_GET_V (inst, go->go_old_val) = box2;	/* box freed in deserialize reusing */
   return box2;
 }
 
@@ -1958,9 +1957,9 @@ extern int chash_block_size;
 int ua_gb_from_mp;
 
 void
-go_ua_store (caddr_t * inst, gb_op_t * go, index_tree_t * tree, caddr_t * dep_ptr)
+go_ua_store (caddr_t * inst, gb_op_t * go, index_tree_t * tree, chash_t * cha, caddr_t * dep_ptr)
 {
-  mem_pool_t *mp = tree->it_hi->hi_pool;
+  mem_pool_t *mp = cha ? cha->cha_pool : tree->it_hi->hi_pool;
   tlsf_t *tlsf;
   int any_len;
   caddr_t err = NULL;
@@ -2042,7 +2041,7 @@ setp_group_row (setp_node_t * setp, caddr_t * qst)
 	      qst_set (qst, op->go_old_val, NEW_DB_NULL);
 	      code_vec_run_this_set (op->go_ua_init_setp_call, qst);
 	      code_vec_run_this_set (op->go_ua_acc_setp_call, qst);
-	      go_ua_store (qst, op, tree, dep_ptr);
+	      go_ua_store (qst, op, tree, NULL, dep_ptr);
 	      break;
 	    }
 	  }
@@ -2237,7 +2236,7 @@ runX_begin:;
 		  code_vec_run_this_set (op->go_ua_init_setp_call, qst);
 		}
 	      code_vec_run_this_set (op->go_ua_acc_setp_call, qst);
-	      go_ua_store (qst, op, tree, dep_ptr);
+	      go_ua_store (qst, op, tree, NULL, dep_ptr);
 	      break;
 	    }
 	  }
