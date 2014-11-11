@@ -28,6 +28,11 @@
 #ifndef _DKALLOC_H
 #define _DKALLOC_H
 
+#ifndef VALGRIND
+//#define USE_TLSF
+#endif
+
+
 #define _RNDUP(SZ,AL)		((((SZ) + AL - 1) / AL) * AL)
 #define _RNDUP_PWR2(SZ,AL)	(((SZ) + (AL - 1)) & ~(AL - 1))
 #define ALIGN_2(x)		_RNDUP_PWR2((x), 2)
@@ -44,12 +49,20 @@
 #define NEW_VAR(type,var) \
 	type *var = (type *) dk_alloc (sizeof (type))
 
+#define B_NEW_VAR(type,var) \
+	type *var = (type *) tlsf_base_alloc (sizeof (type))
+
 #define DBG_NEW_VAR(file, line, type,var) \
 	type *var = (type *) dbg_malloc (file, line, sizeof (type))
 
 #define NEW_VARZ(type, var) \
 	NEW_VAR(type,var); \
-	memset (var, 0, sizeof (type))
+	memzero (var, sizeof (type))
+
+
+#define B_NEW_VARZ(type, var) \
+	B_NEW_VAR(type,var); \
+	memzero (var, sizeof (type))
 
 #define NEW_BOX_VAR(type,var) \
 	type *var = (type *) dk_alloc_box (sizeof (type), DV_BIN)
@@ -74,11 +87,15 @@ void malloc_cache_clear (void);
 
 #ifdef MALLOC_DEBUG
 # include <util/dbgmal.h>
+
+
+
 #ifndef _USRDLL
 #ifndef EXPORT_GATE
 # define dk_alloc(sz)		dbg_malloc (__FILE__, __LINE__, (sz))
 # define dk_try_alloc(sz)	dbg_malloc (__FILE__, __LINE__, (sz))
 # define dk_free(ptr, sz)	dbg_free_sized (__FILE__, __LINE__, (ptr), (sz))
+
 #endif
 #endif
 void dk_alloc_assert (void *ptr);
@@ -87,13 +104,16 @@ void dk_alloc_assert (void *ptr);
 #endif
 
 #ifdef MALLOC_DEBUG
+
 #define DBG_NAME(nm) 		dbg_##nm
 #define DBG_PARAMS 		const char *file, int line,
 #define DBG_PARAMS_0 		const char *file, int line
 #define DBG_ARGS 		file, line,
 #define DBG_ARGS_0 		file, line
+
 #define DK_ALLOC(SIZE) 		dbg_malloc(DBG_ARGS (SIZE))
 #define DK_FREE(BOX,SIZE) 	dbg_free_sized(DBG_ARGS (BOX), (SIZE))
+
 #else
 #define DBG_NAME(nm) 		nm
 #define DBG_PARAMS
@@ -108,5 +128,17 @@ void dk_alloc_assert (void *ptr);
 void *dbg_dk_alloc (DBG_PARAMS size_t c);
 void *dbg_dk_try_alloc (DBG_PARAMS size_t c);
 #endif
+
+void dk_set_initial_mem (size_t);
+
+#define tlsf_base_alloc dk_alloc
+
+
+#define WITH_TLSF(n) {
+
+
+#define END_WITH_TLSF }
+
+
 
 #endif

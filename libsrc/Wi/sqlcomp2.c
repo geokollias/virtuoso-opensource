@@ -515,7 +515,8 @@ yy_new_error (const char *s, const char *state, const char *native)
   int is_semi;
   int this_lineno = global_scs->scs_scn3c.lineno;
   char buf_for_next[2000];
-  if (global_scs->scs_scn3c.inside_error_reporter)
+  scn3_include_fragment_t *outer;
+  if (scn3_inside_error_reporter)
     goto jmp;			/* see below */
   nlen = scn3_sprint_curr_line_loc (sql_err_text, sizeof (sql_err_text));
   if (state)
@@ -552,9 +553,14 @@ yy_new_error (const char *s, const char *state, const char *native)
     }
   strncat_ck (sql_err_text, buf_for_next, (sizeof (sql_err_text) - 1));
   sql_err_text[sizeof (sql_err_text) - 1] = '\0';
-
 jmp:
-  longjmp_splice (&(global_scs->parse_reset), 1);
+  outer = scn3_include_stack + scn3_include_depth;
+  if (outer->_.sif_skipped_part)
+    {
+      dk_free_box (outer->_.sif_skipped_part);
+      outer->_.sif_skipped_part = NULL;
+    }
+  longjmp_splice (&parse_reset, 1);
 }
 #else
 void

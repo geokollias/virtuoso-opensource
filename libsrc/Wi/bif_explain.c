@@ -717,11 +717,15 @@ sp_list_print (search_spec_t * sp)
 {
   while (sp)
     {
-
       if (sp->sp_col)
 	stmt_printf ((" %s", sp->sp_col->col_name));
       else
 	stmt_printf (("col#%ld", sp->sp_cl.cl_col_id));
+      if (CMP_HASH_RANGE == sp->sp_min_op)
+	{
+	  hrng_print (sp->sp_min_ssl, sp);
+	  goto next;
+	}
       if (sp->sp_min_op != CMP_NONE)
 	{
 	  stmt_printf ((" %s ", cmp_op_text (sp->sp_min_op)));
@@ -739,7 +743,7 @@ sp_list_print (search_spec_t * sp)
 	}
       if (sp->sp_next)
 	stmt_printf ((" "));
-
+    next:
       if ((sp = sp->sp_next))
 	stmt_printf ((", "));
     }

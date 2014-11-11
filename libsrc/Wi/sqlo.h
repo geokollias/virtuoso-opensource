@@ -1101,6 +1101,7 @@ int sqlo_has_col_ref (ST * tree);
 void sqlg_cl_ts_split (sqlo_t * so, df_elt_t * tb_dfe, table_source_t * ts);
 float dfe_exp_card (sqlo_t * so, df_elt_t * dfe);
 void sqlo_rdf_col_card (sqlo_t * so, df_elt_t * td_dfe, df_elt_t * dfe);
+extern caddr_t uname_one_of_these;
 
 #define PRED_IS_EQ(dfe) ((DFE_BOP_PRED == dfe->dfe_type || DFE_BOP == dfe->dfe_type) && BOP_EQ == dfe->_.bin.op)
 #define PRED_IS_EQ_OR_IN(dfe) ((DFE_BOP_PRED == dfe->dfe_type || DFE_BOP == dfe->dfe_type) && (BOP_EQ == dfe->_.bin.op || 1 == dfe->_.bin.is_in_list))

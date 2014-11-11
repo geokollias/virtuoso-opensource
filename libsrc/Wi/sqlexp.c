@@ -2646,6 +2646,10 @@ cv_free (code_vec_t cv)
       {
 	dk_free_box (ins->_.fetch.targets);
       }
+    else if (ins->ins_type == IN_AGG && ins->_.agg.distinct)
+      {
+	ha_free (ins->_.agg.distinct);
+      }
   }
   END_DO_INSTR dk_free_box ((caddr_t) cv);
 }

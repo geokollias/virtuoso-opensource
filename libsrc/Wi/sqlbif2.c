@@ -1751,6 +1751,7 @@ bif_this_server (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   return NEW_DB_NULL;
 }
 
+
 void
 sqlbif2_init (void)
 {

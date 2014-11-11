@@ -127,6 +127,8 @@ service_write (dk_session_t * ses, char *buffer, int bytes)
 #else
 		  timeout_t tv = { 100, 0 };
 #endif
+		  if (ses->dks_write_block_timeout.to_sec > 0)
+		    tv.to_sec = ses->dks_write_block_timeout.to_sec;
 		retry:
 		  tcpses_is_write_ready (ses->dks_session, &tv);
 		  if (SESSTAT_W_ISSET (ses->dks_session, SST_TIMED_OUT))
@@ -303,6 +305,8 @@ session_buffered_write (dk_session_t * ses, const char *buffer, size_t _length)
 }
 
 
+size_t dk_max_red_syscall_bytes = 20480 * 1024;
+
 #if 0
 void
 session_buffered_write_char (unsigned char ch, dk_session_t * ses)
@@ -387,7 +391,7 @@ service_read (dk_session_t * ses, char *buffer, int req_bytes, int need_all)
 	  if (DKSESSTAT_ISSET (ses, SST_TIMED_OUT))
 	    rc = -1;
 	  else
-	    rc = session_read (ses->dks_session, &(buffer[last_read]), MIN (bytes, 32 * 1024));
+	    rc = session_read (ses->dks_session, &(buffer[last_read]), MIN (bytes, dk_max_red_syscall_bytes));
 	}
       else
 	{

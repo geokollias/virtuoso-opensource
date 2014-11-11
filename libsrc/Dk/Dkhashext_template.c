@@ -185,9 +185,9 @@ DBG_HASHEXT_NAME (id_hash_add_new) (DBG_PARAMS id_hash_t * ht, caddr_t key, cadd
 #ifndef NDEBUG
   if (!ht->ht_allow_dups)
     {
-  caddr_t place = id_hash_get_with_hash_number (ht, key, inx);
-  if (place)
-    GPF_T1 ("id_hash_add_new with an existing key");
+      caddr_t place = id_hash_get_with_hash_number (ht, key, inx);
+      if (place)
+	GPF_T1 ("id_hash_add_new with an existing key");
     }
 #endif
   ID_HASHED_KEY_CHECK (inx);

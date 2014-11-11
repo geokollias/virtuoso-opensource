@@ -1208,7 +1208,7 @@ sqlo_in_pred_index (df_elt_t * dfe, index_choice_t * ic, df_elt_t * lower, dbe_c
     return;
   if (inx_const_fill == nth_part)
     return;
-  if (tb_count / inx_arity > 10000)
+  if (tb_count * inx_arity > 10000)
     return;
 no_index:
   ic->ic_in_filter = 1;
@@ -1232,7 +1232,7 @@ sqlo_pred_unit_1 (df_elt_t * lower, df_elt_t * upper, df_elt_t * in_tb, float *u
     }
   if (!in_tb)
     *u1 = col_pred_cost * 2;
-  else if (in_tb->_.table.key->key_is_col)
+  else if (DFE_TABLE == in_tb->dfe_type && in_tb->_.table.key->key_is_col)
     *u1 = sqlo_cs_col_pred_cost;
   else
     *u1 = COL_PRED_COST;
@@ -1953,11 +1953,15 @@ sqlo_eval_text_count (dbe_table_t * tb, caddr_t str, caddr_t ext_fti)
     }
   return ct;
 err:
+  if (lc)
+    lc_free (lc);
   cli->cli_user = usr;
   cli->cli_anytime_started = at_start;
   cli->cli_rpc_timeout = rpc_timeout;
   log_error ("compiler text card estimate got error %s %s, assuming unknown count", !err ? "" : ERR_STATE (err),
       !err ? "no message:" : ERR_MESSAGE (err));
+  if (err)
+    dk_free_tree (err);
   if (entered)
     {
       IN_TXN;
@@ -3195,18 +3199,33 @@ sqlo_try_inf_filter (df_elt_t * tb_dfe, index_choice_t * ic)
   dk_set_t old_cp = tb_dfe->_.table.col_preds;
   sqlo_t *so = tb_dfe->dfe_sqlo;
   index_choice_t filter_ic;
-  if (!enable_inf_filter || IC_AS_IS == ic->ic_op || ic->ic_n_lookups < 2)
+  dk_set_t inf_in_preds = NULL;
+  if (!enable_inf_filter || IC_AS_IS == ic->ic_op || ic->ic_n_lookups < 2 || RI_SUBPROPERTY == ic->ic_inf_type)
     return;
   ic->ic_unit *= ic->ic_n_lookups;
   DO_SET (df_elt_t *, cp, &tb_dfe->_.table.col_preds)
   {
     if (DFE_BOP_PRED == cp->dfe_type && ic->ic_inf_dfe == cp->_.bin.right)
       {
-	ST *tst = (ST *) t_list (4, BOP_EQ, (caddr_t) (ptrlong) 1, t_list (3, CALL_STMT, t_sqlp_box_id_upcase ("rdf_is_sub"),
-		t_list (4, ric->ric_name, cp->_.bin.left->dfe_tree, ic->ic_inf_dfe->dfe_tree, (caddr_t) (ptrlong) ic->ic_inf_type)),
-	    NULL);
+	int is_in = 0;
+	ST *tst;
+	if (3 == enable_inf_filter || (2 == enable_inf_filter && RI_SUBCLASS == ic->ic_inf_type))
+	  {
+	    ST *list = t_listst (3, CALL_STMT, t_sqlp_box_id_upcase ("rdf_super_sub_list"),
+		t_list (3, ric->ric_name, ic->ic_inf_dfe->dfe_tree, (caddr_t) (ptrlong) ic->ic_inf_type));
+	    tst = t_listst (3, CALL_STMT, uname_one_of_these, t_listst (2, cp->_.bin.left->dfe_tree, list));
+	    tst = (t_listst (3, BOP_LT, t_box_num (0), tst));
+	    is_in = 1;
+	  }
+	else
+	  tst = (ST *) t_list (4, BOP_EQ, (caddr_t) (ptrlong) 1, t_list (3, CALL_STMT, t_sqlp_box_id_upcase ("rdf_is_sub"),
+		  t_list (4, ric->ric_name, cp->_.bin.left->dfe_tree, ic->ic_inf_dfe->dfe_tree,
+		      (caddr_t) (ptrlong) ic->ic_inf_type)), NULL);
 	tst_dfe = sqlo_df (so, tst);
-	t_set_push (&inf_after_test, (void *) tst_dfe);
+	if (is_in)
+	  t_set_push (&inf_in_preds, (void *) tst_dfe);
+	else
+	  t_set_push (&inf_after_test, (void *) tst_dfe);
       }
     else
       t_set_push (&no_inf_cp, (void *) cp);
@@ -3224,7 +3243,8 @@ sqlo_try_inf_filter (df_elt_t * tb_dfe, index_choice_t * ic)
     {
       ic->ic_n_lookups = 1;
       ic->ic_unit = filter_ic.ic_unit;
-      ic->ic_altered_col_pred = no_inf_cp;
+      ic->ic_in_filter = NULL != inf_in_preds;
+      ic->ic_altered_col_pred = dk_set_conc (inf_in_preds, no_inf_cp);
       ic->ic_after_test = inf_after_test;
       ic->ic_after_test_arity = tst_dfe->dfe_arity = ic->ic_arity / filter_ic.ic_arity;
       tst_dfe->dfe_unit = COL_PRED_COST;

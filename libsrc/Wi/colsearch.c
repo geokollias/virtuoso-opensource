@@ -179,12 +179,12 @@ itc_col_free (it_cursor_t * itc)
 
 
 void
-col_make_map (page_map_t ** pm_ret, db_buf_t str, int head, int buf_len)
+col_make_map (buffer_desc_t * buf, page_map_t ** pm_ret, db_buf_t str, int head, int buf_len)
 {
   page_map_t *pm = *pm_ret;
   int fill = 0;
   if (!pm)
-    pm = (page_map_t *) resource_get (PM_RC (PM_SZ_1));
+    pm = (page_map_t *) pm_get (buf, (PM_SZ_1));
   pm->pm_bytes_free = buf_len;
   pm->pm_filled_to = head;
   DO_CE (ce, bytes, values, ce_type, flags, str + head, buf_len)
@@ -194,7 +194,7 @@ col_make_map (page_map_t ** pm_ret, db_buf_t str, int head, int buf_len)
     if (fill + 1 >= pm->pm_size)
       {
 	pm->pm_count = fill;
-	map_resize (&pm, PM_SIZE (fill + 2));
+	map_resize (buf, &pm, PM_SIZE (fill + 2));
       }
     pm->pm_entries[fill] = ce - str;
     pm->pm_entries[fill + 1] = values;
@@ -211,7 +211,7 @@ col_make_map (page_map_t ** pm_ret, db_buf_t str, int head, int buf_len)
 void
 pg_make_col_map (buffer_desc_t * buf)
 {
-  col_make_map (&buf->bd_content_map, buf->bd_buffer, DP_DATA, PAGE_DATA_SZ);
+  col_make_map (buf, &buf->bd_content_map, buf->bd_buffer, DP_DATA, PAGE_DATA_SZ);
 }
 
 
@@ -2464,9 +2464,9 @@ itc_matches_by_locks (it_cursor_t * itc, buffer_desc_t * buf, int *n_rows_ret)
   itc->itc_col_need_preimage = 0;
   if (COL_NO_ROW == rng.r_end)
     {
-      rng.r_end = itc_rows_in_seg (itc, buf);
-      if (n_rows_ret)
-	*n_rows_ret = rng.r_end;
+      if (COL_NO_ROW == *n_rows_ret)
+	*n_rows_ret = itc_rows_in_seg (itc, buf);
+      rng.r_end = *n_rows_ret;
     }
   itc->itc_n_matches = 0;
   if (!clk && rng.r_end <= next)
@@ -2693,7 +2693,32 @@ itc_g_no_perm (it_cursor_t * itc, buffer_desc_t * buf)
 }
 
 
+index_tree_t *
+itc_sec_in (it_cursor_t * itc, buffer_desc_t * buf, hash_range_spec_t * hrng)
+{
+  /*  get  the sec token's hash table for rd/wr perms */
+  index_tree_t *tree;
+  QNCAST (QI, qi, itc->itc_out_state);
+  cl_op_t *sec = qi->qi_client->cli_sec;
+  if (!sec)
+    itc_g_no_perm (itc, buf);
+  tree = (HRNG_RD_SEC & hrng->hrng_flags) ? sec->_.sec.g_rd : sec->_.sec.g_wr;
+  if (!tree)
+    itc_g_no_perm (itc, buf);
+  qst_set (itc->itc_out_state, hrng->hrng_ht, box_copy ((caddr_t) tree));
+  return tree;
+}
+
+
 extern int dbf_ignore_uneven_col;
+
+void
+itc_no_hi (it_cursor_t * itc, buffer_desc_t * buf)
+{
+  itc->itc_ltrx->lt_error = LTE_SQL_ERROR;
+  itc->itc_ltrx->lt_status = LT_BLOWN_OFF;
+  itc_bust_this_trx (itc, &buf, ITC_BUST_THROW);
+}
 
 int
 itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_in_singles)
@@ -2705,7 +2730,7 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
   row_range_t rng;
   int n_keys = itc->itc_insert_key->key_n_significant, n_out, row, n, init_out_dc_fill;
   int col_inx, n_used, stop_in_mid_seg = 0, nth_page, r, target;
-  int end, rows_in_seg = -1;
+  int end, rows_in_seg = itc->itc_rows_in_seg;
   int initial_set = itc->itc_set, initial_n_matches = 0, nth_sp;
   int64 check_start_ts = 0;
   char do_sp_stat = itc->itc_n_row_specs > 1;
@@ -2739,7 +2764,8 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
 	{
 	  if (COL_NO_ROW == cpo.cpo_range->r_end)
 	    {
-	      rows_in_seg = itc_rows_in_seg (itc, buf);
+	      if (COL_NO_ROW == rows_in_seg)
+		rows_in_seg = itc_rows_in_seg (itc, buf);
 	      n = rows_in_seg - cpo.cpo_range->r_first;
 	    }
 	  if (itc->itc_batch_size - itc->itc_n_results < n)
@@ -2796,6 +2822,10 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
 	      if (hrng->hrng_ht_id)
 		{
 		  index_tree_t *it = qst_get_chash (inst, hrng->hrng_ht, hrng->hrng_ht_id, NULL);
+		  if (!it && ((HRNG_SEC | HRNG_RD_SEC) & hrng->hrng_flags))
+		    it = itc_sec_in (itc, buf, hrng);
+		  if (!it)
+		    itc_no_hi (itc, buf);
 		  cpo.cpo_chash = it->it_hi->hi_chash;
 		  cpo.cpo_chash_dtp = cpo.cpo_chash->cha_sqt[0].sqt_dtp;
 		}
@@ -2839,7 +2869,7 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
       cr = itc->itc_col_refs[sp->sp_cl.cl_nth - n_keys];
       if (!cr->cr_is_valid)
 	itc_fetch_col (itc, buf, &sp->sp_cl, 0, COL_NO_ROW);
-      if (-1 == rows_in_seg)
+      if (COL_NO_ROW == rows_in_seg)
 	{
 	  rows_in_seg = itc->itc_rows_in_seg = cr_n_rows (cr);
 	  if (!is_singles)
@@ -2945,7 +2975,7 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
     {
       if (COL_NO_ROW == cpo.cpo_range->r_end)
 	{
-	  if (-1 == rows_in_seg)
+	  if (COL_NO_ROW == rows_in_seg)
 	    rows_in_seg = itc_rows_in_seg (itc, buf);
 	  if (cpo.cpo_range->r_first >= rows_in_seg)
 	    itc->itc_is_multiseg_set = 0;
@@ -2976,7 +3006,7 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
       else if (COL_NO_ROW != cpo.cpo_range->r_end)
 	range_end = cpo.cpo_range->r_end;
       else
-	range_end = -1 != rows_in_seg ? rows_in_seg : (rows_in_seg = itc_rows_in_seg (itc, buf));
+	range_end = COL_NO_ROW != rows_in_seg ? rows_in_seg : (rows_in_seg = itc_rows_in_seg (itc, buf));
       itc->itc_ltrx->lt_client->cli_activity.da_seq_rows += range_end - cpo.cpo_range->r_first - 1;
     }
   init_out_dc_fill = itc->itc_n_results;
@@ -3019,7 +3049,7 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
   if (ISO_REPEATABLE == itc->itc_isolation || (ISO_COMMITTED == itc->itc_isolation && PL_EXCLUSIVE == itc->itc_lock_mode)
       || (ISO_SERIALIZABLE == itc->itc_isolation && itc->itc_row_specs))
     {
-      if (!itc->itc_n_matches && -1 == rows_in_seg)
+      if (!itc->itc_n_matches && COL_NO_ROW == rows_in_seg)
 	rows_in_seg = itc_rows_in_seg (itc, buf);
       itc_col_lock (itc, buf, n_used, 1);
     }
@@ -3295,6 +3325,7 @@ itc_col_row_check (it_cursor_t * itc, buffer_desc_t ** buf_ret, dp_addr_t * leaf
 start:
   buf = *buf_ret;
   clk = NULL;
+  itc->itc_rows_in_seg = COL_NO_ROW;
   wait = CLK_NO_WAIT;
   first_set = itc->itc_set;
   row = BUF_ROW (buf, itc->itc_map_pos);
@@ -3414,6 +3445,7 @@ itc_col_count (it_cursor_t * itc, buffer_desc_t * buf, int *row_match_ctr)
   int inx, row_matches;
   int inx_spec_in_row_spec = 0;
   search_spec_t *prev_row_sp = itc->itc_row_specs;
+  itc->itc_rows_in_seg = COL_NO_ROW;
   itc->itc_col_row = COL_NO_ROW;
 #if 0
   for (inx = 0; inx < itc->itc_search_par_fill; inx++)

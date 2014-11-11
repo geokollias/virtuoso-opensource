@@ -206,6 +206,12 @@ sqlo_rdfs_type_card (df_elt_t * tb_dfe, df_elt_t * p_dfe, df_elt_t * o_dfe)
 
 
 int
+st_ignore_pred (ST * tree)
+{
+  return st_is_call (tree, "isiri_id", 1) || st_is_call (tree, "is_named_iri_id", 1);
+}
+
+int
 dfe_is_iri_id_test (df_elt_t * pred)
 {
   df_elt_t *rhs;
@@ -215,8 +221,8 @@ dfe_is_iri_id_test (df_elt_t * pred)
   if (DFE_BOP_PRED != pred->dfe_type || BOP_EQ != pred->_.bin.op || 0 != unbox ((ccaddr_t) pred->_.bin.left->dfe_tree))
     return 0;
   rhs = pred->_.bin.right;
-  if (st_is_call (rhs->dfe_tree, "isiri_id", 1)
-      || (DFE_BOP == rhs->dfe_type && rhs->_.bin.right && st_is_call (rhs->_.bin.right->dfe_tree, "isiri_id", 1)))
+  if (st_ignore_pred (rhs->dfe_tree)
+      || (DFE_BOP == rhs->dfe_type && rhs->_.bin.right && st_ignore_pred (rhs->_.bin.right->dfe_tree)))
     return 1;
   return 0;
 }
@@ -295,7 +301,6 @@ jp_fanout (join_plan_t * jp)
   oid_t cols[10];
   dbe_column_t *o_col = NULL;
   int jinx, p_found;
-  float p_stat[4];
   if (dfe_is_quad (jp->jp_tb_dfe))
     {
       dk_set_t parts = NULL;
@@ -1069,7 +1074,7 @@ dfe_hash_fill_score (sqlo_t * so, op_table_t * ot, df_elt_t * tb_dfe, join_plan_
 
 int enable_hash_fill_join = 1;
 int enable_subq_cache = 1;
-
+int sq_hash_fill_hit, sq_hash_fill_miss;
 
 ST *
 sqlo_pred_tree (df_elt_t * dfe)
@@ -1751,6 +1756,7 @@ sqlo_hash_fill_join (sqlo_t * so, df_elt_t * hash_ref_tb, df_elt_t ** fill_ret, 
     }
   if (sqc_place)
     {
+      sq_hash_fill_hit++;
       fill_copy = sqlo_layout_copy (so, *sqc_place, hash_ref_tb);
     }
   else
@@ -1761,6 +1767,7 @@ sqlo_hash_fill_join (sqlo_t * so, df_elt_t * hash_ref_tb, df_elt_t ** fill_ret, 
 	  NULL, NULL, NULL, NULL, NULL, NULL, NULL);
       ST *sel = t_listst (5, SELECT_STMT, NULL, t_list_to_array (hash_keys), NULL, texp);
       op_table_t *fill_ot;
+      sq_hash_fill_miss++;
       DO_SET (df_elt_t *, dfe, &top_jp->jp_hash_fill_preds) t_st_and (&pred_tree, sqlo_pred_tree (dfe));
       END_DO_SET ();
       DO_SET (ST *, exists, &top_jp->jp_hash_fill_exists) t_st_and (&pred_tree, exists);
@@ -1914,7 +1921,7 @@ so_ensure_subq_cache (sqlo_t * so)
     so->so_subq_cache = t_id_hash_allocate (101, sizeof (caddr_t), sizeof (caddr_t), strhash, strhashcmp);
 }
 
-#define CAN_CACHE(xx) { if (dfe_pred_body_cacheable (dfe->_.xx)) return 0;}
+#define CAN_CACHE(xx) { if (!dfe_pred_body_cacheable (dfe->_.xx)) return 0;}
 
 
 int
@@ -2029,7 +2036,7 @@ dfe_is_cacheable (df_elt_t * dfe)
 }
 
 
-int sq_cache_hit, sq_cache_miss;
+int sq_cache_hit, sq_cache_miss, sq_non_cacheable;
 
 df_elt_t *
 sqlo_dt_cache_lookup (sqlo_t * so, op_table_t * ot, dk_set_t imp_preds, caddr_t * cc_key_ret)
@@ -2069,7 +2076,10 @@ void
 sqlo_dt_cache_add (sqlo_t * so, caddr_t cc_key, df_elt_t * copy)
 {
   if (!dfe_is_cacheable (copy))
-    return;
+    {
+      sq_non_cacheable++;
+      return;
+    }
   copy = sqlo_layout_copy (so, copy, NULL);
   t_id_hash_set (so->so_subq_cache, (caddr_t) & cc_key, (caddr_t) & copy);
 }

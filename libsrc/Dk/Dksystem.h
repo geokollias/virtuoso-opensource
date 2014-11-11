@@ -37,6 +37,20 @@
 # include "Dkconfig.h"
 #endif
 
+#ifndef NO_THREAD
+# if defined (WITH_PTHREADS) || defined (PTHREAD)
+#  include <pthread.h>
+#  ifndef _REENTRANT
+#   define _REENTRANT
+#  endif
+#  ifndef PTHREAD
+#   define PTHREAD
+#  endif
+#  define PREEMPT
+# endif
+#endif
+
+
 #if !defined (NO_THREAD) && defined (WITH_PTHREADS) && !defined (_REENTRANT)
 #define _REENTRANT
 #endif
@@ -184,5 +198,75 @@ char *strtok_r ();
 #else
 # define DK_INLINE
 #endif
+
+
+/*
+ *  Mac OS X Universal build (Mac OS X 10.4U)
+ *
+ *  We cannot rely on config.h to provide all settings, so we need to
+ *  overrule them at compile time.
+ */
+#if defined (__APPLE__)
+
+/*
+ *  Avoid compiler warnings about duplicate defines
+ */
+#  undef	SIZEOF_INT
+#  undef	SIZEOF_LONG
+#  undef 	SIZEOF_CHAR_P
+#  undef	SIZEOF_VOID_P
+#  undef	POINTER_64
+#  undef	WORDS_BIGENDIAN
+
+# if defined (__ppc64__)
+
+#  define	SIZEOF_INT 	4
+#  define	SIZEOF_LONG 	8
+#  define	SIZEOF_CHAR_P 	8
+#  define	SIZEOF_VOID_P 	8
+
+#  define	WORDS_BIGENDIAN 1
+#  ifndef _BIG_ENDIAN
+#   define	_BIG_ENDIAN
+#  endif
+
+#  define	POINTER_64
+
+# elif defined (__x86_64__)
+
+#  define	SIZEOF_INT 	4
+#  define	SIZEOF_LONG 	8
+#  define	SIZEOF_CHAR_P 	8
+#  define	SIZEOF_VOID_P 	8
+
+#  undef	_BIG_ENDIAN
+
+#  define	POINTER_64
+
+# elif defined (__ppc__)
+
+#  define	SIZEOF_INT 	4
+#  define	SIZEOF_LONG 	4
+#  define	SIZEOF_CHAR_P 	4
+#  define	SIZEOF_VOID_P 	4
+
+#  define	WORDS_BIGENDIAN 1
+#  ifndef _BIG_ENDIAN
+#   define	_BIG_ENDIAN
+#  endif
+
+# elif defined (__i386__)
+
+#  define	SIZEOF_INT 	4
+#  define	SIZEOF_LONG 	4
+#  define	SIZEOF_CHAR_P 	4
+#  define	SIZEOF_VOID_P 	4
+
+#  undef	_BIG_ENDIAN
+
+# else
+# error "Unknown APPLE architecture"
+# endif
+#endif /* __APPLE__ */
 
 #endif

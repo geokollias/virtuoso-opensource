@@ -219,10 +219,10 @@ gb_agg_any (setp_node_t * setp, caddr_t * inst, chash_t * cha, int64 ** groups, 
 	  }
 	case AMMSC_USER:
 	  {
-	    caddr_t old_val, new_val;
+	    index_tree_t *tree = QST_BOX (index_tree_t *, inst, setp->setp_ha->ha_tree->ssl_index);	/* always single tree */
+	    caddr_t old_val;
 	    /* no group sets in this case, no filtering out of null params and their groups */
-	    old_val = QST_GET_V (inst, op->go_old_val) = dep_ptr[0];
-	    dep_ptr[0] = NULL;
+	    old_val = go_ua_start (inst, op, tree, dep_ptr);
 	    if (NULL == old_val)
 	      {
 		qst_set (inst, op->go_old_val, NEW_DB_NULL);
@@ -233,11 +233,7 @@ gb_agg_any (setp_node_t * setp, caddr_t * inst, chash_t * cha, int64 ** groups, 
 		code_vec_run_this_set (op->go_ua_init_setp_call, inst);
 	      }
 	    code_vec_run_this_set (op->go_ua_acc_setp_call, inst);
-	    new_val = QST_GET_V (inst, op->go_old_val);
-	    if (NULL == new_val)
-	      new_val = box_num_nonull (0);
-	    dep_ptr[0] = new_val;
-	    QST_GET_V (inst, op->go_old_val) = NULL;
+	    go_ua_store (inst, op, tree, dep_ptr);
 	    break;
 	  }
 	}
@@ -442,7 +438,7 @@ gb_aggregate (setp_node_t * setp, caddr_t * inst, chash_t * cha, int64 ** groups
 	CHA_AGG_MAX (double, <);
       default:
       any_case:
-	if (DV_ARRAY_OF_POINTER != cha->cha_sqt[dep_inx].sqt_dtp)
+	if (DV_ARRAY_OF_POINTER != cha->cha_sqt[dep_inx].sqt_dtp && AMMSC_USER != go->go_op)
 	  cha_gb_any (cha, dep_inx);
 	gb_agg_any (setp, inst, cha, groups, n_sets, first_set, base_set, sets, group_sets, dep_inx, go);
 	break;
@@ -1087,12 +1083,13 @@ cha_fixed (chash_t * cha, data_col_t * dc, int set, int *is_null)
   *is_null = (dc->dc_any_null && dc->dc_nulls && BIT_IS_SET (dc->dc_nulls, set))
 
 int64
-setp_non_agg_dep (setp_node_t * setp, caddr_t * inst, int nth_col, int set, char *is_null)
+setp_non_agg_dep (setp_node_t * setp, caddr_t * inst, int nth_col, int set, char *is_null, dtp_t * dtp_ret)
 {
   /* gb has after aggs non-agg non-key dependents.  Set when creating the group */
   state_slot_t *ssl = setp->setp_ha->ha_slots[nth_col];
   data_col_t *dc = QST_BOX (data_col_t *, inst, ssl->ssl_index);
   set = sslr_set_no (inst, ssl, set);
+  *dtp_ret = dc->dc_dtp;
   switch (dc->dc_dtp)
     {
     case DV_ANY:
@@ -1133,11 +1130,45 @@ cha_is_null (setp_node_t * setp, caddr_t * inst, int nth_col, int row_no)
   return dc_is_null (dc, row_no);
 }
 
+
+int64
+dv_from_dc_val (dtp_t * temp, int64 val, dtp_t dtp)
+{
+  double dbl;
+  float flt;
+  switch (dtp)
+    {
+    case DV_LONG_INT:
+      dv_from_int (temp, val);
+      return (int64) temp;
+    case DV_IRI_ID:
+      dv_from_iri (temp, val);
+      return (int64) temp;
+    case DV_DOUBLE_FLOAT:
+      temp[0] = DV_DOUBLE_FLOAT;
+      dbl = *(double *) &val;
+      DOUBLE_TO_EXT (&temp[1], &dbl);
+      return (int64) temp;
+    case DV_SINGLE_FLOAT:
+      temp[0] = DV_SINGLE_FLOAT;
+      flt = *(float *) &val;
+      FLOAT_TO_EXT (&temp[1], &flt);
+      return temp;
+    case DV_DATETIME:
+      temp[0] = DV_DATETIME;
+      memcpy_dt (temp + 1, val);
+      return (int64) temp;
+    }
+  return val;
+}
+
+
 void
 cha_gb_dep_col (setp_node_t * setp, caddr_t * inst, hash_area_t * ha, chash_t * cha, int64 * row, int nth_col, int row_no, int base)
 {
+  dtp_t dtp = 0;
   char is_null = 0;
-  int64 val = setp_non_agg_dep (setp, inst, nth_col, row_no + base, &is_null);
+  int64 val = setp_non_agg_dep (setp, inst, nth_col, row_no + base, &is_null, &dtp);
   if (vec_box_dtps[cha->cha_sqt[nth_col].sqt_dtp])
     {
       QNCAST (QI, qi, inst);
@@ -1184,7 +1215,10 @@ cha_gb_dep_col (setp_node_t * setp, caddr_t * inst, hash_area_t * ha, chash_t * 
     }
   else if (DV_ANY == cha->cha_sqt[nth_col].sqt_dtp)
     {
-      row[nth_col] = (ptrlong) cha_any (cha, (db_buf_t) (ptrlong) val);
+      dtp_t temp[20];
+      int64 val2 = val;
+      val2 = dv_from_dc_val (temp, val, dtp);
+      row[nth_col] = (ptrlong) cha_any (cha, (db_buf_t) (ptrlong) val2);
     }
   else if (DV_DATETIME == cha->cha_sqt[nth_col].sqt_dtp)
     {
@@ -2497,7 +2531,7 @@ cha_allocate (setp_node_t * setp, caddr_t * inst, int64 card)
 	    if (inx >= ha->ha_n_keys)
 	      go = (gb_op_t *) dk_set_nth (setp->setp_gb_ops, inx - ha->ha_n_keys);
 	    if (go && go->go_ua_arglist)
-	      dtp = DV_ARRAY_OF_POINTER;
+	      dtp = DV_ANY;
 	    else
 	      dtp = cha_gb_dtp (dc->dc_dtp, inx < ha->ha_n_keys, go);
 	    cha->cha_sqt[inx].sqt_dtp = dtp;
@@ -7123,11 +7157,6 @@ ce_hash_range_filter (col_pos_t * cpo, db_buf_t ce_first, int n_values, int n_by
       dc_off = sizeof (caddr_t);
     }
   fetch_cpo.cpo_dc = dc;
-  if (0 && !itc->itc_col_need_preimage && CE_RL == (flags & CE_TYPE_MASK))
-    {
-      rl = n_values;
-      n_values = 1;
-    }
   ce_hash_dc (&fetch_cpo, ce, ce_first, n_values, n_bytes, &dc_off, hrng);
   n_values = dc->dc_n_values - (dc_off / sizeof (caddr_t));
   DC_OR_AUTO (uint64, hash_no, n_values, hash_no_auto, dc);
@@ -7190,31 +7219,23 @@ ret_sets:
       for (inx = 0; inx < n_values; inx++)
 	matches[inx] += add_ce_row;
     }
-  if (rl > 1)
-    {
-      row_no_t last = itc->itc_matches[itc->itc_match_out - 1];
-      for (inx = 1; inx < rl; inx++)
-	{
-	  itc->itc_matches[itc->itc_match_out++] = last;
-	  last++;
-	}
-      n_values += rl - 1;
-    }
   itc->itc_match_out += n_values;
   return ce_row + org_n_values;
 }
 
+#define MAX_CE_HASH_SETS 0xfff0
+
 
 int
-ce_hash_sets_filter (col_pos_t * cpo, db_buf_t ce_first, int n_values, int n_bytes)
+ce_hash_sets_filter (col_pos_t * cpo, db_buf_t ce_first, int n_values_1, int n_bytes)
 {
+  int n_values = n_values_1;
   int rl = 1, last_v, max_values;
   db_buf_t ce = cpo->cpo_ce;
   dtp_t flags = ce[0];
   int dc_off = 0, inx;
   it_cursor_t *itc = cpo->cpo_itc;
   int init_in = itc->itc_match_in;
-  int post_in = -1;
   search_spec_t *sp = itc->itc_col_spec;
   hash_range_spec_t *hrng = (hash_range_spec_t *) sp->sp_min_ssl;
   caddr_t *inst = itc->itc_out_state;
@@ -7227,6 +7248,7 @@ ce_hash_sets_filter (col_pos_t * cpo, db_buf_t ce_first, int n_values, int n_byt
   data_col_t *dc = QST_BOX (data_col_t *, inst, hrng->hrng_dc->ssl_index);
   col_pos_t fetch_cpo = *cpo;
   chash_t *cha = cpo->cpo_chash;
+  char more_in_ce = 0;
 #if 0
   if (!(HR_RANGE_ONLY & hrng->hrng_flags))
     ce_hash_out[ce_hash_out_fill++] = itc->itc_match_out;
@@ -7244,27 +7266,18 @@ ce_hash_sets_filter (col_pos_t * cpo, db_buf_t ce_first, int n_values, int n_byt
       dc_off = sizeof (caddr_t);
     }
   fetch_cpo.cpo_value_cb = ce_result;
-  if (0 && !itc->itc_col_need_preimage && CE_RL == (flags & CE_TYPE_MASK) && n_values > 1)
-    {
-      for (inx = itc->itc_match_in; inx < itc->itc_n_matches; inx++)
-	{
-	  if (ce_row + n_values <= itc->itc_matches[inx])
-	    break;
-	}
-      post_in = inx;
-      rl = inx - init_in;
-      n_values = 1;
-      last_v = itc->itc_matches[init_in] + 1;
-    }
-  else
-    last_v = n_values + ce_row;
+  last_v = n_values + ce_row;
   fetch_cpo.cpo_dc = dc;
   ce_hash_dc (&fetch_cpo, ce, ce_first, n_values, n_bytes, &dc_off, hrng);
   n_values = dc->dc_n_values - (dc_off / sizeof (caddr_t));
+  if (n_values > MAX_CE_HASH_SETS)
+    {
+      itc->itc_match_in -= n_values - MAX_CE_HASH_SETS;
+      n_values = MAX_CE_HASH_SETS;
+      more_in_ce = 1;
+    }
   DC_OR_AUTO (uint64, hash_no, n_values, hash_no_auto, dc);
   DC_OR_AUTO (row_no_t, matches, n_values, matches_auto, dc);
-  if (post_in != -1)
-    itc->itc_match_in = post_in;
   chash_array_0 ((int64 *) (dc->dc_values + dc_off), hash_no, dc->dc_dtp, 0, n_values, dc_elt_size (dc));
   if (hrng->hrng_min)
     {
@@ -7282,7 +7295,7 @@ ce_hash_sets_filter (col_pos_t * cpo, db_buf_t ce_first, int n_values, int n_byt
 	}
       n_values = fill;
       if (!n_values)
-	return itc->itc_match_in >= itc->itc_n_matches ? CE_AT_END : itc->itc_matches[itc->itc_match_in];
+	goto ret_empty;
       if (HR_RANGE_ONLY & hrng->hrng_flags)
 	goto ret_sets;
       if (cha->cha_bloom)
@@ -7293,12 +7306,12 @@ ce_hash_sets_filter (col_pos_t * cpo, db_buf_t ce_first, int n_values, int n_byt
   else
     asc_row_nos (matches, 0, n_values);
   if (!n_values)
-    return itc->itc_match_in >= itc->itc_n_matches ? CE_AT_END : itc->itc_matches[itc->itc_match_in];
+    goto ret_empty;
   if (dc->dc_any_null)
     {
       n_values = dc_hash_nulls (dc, matches, n_values);
       if (!n_values)
-	return itc->itc_match_in >= itc->itc_n_matches ? CE_AT_END : itc->itc_matches[itc->itc_match_in];
+	goto ret_empty;
     }
   if (!(HRNG_IN & hrng->hrng_flags) && (!hrng->hrng_hs || sp->sp_max_op == CMP_HASH_RANGE_ONLY))
     goto ret_sets;
@@ -7311,7 +7324,7 @@ ce_hash_sets_filter (col_pos_t * cpo, db_buf_t ce_first, int n_values, int n_byt
     n_values = cha_inline_any (hrng->hrng_hs, cha, itc, matches, n_values, hash_no, 0, rl, dc);
   dc->dc_values -= dc_off;
   if (!n_values)
-    return itc->itc_match_in >= itc->itc_n_matches ? CE_AT_END : itc->itc_matches[itc->itc_match_in];
+    goto ret_empty;
 
 ret_sets:
   if (1 == rl)
@@ -7325,6 +7338,9 @@ ret_sets:
       for (inx = 0; inx < rl; inx++)
 	itc->itc_matches[itc->itc_match_out++] = itc->itc_matches[init_in + inx];
     }
+ret_empty:
+  if (more_in_ce)
+    return ce_hash_sets_filter (cpo, ce_first, n_values_1, n_bytes);
   return itc->itc_match_in >= itc->itc_n_matches ? CE_AT_END : itc->itc_matches[itc->itc_match_in];
 }
 
@@ -7581,13 +7597,13 @@ void
 sp_set_last (search_spec_t ** list_ret, search_spec_t ** sp_ret)
 {
   search_spec_t **prev = list_ret;
-  search_spec_t *sp = *list_ret;
+  search_spec_t *sp = *list_ret, *move_sp = *sp_ret;
+  if (!move_sp->sp_next)
+    return;			/* alrteady last */
   for (sp = *list_ret; sp; (prev = &sp->sp_next, sp = sp->sp_next));
-  if (prev == sp_ret)
-    return;
-  *sp_ret = (*sp_ret)->sp_next;
-  (*sp_ret)->sp_next = NULL;
-  *prev = *sp_ret;
+  *sp_ret = move_sp->sp_next;
+  move_sp->sp_next = NULL;
+  *prev = move_sp;
 }
 
 void
@@ -7603,7 +7619,7 @@ itc_hash_spec_order (search_spec_t ** sp_ret)
 	  QNCAST (hash_range_spec_t, hrng, sp->sp_min_ssl);
 	  if ((HRNG_SEC & hrng->hrng_flags))
 	    sec = prev;
-	  else if (!hrng->hrng_hs && hrng->hrng_hs->hs_ha->ha_n_deps)
+	  else if (hrng->hrng_hs && hrng->hrng_hs->hs_ha->ha_n_deps)
 	    val = prev;
 	}
     }

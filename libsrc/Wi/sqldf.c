@@ -587,6 +587,12 @@ sqlo_push_pred (sqlo_t * so, df_elt_t * dfe)
       so->so_this_dt->ot_preds = NULL;
       dfe = sqlo_wrap_dfe_true_or_false (so, c);
     }
+  if (enable_g_in_sec)
+    {
+      df_elt_t **in_list = sqlo_in_list (dfe, NULL, NULL);
+      if (in_list && st_is_call (in_list[1]->dfe_tree, "rgs_user_perms_clo", 2))
+	return;
+    }
   t_set_push (&so->so_this_dt->ot_preds, (void *) dfe);
 }
 

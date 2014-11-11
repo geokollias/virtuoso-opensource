@@ -809,7 +809,7 @@ typedef struct table_source_s
   ts_alt_func_t ts_alternate_test;
   struct table_source_s *ts_alternate;
   state_slot_t *ts_alternate_cd;
-  caddr_t ts_sort_read_mask;	/* array of char flags.  Set if in reading sort temp the item at the place goes into the output */
+  caddr_t ts_sort_read_mask;	/* array of char flags.  Set if in reading sort temp the item at the place goes into the output. For gby, set if user aggregate with a dv serialization in the ht */
   struct file_source_s *ts_fs;
   short ts_max_rows;		/* if last of top n and a single state makes this many, then can end whole set */
   short ts_prefetch_rows;	/* recommend cluster end batch   after this many because top later */
@@ -2015,6 +2015,7 @@ typedef struct client_connection_s
   int cli_inprocess;
 #endif
   uint32 cli_start_time;
+  uint32 cli_ws_check_time;
   caddr_t *cli_info;
   cl_thread_t *cli_clt;		/* if cli of a cluster server thread, this is the clt */
   struct aq_request_s *cli_aqr;	/* if the cli is running an aq func, this is the aqr */

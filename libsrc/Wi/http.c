@@ -4950,7 +4950,7 @@ http_session_no_catch_arg (caddr_t * qst, state_slot_t ** args, int nth, const c
 caddr_t
 http_path_to_array (char *path, int mode)
 {
-  int n_fill, inx;
+  int n_fill, inx, max;
   unsigned char ch;
   char name[PATH_ELT_MAX_CHARS];
   dk_set_t paths = NULL;
@@ -4958,6 +4958,7 @@ http_path_to_array (char *path, int mode)
   n_fill = 0;
   if (!path)
     return NULL;
+  max = strlen (path);
   for (;;)
     {
       ch = path[inx++];
@@ -4977,6 +4978,11 @@ http_path_to_array (char *path, int mode)
 	}
       else if (ch == '%')
 	{
+	  if (inx >= max || (inx + 1) >= max)
+	    {
+	      name[n_fill++] = ch;
+	      break;
+	    }
 	  name[n_fill++] = char_hex_digit (path[inx + 0]) * 16 + char_hex_digit (path[inx + 1]);
 	  inx += 2;
 	}
@@ -11614,14 +11620,14 @@ cli_check_ws_terminate (client_connection_t * cli)
     {
       if (!SESSTAT_ISSET (cli->cli_ws->ws_session->dks_session, SST_OK) || cli->cli_ws->ws_session->dks_to_close)
 	return 1;
-      else if (cli->cli_start_time &&
-	  time_now_msec - cli->cli_start_time > HTTP_TERMINATE_CHECK_TIMEOUT &&
+      else if (cli->cli_ws_check_time &&
+	  time_now_msec - cli->cli_ws_check_time > HTTP_TERMINATE_CHECK_TIMEOUT &&
 	  cli->cli_ws->ws_session->dks_in_fill < cli->cli_ws->ws_session->dks_in_length)
 	{
 	  ws_connection_t *ws = cli->cli_ws;
 	  timeout_t to = { 0, 0 };
 
-	  cli->cli_start_time = time_now_msec;
+	  cli->cli_ws_check_time = time_now_msec;
 
 	  if (SER_SUCC == tcpses_is_read_ready (ws->ws_session->dks_session, &to))
 	    {
