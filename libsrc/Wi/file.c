@@ -1235,7 +1235,7 @@ dk_base_tlsf_string (char *str)
 {
   caddr_t box;
   int len = strlen (str);
-  WITH_TLSF (base_tlsf)
+  WITH_TLSF (dk_base_tlsf)
   {
     box = dk_alloc_box (len + 1, DV_STRING);
     memcpy (box, str, len);

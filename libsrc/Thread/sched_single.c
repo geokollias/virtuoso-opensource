@@ -279,6 +279,11 @@ mutex_free (dk_mutex_t *mtx)
 {
 }
 
+void
+dk_mutex_destroy (dk_mutex_t *mtx)
+{
+}
+
 
 #ifdef MTX_DEBUG
 int

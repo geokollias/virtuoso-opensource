@@ -32,6 +32,7 @@
 #endif
 #undef log
 #include "math.h"
+#include "tlsf.h"
 
 
 void
@@ -191,6 +192,8 @@ mp_free (mem_pool_t * mp)
     hash_table_free (mp->mp_box_to_dc);
 #endif
   mp_unregister (mp);
+  if (mp->mp_tlsf)
+    tlsf_destroy (mp->mp_tlsf); /*  supporting structs, the mmaps are part of mp large allocs */
   DO_SET (caddr_t, box, &mp->mp_trash)
   {
     dk_free_tree (box);
@@ -774,7 +777,7 @@ DBG_NAME (mp_box_num) (DBG_PARAMS mem_pool_t * mp, boxint n)
   if (!IS_POINTER (n))
     return (box_t) (ptrlong) n;
 
-  MP_INT (box, mp, n, DV_INT_TAG_WORD);
+  MP_INT (box, mp, n, DV_INT_TAG_WORD_64);
   return box;
 }
 
@@ -813,7 +816,7 @@ caddr_t
 DBG_NAME (mp_box_iri_id) (DBG_PARAMS mem_pool_t * mp, iri_id_t n)
 {
   caddr_t box;
-  MP_INT (box, mp, n, DV_IRI_TAG_WORD);
+  MP_INT (box, mp, n, DV_IRI_TAG_WORD_64);
   return box;
 }
 
@@ -822,7 +825,7 @@ caddr_t
 DBG_NAME (mp_box_double) (DBG_PARAMS mem_pool_t * mp, double n)
 {
   caddr_t box;
-  MP_DOUBLE (box, mp, n, DV_DOUBLE_TAG_WORD);
+  MP_DOUBLE (box, mp, n, DV_DOUBLE_TAG_WORD_64);
   return box;
 }
 
@@ -831,7 +834,7 @@ caddr_t
 DBG_NAME (mp_box_float) (DBG_PARAMS mem_pool_t * mp, float n)
 {
   caddr_t box;
-  MP_FLOAT (box, mp, n, DV_FLOAT_TAG_WORD);
+  MP_FLOAT (box, mp, n, DV_FLOAT_TAG_WORD_64);
   return box;
 }
 
@@ -1493,7 +1496,7 @@ mp_mmap_mark (void * __ptr, size_t sz, int flag)
 	  if (!flag && !map) GPF_T1 ("freeing mmap mark where no mapping");
 	  if (!map)
 	    {
-	      map = dk_pool_map[map_off] = dk_alloc (sizeof (dk_pool_4g_t));
+	      map = dk_pool_map[map_off] = malloc (sizeof (dk_pool_4g_t));
 	      memzero (map, sizeof (dk_pool_4g_t));
 	    }
 	}
@@ -1844,6 +1847,22 @@ mp_large_alloc (mem_pool_t * mp, size_t sz)
   sethash (ptr, &mp->mp_large, (void*)sz);
   return ptr;
 }
+
+
+void
+mp_set_tlsf (mem_pool_t * mp, size_t  sz)
+{
+  int nth;
+  size_t sz2 = mm_next_size (sz, &nth);
+  void* area = mp_large_alloc (mp, sz2);
+  init_memory_pool (sz2, area);
+  mp->mp_tlsf = (tlsf_t*)area;
+  mp->mp_tlsf->tlsf_mp = mp;
+  mp->mp_tlsf->tlsf_id = TLSF_IN_MP;
+  mp->mp_tlsf->tlsf_grow_quantum = sz2;
+}
+
+
 
 void
 mm_free_sized (void* ptr, size_t sz)

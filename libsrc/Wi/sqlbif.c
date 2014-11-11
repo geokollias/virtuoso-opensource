@@ -5515,6 +5515,7 @@ bif_ucase (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     }
   return res;
 }
+<<<<<<< HEAD
 
 caddr_t
 bif_remove_unicode3_accents (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
@@ -5524,6 +5525,17 @@ bif_remove_unicode3_accents (caddr_t * qst, caddr_t * err_ret, state_slot_t ** a
   caddr_t res;
   int i;
 
+=======
+
+caddr_t
+bif_remove_unicode3_accents (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  caddr_t str = bif_string_or_uname_or_wide_or_null_arg (qst, args, 0, "remove_unicode3_accents");
+  long len;
+  caddr_t res;
+  int i;
+
+>>>>>>> feature/analytics
   if (NULL == str)
     return (NEW_DB_NULL);
   if (DV_WIDESTRINGP (str))
@@ -9331,7 +9343,7 @@ bif_page_dump (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       dbg_page_map (buf);
     }
   if (buf->bd_content_map)
-    resource_store (PM_RC (buf->bd_content_map->pm_size), (void *) buf->bd_content_map);
+    pm_store (buf, (buf->bd_content_map->pm_size), (void *) buf->bd_content_map);
 
   return 0;
 }
@@ -9424,6 +9436,65 @@ bif_new_allocs_after (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 
 #endif
 
+extern FILE *tlsf_fp;
+
+caddr_t
+bif_tlsf_dump_bp (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  char *dp = bif_string_or_null_arg (qst, args, 0, "tlsf_dump_bp");
+  FILE *fd = dp ? fopen (dp, "at") : stderr;
+  int inx;
+  tlsf_fp = fd;
+  DO_BOX (buffer_pool_t *, bp, inx, wi_inst.wi_bps)
+  {
+    fprintf (fd, "BP: %d\n", inx);
+    tlsf_print_all_blocks (bp->bp_tlsf, NULL, AB_ALL);
+  }
+  END_DO_BOX;
+  if (fd)
+    fclose (fd);
+  tlsf_fp = stderr;
+  return NULL;
+}
+
+
+void
+tlsf_dump_1 (ptrlong tlp, char *fn, id_hash_t * ht, int ht_mode)
+{
+  FILE *fd = fn ? fopen (fn, "at") : stderr;
+  tlsf_t *tlsf;
+  if (tlp > 0 && tlp < MAX_TLSFS)
+    tlsf = dk_all_tlsfs[tlp];
+  else
+    tlsf = (tlsf_t *) tlp;
+  tlsf_fp = fd;
+  tlsf_print_all_blocks (tlsf, ht, ht_mode);
+  if (fd)
+    fclose (fd);
+  tlsf_fp = stderr;
+  return NULL;
+}
+
+
+caddr_t
+bif_tlsf_dump (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  QNCAST (QI, qi, qst);
+  ptrlong tlp = bif_long_arg (qst, args, 0, "tlsf_dump");
+  char *fn = bif_string_or_null_arg (qst, args, 1, "tlsf_dump_bp");
+  id_hash_iterator_t *hit;
+  id_hash_t *ht = NULL;
+  int ht_mode = AB_ALLOCD;
+  if (BOX_ELEMENTS (args) > 2)
+    {
+      hit = bif_arg (qst, args, 2, "tlsf_dump");
+      ht_mode = bif_long_arg (qst, args, 3, "tlsf_dump");
+      if (DV_DICT_ITERATOR == DV_TYPE_OF (hit))
+	ht = hit->hit_hash;
+    }
+  tlsf_dump_1 (tlp, fn, ht, ht_mode);
+  return NULL;
+}
 
 
 caddr_t
@@ -9440,6 +9511,11 @@ bif_mem_get_current_total (caddr_t * qst, caddr_t * err_ret, state_slot_t ** arg
 caddr_t
 bif_mem_summary (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
+  char *dp = bif_string_or_null_arg (qst, args, 0, "mem_summary");
+  FILE *fd = dp ? fopen (dp, "at") : NULL;
+  tlsf_summary (fd ? fd : stderr);
+  if (fd)
+    fclose (fd);
   return NULL;
 }
 
@@ -16532,8 +16608,8 @@ sql_bif_init (void)
 #endif
   bif_define_ex ("mem_get_current_total", bif_mem_get_current_total, BMD_RET_TYPE, &bt_integer, BMD_DONE);
   bif_define ("mem_summary", bif_mem_summary);
-
-
+  bif_define ("tlsf_dump_bp", bif_tlsf_dump_bp);
+  bif_define ("tlsf_dump", bif_tlsf_dump);
 
 #ifdef MALLOC_STRESS
   bif_define ("set_hard_memlimit", bif_set_hard_memlimit);

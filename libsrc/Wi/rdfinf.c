@@ -341,19 +341,19 @@ char *tn_ifp_text =
 char *tn_ifp_no_graph_text =
     "select S from DB.DBA.RDF_QUAD "
     " where P in (rdf_inf_ifp_list (:1)) and o = :0 and not isiri_id (:0) and not rdf_inf_ifp_is_excluded (:1, P, :0) "
-    " union all select syn.s from DB.DBA.RDF_QUAD org, DB.DBA.RDF_QUAD syn "
+    " union all select syn.s from DB.DBA.RDF_QUAD org table option (index rdf_quad), DB.DBA.RDF_QUAD syn "
     " where org.P in (rdf_inf_ifp_list (:1)) and syn.P = org.P and org.S = :0 and isiri_id (:0) and syn.o = org.O and not rdf_inf_ifp_is_excluded (:1, org.P, org.O) "
     " union all select rsyn.s from DB.DBA.RDF_QUAD rorg table option (index RDF_QUAD), DB.DBA.RDF_QUAD rsyn table option (index RDF_QUAD_POGS)"
     " where rorg.P in (rdf_inf_ifp_rel_list (:1)) and rsyn.P in (rdf_inf_ifp_rel_list (:1, rorg.P)) and rorg.S = :0 and isiri_id (:0) and rsyn.o = rorg.O and not rdf_inf_ifp_is_excluded (:1, rorg.P, rorg.O) "
     " option (any order)";
 char *tn_ifp_dist_text =
-    " select syn.s from DB.DBA.RDF_QUAD org, DB.DBA.RDF_QUAD syn "
+    " select syn.s from DB.DBA.RDF_QUAD org table option (index rdf_quad), DB.DBA.RDF_QUAD syn "
     " where org.P in (rdf_inf_ifp_list (:1)) and syn.P = org.P and org.s = :0 and isiri_id (:0) and syn.O = org.O and org.G in (:2) and syn.G in (:2) and not rdf_inf_ifp_is_excluded (:1, org.P, org.O) "
     " union all select rsyn.S from DB.DBA.RDF_QUAD rorg, DB.DBA.RDF_QUAD rsyn "
     " where rorg.P in (rdf_inf_ifp_rel_list (:1)) and rsyn.P in (rdf_inf_ifp_rel_list (:1, rorg.P)) and rorg.S = :0 and isiri_id (:0) and rsyn.O = rorg.O and rorg.G in (:2) and rsyn.G in (:2) and not rdf_inf_ifp_is_excluded (:1, rorg.P, rorg.O) "
     " option (any order)";
 char *tn_ifp_dist_no_graph_text =
-    " select syn.s from DB.DBA.RDF_QUAD org, DB.DBA.RDF_QUAD syn where org.p in (rdf_inf_ifp_list (:1)) and syn.p = org.p and org.s = :0 and isiri_id (:0) and syn.o = org.o and not rdf_inf_ifp_is_excluded (:1, org.P, org.O) "
+    " select syn.s from DB.DBA.RDF_QUAD org table option (index rdf_quad), DB.DBA.RDF_QUAD syn where org.p in (rdf_inf_ifp_list (:1)) and syn.p = org.p and org.s = :0 and isiri_id (:0) and syn.o = org.o and not rdf_inf_ifp_is_excluded (:1, org.P, org.O) "
     " union all select rsyn.s from DB.DBA.RDF_QUAD rorg, DB.DBA.RDF_QUAD rsyn "
     " where rorg.P in (rdf_inf_ifp_rel_list (:1)) and rsyn.P in (rdf_inf_ifp_rel_list (:1, rorg.P)) and rorg.S = :0 and isiri_id (:0) and rsyn.o = rorg.O and not rdf_inf_ifp_is_excluded (:1, rorg.P, rorg.O) "
     " option (any order)";

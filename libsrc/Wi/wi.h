@@ -35,7 +35,11 @@
 //#define VOS
 #define NO_CL GPF_T1 ("not available without cluster support")
 
+<<<<<<< HEAD
 #define CSET 1
+=======
+#define PM_TLSF 1
+>>>>>>> feature/analytics
 #ifdef MALLOC_DEBUG
 //#define DC_BOXES_DBG
 #endif
@@ -204,6 +208,7 @@ struct buffer_pool_s
   int bp_n_clean[BP_N_BUCKETS];	/* bp_ts at the boundary between buckets */
   int bp_n_dirty[BP_N_BUCKETS];
   buffer_desc_t **bp_sort_tmp;
+  void *bp_tlsf;
 };
 
 
@@ -1468,6 +1473,7 @@ struct page_map_s
 
 
 /* the different standard sizes of page_map_t */
+#ifndef PM_TLSF
 #define PM_SZ_1 50
 #define PM_SZ_2 200
 #define PM_SZ_3 720
@@ -1476,6 +1482,25 @@ struct page_map_s
 
 #define PM_SIZE(ct) \
   (ct < PM_SZ_1 ? PM_SZ_1 : (ct < PM_SZ_2 ? PM_SZ_2 : (ct < PM_SZ_3 ? PM_SZ_3 : (ct <= PM_SZ_4 ? PM_SZ_4 : (GPF_T1 ("pm size overflow"), 0)))))
+#else
+
+#define PM_SZ_1 75
+#define PM_SZ_2 163
+#define PM_SZ_3 339
+#define PM_SZ_4 691
+#define PM_SZ_5 1395
+#define PM_SZ_6 2803
+
+#define PM_SIZE(ct) \
+    (ct < PM_SZ_1 ? PM_SZ_1 : \
+     (ct < PM_SZ_2 ? PM_SZ_2 : \
+      (ct < PM_SZ_3 ? PM_SZ_3 : \
+       (ct < PM_SZ_4 ? PM_SZ_4 : \
+	(ct < PM_SZ_5 ? PM_SZ_5 : \
+	 (ct <= PM_SZ_6 ? PM_SZ_6 : \
+	  (GPF_T1 ("pm size overflow"), 0)))))))
+
+#endif
 extern resource_t *pm_rc_1;
 extern resource_t *pm_rc_2;
 extern resource_t *pm_rc_3;

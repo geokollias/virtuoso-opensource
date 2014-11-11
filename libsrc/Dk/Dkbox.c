@@ -813,7 +813,6 @@ box_reuse (caddr_t box, ccaddr_t data, size_t len, dtp_t dtp)
     memcpy (box, data, len);
 }
 
-
 #ifdef DK_ALLOC_BOX_DEBUG
 void
 dk_check_tree_iter (box_t box, box_t parent, dk_hash_t * known)
@@ -830,7 +829,7 @@ dk_check_tree_iter (box_t box, box_t parent, dk_hash_t * known)
     GPF_T1 ("Tree contains a pointer to a freed box");
   if (TAG_BAD == tag)
     GPF_T1 ("Tree contains a pointer to a box marked bad");
-  if (!box_can_appear_twice_in_tree[tag])
+  if (known && !box_can_appear_twice_in_tree[tag])
     {
       box_t other_parent = gethash (box, known);
       if (NULL != other_parent)
@@ -840,8 +839,9 @@ dk_check_tree_iter (box_t box, box_t parent, dk_hash_t * known)
   if (IS_NONLEAF_DTP (tag))
     {
       box_t *obj = (box_t *) box;
-      for (count = box_length (box) / sizeof (box_t); count; count--)
-	dk_check_tree_iter (*obj++, box, known);
+      int len = box_length (box) / sizeof (box_t);
+      for (count = 0; count < len; count++)
+	dk_check_tree_iter (obj[count], box, known);
     }
   return;
 }
@@ -925,7 +925,6 @@ dk_check_domain_of_connectivity_iter (box_t box, box_t parent, dk_hash_t * known
   sethash (box, known, parent);
   return;
 }
-
 
 void
 dk_check_domain_of_connectivity (box_t box)
@@ -1661,7 +1660,7 @@ dtp_set_strong_cmp (dtp_t dtp, box_hash_cmp_func_t f)
 int
 box_equal (cbox_t b1, cbox_t b2)
 {
-  uint32 l1, l2;
+  uint32 l1, l2, bf1, bf2;
   dtp_t b1_tag, b2_tag;
   boxint b1_long_val = 0, b2_long_val = 0;
 
@@ -1718,8 +1717,23 @@ box_equal (cbox_t b1, cbox_t b2)
       return 1;
     }
   memcmp_8 (b1, b2, l1, neq);
-  if (DV_STRING == b1_tag && box_flags (b1) != box_flags (b2))
-    return 0;
+  bf1 = box_flags (b1);
+  bf2 = box_flags (b2);
+  if (bf1 != bf2)
+    {
+      if (DV_UNAME == b1_tag)
+        {
+          b1_tag = DV_STRING;
+          bf1 = BF_IRI;
+        }
+      if (DV_UNAME == b2_tag)
+        {
+          b2_tag = DV_STRING;
+          bf2 = BF_IRI;
+        }
+      if ((b1_tag != b2_tag) || (bf1 != bf2))
+        return 0;
+    }
   return 1;
  neq:
   return 0;
@@ -1730,7 +1744,7 @@ box_equal (cbox_t b1, cbox_t b2)
 int
 box_strong_equal (cbox_t b1, cbox_t b2)
 {
-  uint32 l1, l2;
+  uint32 l1, l2, bf1, bf2;
   dtp_t b1_tag, b2_tag;
   boxint b1_long_val = 0, b2_long_val = 0;
 
@@ -1789,8 +1803,24 @@ box_strong_equal (cbox_t b1, cbox_t b2)
       return 1;
     }
   memcmp_8 (b1, b2, l1, neq);
-  if (DV_STRING == b1_tag && box_flags (b1) != box_flags (b2))
-    return 0;
+  bf1 = box_flags (b1);
+  bf2 = box_flags (b2);
+  if (bf1 != bf2)
+    {
+      if (DV_UNAME == b1_tag)
+        {
+          b1_tag = DV_STRING;
+          bf1 = BF_IRI;
+        }
+      if (DV_UNAME == b2_tag)
+        {
+          b2_tag = DV_STRING;
+          bf2 = BF_IRI;
+        }
+      if ((b1_tag != b2_tag) || (bf1 != bf2))
+        return 0;
+    }
+  return 1;
   return 1;
  neq:
   return 0;

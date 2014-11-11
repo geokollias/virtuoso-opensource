@@ -51,6 +51,28 @@ struct basket_s
 #endif
 };
 
+#if 0
+#define DO_DELETE(type, var, start)  \
+	{ \
+	  type var = start; \
+	  type *prev = &start; \
+	  while (var) \
+	    {
+
+#define REMOVE_THIS(var, next) \
+	      *prev = next; \
+	      break;
+
+#define END_DO_DELETE(var, next) \
+	      prev = &next; \
+	      var = next; \
+	    } \
+	}
+
+#define BASKET_PEEK(b) ((b)->first_token ? (b)->first_token->data : NULL)
+#endif
+
+
 #define bsk_count	bsk_data.longval
 #define bsk_pointer	bsk_data.ptrval
 
@@ -315,11 +337,11 @@ rbuf_t * rbuf_allocate ();
 int  rbuf_free_cb (rbuf_t * rb);
 void  rbuf_append (rbuf_t * dest, rbuf_t * src);
 void rbuf_delete_all (rbuf_t *);
-void rbuf_rewrite (rbuf_t * rb);
+void * rbuf_rewrite (rbuf_t * rb);
 void rbuf_keep (rbuf_t * rb, void * elt);
 void rbuf_rewrite_done (rbuf_t * rb);
 void rb_ck_cnt (rbuf_t * rb);
-
 #define RBUF_REQ_MTX(rb, mtx)
+
 
 #endif

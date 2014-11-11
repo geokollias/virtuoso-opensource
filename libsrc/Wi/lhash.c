@@ -219,10 +219,9 @@ gb_agg_any (setp_node_t * setp, caddr_t * inst, chash_t * cha, int64 ** groups, 
 	  }
 	case AMMSC_USER:
 	  {
-	    caddr_t old_val, new_val;
+	    caddr_t old_val;
 	    /* no group sets in this case, no filtering out of null params and their groups */
-	    old_val = QST_GET_V (inst, op->go_old_val) = dep_ptr[0];
-	    dep_ptr[0] = NULL;
+	    old_val = go_ua_start (inst, op, NULL, dep_ptr);
 	    if (NULL == old_val)
 	      {
 		qst_set (inst, op->go_old_val, NEW_DB_NULL);
@@ -233,11 +232,7 @@ gb_agg_any (setp_node_t * setp, caddr_t * inst, chash_t * cha, int64 ** groups, 
 		code_vec_run_this_set (op->go_ua_init_setp_call, inst);
 	      }
 	    code_vec_run_this_set (op->go_ua_acc_setp_call, inst);
-	    new_val = QST_GET_V (inst, op->go_old_val);
-	    if (NULL == new_val)
-	      new_val = box_num_nonull (0);
-	    dep_ptr[0] = new_val;
-	    QST_GET_V (inst, op->go_old_val) = NULL;
+	    go_ua_store (inst, op, NULL, cha, dep_ptr);
 	    break;
 	  }
 	}
@@ -442,7 +437,7 @@ gb_aggregate (setp_node_t * setp, caddr_t * inst, chash_t * cha, int64 ** groups
 	CHA_AGG_MAX (double, <);
       default:
       any_case:
-	if (DV_ARRAY_OF_POINTER != cha->cha_sqt[dep_inx].sqt_dtp)
+	if (DV_ARRAY_OF_POINTER != cha->cha_sqt[dep_inx].sqt_dtp && AMMSC_USER != go->go_op)
 	  cha_gb_any (cha, dep_inx);
 	gb_agg_any (setp, inst, cha, groups, n_sets, first_set, base_set, sets, group_sets, dep_inx, go);
 	break;
@@ -1087,12 +1082,13 @@ cha_fixed (chash_t * cha, data_col_t * dc, int set, int *is_null)
   *is_null = (dc->dc_any_null && dc->dc_nulls && BIT_IS_SET (dc->dc_nulls, set))
 
 int64
-setp_non_agg_dep (setp_node_t * setp, caddr_t * inst, int nth_col, int set, char *is_null)
+setp_non_agg_dep (setp_node_t * setp, caddr_t * inst, int nth_col, int set, char *is_null, dtp_t * dtp_ret)
 {
   /* gb has after aggs non-agg non-key dependents.  Set when creating the group */
   state_slot_t *ssl = setp->setp_ha->ha_slots[nth_col];
   data_col_t *dc = QST_BOX (data_col_t *, inst, ssl->ssl_index);
   set = sslr_set_no (inst, ssl, set);
+  *dtp_ret = dc->dc_dtp;
   switch (dc->dc_dtp)
     {
     case DV_ANY:
@@ -1133,11 +1129,45 @@ cha_is_null (setp_node_t * setp, caddr_t * inst, int nth_col, int row_no)
   return dc_is_null (dc, row_no);
 }
 
+
+int64
+dv_from_dc_val (dtp_t * temp, int64 val, dtp_t dtp)
+{
+  double dbl;
+  float flt;
+  switch (dtp)
+    {
+    case DV_LONG_INT:
+      dv_from_int (temp, val);
+      return (int64) temp;
+    case DV_IRI_ID:
+      dv_from_iri (temp, val);
+      return (int64) temp;
+    case DV_DOUBLE_FLOAT:
+      temp[0] = DV_DOUBLE_FLOAT;
+      dbl = *(double *) &val;
+      DOUBLE_TO_EXT (&temp[1], &dbl);
+      return (int64) temp;
+    case DV_SINGLE_FLOAT:
+      temp[0] = DV_SINGLE_FLOAT;
+      flt = *(float *) &val;
+      FLOAT_TO_EXT (&temp[1], &flt);
+      return temp;
+    case DV_DATETIME:
+      temp[0] = DV_DATETIME;
+      memcpy_dt (temp + 1, val);
+      return (int64) temp;
+    }
+  return val;
+}
+
+
 void
 cha_gb_dep_col (setp_node_t * setp, caddr_t * inst, hash_area_t * ha, chash_t * cha, int64 * row, int nth_col, int row_no, int base)
 {
+  dtp_t dtp = 0;
   char is_null = 0;
-  int64 val = setp_non_agg_dep (setp, inst, nth_col, row_no + base, &is_null);
+  int64 val = setp_non_agg_dep (setp, inst, nth_col, row_no + base, &is_null, &dtp);
   if (vec_box_dtps[cha->cha_sqt[nth_col].sqt_dtp])
     {
       QNCAST (QI, qi, inst);
@@ -1184,7 +1214,10 @@ cha_gb_dep_col (setp_node_t * setp, caddr_t * inst, hash_area_t * ha, chash_t * 
     }
   else if (DV_ANY == cha->cha_sqt[nth_col].sqt_dtp)
     {
-      row[nth_col] = (ptrlong) cha_any (cha, (db_buf_t) (ptrlong) val);
+      dtp_t temp[20];
+      int64 val2 = val;
+      val2 = dv_from_dc_val (temp, val, dtp);
+      row[nth_col] = (ptrlong) cha_any (cha, (db_buf_t) (ptrlong) val2);
     }
   else if (DV_DATETIME == cha->cha_sqt[nth_col].sqt_dtp)
     {
@@ -2510,7 +2543,7 @@ cha_allocate (setp_node_t * setp, caddr_t * inst, int64 card)
 	    if (inx >= ha->ha_n_keys)
 	      go = (gb_op_t *) dk_set_nth (setp->setp_gb_ops, inx - ha->ha_n_keys);
 	    if (go && go->go_ua_arglist)
-	      dtp = DV_ARRAY_OF_POINTER;
+	      dtp = DV_ANY;
 	    else
 	      dtp = cha_gb_dtp (dc->dc_dtp, inx < ha->ha_n_keys, go);
 	    cha->cha_sqt[inx].sqt_dtp = dtp;

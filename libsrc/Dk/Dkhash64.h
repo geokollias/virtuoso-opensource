@@ -135,6 +135,6 @@ typedef struct hash_elt_64_s {
 
 #define dk_hash_64_iterator_t id_hash_iterator_t
 #define dk_hash_64_iterator id_hash_iterator
-#define dk_hash_64_hit_next hit_next
+#define dk_hash_64_hit_next(ht,kptr,vptr) hit_next ((ht), (caddr_t *)((int64 *)(kptr)), (caddr_t *)((int64 *)(vptr)))
 
 #endif

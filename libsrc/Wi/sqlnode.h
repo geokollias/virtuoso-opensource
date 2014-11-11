@@ -915,7 +915,7 @@ typedef struct table_source_s
   ts_alt_func_t ts_alternate_test;
   struct table_source_s *ts_alternate;
   state_slot_t *ts_alternate_cd;
-  caddr_t ts_sort_read_mask;	/* array of char flags.  Set if in reading sort temp the item at the place goes into the output */
+  caddr_t ts_sort_read_mask;	/* array of char flags.  Set if in reading sort temp the item at the place goes into the output. For gby, set if user aggregate with a dv serialization in the ht */
   struct file_source_s *ts_fs;
   cset_ts_t *ts_csts;
   cset_mode_t *ts_csm;
