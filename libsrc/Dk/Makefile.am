@@ -34,6 +34,7 @@ noinst_HEADERS = \
 #DKSRV
 libdksrv_la_SOURCES = \
 	Dkalloc.c \
+	tlsf.c \
 	Dkbasket.c \
 	Dkbox.c \
 	Dkdevice.c \
@@ -63,6 +64,7 @@ libdksrv_la_LDFLAGS = -prefer-pic
 #DK1T
 libdk1t_la_SOURCES = \
 	Dkalloc.c \
+	tlsf.c \
 	Dkbasket.c \
 	Dkbox.c \
 	Dkdevice.c \
@@ -92,6 +94,7 @@ libdk1t_la_LDFLAGS  = -prefer-pic
 #DK1T_NC
 libdk1t_nc_la_SOURCES = \
 	Dkalloc_nc.c \
+	tlsf.c \
 	Dkbasket.c \
 	Dkbox.c \
 	Dkdevice.c \

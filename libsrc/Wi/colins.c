@@ -1047,7 +1047,7 @@ buf_set_pm (buffer_desc_t * buf, page_map_t * pm)
   if (buf->bd_content_map->pm_size != PM_SIZE (pm->pm_count))
     {
       buf->bd_content_map->pm_count = 0;	/* do not copy entries in map_resize, might no longer fit in new size */
-      map_resize (&buf->bd_content_map, PM_SIZE (pm->pm_count));
+      map_resize (buf, &buf->bd_content_map, PM_SIZE (pm->pm_count));
     }
   sz = buf->bd_content_map->pm_size;
   memcpy_16 (buf->bd_content_map, pm, PM_ENTRIES_OFFSET + pm->pm_count * sizeof (short));
@@ -2469,7 +2469,7 @@ ceic_feed_flush (ce_ins_ctx_t * ceic)
   if (pm->pm_size != PM_SIZE (n * 2))
     {
       buf->bd_content_map->pm_count = 0;
-      map_resize (&buf->bd_content_map, PM_SIZE (n * 2));
+      map_resize (buf, &buf->bd_content_map, PM_SIZE (n * 2));
     }
   pm = buf->bd_content_map;
   pm->pm_count = n * 2;
@@ -3337,7 +3337,7 @@ ceic_split_registered (ce_ins_ctx_t * ceic, row_delta_t * rd, buffer_desc_t * bu
   ITC_IN_KNOWN_MAP (itc, itc->itc_page);
   for (reg = buf->bd_registered; reg; reg = next)
     {
-      next = itc->itc_next_on_page;
+      next = reg->itc_next_on_page;
       if (reg->itc_map_pos == itc->itc_map_pos
 	  && reg->itc_col_row >= splits[inx - 1] && (n_splits == inx || reg->itc_col_row < splits[inx]))
 	{
@@ -4003,7 +4003,7 @@ upd_col_pk (update_node_t * upd, caddr_t * inst)
 	if (!itc->itc_is_on_row || !itc->itc_rl)
 	  {
 	    rdbg_printf (("Row to update deld before update T=%d L=%d pos=%d\n",
-		    TRX_NO (cr_itc->itc_ltrx), cr_itc->itc_page, cr_itc->itc_map_pos));
+		    TRX_NO (itc->itc_ltrx), itc->itc_page, itc->itc_map_pos));
 	    upd_col_error (itc, buf, mp, "24000", "SR251",
 		"Cursor not on row in column store UPDATE or no lock on row.  Check that there are no autocommitting functions in the statement");
 	  }
@@ -4166,7 +4166,7 @@ pf_col_right_edge (page_fill_t * pf, row_delta_t * rd)
 	      {
 		after = 1;
 		right->bd_content_map->pm_count = 0;
-		map_resize (&right->bd_content_map, PM_SIZE (pm->pm_count));
+		map_resize (right, &right->bd_content_map, PM_SIZE (pm->pm_count));
 		right_pm = right->bd_content_map;
 		right_pm->pm_count = 0;
 		right_pm->pm_bytes_free = PAGE_DATA_SZ;
@@ -4571,6 +4571,7 @@ itc_col_log_insert (it_cursor_t * itc)
 
 
 extern int32 cl_non_logged_write_mode;
+dk_session_t *dbg_log_ses;
 
 void
 itc_col_dbg_log (it_cursor_t * itc)
@@ -4580,7 +4581,6 @@ itc_col_dbg_log (it_cursor_t * itc)
   caddr_t *repl = lt->lt_replicate;
   dk_session_t *save = lt->lt_log;
   dk_session_t *ses;
-  static dk_session_t *dbg_log_ses;
   caddr_t *h = NULL;
   int fd;
   int inx;

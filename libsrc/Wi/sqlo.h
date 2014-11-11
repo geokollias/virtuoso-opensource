@@ -375,6 +375,7 @@ struct df_elt_s
     {
       int type;
       char geo;
+      float n_hits;
       ST **args;
       dbe_column_t *col;
       state_slot_t *ssl;

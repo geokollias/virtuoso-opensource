@@ -402,6 +402,8 @@ box_hash_cut (caddr_t box, int depth)
     }
 }
 
+
+
 void dtp_set_cmp (dtp_t dtp, box_hash_cmp_func_t f);
 void dtp_set_strong_cmp (dtp_t dtp, box_hash_cmp_func_t f);
 
@@ -630,7 +632,7 @@ id_hash_set_rehash_pct (id_hash_t * ht, uint32 pct)
 
 #ifdef MALLOC_DEBUG
 #define DBG_HASHEXT_NAME(name) dbg_t_##name
-#define DBG_HASHEXT_ALLOC(SZ) dbg_mp_alloc_box (DBG_ARGS THR_TMP_POOL, (SZ), DV_CUSTOM)
+#define DBG_HASHEXT_ALLOC(SZ) dbg_mp_alloc_box (DBG_ARGS THR_TMP_POOL, (SZ), DV_NON_BOX)
 #else
 #define DBG_HASHEXT_NAME(name) t_##name
 #define DBG_HASHEXT_ALLOC(SZ) mp_alloc_box_ni (THR_TMP_POOL, (SZ), DV_NON_BOX)

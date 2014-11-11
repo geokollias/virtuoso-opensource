@@ -4929,7 +4929,7 @@ dk_ssl_free (void *old)
 #endif
 
 #if defined (_SSL) && !defined (NO_THREAD)
-int ssl_server_set_certificate (SSL_CTX * ssl_ctx, char *cert_name, char *key_name, char *extra);
+int ssl_server_set_certificate (SSL_CTX* ssl_ctx, char * cert_name, char * key_name, char * extra);
 
 static int
 ssl_server_key_setup ()
@@ -4950,13 +4950,13 @@ ssl_server_key_setup ()
 
       if (ssl_server_verify_file && ssl_server_verify_file[0])
 	{
-	  SSL_CTX_load_verify_locations (ssl_server_ctx, ssl_server_verify_file, NULL);
-	  SSL_CTX_set_client_CA_list (ssl_server_ctx, SSL_load_client_CA_file (ssl_server_verify_file));
+      SSL_CTX_load_verify_locations (ssl_server_ctx, ssl_server_verify_file, NULL);
+      SSL_CTX_set_client_CA_list (ssl_server_ctx, SSL_load_client_CA_file (ssl_server_verify_file));
 	}
       SSL_CTX_set_app_data (ssl_server_ctx, &ssl_server_ctx_info);
-      if (ssl_server_verify == 1)	/* required */
+      if (ssl_server_verify == 1) /* required */
 	verify |= SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT | SSL_VERIFY_CLIENT_ONCE;
-      else			/* 2 optional OR 3 optional no ca */
+      else /* 2 optional OR 3 optional no ca */
 	verify |= SSL_VERIFY_PEER | SSL_VERIFY_CLIENT_ONCE;
       SSL_CTX_set_verify (ssl_server_ctx, verify, (int (*)(int, X509_STORE_CTX *)) ssl_cert_verify_callback);
       SSL_CTX_set_verify_depth (ssl_server_ctx, (int) ssl_server_verify_depth);
@@ -5002,6 +5002,7 @@ ssl_thread_id (void)
 void
 ssl_thread_setup ()
 {
+#ifndef NO_THREAD
   int i;
   lock_cs = dk_alloc (CRYPTO_num_locks() * sizeof (dk_mutex_t *));
   for (i = 0; i < CRYPTO_num_locks (); i ++)
@@ -5010,6 +5011,7 @@ ssl_thread_setup ()
     }
   CRYPTO_set_locking_callback ((void (*) (int, int, char *, int)) ssl_locking_callback);
   CRYPTO_set_id_callback ((unsigned long (*)()) ssl_thread_id);
+#endif
 }
 
 static void
@@ -5024,17 +5026,16 @@ ssl_server_init ()
   SSL_load_error_strings ();
   ERR_load_crypto_strings ();
 #ifndef WIN32
-  {
-    unsigned char tmp[1024];
-    RAND_bytes (tmp, sizeof (tmp));
-    RAND_add (tmp, sizeof (tmp), (double) (sizeof (tmp)));
-  }
+{ unsigned char tmp[1024];
+  RAND_bytes (tmp, sizeof (tmp));
+  RAND_add (tmp, sizeof (tmp), (double) (sizeof (tmp)));
+}
 #endif
 # if (OPENSSL_VERSION_NUMBER >= 0x00908000L)
   SSL_library_init ();
 # endif
   SSLeay_add_all_algorithms ();
-  PKCS12_PBE_add ();		/* stub */
+  PKCS12_PBE_add (); /* stub */
 
 #ifdef NO_THREAD
   ssl_server_method = SSLv23_client_method ();
@@ -5188,17 +5189,17 @@ ssl_client_use_pkcs12 (SSL * ssl, char *pkcs12file, char *passwd, char *ca)
   if (0 == PEM_parse (pkcs12file, passwd, &pkey, &cert, &ca_list))
     {
       if ((fi = fopen (pkcs12file, "rb")) != NULL)
-	{
+    {
 	  p12 = d2i_PKCS12_fp (fi, NULL);
-	  fclose (fi);
-	}
+	fclose (fi);
+    }
       if (p12)
-	{
+    {
 	  i = PKCS12_parse (p12, passwd, &pkey, &cert, &ca_list);
 	  PKCS12_free (p12);
 	  if (!i)
-	    return 0;
-	}
+      return 0;
+    }
     }
 
   if (ca && ca[0] != 0)
@@ -5214,12 +5215,12 @@ ssl_client_use_pkcs12 (SSL * ssl, char *pkcs12file, char *passwd, char *ca)
     i = SSL_check_private_key (ssl);
   if (i)
     {
-      for (i = 0; i < sk_X509_num (ca_list); i++)
-	{
-	  X509 *ca = (X509 *) sk_X509_value (ca_list, i);
-	  SSL_add_client_CA (ssl, ca);
-	  X509_STORE_add_cert (SSL_CTX_get_cert_store (ssl_ctx), ca);
-	}
+  for (i = 0; i < sk_X509_num (ca_list); i++)
+    {
+      X509 *ca = (X509 *) sk_X509_value (ca_list, i);
+      SSL_add_client_CA (ssl, ca);
+      X509_STORE_add_cert (SSL_CTX_get_cert_store (ssl_ctx), ca);
+    }
     }
   X509_free (cert);
   EVP_PKEY_free (pkey);
@@ -5245,7 +5246,7 @@ ssl_server_accept (dk_session_t * listen, dk_session_t * ses)
       new_ssl = SSL_new (ssl_server_ctx);
       SSL_set_fd (new_ssl, dst);
       ssl_err = SSL_accept (new_ssl);
-      if (ssl_err == -1)	/* the SSL_accept do the certificate verification */
+      if (ssl_err == -1) /* the SSL_accept do the certificate verification */
 	{
 	  char client_ip[16];
 	  caddr_t err;
@@ -5457,13 +5458,13 @@ ssl_server_listen ()
     goto failed;
 
   listening = PrpcListen (c_ssl_server_port, SESCLASS_TCPIP);
-      if (!SESSTAT_ISSET (listening->dks_session, SST_LISTENING))
-	{
+  if (!SESSTAT_ISSET (listening->dks_session, SST_LISTENING))
+    {
     failed:
       log_error ("SSL: Failed listen at %s", c_ssl_server_port);
       return;
     }
-      ssl_server_port = tcpses_get_port (listening->dks_session);
+  ssl_server_port = tcpses_get_port (listening->dks_session);
 
   log_info ("SSL server online at %s", c_ssl_server_port);
 #endif

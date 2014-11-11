@@ -709,7 +709,7 @@ l_iri_id_disp (cucurbit_t * cu, caddr_t name, value_state_t * vs)
   if (!pref_id_no)
     {
       AUTO_POOL (8);
-      cu_local_dispatch (cu, vs, cf_np, (caddr_t) ap_list (&ap, 3, prefix, local, ap_box_num (&ap, 0)));
+      cu_local_dispatch (cu, vs, cf_np, (caddr_t) ap_list (&ap, 3, prefix, local, ap_box_iri_id (&ap, 0)));
       dk_free_box (local);
       dk_free_box (prefix);
       return NULL;
@@ -725,7 +725,7 @@ l_iri_id_disp (cucurbit_t * cu, caddr_t name, value_state_t * vs)
     }
   {
     AUTO_POOL (8);
-    cu_local_dispatch (cu, vs, cf, (caddr_t) ap_list (&ap, 2, local, NULL));
+    cu_local_dispatch (cu, vs, cf, (caddr_t) ap_list (&ap, 2, local, ap_box_iri_id (&ap, 0)));
     dk_free_box (local);
   }
   return NULL;

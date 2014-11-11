@@ -1,6 +1,4 @@
 /*
- *  Dksimd.h
- *
  *  $Id$
  *
  *  This file is part of the OpenLink Software Virtuoso Open-Source (VOS)
@@ -55,5 +53,4 @@ typedef union
 #define PSTR_EQUAL_ORDERED 10	   /* = 1100b */
 #define PSTR_NEGATIVE_POLARITY 0x20 /* = 010000b */
 #define PSTR_BYTE_MASK 0x40	 = 1000000b
-
 #endif

@@ -440,14 +440,16 @@ void
 spar_error (sparp_t * sparp, const char *format, ...)
 {
   va_list ap;
-  caddr_t msg;
+  caddr_t msg, err;
   va_start (ap, format);
   msg = box_vsprintf (1500, format, ap);
   va_end (ap);
   if (NULL == sparp)
-    sqlr_new_error ("37000", "SP031", "SPARQL generic error: %.1500s", msg);
+    err = srv_make_new_error ("37000", "SP031", "SPARQL generic error: %.1500s", msg);
   else
-    sqlr_new_error ("37000", "SP031", "%.400s: %.1500s", sparp->sparp_err_hdr, msg);
+    err = srv_make_new_error ("37000", "SP031", "%.400s: %.1500s", sparp->sparp_err_hdr, msg);
+  dk_free_tree (msg);
+  sqlr_resignal (err);
 }
 
 int
@@ -4763,6 +4765,8 @@ const sparp_bif_desc_t sparp_bif_descs[] = {
       SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL},
   {"replace", SPAR_BIF_REPLACE, 'S', SSG_SD_SPARQL11_DRAFT, 3, 4, SSG_VALMODE_LONG, {SSG_VALMODE_LONG, SSG_VALMODE_SQLVAL,
 	      SSG_VALMODE_SQLVAL}, SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL},
+  {"remove_unicode3_accents", SPAR_BIF_REMOVE_UNICODE3_ACCENTS, 'B', SSG_SD_BI, 1, 1, SSG_VALMODE_LONG, {SSG_VALMODE_LONG, NULL,
+	      NULL}, SPART_VARR_IS_LIT},
   {"round", SPAR_BIF_ROUND, 'B', SSG_SD_SPARQL11_DRAFT, 1, 1, SSG_VALMODE_NUM, {SSG_VALMODE_NUM, NULL, NULL},
       SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL},
   {"sameterm", SPAR_BIF_SAMETERM, '-', 0, 2, 2, SSG_VALMODE_BOOL, {SSG_VALMODE_LONG, SSG_VALMODE_LONG, NULL},

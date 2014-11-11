@@ -30,7 +30,6 @@
 #include "Dksesstr.h"
 
 char *ses_tmp_dir;
-extern box_destr_f box_destr[256];
 
 /* The string session
 
@@ -735,7 +734,7 @@ strses_write_out (dk_session_t * ses, dk_session_t * out)
       if (0 == out->dks_out_fill)
 	service_write (out, elt->data, elt->fill);
       else
-      session_buffered_write (out, elt->data, elt->fill);	/* was: service_write, there was error when we have smth in buffer */
+	session_buffered_write (out, elt->data, elt->fill);	/* was: service_write, there was error when we have smth in buffer */
       elt = elt->next;
     }
   if (ses_file && ses_file->ses_file_descriptor)
@@ -993,8 +992,7 @@ strses_deserialize (dk_session_t * session, dtp_t macro)
 
       if (str && DV_TYPE_OF (str) != DV_STRING)
 	{					 /* being paranoid is a good thing */
-	  if (!box_destr [DV_TYPE_OF (str)])
-	    dk_free_tree (str);
+	  dk_free_tree (str);
 	  sr_report_future_error (session, "", "Invalid data type of the incoming session segment");
 	  str = NULL;
 	}
@@ -1094,9 +1092,9 @@ strses_fragment_to_array (dk_session_t * ses, char *buffer, size_t fragment_offs
 	  if (cut_sz < 0 && !ses_file->ses_fd_is_stream)
 	    {
 	      log_error ("Can't seek in file %s", ses_file->ses_temp_file_name);
-	  SESSTAT_SET (ses->dks_session, SST_DISK_ERROR);
-	  return 0;
-	}
+	      SESSTAT_SET (ses->dks_session, SST_DISK_ERROR);
+	      return 0;
+	    }
 	}
       if ((unsigned) cut_sz <= fragment_offset)
 	{

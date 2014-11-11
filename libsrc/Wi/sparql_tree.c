@@ -2582,10 +2582,10 @@ sparp_rvr_add_restrictions (sparp_t * sparp, rdf_val_range_t * dest, ptrlong add
   if (((new_restr & SPART_VARR_IS_REF) && (new_restr & SPART_VARR_IS_LIT)) &&
       !((dest->rvrRestrictions & SPART_VARR_IS_REF) && (dest->rvrRestrictions & SPART_VARR_IS_LIT)))
     dbg_printf (("sparp" "_rvr_add_restrictions will tighten %x with %x (ref|lit)\n", (unsigned) (dest->rvrRestrictions),
-	    (unsigned) (addon->rvrRestrictions)));
+	    (unsigned) (addon_restrictions)));
   if ((new_restr & SPART_VARR_CONFLICT) && !(dest->rvrRestrictions & SPART_VARR_CONFLICT))
     dbg_printf (("sparp" "_rvr_add_restrictions will tighten %x with %x (SPART_VARR_CONFLICT)\n",
-	    (unsigned) (dest->rvrRestrictions), (unsigned) (addon->rvrRestrictions)));
+	    (unsigned) (dest->rvrRestrictions), (unsigned) (addon_restrictions)));
 #endif
   if (new_restr & SPART_VARR_CONFLICT)
     goto conflict;		/* see below */
@@ -3736,7 +3736,7 @@ sparp_find_triple_with_var_obj_of_freetext (sparp_t * sparp, SPART * gp, SPART *
   SPART **args, *triple_with_var_obj = NULL;
   int memb_ctr;
   args = filt->_.funcall.argtrees;
-  ft_literal_var = filt->_.funcall.argtrees[0];
+  ft_literal_var = args[0];
   if (SPAR_VARIABLE != SPART_TYPE (ft_literal_var))
     spar_internal_error (sparp,
 	"sparp_" "find_triple_with_var_obj_of_freetext(): the first argument of a ft predicate is not a variable");

@@ -985,7 +985,7 @@ sqlo_pred_unit_1 (df_elt_t * lower, df_elt_t * upper, df_elt_t * in_tb, float *u
     }
   if (!in_tb)
     *u1 = col_pred_cost * 2;
-  else if (in_tb->_.table.key->key_is_col)
+  else if (DFE_TABLE == in_tb->dfe_type && in_tb->_.table.key->key_is_col)
     *u1 = sqlo_cs_col_pred_cost;
   else
     *u1 = COL_PRED_COST;
@@ -1706,11 +1706,15 @@ sqlo_eval_text_count (dbe_table_t * tb, caddr_t str, caddr_t ext_fti)
     }
   return ct;
 err:
+  if (lc)
+    lc_free (lc);
   cli->cli_user = usr;
   cli->cli_anytime_started = at_start;
   cli->cli_rpc_timeout = rpc_timeout;
   log_error ("compiler text card estimate got error %s %s, assuming unknown count", !err ? "" : ERR_STATE (err),
       !err ? "no message:" : ERR_MESSAGE (err));
+  if (err)
+    dk_free_tree (err);
   if (entered)
     {
       IN_TXN;
@@ -1779,7 +1783,7 @@ sqlo_text_estimate (df_elt_t * tb_dfe, df_elt_t ** text_pred, float *text_sel_re
 	if (dfe->_.text.geo)
 	  {
 	    *text_pred = dfe;
-	    *text_sel_ret = dfe->dfe_arity ? dfe->dfe_arity : sqlo_geo_count (tb_dfe, dfe);
+	    *text_sel_ret = dfe->_.text.n_hits ? dfe->_.text.n_hits : sqlo_geo_count (tb_dfe, dfe);
 	    return 1;
 	  }
 	if ('c' == dfe->_.text.type && DV_STRINGP ((str = (caddr_t) dfe->_.text.args[1])))
@@ -1920,7 +1924,7 @@ dfe_text_cost (df_elt_t * dfe, float *u1, float *a1, int text_order_anyway)
 	text_selectivity = 0.001;
       n_text_hits = ot_tbl_size * text_selectivity;
       text_pred->dfe_arity = n_text_hits;
-
+      text_pred->_.text.n_hits = n_text_hits;
       if (text_pred->_.text.geo)
 	text_key_cost = dbe_key_unit_cost (text_key->key_geo_table->tb_primary_key);
       else
@@ -2574,7 +2578,7 @@ ric_set_sample (rdf_inf_ctx_t * ctx, caddr_t sc_key, int64 est, float inx_card)
   smp.smp_inx_card = inx_card;
   smp.smp_time = approx_msec_real_time ();
   mutex_enter (ctx->ric_mtx);
-  if (ctx->ric_samples->ht_count > ric_samples_sz)
+  while (ctx->ric_samples->ht_count > ric_samples_sz)
     {
       caddr_t key = NULL;
       tb_sample_t old_smp;
@@ -4187,7 +4191,7 @@ dfe_table_cost_ic_1 (df_elt_t * dfe, index_choice_t * ic, int inx_only)
       dfe_table_unq_card (dfe, ic, tb_count, &inx_arity, eq_preds, eq_fill, &col_arity);
     }
   else if (LOC_LOCAL == dfe->dfe_locus && (inx_const_fill || dfe_sample_dep_only (dfe, col_arity))
-      && !(dfe->dfe_sqlo->so_sc->sc_is_update && 0 == strcmp (dfe->_.table.ot->ot_new_prefix, "t1")))
+      /* && !(dfe->dfe_sqlo->so_sc->sc_is_update && 0 == strcmp (dfe->_.table.ot->ot_new_prefix, "t1")) */ )
     {
       inx_sample = sqlo_inx_sample (dfe, key, inx_lowers, inx_uppers, inx_const_fill, ic);
       if (inx_sample >= 1 && sqlo_sample_dep_cols)

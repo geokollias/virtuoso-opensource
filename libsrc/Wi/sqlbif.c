@@ -5460,37 +5460,28 @@ bif_lcase (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   int i;
 
   if (NULL == str)
-    {
-      return (NEW_DB_NULL);
-    }
+    return (NEW_DB_NULL);
   if (DV_WIDESTRINGP (str))
     {
       len = box_length (str) / sizeof (wchar_t);
-      res = dk_alloc_box (len * sizeof (wchar_t), DV_WIDE);
+      res = dk_alloc_box ((len + 1) * sizeof (wchar_t), DV_WIDE);
       for (i = 0; i < len; i++)
 	((wchar_t *) res)[i] = (wchar_t) unicode3_getlcase ((unichar) ((wchar_t *) str)[i]);
+      ((wchar_t *) res)[len] = (wchar_t) '\0';
       return res;
     }
-
 
   len = (box_length (str) - 1);	/* box_length returns a length + 1 */
   res = dk_alloc_box (len + 1, DV_LONG_STRING);
   for (i = 0; i <= len; i++)
     {
       if (isISOletter (((unsigned char *) str)[i]))
-	{
-	  (((unsigned char *) res)[i]) = raw_tolower (((unsigned char *) str)[i]);
-	}
-      else
-	{
-	  /* Otherwise, just copy the byte, whatever it is: */
-	  (((unsigned char *) res)[i]) = (((unsigned char *) str)[i]);
-	}
+	(((unsigned char *) res)[i]) = raw_tolower (((unsigned char *) str)[i]);
+      else			/* Otherwise, just copy the byte, whatever it is: */
+	(((unsigned char *) res)[i]) = (((unsigned char *) str)[i]);
     }
-
   return res;
 }
-
 
 caddr_t
 bif_ucase (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
@@ -5501,15 +5492,14 @@ bif_ucase (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   int i;
 
   if (NULL == str)
-    {
-      return (NEW_DB_NULL);
-    }
+    return (NEW_DB_NULL);
   if (DV_WIDESTRINGP (str))
     {
       len = box_length (str) / sizeof (wchar_t);
-      res = dk_alloc_box (len * sizeof (wchar_t), DV_WIDE);
+      res = dk_alloc_box ((len + 1) * sizeof (wchar_t), DV_WIDE);
       for (i = 0; i < len; i++)
 	((wchar_t *) res)[i] = (wchar_t) unicode3_getucase ((unichar) ((wchar_t *) str)[i]);
+      ((wchar_t *) res)[len] = (wchar_t) '\0';
       return res;
     }
 
@@ -5518,20 +5508,46 @@ bif_ucase (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   for (i = 0; i <= len; i++)
     {
       if (isISOletter (((unsigned char *) str)[i]))
-	{
-	  (((unsigned char *) res)[i]) = raw_toupper (((unsigned char *) str)[i]);
-	}
-      else
-	/* Otherwise, just copy the byte, whatever it is: */
-	{
-	  (((unsigned char *) res)[i]) = (((unsigned char *) str)[i]);
-	}
+	(((unsigned char *) res)[i]) = raw_toupper (((unsigned char *) str)[i]);
+      else			/* Otherwise, just copy the byte, whatever it is: */
+	(((unsigned char *) res)[i]) = (((unsigned char *) str)[i]);
     }
-
-
   return res;
 }
 
+caddr_t
+bif_remove_unicode3_accents (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  caddr_t str = bif_string_or_uname_or_wide_or_null_arg (qst, args, 0, "remove_unicode3_accents");
+  long len;
+  caddr_t res;
+  int i;
+
+  if (NULL == str)
+    return (NEW_DB_NULL);
+  if (DV_WIDESTRINGP (str))
+    {
+      len = box_length (str) / sizeof (wchar_t);
+      res = dk_alloc_box ((len + 1) * sizeof (wchar_t), DV_WIDE);
+      for (i = 0; i < len; i++)
+	((wchar_t *) res)[i] = (wchar_t) unicode3_getbasechar ((unichar) ((wchar_t *) str)[i]);
+      ((wchar_t *) res)[len] = (wchar_t) '\0';
+      return res;
+    }
+
+  len = (box_length (str) - 1);	/* box_length returns a length + 1 */
+  res = box_copy (str);
+  for (i = 0; i < len; i++)
+    {
+      if (0x7f < (((unsigned char *) str)[i]))
+	{
+	  unichar base = unicode3_getbasechar ((unichar) (((unsigned char *) str)[i]));
+	  if (!(base & 0xff))
+	    (((unsigned char *) res)[i]) = base;
+	}
+    }
+  return res;
+}
 
 /* The name is from Oracle. Could be also capitalize or capit ? */
 caddr_t
@@ -7723,7 +7739,7 @@ sql_lex_analyze (const char *str2, caddr_t * qst, int max_lexems, int use_strval
 	  int lextype, olex = -1;
 	  long n_lexem;
 	  sql_yy_reset (scanner);
-	  scn3yyrestart (NULL, scanner);
+	  /* No need as soon as thing is reentrant: scn3yyrestart (NULL, scanner); */
 	  for (n_lexem = 0;;)
 	    {
 	      YYSTYPE yylval;
@@ -7818,7 +7834,7 @@ sql_split_text (const char *str2, caddr_t * qst, int flags)
       caddr_t full_text, descr;
       size_t full_text_blen;
       scn3split_yy_reset (scanner);
-      scn3splityyrestart (NULL, scanner);
+      /* No need as soon as thing is reentrant: scn3splityyrestart (NULL, scanner); */
       global_scs->scs_scn3c.split_ses = strses_allocate ();
       has_useful_lexems = 0;
       start_lineno = global_scs->scs_scn3c.lineno;
@@ -9296,7 +9312,7 @@ bif_page_dump (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       dbg_page_map (buf);
     }
   if (buf->bd_content_map)
-    resource_store (PM_RC (buf->bd_content_map->pm_size), (void *) buf->bd_content_map);
+    pm_store (buf, (buf->bd_content_map->pm_size), (void *) buf->bd_content_map);
 
   return 0;
 }
@@ -9351,6 +9367,15 @@ bif_mem_new_in_use (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   return NULL;
 }
 
+caddr_t
+bif_mem_count (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  char *file = bif_string_arg (qst, args, 0, "mem_count");
+  long line = bif_long_arg (qst, args, 1, "mem_count");
+  long s;
+  s = dbg_mal_count (file, line);
+  return box_num (s);
+}
 
 caddr_t
 bif_mem_leaks (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
@@ -9364,6 +9389,65 @@ bif_mem_leaks (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 }
 #endif
 
+extern FILE *tlsf_fp;
+
+caddr_t
+bif_tlsf_dump_bp (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  char *dp = bif_string_or_null_arg (qst, args, 0, "tlsf_dump_bp");
+  FILE *fd = dp ? fopen (dp, "at") : stderr;
+  int inx;
+  tlsf_fp = fd;
+  DO_BOX (buffer_pool_t *, bp, inx, wi_inst.wi_bps)
+  {
+    fprintf (fd, "BP: %d\n", inx);
+    tlsf_print_all_blocks (bp->bp_tlsf, NULL, AB_ALL);
+  }
+  END_DO_BOX;
+  if (fd)
+    fclose (fd);
+  tlsf_fp = stderr;
+  return NULL;
+}
+
+
+void
+tlsf_dump_1 (ptrlong tlp, char *fn, id_hash_t * ht, int ht_mode)
+{
+  FILE *fd = fn ? fopen (fn, "at") : stderr;
+  tlsf_t *tlsf;
+  if (tlp > 0 && tlp < MAX_TLSFS)
+    tlsf = dk_all_tlsfs[tlp];
+  else
+    tlsf = (tlsf_t *) tlp;
+  tlsf_fp = fd;
+  tlsf_print_all_blocks (tlsf, ht, ht_mode);
+  if (fd)
+    fclose (fd);
+  tlsf_fp = stderr;
+  return NULL;
+}
+
+
+caddr_t
+bif_tlsf_dump (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  QNCAST (QI, qi, qst);
+  ptrlong tlp = bif_long_arg (qst, args, 0, "tlsf_dump");
+  char *fn = bif_string_or_null_arg (qst, args, 1, "tlsf_dump_bp");
+  id_hash_iterator_t *hit;
+  id_hash_t *ht = NULL;
+  int ht_mode = AB_ALLOCD;
+  if (BOX_ELEMENTS (args) > 2)
+    {
+      hit = bif_arg (qst, args, 2, "tlsf_dump");
+      ht_mode = bif_long_arg (qst, args, 3, "tlsf_dump");
+      if (DV_DICT_ITERATOR == DV_TYPE_OF (hit))
+	ht = hit->hit_hash;
+    }
+  tlsf_dump_1 (tlp, fn, ht, ht_mode);
+  return NULL;
+}
 
 
 caddr_t
@@ -9380,6 +9464,11 @@ bif_mem_get_current_total (caddr_t * qst, caddr_t * err_ret, state_slot_t ** arg
 caddr_t
 bif_mem_summary (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
+  char *dp = bif_string_or_null_arg (qst, args, 0, "mem_summary");
+  FILE *fd = dp ? fopen (dp, "at") : NULL;
+  tlsf_summary (fd ? fd : stderr);
+  if (fd)
+    fclose (fd);
   return NULL;
 }
 
@@ -12932,7 +13021,7 @@ int enable_bif_exec_stat = 1;
 int64
 bif_exec_start (client_connection_t * cli, caddr_t text)
 {
-  bif_exec_stat_t stat;
+  bif_exec_stat_t *stat;
   int64 ctr;
   if (!enable_bif_exec_stat)
     return 0;
@@ -12941,9 +13030,10 @@ bif_exec_start (client_connection_t * cli, caddr_t text)
       dk_mutex_init (&bif_exec_pending_mtx, MUTEX_TYPE_SHORT);
       bif_exec_pending = id_hash_allocate (201, sizeof (int64), sizeof (bif_exec_stat_t), boxint_hash, boxint_hashcmp);
     }
-  stat.exs_text = box_copy (text);
-  stat.exs_start = get_msec_real_time ();
-  stat.exs_cli = cli;
+  stat = (bif_exec_stat_t *) dk_alloc (sizeof (bif_exec_stat_t));
+  stat->exs_text = box_copy (text);
+  stat->exs_start = get_msec_real_time ();
+  stat->exs_cli = cli;
   mutex_enter (&bif_exec_pending_mtx);
   ctr = bif_exec_ctr++;
   id_hash_set (bif_exec_pending, (caddr_t) & ctr, (caddr_t) & stat);
@@ -12954,14 +13044,15 @@ bif_exec_start (client_connection_t * cli, caddr_t text)
 void
 bif_exec_done (int64 k)
 {
-  bif_exec_stat_t *place;
+  bif_exec_stat_t **place;
   if (!enable_bif_exec_stat)
     return;
   mutex_enter (&bif_exec_pending_mtx);
-  place = (bif_exec_stat_t *) id_hash_get (bif_exec_pending, (caddr_t) & k);
-  if (place)
+  place = (bif_exec_stat_t **) id_hash_get (bif_exec_pending, (caddr_t) & k);
+  if (place && *place)
     {
-      dk_free_box (place->exs_text);
+      dk_free_box (place[0]->exs_text);
+      dk_free (place[0], sizeof (bif_exec_stat_t));
       id_hash_remove (bif_exec_pending, (caddr_t) & k);
     }
   mutex_leave (&bif_exec_pending_mtx);
@@ -15375,15 +15466,15 @@ string literal  LCASE(string literal str)
 The LCASE function corresponds to the XPath fn:lower-case function. It returns a string literal whose lexical form is the lower case of the lexcial form of the argument.
 */
 caddr_t
-bif_rdf_ucase_lcase_impl (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, char upcase /* == 1 - upcase, ==0 - lcase */ )
+bif_rdf_ucase_lcase_impl (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, unichar (*unicode3_get_x_case) (unichar),
+    const char *fname, const char *longfname)
 {
   rdf_box_t *str_rdf_box;
-  caddr_t str = bif_arg_unrdf_ext (qst, args, 0, upcase ? "rdf_ucase_impl" : "rdf_lcase_impl", (caddr_t *) (&str_rdf_box));
+  caddr_t str = bif_arg_unrdf_ext (qst, args, 0, fname, (caddr_t *) (&str_rdf_box));
   char src_is_rdf_box = DV_TYPE_OF (str_rdf_box) == DV_RDF;
   size_t i, str_n_chars;
   wchar_t *wide_box = NULL;
   box_t r;
-  unichar (*unicode3_get_x_case) (unichar);
   switch (DV_TYPE_OF (str))
     {
     case DV_STRING:		/* utf-8 */
@@ -15403,12 +15494,9 @@ bif_rdf_ucase_lcase_impl (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args
     case DV_DB_NULL:
       return NEW_DB_NULL;
     default:
-      sqlr_new_error ("22023", "SL001", "The SPARQL 1.1 function %scase() needs a string value as 1st argument",
-	  upcase ? "u" : "l");
+      sqlr_new_error ("22023", "SL001", "The %s needs a string value as 1st argument", longfname);
       return NULL;
     }
-
-  unicode3_get_x_case = upcase ? unicode3_getucase : unicode3_getlcase;
   for (i = 0; i < str_n_chars; ++i)
     {
       wide_box[i] = unicode3_get_x_case (wide_box[i]);
@@ -15433,13 +15521,20 @@ bif_rdf_ucase_lcase_impl (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args
 caddr_t
 bif_rdf_ucase_impl (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  return bif_rdf_ucase_lcase_impl (qst, err_ret, args, 1);
+  return bif_rdf_ucase_lcase_impl (qst, err_ret, args, unicode3_getucase, "rdf_ucase_impl", "SPARQL 1.1 UCASE() function");
 }
 
 caddr_t
 bif_rdf_lcase_impl (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  return bif_rdf_ucase_lcase_impl (qst, err_ret, args, 0);
+  return bif_rdf_ucase_lcase_impl (qst, err_ret, args, unicode3_getlcase, "rdf_lcase_impl", "SPARQL 1.1 LCASE() function");
+}
+
+caddr_t
+bif_rdf_remove_unicode3_accents_impl (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  return bif_rdf_ucase_lcase_impl (qst, err_ret, args, unicode3_getbasechar, "rdf_remove_unicode3_accents_impl",
+      "SPARQL-BI REMOVE_UNICODE3_ACCENTS() function");
 }
 
 /*
@@ -15951,6 +16046,7 @@ bif_sparql_init (void)
   bif_define_ex ("rdf_substr_impl", bif_rdf_substr_impl, BMD_RET_TYPE, &bt_string, BMD_DONE);
   bif_define_ex ("rdf_ucase_impl", bif_rdf_ucase_impl, BMD_RET_TYPE, &bt_string, BMD_DONE);
   bif_define_ex ("rdf_lcase_impl", bif_rdf_lcase_impl, BMD_RET_TYPE, &bt_string, BMD_DONE);
+  bif_define_ex ("rdf_remove_unicode3_accents_impl", bif_rdf_remove_unicode3_accents_impl, BMD_RET_TYPE, &bt_string, BMD_DONE);
   bif_define_ex ("rdf_strafter_impl", bif_rdf_strafter_impl, BMD_RET_TYPE, &bt_any, BMD_MIN_ARGCOUNT, 2, BMD_MAX_ARGCOUNT, 2,
       BMD_IS_PURE, BMD_DONE);
   bif_define_ex ("rdf_strbefore_impl", bif_rdf_strbefore_impl, BMD_RET_TYPE, &bt_any, BMD_MIN_ARGCOUNT, 2, BMD_MAX_ARGCOUNT, 2,
@@ -16106,6 +16202,8 @@ sql_bif_init (void)
       BMD_IS_PURE, BMD_DONE);
   bif_define_ex ("ucase", bif_ucase, BMD_ALIAS, "upper", BMD_RET_TYPE, &bt_string, BMD_MIN_ARGCOUNT, 1, BMD_MAX_ARGCOUNT, 1,
       BMD_IS_PURE, BMD_DONE);
+  bif_define_ex ("remove_unicode3_accents", bif_remove_unicode3_accents, BMD_RET_TYPE, &bt_string, BMD_MIN_ARGCOUNT, 1,
+      BMD_MAX_ARGCOUNT, 1, BMD_IS_PURE, BMD_DONE);
   bif_define_ex ("initcap", bif_initcap, BMD_RET_TYPE, &bt_varchar, BMD_MIN_ARGCOUNT, 1, BMD_MAX_ARGCOUNT, 1, BMD_IS_PURE, BMD_DONE);	/* Name is taken from Oracle */
   bif_define_ex ("split_and_decode", bif_split_and_decode, BMD_RET_TYPE, &bt_any_box, BMD_MIN_ARGCOUNT, 1, BMD_MAX_ARGCOUNT, 3, BMD_IS_PURE, BMD_DONE);	/* Does it all! */
 
@@ -16444,11 +16542,12 @@ sql_bif_init (void)
   bif_define ("mem_all_in_use", bif_mem_all_in_use);
   bif_define ("mem_new_in_use", bif_mem_new_in_use);
   bif_define ("mem_leaks", bif_mem_leaks);
+  bif_define ("mem_count", bif_mem_count);
 #endif
   bif_define_ex ("mem_get_current_total", bif_mem_get_current_total, BMD_RET_TYPE, &bt_integer, BMD_DONE);
   bif_define ("mem_summary", bif_mem_summary);
-
-
+  bif_define ("tlsf_dump_bp", bif_tlsf_dump_bp);
+  bif_define ("tlsf_dump", bif_tlsf_dump);
 
 #ifdef MALLOC_STRESS
   bif_define ("set_hard_memlimit", bif_set_hard_memlimit);

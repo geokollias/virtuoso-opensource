@@ -56,7 +56,6 @@ gpf_notice (const char *file, int line, const char *text)
 #ifdef DEBUG
   FILE *core_reason;
 #endif
-  print_trace ();
 #if defined (PMN_LOG) && defined (NOT_DEFINED)
   /* XXX - first resolve libutil conflicts */
   if (text)
@@ -198,7 +197,7 @@ char * dk_strdup (char * s)
   return s ? box_dv_short_string (s) : NULL;
 }
 
-#include "util/strfuns.h"
+#include "../util/strfuns.h"
 
 
 char *
@@ -218,7 +217,7 @@ dk_cslentry (const char *list, int idx)
     }
   start = (char *) ltrim (list);
   if ((list = strchr (start, ',')) == NULL)
-    length = strlen (start);
+    length = strlen/*_vg*/ (start);
   else
     length = (u_int) (list - start);
 

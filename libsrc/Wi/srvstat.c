@@ -1210,6 +1210,7 @@ extern int64 dk_n_free;
 extern int64 dk_n_total;
 extern int64 dk_n_nosz_free;
 extern int64 dk_n_bytes;
+extern int64 dk_n_mmaps;
 size_t http_threads_mem_report ();
 size_t dk_alloc_global_cache_total ();
 size_t aq_thr_mem_cache_total ();
@@ -1224,8 +1225,8 @@ mem_status_report ()
   mp_map_count_print (buf, sizeof (buf));
   rep_printf ("Memory:\n");
   rep_printf ("%s", buf);
-  rep_printf ("%Ld alloc, %Ld free, %Ld bytes, %Ld no size free, %Ld outstanding\n", dk_n_allocs, dk_n_free, dk_n_bytes,
-      dk_n_nosz_free, dk_n_total);
+  rep_printf ("%Ld alloc, %Ld free, %Ld bytes, %Ld no size free, %Ld outstanding %Ld mmaps\n", dk_n_allocs, dk_n_free, dk_n_bytes,
+      dk_n_nosz_free, dk_n_total, dk_n_mmaps);
   rep_printf ("%Ld WS, %Ld AQ, %Ld global\n", wsc, aqsz, gsz);
 }
 
@@ -2470,7 +2471,7 @@ bif_profile_enable (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       prof_start_time = get_msec_real_time ();
       time (&prof_start_time_st);
       cli->cli_run_clocks = 0;
-      cli->cli_cl_start_ts = 0;
+      cli->cli_cl_start_ts = rdtsc ();
       da_clear (&cli->cli_activity);
       da_clear (&cli->cli_compile_activity);
     }
@@ -4669,7 +4670,7 @@ bif_stat_import (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     key = tb_name_to_key (tb, ks[1], 0);
     if (!key)
       continue;
-    key->key_table->tb_count_estimate = unbox (ks[1]);
+    key->key_table->tb_count_estimate = unbox (ks[2]);
     if (ps)
       {
 	DO_BOX (caddr_t *, p, inx2, ps)

@@ -32,6 +32,7 @@
 #endif
 #undef log
 #include "math.h"
+#include "tlsf.h"
 
 
 void
@@ -191,6 +192,8 @@ mp_free (mem_pool_t * mp)
     hash_table_free (mp->mp_box_to_dc);
 #endif
   mp_unregister (mp);
+  if (mp->mp_tlsf)
+    tlsf_destroy (mp->mp_tlsf); /*  supporting structs, the mmaps are part of mp large allocs */
   DO_SET (caddr_t, box, &mp->mp_trash)
   {
     dk_free_tree (box);
@@ -215,7 +218,6 @@ mp_free (mem_pool_t * mp)
   dk_free ((caddr_t) mp, sizeof (mem_pool_t));
 }
 
-#ifdef MALLOC_DEBUG
 void
 mp_check (mem_pool_t * mp)
 {
@@ -234,7 +236,7 @@ mp_check (mem_pool_t * mp)
 	GPF_T1 (err);
     }
 }
-#endif
+
 
 void
 mp_alloc_box_assert (mem_pool_t * mp, caddr_t box)
@@ -300,7 +302,7 @@ mp_free (mem_pool_t * mp)
     {
       next = mb->mb_next;
       if (mb->mb_size < mp_large_min)
-      dk_free ((caddr_t) mb, mb->mb_size);
+	dk_free ((caddr_t) mb, mb->mb_size);
       mb = next;
     }
   maphash (mp_uname_free, mp->mp_unames);
@@ -403,7 +405,7 @@ DBG_NAME (mp_alloc_box) (DBG_PARAMS mem_pool_t * mp, size_t len1, dtp_t dtp)
 	{
 	  if (mp->mp_block_size < mp_large_min)
 	    {
-	  mb = (mem_block_t *) dk_alloc (mp->mp_block_size);
+	      mb = (mem_block_t *) dk_alloc (mp->mp_block_size);
 	      MP_BYTES_INCREMENT(mp,mb->mb_size);
 	    }
 	  else
@@ -425,13 +427,13 @@ DBG_NAME (mp_alloc_box) (DBG_PARAMS mem_pool_t * mp, size_t len1, dtp_t dtp)
 #endif
       if (DV_NON_BOX != dtp)
 	{
-      WRITE_BOX_HEADER (ptr, len1, dtp);
+	  WRITE_BOX_HEADER (ptr, len1, dtp);
 	}
 #ifndef LACERATED_POOL
     }
 #endif
   if (DV_NON_BOX != dtp)
-  memset (ptr, 0, len1);
+    memset (ptr, 0, len1);
   return ((caddr_t) ptr);
 }
 
@@ -740,7 +742,7 @@ DBG_NAME (mp_box_num) (DBG_PARAMS mem_pool_t * mp, boxint n)
   if (!IS_POINTER (n))
     return (box_t) (ptrlong) n;
 
-  MP_INT (box, mp, n, DV_INT_TAG_WORD);
+  MP_INT (box, mp, n, DV_INT_TAG_WORD_64);
   return box;
 }
 
@@ -779,7 +781,7 @@ caddr_t
 DBG_NAME (mp_box_iri_id) (DBG_PARAMS mem_pool_t * mp, iri_id_t n)
 {
   caddr_t box;
-  MP_INT (box, mp, n, DV_IRI_TAG_WORD);
+  MP_INT (box, mp, n, DV_IRI_TAG_WORD_64);
   return box;
 }
 
@@ -788,7 +790,7 @@ caddr_t
 DBG_NAME (mp_box_double) (DBG_PARAMS mem_pool_t * mp, double n)
 {
   caddr_t box;
-  MP_DOUBLE (box, mp, n, DV_DOUBLE_TAG_WORD);
+  MP_DOUBLE (box, mp, n, DV_DOUBLE_TAG_WORD_64);
   return box;
 }
 
@@ -797,7 +799,7 @@ caddr_t
 DBG_NAME (mp_box_float) (DBG_PARAMS mem_pool_t * mp, float n)
 {
   caddr_t box;
-  MP_FLOAT (box, mp, n, DV_FLOAT_TAG_WORD);
+  MP_FLOAT (box, mp, n, DV_FLOAT_TAG_WORD_64);
   return box;
 }
 
@@ -1405,7 +1407,7 @@ mm_cache_init (size_t sz, size_t min, size_t max, int steps, float step)
 
 
 
-size_t 
+size_t
 mp_block_size_sc (size_t sz)
 {
   int ign;
@@ -1419,7 +1421,6 @@ mp_block_size_sc (size_t sz)
 
 
 #ifdef MP_MAP_CHECK
-
 dk_mutex_t mp_mmap_mark_mtx;
 dk_pool_4g_t * dk_pool_map[256 * 256];
 int dk_pool_map_inited;
@@ -1460,7 +1461,7 @@ mp_mmap_mark (void * __ptr, size_t sz, int flag)
 	  if (!flag && !map) GPF_T1 ("freeing mmap mark where no mapping");
 	  if (!map)
 	    {
-	      map = dk_pool_map[map_off] = dk_alloc (sizeof (dk_pool_4g_t));
+	      map = dk_pool_map[map_off] = malloc (sizeof (dk_pool_4g_t));
 	      memzero (map, sizeof (dk_pool_4g_t));
 	    }
 	}
@@ -1517,7 +1518,7 @@ mp_by_address (uint64 ptr)
       int fill = rc->rc_fill, inx2;
       for (inx2 = 0; inx2 < fill; inx2++)
 	{
-	  int64 start = (int64) (rc->rc_items[inx2]);
+	  int64 start = rc->rc_items[inx2];
 	  if (ptr >= start && ptr < start + mm_sizes[inx])
 	    {
 	      printf ("Address %x is %ld bytes indes arc cached block start %p size %ld\n", (void*)ptr, ptr - start, (void*)start, mm_sizes[inx]);
@@ -1559,7 +1560,7 @@ mp_list_marks (int first, int n_print)
 			  if (n_printed >= first && n_printed < n_print + first)
 			    {
 			      int64 last_addr = ((long)inx << 32) + ((long)inx << 15) + (bit << 12);
-			      printf ("0x%p - 0x%p - %ld pages\n", last_addr, first_addr, (last_addr - first_addr) >> 12);
+			      printf ("0x%p - 0x%p - %ld pages\n", (last_addr - first_addr) >> 12);
 			    }
 			  n_printed++;
 			  first_addr = 0;
@@ -1585,6 +1586,7 @@ mp_mark_check ()
 
 void mm_cache_clear ();
 
+int64 dk_n_mmaps;
 
 void *
 mp_mmap (size_t sz)
@@ -1597,19 +1599,20 @@ mp_mmap (size_t sz)
   for (;;)
     {
       int64 tsc = rdtsc ();
-  ptr = mmap (NULL, sz, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+      ptr = mmap (NULL, sz, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
       mp_mmap_clocks += rdtsc () - tsc;
-  if (MAP_FAILED == ptr || !ptr)
-    {
-      log_error ("mmap failed with %d", errno);
+      if (MAP_FAILED == ptr || !ptr)
+	{
+	  log_error ("mmap failed with %d", errno);
 	  mm_cache_clear ();
 	  retries++;
 	  if (retries > 3)
-      GPF_T1 ("could not allocate memory with mmap");
+	    GPF_T1 ("could not allocate memory with mmap");
 	  continue;
-    }
-  mp_mmap_mark (ptr, sz, 1);
-  return ptr;
+	}
+      mp_mmap_mark (ptr, sz, 1);
+      dk_n_mmaps++;
+      return ptr;
     }
 #else
   return malloc (sz);
@@ -1649,6 +1652,7 @@ mp_munmap (void* ptr, size_t sz)
 	  log_error ("munmap failed with %d", errno);
 	  GPF_T1 ("munmap failed");
 	}
+      dk_n_mmaps--;
     }
 #else
   free (ptr);
@@ -1692,7 +1696,6 @@ mm_free_n  (int nth, size_t target_bytes, int age_limit, uint32 now)
     } while (MM_FREE_BATCH == fill);
   return total_freed;
 }
-
 
 
 size_t
@@ -1809,6 +1812,22 @@ mp_large_alloc (mem_pool_t * mp, size_t sz)
   return ptr;
 }
 
+
+void
+mp_set_tlsf (mem_pool_t * mp, size_t  sz)
+{
+  int nth;
+  size_t sz2 = mm_next_size (sz, &nth);
+  void* area = mp_large_alloc (mp, sz2);
+  init_memory_pool (sz2, area);
+  mp->mp_tlsf = (tlsf_t*)area;
+  mp->mp_tlsf->tlsf_mp = mp;
+  mp->mp_tlsf->tlsf_id = TLSF_IN_MP;
+  mp->mp_tlsf->tlsf_grow_quantum = sz2;
+}
+
+
+
 void
 mm_free_sized (void* ptr, size_t sz)
 {
@@ -1916,7 +1935,7 @@ mp_reuse_large (mem_pool_t * mp, void * ptr)
 }
 
 
-int 
+int
 mp_reserve (mem_pool_t * mp, size_t inc)
 {
   int ret = 0;
@@ -1932,7 +1951,6 @@ mp_reserve (mem_pool_t * mp, size_t inc)
   mutex_leave (&mp_reserve_mtx);
   return ret;
 }
-
 
 void
 mp_comment (mem_pool_t * mp, char * str1, char * str2)
@@ -1984,7 +2002,10 @@ munmap_ck (void* ptr, size_t sz)
     mp_mmap_mark  (ptr, sz, 1);
 
   if (0 == rc || (-1 == rc && ENOMEM == errno))
-    return rc;
+    {
+      dk_n_mmaps--;
+      return rc;
+    }
   log_error ("munmap failed with errno %d ptr %p sz %ld", errno, ptr, sz);
   GPF_T1 ("munmap failed with other than ENOMEM");
   return -1;
@@ -2149,7 +2170,7 @@ caddr_t mp_full_box_copy_tree (mem_pool_t * mp, caddr_t box) { return dbg_mp_ful
 caddr_t mp_box_num (mem_pool_t * mp, boxint num) { return dbg_mp_box_num (__FILE__, __LINE__, mp, num); }
 #undef mp_box_iri_id
 caddr_t mp_box_iri_id (mem_pool_t * mp, iri_id_t num) { return dbg_mp_box_iri_id (__FILE__, __LINE__, mp, num); }
-#undef mp_box_double 
+#undef mp_box_double
 caddr_t mp_box_double (mem_pool_t * mp, double num) { return dbg_mp_box_double (__FILE__, __LINE__, mp, num); }
 #undef mp_box_float
 caddr_t mp_box_float (mem_pool_t * mp, float num) { return dbg_mp_box_float (__FILE__, __LINE__, mp, num); }

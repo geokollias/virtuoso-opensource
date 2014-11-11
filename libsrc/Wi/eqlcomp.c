@@ -345,6 +345,7 @@ qn_size (data_source_t * qn)
   QNSZ (ddl_node_input, ddl_node_t);
   QNSZ (op_node_input, op_node_t);
   QNSZ (breakup_node_input, breakup_node_t);
+  QNSZ (txs_input, text_node_t);
   return -1;
 }
 
@@ -398,7 +399,6 @@ kpd_free (key_partition_def_t * kpd)
   dk_free_box ((caddr_t) kpd->kpd_cols);
   dk_free ((caddr_t) kpd, sizeof (key_partition_def_t));
 }
-
 
 void
 qr_free (query_t * qr)
