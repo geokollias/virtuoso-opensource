@@ -35,11 +35,8 @@
 //#define VOS
 #define NO_CL GPF_T1 ("not available without cluster support")
 
-<<<<<<< HEAD
-#define CSET 1
-=======
 #define PM_TLSF 1
->>>>>>> feature/analytics
+#define CSET 1
 #ifdef MALLOC_DEBUG
 //#define DC_BOXES_DBG
 #endif

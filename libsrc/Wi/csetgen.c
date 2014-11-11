@@ -240,11 +240,11 @@ csgc_cmp (const void *s1, const void *s2)
 {
   csg_col_t *c1 = (csg_col_t *) s1;
   csg_col_t *c2 = (csg_col_t *) s2;
-  if (c1->csgc_col->col_is_cset_opt && !c2->csgc_col->col_is_cset_opt)
+  if (c1->csgc_ref_col->col_is_cset_opt && !c2->csgc_ref_col->col_is_cset_opt)
     return 1;
-  if (!c1->csgc_col->col_is_cset_opt && c2->csgc_col->col_is_cset_opt)
+  if (!c1->csgc_ref_col->col_is_cset_opt && c2->csgc_ref_col->col_is_cset_opt)
     return -1;
-  return c1->csgc_col->col_count < c2->csgc_col->col_count ? -1 : 1;
+  return c1->csgc_selectivity < c2->csgc_selectivity ? -1 : 1;
 }
 
 
@@ -284,6 +284,10 @@ csg_ts_frame (sqlo_t * so, op_table_t * top_ot, cset_t * cset, table_source_t * 
     }
   for (sp = ks->ks_row_spec; sp; sp = sp->sp_next)
     {
+      if (sp->sp_col == (dbe_column_t *) ks->ks_key->key_parts->data
+	  || sp->sp_col == (dbe_column_t *) ks->ks_key->key_parts->next->data)
+	continue;		/* s or g specs do not make rq access */
+      sethash ((void *) sp->sp_col, ht, (void *) 1);
       if (sp->sp_cl.cl_col_id == g_col_id)
 	{
 	  if (g_spec && CMP_EQ == g_spec->sp_min_op)
@@ -296,7 +300,7 @@ csg_ts_frame (sqlo_t * so, op_table_t * top_ot, cset_t * cset, table_source_t * 
 	continue;		/* s or g specs do not make rq access */
       sethash ((void *) sp->sp_col, ht, (void *) 1);
     }
-  DO_SET (dbe_column_t *, col, &ks->ks_out_cols) if (col->col_cset_iri)	/*not s or g */
+  DO_SET (dbe_column_t *, col, &ks->ks_key->key_parts) if (col->col_cset_iri)	/*not s or g */
     sethash ((void *) col, ht, (void *) 2);
   END_DO_SET ();
   n_cols = ht->ht_count;
@@ -707,7 +711,7 @@ csg_extra_specs (sqlo_t * so, cset_t * cset, query_t * qr, table_source_t * mode
 	    {
 	      csm->csm_role = TS_CSET_SG;
 	      csg_cset_extra (so, ts, model_ts);
-	      ts->ts_set_card_bits = cc_new_instance_slot (sc->sc_cc);
+	      ts->ts_set_card_bits = cc_new_sets_slot (sc->sc_cc);
 	      cset_ts = ts;
 	      csm->csm_exc_s = ssl_new_vec (sc->sc_cc, "exc_s", DV_IRI_ID);
 	      csm->csm_exc_s_row = cc_new_instance_slot (sc->sc_cc);

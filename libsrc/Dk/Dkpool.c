@@ -879,8 +879,9 @@ t_list_impl (long n, ...)
   for (inx = 0; inx < n; inx++)
     {
       caddr_t child = va_arg (ap, caddr_t);
-      if (IS_BOX_POINTER (child))
+      /*      if (IS_BOX_POINTER (child))
 	mp_alloc_box_assert (THR_TMP_POOL, child);
+      */
       box[inx] = child;
     }
   va_end (ap);

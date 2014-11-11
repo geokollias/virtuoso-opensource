@@ -5515,7 +5515,6 @@ bif_ucase (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     }
   return res;
 }
-<<<<<<< HEAD
 
 caddr_t
 bif_remove_unicode3_accents (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
@@ -5525,17 +5524,6 @@ bif_remove_unicode3_accents (caddr_t * qst, caddr_t * err_ret, state_slot_t ** a
   caddr_t res;
   int i;
 
-=======
-
-caddr_t
-bif_remove_unicode3_accents (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
-{
-  caddr_t str = bif_string_or_uname_or_wide_or_null_arg (qst, args, 0, "remove_unicode3_accents");
-  long len;
-  caddr_t res;
-  int i;
-
->>>>>>> feature/analytics
   if (NULL == str)
     return (NEW_DB_NULL);
   if (DV_WIDESTRINGP (str))

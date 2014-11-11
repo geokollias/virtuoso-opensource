@@ -2827,11 +2827,8 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
 		  index_tree_t *it = qst_get_chash (inst, hrng->hrng_ht, hrng->hrng_ht_id, NULL);
 		  if (!it && ((HRNG_SEC | HRNG_RD_SEC) & hrng->hrng_flags))
 		    it = itc_sec_in (itc, buf, hrng);
-<<<<<<< HEAD
-=======
 		  if (!it)
 		    itc_no_hi (itc, buf);
->>>>>>> feature/analytics
 		  cpo.cpo_chash = it->it_hi->hi_chash;
 		  cpo.cpo_chash_dtp = cpo.cpo_chash->cha_sqt[0].sqt_dtp;
 		}

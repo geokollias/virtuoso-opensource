@@ -1528,16 +1528,14 @@ ts_add_cset (sql_comp_t * sc, df_elt_t * tb_dfe, table_source_t * ts)
       csts->csts_last_s_chash = ssl_new_tree (sc->sc_cc, "last_s");
     }
   col_iter = ks->ks_out_cols;
-  DO_SET (state_slot_t *, ssl, &ks->ks_out_slots)
+  DO_SET (dbe_column_t *, col, &ks->ks_key->key_parts)
   {
-    dbe_column_t *col = (dbe_column_t *) col_iter->data;
-    if (!COL_IS_CSET (ssl->ssl_column))
-      ;
-    else if (!col->col_is_cset_opt)
-      sethash (ssl->ssl_column, ht, (void *) 1);
+    if (!COL_IS_CSET (col))
+      continue;
+    if (!col->col_is_cset_opt)
+      sethash (col, ht, (void *) 1);
     else
       n_opts++;
-    col_iter = col_iter->next;
   }
   END_DO_SET ();
   for (sp = ks->ks_row_spec; sp; sp = sp->sp_next)
@@ -1546,11 +1544,11 @@ ts_add_cset (sql_comp_t * sc, df_elt_t * tb_dfe, table_source_t * ts)
   csts->csts_reqd_ps = dk_alloc_box (sizeof (iri_id_t) * ht->ht_count, DV_BIN);
   DO_HT (dbe_column_t *, col, ptrlong, ign, ht) csts->csts_reqd_ps[fill++] = col->col_cset_iri;
   END_DO_HT;
-  n_slots = 3 + ht->ht_count * 10 + (n_opts * 3);
-  n_scalars = 2 * ht->ht_count;
+  n_slots = 3 + ht->ht_count * 10 + (n_opts * 12);
+  n_scalars = 2 * (ht->ht_count + n_opts);
   csts->csts_scalar_ssls = (state_slot_t *) dk_alloc_box (sizeof (caddr_t) * n_scalars, DV_BIN);
   csts->csts_vec_ssls = (state_slot_t *) dk_alloc_box (sizeof (caddr_t) * n_slots, DV_BIN);
-  n_places = (ht->ht_count + 1) * 11 + (n_opts * 2);
+  n_places = (ht->ht_count + 1) * 11 + (n_opts * 11);
   csts->csts_qi_places = (ssl_index_t *) dk_alloc_box (sizeof (ssl_index_t) * n_places, DV_BIN);
   for (inx = 0; inx < n_slots; inx++)
     csts->csts_vec_ssls[inx] = ssl_new_vec (sc->sc_cc, "_cset_vec", DV_ANY);
@@ -1558,7 +1556,7 @@ ts_add_cset (sql_comp_t * sc, df_elt_t * tb_dfe, table_source_t * ts)
     csts->csts_scalar_ssls[inx] = ssl_new_variable (sc->sc_cc, "_cset_scalar", DV_ANY);
   for (inx = 0; inx < n_places; inx++)
     csts->csts_qi_places[inx] = cc_new_instance_slot (sc->sc_cc);
-  n_sets = ht->ht_count + 3;
+  n_sets = ht->ht_count + n_opts + 3;
   csts->csts_qi_sets = (ssl_index_t *) dk_alloc_box (sizeof (ssl_index_t) * n_sets, DV_BIN);
   for (inx = 0; inx < n_sets; inx++)
     csts->csts_qi_sets[inx] = cc_new_instance_slot (sc->sc_cc);
