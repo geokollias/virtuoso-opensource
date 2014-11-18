@@ -58,6 +58,7 @@ typedef struct
   uint32 	ht_actual_size;
   short		ht_tlsf_id;
   unsigned char 	ht_rehash_threshold;
+  void *	ht_mp;
 #ifdef MTX_DEBUG
   dk_mutex_t *	ht_required_mtx;
 #endif

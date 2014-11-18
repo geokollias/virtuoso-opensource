@@ -2304,37 +2304,48 @@ chash_to_memcache (caddr_t * inst, index_tree_t * tree, hash_area_t * ha)
     }
   if (!hi->hi_memcache_from_mp)
     GPF_T1 ("writing mp boxes in non-mp memcache");
-  for (part = 0; part < MAX (cha->cha_n_partitions, 1); part++)
-    {
-      chash_t *cha_p = CHA_PARTITION (cha, part);
-      for (chp = cha_p->cha_current; chp; chp = chp->h.h.chp_next)
-	{
-	  int pos;
-	  for (pos = 0; pos < chp->h.h.chp_fill; pos += cha->cha_first_len)
-	    {
-	      caddr_t *key = (caddr_t *) mp_alloc_box_ni (cha->cha_pool, sizeof (caddr_t) * ha->ha_n_keys, DV_ARRAY_OF_POINTER);
-	      caddr_t *data;
-	      uint32 h = HC_INIT;
-	      int var_len = 0, inx;
-	      CKE ((&chp->chp_data[pos]));
-	      for (inx = 0; inx < ha->ha_n_keys; inx++)
-		{
-		  key[inx] = cha_box_col (cha, ha, &chp->chp_data[pos], inx);
-		  h = key_hash_box (key[inx], DV_TYPE_OF (key[inx]), h, &var_len, NULL, ha->ha_key_cols[inx].cl_sqt.sqt_dtp, 1);
-		  HASH_NUM_SAFE (h);
-		}
-	      hmk.hmk_data = key;
-	      hmk.hmk_var_len = var_len;
-	      hmk.hmk_hash = h & ID_HASHED_KEY_MASK;
-	      hmk.hmk_ha = ha;
-	      data = (caddr_t *) mp_alloc_box_ni (cha->cha_pool, sizeof (caddr_t) * (n_slots - ha->ha_n_keys), DV_ARRAY_OF_POINTER);
-	      for (inx = ha->ha_n_keys; inx < n_slots; inx++)
-		data[inx - ha->ha_n_keys] = cha_box_col (cha, ha, &chp->chp_data[pos], inx);
-	      mc_sets++;
-	      t_id_hash_set (hi->hi_memcache, (caddr_t) & hmk, (caddr_t) & data);
-	    }
-	}
-    }
+  QR_RESET_CTX
+  {
+    for (part = 0; part < MAX (cha->cha_n_partitions, 1); part++)
+      {
+	chash_t *cha_p = CHA_PARTITION (cha, part);
+	for (chp = cha_p->cha_current; chp; chp = chp->h.h.chp_next)
+	  {
+	    int pos;
+	    for (pos = 0; pos < chp->h.h.chp_fill; pos += cha->cha_first_len)
+	      {
+		caddr_t *key = (caddr_t *) mp_alloc_box_ni (cha->cha_pool, sizeof (caddr_t) * ha->ha_n_keys, DV_ARRAY_OF_POINTER);
+		caddr_t *data;
+		uint32 h = HC_INIT;
+		int var_len = 0, inx;
+		CKE ((&chp->chp_data[pos]));
+		for (inx = 0; inx < ha->ha_n_keys; inx++)
+		  {
+		    key[inx] = cha_box_col (cha, ha, &chp->chp_data[pos], inx);
+		    h = key_hash_box (key[inx], DV_TYPE_OF (key[inx]), h, &var_len, NULL, ha->ha_key_cols[inx].cl_sqt.sqt_dtp, 1);
+		    HASH_NUM_SAFE (h);
+		  }
+		hmk.hmk_data = key;
+		hmk.hmk_var_len = var_len;
+		hmk.hmk_hash = h & ID_HASHED_KEY_MASK;
+		hmk.hmk_ha = ha;
+		data =
+		    (caddr_t *) mp_alloc_box_ni (cha->cha_pool, sizeof (caddr_t) * (n_slots - ha->ha_n_keys), DV_ARRAY_OF_POINTER);
+		for (inx = ha->ha_n_keys; inx < n_slots; inx++)
+		  data[inx - ha->ha_n_keys] = cha_box_col (cha, ha, &chp->chp_data[pos], inx);
+		mc_sets++;
+		t_id_hash_set (hi->hi_memcache, (caddr_t) & hmk, (caddr_t) & data);
+	      }
+	  }
+      }
+  }
+  QR_RESET_CODE
+  {
+    POP_QR_RESET;
+    SET_THR_TMP_POOL (NULL);
+    longjmp_splice (THREAD_CURRENT_THREAD->thr_reset_ctx, reset_code);
+  }
+  END_QR_RESET;
   SET_THR_TMP_POOL (NULL);
   hi->hi_chash = NULL;
 }

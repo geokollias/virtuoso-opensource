@@ -9425,7 +9425,7 @@ tlsf_dump_1 (ptrlong tlp, char *fn, id_hash_t * ht, int ht_mode)
   if (fd)
     fclose (fd);
   tlsf_fp = stderr;
-  return NULL;
+  return;
 }
 
 

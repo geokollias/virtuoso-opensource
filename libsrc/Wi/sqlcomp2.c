@@ -1536,6 +1536,7 @@ query_t *DBG_NAME (sql_compile_1) (DBG_PARAMS const char *string2, client_connec
 	POP_CATCH;
 	if (inside_sem)
 	  parse_leave ();
+	self->thr_tlsf = save_tlsf;
 	return ((query_t *) tree1);
       }
     if (cr_type == SQLC_TRY_SQLO)
