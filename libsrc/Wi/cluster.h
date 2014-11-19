@@ -891,6 +891,9 @@ typedef struct cl_self_message_s
 #define CLO_DFG_AGG			31	/*!< request for simple aggregate result from dist frag */
 #define CLO_CONTROL			32
 #define CLO_TOP 33
+#ifdef RDF_SECURITY_CLO
+#define CLO_RDF_GRAPH_USER_PERMS	34	/*!< A hashtable of user permissions for graphs */
+#endif
 #define CLO_IEXT_CR 35		/* cursor on index extension */
 #define CLO_SEC_TOKEN 36
 

@@ -570,6 +570,9 @@ sqlo_wrap_dfe_true_or_false (sqlo_t * so, df_elt_t * const_dfe)
   return res;
 }
 
+/*#define IS_ONE_OF_THESE(name)  (0 == stricmp (name, "one_of_these")) */
+#define IS_ONE_OF_THESE(n) (n == uname_one_of_these)
+
 void
 sqlo_push_pred (sqlo_t * so, df_elt_t * dfe)
 {
@@ -590,7 +593,12 @@ sqlo_push_pred (sqlo_t * so, df_elt_t * dfe)
   if (enable_g_in_sec)
     {
       df_elt_t **in_list = sqlo_in_list (dfe, NULL, NULL);
-      if (in_list && st_is_call (in_list[1]->dfe_tree, "rgs_user_perms_clo", 2))
+      if (!in_list && DFE_BOP_PRED == dfe->dfe_type && dfe->_.bin.is_in_list > 0 && BOP_LT == dfe->_.bin.op &&
+	  DFE_CONST == dfe->_.bin.left->dfe_type && !unbox ((ccaddr_t) (dfe->_.bin.left->dfe_tree)) &&
+	  DFE_CALL == dfe->_.bin.right->dfe_type && dfe->_.bin.right->_.call.func_name &&
+	  IS_ONE_OF_THESE (dfe->_.bin.right->_.call.func_name))
+	in_list = dfe->_.bin.right->_.call.args;
+      if (in_list && st_is_call (in_list[1]->dfe_tree, "__rgs_user_perms_clo", 2))
 	return;
     }
   t_set_push (&so->so_this_dt->ot_preds, (void *) dfe);
@@ -3461,9 +3469,6 @@ sqlo_is_sec_in_list (df_elt_t ** in_list)
     return INL_RDF_INF;
 }
 
-
-/*#define IS_ONE_OF_THESE(name)  (0 == stricmp (name, "one_of_these")) */
-#define IS_ONE_OF_THESE(n) (n == uname_one_of_these)
 
 
 int do_sqlo_in_list = 1;
@@ -8063,6 +8068,15 @@ sqlo_unique_rows (sql_comp_t * sc, op_table_t * top_ot, ST * tree)
 void
 sqlo_need_rdf_sec (sqlo_t * so)
 {
+#ifdef RDF_SECURITY_CLO
+  char *q_name = "g_ctx_query";
+  client_connection_t *cli;
+  if (!enable_g_in_sec)
+    return;
+  cli = sqlc_client ();
+  if (!cli->cli_user || G_ID_DBA != cli->cli_user->usr_g_id || id_hash_get (cli->cli_globals, (caddr_t) & q_name))
+    so->so_sc->sc_gen_rdf_rd_sec = 1;
+#endif
 }
 
 

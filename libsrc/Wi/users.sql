@@ -1081,6 +1081,210 @@ create procedure
 
   cert_auth:;
 
+  --VOS-START
+  -- We only check ACLs for non-admins and cert-auth
+  if (__proc_exists ('VAL.DBA.find_restrictions_max') is not null
+      and
+      DB.DBA.ACLS_ENABLED_FOR_SCOPE ('http://www.openlinksw.com/ontology/acl#Query', 'http://www.openlinksw.com/ontology/acl#SqlRealm')
+      and (
+        user_name is null
+        or (
+          user_name = 'dba' and isstring (client_attr ('client_certificate'))
+        )
+        or (
+          user_name <> 'dba' and client_attr ('client_ssl')
+          and not exists (select (1) from DB.DBA.SYS_USER_GROUP, DB.DBA.SYS_USERS a, DB.DBA.SYS_USERS b
+                                    where UG_GID=b.U_ID and b.U_NAME='administrators' and a.U_NAME=user_name and UG_UID=a.U_ID)
+        )
+      )
+    )
+    {
+      declare agentUri, sqlRealm varchar;
+      declare default_host varchar;
+      declare acls any;
+      declare resMinValues, resMaxValue decimal;
+      declare resMinServiceId, resMaxServiceId varchar;
+      declare maxRate, maxLen, maxRows, sparqlOnly, sparqlRead, sparqlWrite, sparqlSponge int;
+      declare agents any;
+      declare cert any;
+
+      cert := client_attr ('client_certificate');
+
+      -- We use a dedicated realm for SQL access control
+      sqlRealm := 'http://www.openlinksw.com/ontology/acl#SqlRealm';
+      -- in case something in ACLs raise an unhandled error
+      declare exit handler for sqlstate '*' {
+        log_message (sprintf ('ACL Check in login failed: %s (%s). Contiuing with normal login.', __SQL_MESSAGE, __SQL_STATE));
+        goto normal_auth;
+      };
+
+      -- Determine the agent IRI
+      agents := FOAF_SSL_WEBID_GET_ALL ();
+      if (length (agents) > 0)
+        {
+          agentUri := agents[0];
+        }
+      else
+        {
+          fp := get_certificate_info (6);
+          if (not fp is null and fp <> 0)
+            {
+              agentUri := 'cert:' || fp;
+            }
+          else if (user_name is not null)
+            {
+              default_host := cfg_item_value (virtuoso_ini_path (), 'URIQA', 'DefaultHost');
+              if (default_host is null) {
+                default_host := sys_stat ('st_host_name');
+                if (server_http_port () <> '80')
+                  default_host := default_host ||':'|| server_http_port ();
+              }
+              agentUri := sprintf ('http://%s/dataspace/person/%s#this', default_host, user_name);
+
+              -- Save the authentication information in the connection to be used in aclhooks.sql
+              connection_set ('__current_acl_uname__', user_name);
+            }
+          else
+            {
+              agentUri := null;
+            }
+        }
+
+      -- Check ACL Rules and Restrictions for client access
+      maxRate := 0;
+      maxLen := 0;
+      maxRows := 0;
+      sparqlOnly := 1;
+      sparqlRead := 0;
+      sparqlWrite := 0;
+      sparqlSponge := 0;
+
+      maxRate := coalesce (
+        VAL.DBA.find_restrictions_max (
+          resource=>'urn:virtuoso:restrictions:sql-request-rate',
+          serviceId=>agentUri,
+          realm=>sqlRealm,
+          certificate=>cert),
+        0);
+      maxLen := coalesce (
+        VAL.DBA.find_restrictions_max (
+          resource=>'urn:virtuoso:restrictions:sql-content-size',
+          serviceId=>agentUri,
+          realm=>sqlRealm,
+          certificate=>cert),
+        0);
+      maxRows := coalesce (
+        VAL.DBA.find_restrictions_max (
+          resource=>'urn:virtuoso:restrictions:sql-result-rows',
+          serviceId=>agentUri,
+          realm=>sqlRealm,
+          certificate=>cert),
+        0);
+
+      -- Check SPARQL permissions
+      acls := coalesce (get_keyword (
+        'urn:virtuoso:access:sparql',
+        VAL.DBA.check_acls_for_resource (
+          serviceId=>agentUri,
+          resource=>'urn:virtuoso:access:sparql',
+          realm=>sqlRealm,
+          scope=>'http://www.openlinksw.com/ontology/acl#Query',
+          honorScopeState=>1,
+          certificate=>cert)),
+        vector ());
+      if (position ('http://www.openlinksw.com/ontology/acl#Read', acls))
+        {
+          sparqlRead := 1;
+        }
+      if (position ('http://www.openlinksw.com/ontology/acl#Write', acls))
+        {
+          sparqlWrite := 1;
+        }
+      if (position ('http://www.openlinksw.com/ontology/acl#Sponge', acls))
+        {
+          sparqlSponge := 1;
+        }
+
+      -- backwards-compatibility
+      if (position ('http://www.w3.org/ns/auth/acl#Read', acls))
+        {
+          sparqlRead := 1;
+        }
+      if (position ('http://www.w3.org/ns/auth/acl#Write', acls))
+        {
+          sparqlWrite := 1;
+        }
+
+      -- Check if we have SQL permissions
+      acls := coalesce (get_keyword (
+        'urn:virtuoso:access:sparql',
+        VAL.DBA.check_acls_for_resource (
+          serviceId=>agentUri,
+          resource=>'urn:virtuoso:access:sql',
+          realm=>sqlRealm,
+          scope=>'http://www.openlinksw.com/ontology/acl#Query',
+          honorScopeState=>1,
+          certificate=>cert)),
+        vector ());
+      -- For now we require both sql read and write since we have no way to separate the two yet
+      if (position ('http://www.openlinksw.com/ontology/acl#Read', acls) and
+          position ('http://www.openlinksw.com/ontology/acl#Write', acls))
+        {
+          sparqlOnly := 0;
+        }
+
+      -- At least sparql permissions are required to do anything, otherwise we refuse login altogether
+      if (sparqlOnly and not sparqlRead and not sparqlWrite and not sparqlSponge)
+        {
+          rc := -1;
+          goto normal_auth;
+        }
+
+      -- Let the callback know about the used certificate, realm, and agent
+      connection_set ('val_sparql_cert', cert);
+      connection_set ('val_sparql_uname', VAL.DBA.username_for_online_account (null, agentUri));
+      connection_set ('val_sparql_rule_realm', sqlRealm);
+      connection_set ('__current_acl_agent_iri__', agentUri);
+      connection_set ('__current_acl_realm_iri__', sqlRealm);
+
+      if (user_name is null)
+        {
+          -- We use our special sparql-only user which has full access to all graphs, private and public
+          user_name := 'VAL_SPARQL_ADMIN';
+          rc := 1;
+        }
+
+      -- Set the limits for the client connection as well as the graph security callback for SPARQL queries
+      if (__proc_exists ('VAL.DBA.set_graph_context_query') and
+          sys_stat ('enable_g_in_sec') = 1)
+        {
+          user_name := 'VAL_SPARQL_ADMIN_G_CTX';
+
+          set_client_acl_restrictions (
+            maxRate,
+            maxLen,
+            sparqlOnly,
+            null,
+            maxRows
+          );
+
+          VAL.DBA.set_graph_context_query (
+            serviceId=>agentUri,
+            realm=>sqlRealm,
+            certificate=>client_attr ('client_certificate'));
+        }
+      else
+        {
+          set_client_acl_restrictions (
+            maxRate,
+            maxLen,
+            sparqlOnly,
+            sprintf (' define sql:gs-app-callback "VAL_SPARQL_PERMS" define sql:gs-app-uid "%s" define get:enforce-acls "yes" ', agentUri),
+            maxRows
+          );
+        }
+    }
+    --VOS-END
 
   -- normal verification (only if rc != 0 which means "no access")
 normal_auth:

@@ -270,6 +270,13 @@ setp_distinct_hash (sql_comp_t * sc, setp_node_t * setp, uint64 n_rows, int op)
   ha->ha_op = op;
   if (setp->setp_any_user_aggregate_gos)
     ha->ha_memcache_only = 1;
+  if (HA_FILL == op)
+    {
+      int inx;
+      ha->ha_non_null = dk_alloc_box (BOX_ELEMENTS (ha->ha_slots), DV_BIN);
+      DO_BOX (state_slot_t *, ssl, inx, ha->ha_slots) ha->ha_non_null[inx] = ha->ha_slots[inx]->ssl_sqt.sqt_non_null;
+      END_DO_BOX;
+    }
   if (HA_GROUP == op && !setp->setp_ahash_kr)
     setp_set_ahash (setp);
   if ((HA_GROUP == op && ha->ha_n_keys <= CHASH_GB_MAX_KEYS) || setp->setp_distinct)

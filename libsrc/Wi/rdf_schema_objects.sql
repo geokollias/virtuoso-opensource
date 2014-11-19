@@ -1144,7 +1144,8 @@ RDF_VIEW_DO_SYNC (in qualifier varchar, in load_data int := 0, in pgraph varchar
 ;
 
 create procedure
-RDF_VIEW_SYNC_TO_PHYSICAL (in vgraph varchar, in load_data int := 0, in pgraph varchar := null, in log_mode int := 3, in load_atomic int := 0)
+RDF_VIEW_SYNC_TO_PHYSICAL (in vgraph varchar, in load_data int := 0, in pgraph varchar := null, in log_mode int := 3, in load_atomic int := 0,
+	in gr_is_qm int := 0)
 {
    declare mask varchar;
    declare txt, tbls, err_ret, opt any;
@@ -1200,6 +1201,27 @@ RDF_VIEW_SYNC_TO_PHYSICAL (in vgraph varchar, in load_data int := 0, in pgraph v
 	   }
        }
    }
+  if (gr_is_qm)
+    {
+      exec (sprintf ('sparql alter quad storage virtrdf:SyncToQuads { drop quad map <%s> }', vgraph), stat, msg);
+      stat := '00000';
+      exec (sprintf ('sparql alter quad storage virtrdf:SyncToQuads { create <%s> using storage virtrdf:DefaultQuadStorage }', vgraph), stat, msg);
+      if (stat <> '00000')
+	err_ret := vector_concat (err_ret, vector (vector (stat, msg)));
+     for select "tb" from (sparql define input:storage ""
+	select distinct ?tb from virtrdf:
+	{
+	  ?:vgraph virtrdf:qmUserSubMaps ?sm .
+	  ?sm ?inx ?q .
+	  ?q virtrdf:qmTableName ?tb  .
+	}) xx do
+       {
+	 if (RDF_VIEW_CHECK_SYNC_TB ("tb"))
+	   tbls := vector_concat (tbls, vector ("tb"));
+	 else
+	   err_ret := vector_concat (err_ret, vector (vector ('42000', sprintf ('Reference to VIEW %s cannot be added automatically', "tb"))));
+       }
+    }
   foreach (varchar tb in tbls) do
     {
       for (declare ctr int, ctr := 1; ctr <= 4; ctr := ctr + 1)

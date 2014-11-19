@@ -1458,7 +1458,7 @@ sqlg_hash_spec (sql_comp_t * sc, state_slot_t ** ref_slots, int n_keys, table_so
       hrng->hrng_hs = (HRNG_MERGE == is_merge) ? hs : NULL;
       hrng->hrng_ht = hs->hs_ha->ha_tree;
       hrng->hrng_ht_id = hs->hs_cl_id;
-      if (HRNG_PROBE_PART_ONLY == is_merge)
+      if (HRNG_PROBE_PART_ONLY == is_merge || (HRNG_MERGE != is_merge && filler->fnr_setp->setp_no_bloom))
 	hrng->hrng_flags = HR_RANGE_ONLY;
     }
   else

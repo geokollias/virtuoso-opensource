@@ -581,6 +581,7 @@ typedef struct hash_area_s
   state_slot_t **ha_slots;	/* slots where values to feed come from if they do not come from columns direct */
   struct hash_area_s *ha_org_ha;	/* can be a temp ha on stack for merge of gby or such, must ref the originnal allocated ha in the ht */
   ha_key_range_t *ha_key_ranges;	/* for array group by when hash keys known in small range */
+  caddr_t ha_non_null;		/* non null flags of ssls in ha_slots, can be nn in ha and nullable elsewhere for hash oj  */
   int ha_n_keys;
   int ha_n_deps;
   char ha_op;
@@ -1416,8 +1417,10 @@ typedef struct select_node_s
   state_slot_t *sel_cn_set_no;	/* if in multistate exists or value subq, this is set no of containing code node.  As soon as one result is produced, advance the multistate qr to the next set as per this set no */
   state_slot_t *sel_scalar_ret;
   set_ctr_node_t *sel_set_ctr;	/* if inlined subq ends here, this is the set ctr that marks the strat of the subq */
+  state_slot_t *sel_sdfg_qis;
   ssl_index_t sel_vec_set_mask;	/* In vectored subq, if top = 1, bit mask where each exists marks a 1 at the set no.  If top > 1, array of ints with row count in the set in question. */
   ssl_index_t sel_client_batch_start;	/* set no of 1st result row in current batch of rows to sql client */
+  ssl_index_t sel_sdfg_mode;
   char sel_vec_role;
   char sel_is_scalar_agg;	/* scalar subq with aggregate and no group by */
   char sel_subq_inlined;

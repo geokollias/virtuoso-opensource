@@ -267,7 +267,7 @@ extern long tc_dfg_max_empty_mores;
 extern int mp_local_rc_sz;
 extern int enable_distinct_sas;
 extern int enable_inline_sqs;
-extern enable_joins_only;
+extern int enable_joins_only;
 int32 ha_rehash_pct = 300;
 extern int c_use_aio;
 extern int32 sqlo_sample_dep_cols;
@@ -1238,6 +1238,7 @@ extern int64 dk_n_total;
 extern int64 dk_n_nosz_free;
 extern int64 dk_n_bytes;
 extern int64 dk_n_mmaps;
+extern int64 dk_n_max_allocs;
 size_t http_threads_mem_report ();
 size_t dk_alloc_global_cache_total ();
 size_t aq_thr_mem_cache_total ();
@@ -2280,6 +2281,22 @@ bif_col_stat (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 
   sqlr_new_error ("42000", "ST002", "Bad attribute name in col_stat");
   return NULL;
+}
+
+
+caddr_t
+bif_buf_stat (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  ushort flags;
+  ptrlong nth = bif_long_arg (qst, args, 0, "buf_stat");
+  buffer_desc_t *buf;
+  if (nth >= main_bufs)
+    return NEW_DB_NULL;
+  buf = &wi_inst.wi_bps[nth / wi_inst.wi_bps[0]->bp_n_bufs]->bp_bufs[nth % wi_inst.wi_bps[0]->bp_n_bufs];
+  flags = SHORT_REF (buf->bd_buffer + DP_FLAGS);
+  return list (4, box_num (flags), buf->bd_tree
+      && buf->bd_tree->it_key ? box_num (buf->bd_tree->it_key->key_id) : NULL, box_num (LONG_REF (buf->bd_buffer + DP_PARENT)),
+      (ptrlong) buf->bd_is_dirty);
 }
 
 
@@ -4848,6 +4865,7 @@ bif_status_init (void)
   bif_define ("sys_stat", bif_sys_stat);
   bif_define ("__dbf_set", bif_dbf_set);
   bif_define_ex ("key_stat", bif_key_stat, BMD_RET_TYPE, &bt_integer, BMD_DONE);
+  bif_define_ex ("buf_stat", bif_buf_stat, BMD_RET_TYPE, &bt_any_box, BMD_DONE);
   bif_define_ex ("key_estimate", bif_key_estimate, BMD_RET_TYPE, &bt_integer, BMD_DONE);
   bif_define_ex ("col_stat", bif_col_stat, BMD_RET_TYPE, &bt_any_box, BMD_DONE);
   bif_define ("__col_info", bif_col_info);

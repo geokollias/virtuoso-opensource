@@ -86,16 +86,28 @@ void thr_free_alloc_cache (thread_t * thr);
 void malloc_cache_clear (void);
 
 #ifdef MALLOC_DEBUG
+#ifndef USE_TLSF
 # include <util/dbgmal.h>
+#else
+//#define dbg_malloc(f,l,s) dbg_tlsf_malloc (f,l,s)
+//#define dbg_free(f,l,b,sz) tlsf_free (b)
+#define dbg_find_allocation_error(p, mp) tlsf_check_alloc (p)
+#endif
 
 
 
 #ifndef _USRDLL
 #ifndef EXPORT_GATE
+#ifdef USE_TLSF
+# define dk_alloc(sz)		dbg_malloc (__FILE__, __LINE__, (sz))
+# define dk_try_alloc(sz)	dbg_malloc(__FILE__, __LINE__, (sz))
+# define dk_free(ptr, sz)	tlsf_free (ptr)
+#else
 # define dk_alloc(sz)		dbg_malloc (__FILE__, __LINE__, (sz))
 # define dk_try_alloc(sz)	dbg_malloc (__FILE__, __LINE__, (sz))
 # define dk_free(ptr, sz)	dbg_free_sized (__FILE__, __LINE__, (ptr), (sz))
 
+#endif
 #endif
 #endif
 void dk_alloc_assert (void *ptr);
@@ -111,9 +123,16 @@ void dk_alloc_assert (void *ptr);
 #define DBG_ARGS 		file, line,
 #define DBG_ARGS_0 		file, line
 
+#ifdef USE_TLSF
+
+#define DK_ALLOC(SIZE) 		tlsf_malloc(DBG_ARGS (SIZE), THREAD_CURRENT_THREAD)
+#define DK_FREE(BOX,SIZE) 	tlsf_free(BOX)
+
+#else
 #define DK_ALLOC(SIZE) 		dbg_malloc(DBG_ARGS (SIZE))
 #define DK_FREE(BOX,SIZE) 	dbg_free_sized(DBG_ARGS (BOX), (SIZE))
 
+#endif
 #else
 #define DBG_NAME(nm) 		nm
 #define DBG_PARAMS
@@ -131,6 +150,7 @@ void *dbg_dk_try_alloc (DBG_PARAMS size_t c);
 
 void dk_set_initial_mem (size_t);
 
+#ifndef USE_TLSF
 #define tlsf_base_alloc dk_alloc
 
 
@@ -139,6 +159,17 @@ void dk_set_initial_mem (size_t);
 
 #define END_WITH_TLSF }
 
+#else
+
+#define WITH_TLSF(n)  \
+  { du_thread_t * __self = THREAD_CURRENT_THREAD;  tlsf_t * __tlsf_save = __self->thr_tlsf; __self->thr_tlsf = n;
+
+
+#define END_WITH_TLSF \
+  __self->thr_tlsf = __tlsf_save; \
+}
+
+#endif
 
 
 #endif
