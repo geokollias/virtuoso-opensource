@@ -2292,6 +2292,7 @@ sqlg_make_dt_hash_ref (sqlo_t * so, df_elt_t * tb_dfe, ST ** target_names, dk_se
   ref_slots = dk_set_nreverse (ref_slots);
   memcpy (ha_copy, ha, sizeof (hash_area_t));
   ha_copy->ha_slots = (state_slot_t **) dk_set_to_array (ref_slots);
+  ha_copy->ha_non_null = box_copy (ha->ha_non_null);
   ha_copy->ha_key_cols = (dbe_col_loc_t *) box_copy ((caddr_t) ha->ha_key_cols);
   ha_copy->ha_cols = NULL;
   hs->hs_ref_slots = (state_slot_t **) list_to_array (ref_slots);
@@ -4466,6 +4467,7 @@ ha_copy (hash_area_t * ha)
   NEW_VARZ (hash_area_t, ha_copy);
   memcpy (ha_copy, ha, sizeof (hash_area_t));
   BOXC (ha_copy->ha_slots);
+  BOXC (ha_copy->ha_non_null);
   BOXC (ha_copy->ha_key_cols);
   ha_copy->ha_cols = NULL;
   return ha_copy;

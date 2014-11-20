@@ -3360,6 +3360,41 @@ it_hi_invalidate (index_tree_t * it, int in_hic)
   it_temp_free (it);
 }
 
+void
+it_hi_invalidate_in_mtx (index_tree_t * it)
+{
+  /* the official function for freeing a shared hi.  The it's ref count must be incremented by the calling thread. If this is == 1 the tree is actually freed, else the last to leave frees */
+  hi_signature_t *hic = NULL;
+  hic = it->it_hi_signature;
+  if (hic)
+    {
+      hic = it->it_hi_signature;
+      /* check a second time inside the mtx.  Otherwise can read a hic that is about to be deld on  another thread */
+      if (hic)
+	{
+	  it->it_shared = HI_OBSOLETE;
+	  it->it_invalidated = 1;
+	  id_hash_remove (hash_index_cache.hic_hashes, (caddr_t) & it->it_hi_signature);
+	  L2_DELETE (hash_index_cache.hic_first, hash_index_cache.hic_last, it, it_hic_);
+	  it_hi_clear_sensitive (it);
+	  while (it->it_waiting_hi_fill)
+	    {
+	      du_thread_t *thr = (du_thread_t *) dk_set_pop (&it->it_waiting_hi_fill);
+	      semaphore_leave (thr->thr_sem);
+	    }
+	  hic = it->it_hi_signature;
+	  it->it_hi_signature = NULL;
+	  dk_free_tree ((caddr_t) hic);
+	}
+    }
+  if (it->it_ref_count == 0)
+    {
+      LEAVE_HIC;
+      it_temp_free (it);
+      IN_HIC;
+    }
+}
+
 
 dk_set_t
 upd_hi_pre (update_node_t * upd, query_instance_t * qi)

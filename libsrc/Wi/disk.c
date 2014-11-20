@@ -732,6 +732,7 @@ it_temp_free (index_tree_t * it)
     }
   it->it_hi = NULL;
   it->it_hi_reuses = 0;
+  it->it_invalidated = 0;
   it_temp_tree_done (it);
   if (it->it_maps[0].itm_remap.ht_actual_size != IT_INIT_HASH_SIZE / IT_N_MAPS)
     it_free (it);		/* rehashed to non-standard size. do not recycle.  */

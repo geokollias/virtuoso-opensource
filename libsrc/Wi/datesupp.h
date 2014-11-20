@@ -81,6 +81,7 @@ int print_dt_to_buffer (char *buf, caddr_t arg, int mode);
 #define DTFLAG_DATE	(DTFLAG_YY | DTFLAG_MM | DTFLAG_DD)
 #define DTFLAG_TIME	(DTFLAG_HH | DTFLAG_MIN | DTFLAG_SS | DTFLAG_SF)
 #define DTFLAG_TIMEZONE	(DTFLAG_ZH | DTFLAG_ZM)
+#define DTFLAG_ALLOW_JAVA_SYNTAX	0x0400	/*!< Allows Java-style +h, +hmm and +hhmm styles for timezone */
 #define DTFLAG_DATES_AND_TIMES_ARE_ISO	0x0800
 #define DTFLAG_ALLOW_ODBC_SYNTAX	0x1000
 #define DTFLAG_T_FORMAT_SETS_TZL	0x2000

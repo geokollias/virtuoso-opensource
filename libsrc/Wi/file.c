@@ -349,7 +349,7 @@ dc_append_field (file_source_t * fs, data_col_t * dc, dbe_column_t * col, char *
       {
 	if (!field_len && fs->fs_null_empty_string)
 	  {
-	    is_null = 1;
+	    is_null = 2;
 	    break;
 	  }
 	dc_append_chars (dc, field, field_len);
@@ -361,35 +361,38 @@ dc_append_field (file_source_t * fs, data_col_t * dc, dbe_column_t * col, char *
     case DV_TIME:
       {
 	caddr_t err_str = NULL;
-	int dt_type;
+	int dt_type, dtflags;
 	dtp_t dt[DT_LENGTH];
 	if (!field_len)
 	  {
-	    is_null = 1;
+	    is_null = 2;
 	    break;
 	  }
 	switch (col->col_sqt.sqt_dtp)
 	  {
 	  case DV_DATE:
 	    dt_type = DT_TYPE_DATE;
+	    dtflags = DTFLAG_DATE;
 	    break;
 	  case DV_DATETIME:
 	  case DV_TIMESTAMP:
 	    dt_type = DT_TYPE_DATETIME;
+	    dtflags = DTFLAG_DATE | DTFLAG_TIME;
 	    break;
 	  case DV_TIME:
 	    dt_type = DT_TYPE_TIME;
+	    dtflags = DTFLAG_TIME;
 	    break;
 	  default:
 	    dt_type = -1;
 	    break;
 	  }
 	field[field_len] = 0;
-
-	iso8601_or_odbc_string_to_dt_1 (field, (char *) dt, 0x31ff, dt_type, &err_str);
+	iso8601_or_odbc_string_to_dt_1 (field, (char *) dt,
+	    dtflags | DTFLAG_ALLOW_JAVA_SYNTAX | DTFLAG_ALLOW_ODBC_SYNTAX | DTFLAG_T_FORMAT_SETS_TZL, dt_type, &err_str);
 	if (err_str)
 	  {
-	    is_null = 1;
+	    is_null = 2;
 	    break;
 	  }
 	memcpy_dt (dc->dc_values + DT_LENGTH * dc->dc_n_values, dt);
@@ -401,7 +404,12 @@ dc_append_field (file_source_t * fs, data_col_t * dc, dbe_column_t * col, char *
       break;
     }
   if (is_null)
-    dc_set_null (dc, dc->dc_n_values - 1);
+    {
+      if (2 == is_null)
+	dc_append_null (dc);
+      else
+	dc_set_null (dc, dc->dc_n_values - 1);
+    }
   else
     {
       if (dc->dc_nulls)

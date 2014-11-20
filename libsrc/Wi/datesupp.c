@@ -954,8 +954,9 @@ add_tz:
   if ((DT_TZL_NEVER != timezoneless_datetimes) && (!DT_TZL (dt)))
     {
       int tz = DT_TZ (dt);
+      int atz = abs (tz);
       if (0 != tz)
-	tail += snprintf (tail, (str + len) - tail, "%+03d:%02d", (int) (tz / 60), (int) (abs (tz) % 60));
+	tail += snprintf (tail, (str + len) - tail, "%c%02d:%02d", ((tz >= 0) ? '+' : '-'), atz / 60, atz % 60);
       else if (((str + len) - tail) > 2)
 	strcpy (tail, "Z");
     }
@@ -969,10 +970,11 @@ void
 dbg_dt_to_string (const char *dt, char *str, int len)
 {
   TIMESTAMP_STRUCT ts;
-  int dt_type, tz;
+  int dt_type, tz, atz;
   char *tail = str;
   dt_to_GMTimestamp_struct (dt, &ts);
   tz = DT_TZ (dt);
+  atz = abs (tz);
   dt_type = DT_DT_TYPE (dt);
   if (len < 50)
     {
@@ -1008,14 +1010,14 @@ dbg_dt_to_string (const char *dt, char *str, int len)
   if (DT_TZL (dt))
     {
       if (tz)
-	tail += snprintf (tail, (str + len) - tail, "tzl in %+03d:%02d?}", tz / 60, abs (tz) % 60);
+	tail += snprintf (tail, (str + len) - tail, "tzl in %c%02d:%02d}", ((tz >= 0) ? '+' : '-'), atz / 60, atz % 60);
       else
 	tail += snprintf (tail, (str + len) - tail, "tzl}");
     }
   else
     {
       if (tz)
-	tail += snprintf (tail, (str + len) - tail, "Z in %+03d:%02d}", tz / 60, abs (tz) % 60);
+	tail += snprintf (tail, (str + len) - tail, "Z in %c%02d:%02d}", ((tz >= 0) ? '+' : '-'), atz / 60, atz % 60);
       else
 	tail += snprintf (tail, (str + len) - tail, "Z}");
     }
@@ -1064,7 +1066,10 @@ dt_to_iso8601_string (const char *dt, char *str, int len)
   if (!DT_TZL (dt))
     {
       if (tz)
-	snprintf (tail, (str + len) - tail, "%+03d:%02d", tz / 60, abs (tz) % 60);
+	{
+	  int atz = abs (tz);
+	  snprintf (tail, (str + len) - tail, "%c%02d:%02d", ((tz >= 0) ? '+' : '-'), atz / 60, atz % 60);
+	}
       else if (((str + len) - tail) > 2)
 	strcpy (tail, "Z");
     }
@@ -1136,7 +1141,10 @@ dt_to_iso8601_string_ext (const char *dt, char *buf, int len, int mode)
   if (!DT_TZL (dt))
     {
       if (tz)
-	snprintf (tail, (buf + len) - tail, "%+03d:%02d", tz / 60, abs (tz) % 60);
+	{
+	  int atz = abs (tz);
+	  snprintf (tail, (buf + len) - tail, "%c%02d:%02d", ((tz >= 0) ? '+' : '-'), atz / 60, atz % 60);
+	}
       else if (DT_PRINT_MODE_XML & mode)
 	{
 	  if (((buf + len) - tail) > 2)
@@ -1218,6 +1226,7 @@ iso8601_or_odbc_string_to_dt_1 (const char *str, char *dt, int dtflags, int dt_t
   int leading_minus = 0;
   const char *tail, *group_end;
   int fld_values[9];
+/*					| 0	| 1	| 2	| 3	| 4	| 5	| 6		| 7	| 8	*/
   static int fld_min_values[9] = { 1, 1, 1, 0, 0, 0, 0, 0, 0 };
   static int fld_max_values[9] = { 9999, 12, 31, 23, 59, 61, 999999999, 14, 59 };
   static int fld_max_lengths[9] = { 4, 2, 2, 2, 2, 2, -1, 2, 2 };
@@ -1286,7 +1295,7 @@ iso8601_or_odbc_string_to_dt_1 (const char *str, char *dt, int dtflags, int dt_t
     {
       int fld_flag = (1 << fld_idx);
       int fldlen, fld_maxlen, fld_value;
-      int expected_delimiter;
+      char expected_delimiter;
       if ('\0' == tail[0])
 	break;
       if ((DTFLAG_ALLOW_ODBC_SYNTAX & dtflags) && ('\'' == tail[0]))
@@ -1307,6 +1316,12 @@ iso8601_or_odbc_string_to_dt_1 (const char *str, char *dt, int dtflags, int dt_t
       if ((DTFLAG_YY == fld_flag) && !(DTFLAG_ALLOW_ODBC_SYNTAX & dtflags))
 	while ('0' == tail[0])
 	  tail++;
+      if (((DTFLAG_SS | DTFLAG_SF) & fld_flag) && (('-' == tail[-1]) || ('+' == tail[-1]) || ('Z' == tail[-1]))
+	  && (DTFLAG_ZH & dtflags))
+	{
+	  fld_idx = 7;
+	  fld_flag = DTFLAG_ZH;
+	}
       if (DTFLAG_ZH == fld_flag)
 	{
 	  if ('-' == tail[-1])
@@ -1374,6 +1389,38 @@ iso8601_or_odbc_string_to_dt_1 (const char *str, char *dt, int dtflags, int dt_t
 	      break;
 	    }
 	  continue;
+	}
+      if ((DTFLAG_ALLOW_JAVA_SYNTAX & dtflags) && (DTFLAG_ZH == fld_flag))
+	{
+	  switch (fldlen)
+	    {
+	    case 1:		/* Java format +h */
+	      fld_values[fld_idx] = (tail[0] - '0');
+	      fld_values[fld_idx + 1] = 0;
+	      tzmin = 0;
+	      res_flags |= DTFLAG_ZH | DTFLAG_ZM;
+	      tail = group_end;
+	      fld_idx++;
+	      continue;
+	    case 2:		/* Format +hh is handled as usual, it also may have ':mm' tail to read in next field iteration */
+	      goto field_length_checked;	/* see below */
+	    case 3:		/* Java format +hmm */
+	      fld_values[fld_idx] = (tail[0] - '0');
+	      fld_values[fld_idx + 1] = ((tail[1] - '0') * 10) + (tail[2] - '0');
+	      tzmin = 0;
+	      res_flags |= DTFLAG_ZH | DTFLAG_ZM;
+	      tail = group_end;
+	      fld_idx++;
+	      continue;
+	    case 4:		/* Java format +hhmm */
+	      fld_values[fld_idx] = ((tail[0] - '0') * 10) + (tail[1] - '0');
+	      fld_values[fld_idx + 1] = ((tail[2] - '0') * 10) + (tail[3] - '0');
+	      tzmin = 0;
+	      res_flags |= DTFLAG_ZH | DTFLAG_ZM;
+	      tail = group_end;
+	      fld_idx++;
+	      continue;
+	    }
 	}
       err_msg_ret[0] = box_sprintf (500, "Incorrect %s field length", names[fld_idx]);
       return;

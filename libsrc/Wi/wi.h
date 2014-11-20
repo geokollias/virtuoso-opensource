@@ -610,6 +610,7 @@ struct index_tree_s
   extent_map_t *it_extent_map;
   it_map_t *it_maps;
   dk_hash_t *it_col_extent_maps;
+  char it_invalidated;
 };
 
 

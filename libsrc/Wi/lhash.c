@@ -7718,7 +7718,7 @@ ks_add_hash_spec (key_source_t * ks, caddr_t * inst, it_cursor_t * itc)
 		tree = qi_g_tree (inst, hrng->hrng_ht, 0);
 	      else
 		tree = qst_get_chash (inst, hrng->hrng_ht, hrng->hrng_ht_id, NULL);
-	      cha = tree ? tree->it_hi->hi_chash : NULL;
+	      cha = tree && !tree->it_invalidated ? tree->it_hi->hi_chash : NULL;
 	      if (!cha || (!cha->cha_distinct_count && !cha->cha_n_bloom))
 		{
 		  /* join with empty chash is like null in search params, always empty. Empty chash can have replicated bloom though  which still makes it valid  */

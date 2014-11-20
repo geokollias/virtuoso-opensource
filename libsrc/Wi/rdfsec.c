@@ -221,12 +221,7 @@ bif_rdf_ctx_changed (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 	  continue;
 	if ((DV_DB_NULL == q_dtp || box_equal (key[0], qr)) || (DV_DB_NULL == p_dtp || box_equal (key[1], params)))
 	  {
-	    if (cli && cli->cli_sec && (cli->cli_sec->_.sec.g_wr == tree || cli->cli_sec->_.sec.g_rd == tree))
-	      {
-		LEAVE_HIC;
-		sqlr_new_error ("42000", "RDFSE", "Cannot invalidate cache while on it");
-	      }
-	    it_hi_invalidate (tree, 1);
+	    it_hi_invalidate_in_mtx (tree);
 	    LEAVE_HIC;
 	    goto again;
 	  }
@@ -243,12 +238,7 @@ bif_rdf_ctx_changed (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       if (place)
 	{
 	  tree = *place;
-	  if (cli && cli->cli_sec && (cli->cli_sec->_.sec.g_wr == tree || cli->cli_sec->_.sec.g_rd == tree))
-	    {
-	      LEAVE_HIC;
-	      sqlr_new_error ("42000", "RDFSE", "Cannot invalidate cache while on it");
-	    }
-	  it_hi_invalidate (tree, 1);
+	  it_hi_invalidate_in_mtx (tree);
 	}
       LEAVE_HIC;
       dk_free_box (sign);
@@ -294,6 +284,12 @@ cli_ensure_sec (query_instance_t * qi, client_connection_t * cli)
   char *g_name = "g_ctx_query";
   char *p_name = "g_ctx_param";
   cl_op_t *sec = cli->cli_sec;
+  if (sec && sec->_.sec.g_rd && sec->_.sec.g_rd->it_invalidated)
+    {
+      dk_free_box (sec->_.sec.g_rd);
+      sec->_.sec.g_rd = NULL;
+      sec->_.sec.g_rd_id = 0;
+    }
   if (sec && (sec->_.sec.g_rd_id || sec->_.sec.g_rd || sec->_.sec.g_all_allowed))
     return;
   place = id_hash_get (cli->cli_globals, (caddr_t) & g_name);
