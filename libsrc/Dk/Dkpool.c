@@ -1833,6 +1833,7 @@ mm_free_sized (void* ptr, size_t sz)
 {
   int nth;
   size_t sz2 = mm_next_size (sz, &nth);
+  if (((ptrlong)ptr & 0xfff)) GPF_T1 ("large free not on 4k boundary");
   if (-1 == nth || !resource_store_timed (mm_rc[nth], ptr))
     mp_munmap (ptr, sz2);
 }

@@ -31,6 +31,11 @@ extern void free_ex(void *, void *);
 extern void *realloc_ex(void *, size_t, void *);
 extern void *calloc_ex(size_t, size_t, void *);
 
+extern void *tlsf_malloc(DBG_PARAMS size_t size, du_thread_t * thr);
+extern void tlsf_free(void *ptr);
+extern void * tlsf_id_alloc (size_t sz, short tlsf_id);
+extern void * tlsf_base_alloc (size_t c);
+extern void tlsf_base_free (void * c, size_t sz);
 
 
 /*#define USE_SBRK        (0) */
@@ -280,6 +285,7 @@ void tlsf_all_in_use (FILE * out, int mode, int nth);
 #endif
 void tlsf_summary (FILE * out);
 size_t tlsf_get_total (size_t * mapped_ret);
+size_t  tlsf_block_size (caddr_t ptr);
 char * tlsf_check_alloc (void * ptr);
 int tlsf_check (tlsf_t * tlsf, int mode);
 void tlsf_print_all_blocks(tlsf_t * tlsf, void * ht1, int mode);

@@ -53,6 +53,7 @@ int64 dk_max_bytes;
 int64 dk_n_free;
 int64 dk_n_nosz_free;
 int64 dk_n_bytes;
+int64 dk_n_max_allocs;
 
 
 #ifndef MALLOC_DEBUG
@@ -797,6 +798,8 @@ dk_alloc (size_t c)
       dk_n_bytes += align_sz;
     }
 #endif
+  if (dk_n_allocs > dk_n_max_allocs)
+    dk_n_max_allocs = dk_n_allocs;
 
   SET_END_MARK (thing, align_sz);
 

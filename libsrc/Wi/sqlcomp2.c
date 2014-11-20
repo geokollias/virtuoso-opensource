@@ -1381,7 +1381,7 @@ query_t *DBG_NAME (sql_compile_1) (DBG_PARAMS const char *string2, client_connec
   int nested_sql_comp = (THR_TMP_POOL ? 1 : 0);
   volatile int inside_sem = 0;
   volatile int is_ddl = 0;
-  thr_set_tlsf (THREAD_CURRENT_THREAD->thr_tlsf, sqlc_tlsf);
+  thr_set_tlsf (THREAD_CURRENT_THREAD, sqlc_tlsf);
   yyscan_t scanner;
   if (!nested_sql_comp)
     {
