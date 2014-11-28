@@ -7676,6 +7676,7 @@ ks_add_hash_spec (key_source_t * ks, caddr_t * inst, it_cursor_t * itc)
 	  return 1;		/* no g read perms at all */
 	if (!sec->_.sec.g_rd_id && !sec->_.sec.g_rd)
 	  continue;		/* no read restrictions */
+	sp->sp_is_reverse = sec->_.sec.g_rd->it_hi->hi_is_reverse;
       }
     sps[fill++] = sp;
     if (fill > 255)
@@ -8023,6 +8024,7 @@ chash_fill_input (fun_ref_node_t * fref, caddr_t * inst, caddr_t * state)
 	GPF_T1 ("hash filler reset for partition over full not implemented");
       }
       END_QR_RESET;
+      tree->it_hi->hi_is_reverse = fref->fnr_sec_reverse;
       {
 	int64 da_time = 0;
 	if (fref->src_gen.src_stat)

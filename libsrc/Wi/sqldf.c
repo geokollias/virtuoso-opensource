@@ -1607,7 +1607,8 @@ sqlo_place_col (sqlo_t * so, df_elt_t * super, df_elt_t * dfe)
 	      sqlo_record_lp (so, tb_dfe, dfe);
 	      return so->so_gen_pt;
 	    }
-	  if (!dfe->_.col.vc || HR_REF == tb_dfe->_.table.hash_role)
+	  if (DFE_TABLE == tb_dfe->dfe_type &&
+	      ((!dfe->_.col.vc || HR_REF == tb_dfe->_.table.hash_role) || (HR_FILL == tb_dfe->_.table.hash_role)))
 	    t_set_push (&tb_dfe->_.table.out_cols, (void *) dfe);
 	  tb_dfe->dfe_unit = 0;
 	  sqlo_rdf_col_card (so, tb_dfe, dfe);

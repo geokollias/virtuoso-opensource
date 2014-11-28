@@ -389,7 +389,8 @@ dc_append_field (file_source_t * fs, data_col_t * dc, dbe_column_t * col, char *
 	  }
 	field[field_len] = 0;
 	iso8601_or_odbc_string_to_dt_1 (field, (char *) dt,
-	    dtflags | DTFLAG_ALLOW_JAVA_SYNTAX | DTFLAG_ALLOW_ODBC_SYNTAX | DTFLAG_T_FORMAT_SETS_TZL, dt_type, &err_str);
+	    dtflags | DTFLAG_TIMEZONE | DTFLAG_ALLOW_JAVA_SYNTAX | DTFLAG_ALLOW_ODBC_SYNTAX | DTFLAG_T_FORMAT_SETS_TZL,
+	    dt_type, &err_str);
 	if (err_str)
 	  {
 	    is_null = 2;
@@ -846,7 +847,7 @@ ft_set_cl_file (file_source_t * fs, QI * qi, caddr_t * file_name)
 	sqlr_new_error ("420000", "FS....", "File nam,e in file name array is not a string");
       if (DV_LONG_INT == dtp)
 	{
-	  if (local_cll.cll_this_host != unbox (nos))
+	  if (local_cll.cll_this_host != unbox ((caddr_t) nos))
 	    goto next;
 	  qst_set_long ((caddr_t *) qi, fs->fs_n_slices, BOX_ELEMENTS (chg->chg_hosted_slices));
 	  qst_set_long ((caddr_t *) qi, fs->fs_nth_slice, box_position ((caddr_t *) chg->chg_hosted_slices,
@@ -1099,7 +1100,7 @@ nosplit:
 }
 
 
-caddr_t
+caddr_t *
 ft_ts_handle_aq (table_source_t * ts, caddr_t * inst, caddr_t * state, int *n_sets_ret)
 {
   /* called when continuing a file ts with an aq.  Return inst if ts should start, null if should continue from position, -1 if should return */
@@ -1143,7 +1144,7 @@ ft_ts_handle_aq (table_source_t * ts, caddr_t * inst, caddr_t * state, int *n_se
 	ts_aq_result (ts, inst);
 	if (qi->qi_client->cli_activity.da_anytime_result)
 	  cli_anytime_timeout (qi->qi_client);
-	return 1;
+	return (caddr_t *) 1;
       }
     }
   return NULL;
@@ -1223,7 +1224,6 @@ again:
 	      goto again;
 	    }
 	}
-    next_set:
       state = inst;
     }
   SRC_IN_STATE (ts, inst) = NULL;

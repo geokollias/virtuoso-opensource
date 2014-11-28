@@ -1008,10 +1008,17 @@ sqlo_add_table_ref (sqlo_t * so, ST ** tree_ret, dk_set_t * res)
 	sqlo_scope (so, &(tree->_.table_ref.table));
 	if (ST_P (tree->_.table_ref.table, SELECT_STMT))
 	  {
+	    caddr_t *sel_opts = tree->_.table_ref.table->_.select_stmt.table_exp ?
+		tree->_.table_ref.table->_.select_stmt.table_exp->_.table_exp.opts : NULL, *opts = NULL;
 	    ot = (op_table_t *) so->so_tables->data;
 	    ot->ot_prefix = tree->_.table_ref.range;
 	    if (BOX_ELEMENTS (tree) > 3)
-	      ot->ot_opts = ot->ot_dt_opts = tree->_.dt_ref.opts;
+	      opts = tree->_.dt_ref.opts;
+	    if (opts && sel_opts)
+	      opts = (caddr_t *) t_box_conc ((caddr_t) opts, sel_opts);
+	    else if (sel_opts)
+	      opts = sel_opts;
+	    ot->ot_opts = ot->ot_dt_opts = opts;
 	    tree->_.table_ref.range = ot->ot_new_prefix;
 /*	    t_set_push (res, (void *) ot);*/
 	    sco_add_table (so->so_scope, ot);
@@ -1254,6 +1261,8 @@ sqlo_dt_inlineable (sqlo_t * so, ST * tree, ST * from, op_table_t * ot, int sing
     {
       int dt_inx;
       op_table_t *dot = sqlo_find_dt (so, dtexp);
+      if (sqlo_opt_value (dot->ot_opts, OPT_NO_DT_INLINE))
+	return 0;
       if (dot->ot_fun_refs)
 	return 0;
       if (sqlo_dt_has_vcol_tables (so, dot))

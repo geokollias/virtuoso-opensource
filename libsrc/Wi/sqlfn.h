@@ -318,6 +318,7 @@ int ks_make_spec_list (it_cursor_t * it, search_spec_t * ks_spec, caddr_t * stat
 
 int ks_start_search (key_source_t * ks, caddr_t * inst, caddr_t * state,
     it_cursor_t * itc, buffer_desc_t ** buf_ret, table_source_t * ts, int search_mode);
+void ks_cl_local_cast (key_source_t * ks, caddr_t * inst);
 int itc_il_search (it_cursor_t * itc, buffer_desc_t ** buf_ret, caddr_t * qst, inx_locality_t * il, placeholder_t * pl, int is_asc);
 
 void ts_outer_output (table_source_t * ts, caddr_t * qst);
@@ -1493,6 +1494,7 @@ void cl_fref_resume (fun_ref_node_t * fref, caddr_t * inst);
 void chash_read_input (table_source_t * ts, caddr_t * inst, caddr_t * state);
 void memcache_read_input (table_source_t * ts, caddr_t * inst, caddr_t * state);
 void fun_ref_streaming_input (fun_ref_node_t * fref, caddr_t * inst, caddr_t * state);
+void fun_ref_reset_setps (fun_ref_node_t * fref, caddr_t * inst);
 void chash_merge (setp_node_t * setp, chash_t * cha, chash_t * delta, int n_to_go);
 dtp_t cha_dtp (dtp_t dtp, int is_key);
 caddr_t *chash_reader_current_branch (table_source_t * ts, hash_area_t * ha, caddr_t * inst, int is_next, index_tree_t ** tree_ret);

@@ -89,6 +89,8 @@ int print_dt_to_buffer (char *buf, caddr_t arg, int mode);
 #define DTFLAG_FORCE_DAY_ZERO		0x8000
 
 extern void iso8601_or_odbc_string_to_dt (const char *str, char *dt, int dtflags, int dt_type, caddr_t * err_msg_ret);
+extern void iso8601_or_odbc_string_to_dt_1 (const char *str, char *dt, int dtflags, int dt_type, caddr_t * err_msg_ret);	/*!< Note that it does not skip whitespaces at the beginning of \c str and it can change the content of \c str */
+
 #define odbc_string_to_any_dt(str,dt,err_msg_ret) \
   iso8601_or_odbc_string_to_dt ((str), (dt), \
     (DTFLAG_DATE | DTFLAG_TIME | DTFLAG_TIMEZONE | DTFLAG_ALLOW_ODBC_SYNTAX | DTFLAG_T_FORMAT_SETS_TZL | DTFLAG_FORMAT_SETS_FLAGS | \

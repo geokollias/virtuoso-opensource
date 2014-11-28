@@ -539,6 +539,7 @@ struct hash_index_s
   int hi_size;
   char hi_is_cl_cache;		/* set if replicas or partitions exist in other cluster nodes and the ht is cached, i.e. survives the creating qi, broadcast a free when freeing this */
   char hi_is_rdf_ctx;
+  char hi_is_reverse;
   char hi_is_unique;
   int64 hi_count;
 #ifdef OLD_HASH

@@ -1579,7 +1579,7 @@ sqlo_jp_build_init (sqlo_t * so, df_elt_t * hash_ref_tb, dk_set_t * all_jps, dk_
 {
   /* Put the table(s) in hash ref dfe in jp.  This can be table or derived table that is refd.  This imports further joins into build */
   op_table_t *ot = so->so_this_dt;
-  if (DFE_DT == hash_ref_tb->dfe_type && !ST_P (hash_ref_tb->_.sub.ot->ot_dt, PROC_TABLE))
+  if (DFE_DT == hash_ref_tb->dfe_type && !ST_P (hash_ref_tb->_.sub.ot->ot_dt, PROC_TABLE) && !hash_ref_tb->_.sub.ot->ot_trans)
     {
       join_plan_t *top_jp;
       DO_SET (df_elt_t *, dfe, &hash_ref_tb->_.sub.ot->ot_from_dfes)

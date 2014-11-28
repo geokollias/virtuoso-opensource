@@ -1618,6 +1618,7 @@ typedef struct fun_ref_node_s
   char fnr_stream_ok_with_hash_part;	/* true if streaming is still OK if hash join partitioning is applied.  True if stuff being agregated does not depend on the hash partition or if results depend on hash partitioning but are again aggregated without conditions  */
   char fnr_is_chash_in;		/* set if filling a hash for in predicate */
   char fnr_has_sdfg;		/* contains a dfg in single server */
+  char fnr_sec_reverse;
 } fun_ref_node_t;
 
 /* fnr_partitioned */

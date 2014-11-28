@@ -469,20 +469,6 @@ tlsf_large_alloc (tlsf_t * tlsf, size_t size)
 
 int no_place_limit = 0;
 
-#ifdef MALLOC_DEBUG
-void *
-dbg_malloc(const char *file, u_int line, size_t size)
-{
-  return tlsf_malloc(DBG_ARGS size, THREAD_CURRENT_THREAD);
-}
-
-void
-dbg_free (const char *file, u_int line, void *data)
-{
-  tlsf_free (data);
-}
-#endif
-
 void *
 tlsf_malloc(DBG_PARAMS size_t size, du_thread_t * thr)
 {
@@ -535,6 +521,19 @@ tlsf_free(void *ptr)
 
 }
 
+#ifdef MALLOC_DEBUG
+void *
+dbg_malloc(const char *file, u_int line, size_t size)
+{
+  return tlsf_malloc(DBG_ARGS size, THREAD_CURRENT_THREAD);
+}
+
+void
+dbg_free (const char *file, u_int line, void *data)
+{
+  tlsf_free (data);
+}
+#endif
 
 /******************************************************************/
 void *malloc_ex(size_t size, void *mem_pool)

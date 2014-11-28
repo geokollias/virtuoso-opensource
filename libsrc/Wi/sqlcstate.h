@@ -44,6 +44,7 @@ typedef struct scn3_context_s
   char *last_keyword_yytext;
   int last_keyword_yyleng;
   dk_session_t *split_ses;
+  yyscan_t scanner;
 } scn3_context_t;
 
 typedef struct sql_compile_state_s	/* serialized in parse_sem */

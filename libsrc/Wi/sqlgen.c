@@ -1833,6 +1833,7 @@ sqlg_hash_filler_dt (sqlo_t * so, df_elt_t * dt_dfe, subq_source_t * sqs)
   caddr_t *opts = ref ? (DFE_DT == ref->dfe_type ? ref->_.sub.ot->ot_opts : ref->_.table.ot->ot_opts) : NULL;
   int decl_unq = sqlo_opt_value (opts, OPT_HASH_UNIQUE);
   int decl_no_drop = sqlo_opt_value (opts, OPT_HASH_NO_DROP);
+  int sec_except = sqlo_opt_value (opts, OPT_SEC_EXCEPT);
   if (dt_dfe->_.sub.gby_hash_filler)
     {
       /* the dt has a group by.  The group by serves as hash build side.  The hash is not partitionable. */
@@ -1929,6 +1930,7 @@ sqlg_hash_filler_dt (sqlo_t * so, df_elt_t * dt_dfe, subq_source_t * sqs)
     fref->fnr_select = head;
     fref->fnr_select_nodes = sqlg_continue_list (head);
     fref->fnr_setp = setp;
+    fref->fnr_sec_reverse = sec_except;
     setp->setp_ht_no_drop |= decl_no_drop;
     setp->setp_fref = fref;
     if (enable_par_fill && enable_chash_join && enable_qp > 1)

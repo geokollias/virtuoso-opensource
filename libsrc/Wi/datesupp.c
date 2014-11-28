@@ -1544,6 +1544,7 @@ iso8601_or_odbc_string_to_dt_1 (const char *str, char *dt, int dtflags, int dt_t
       else
 	{
 	  err_msg_ret[0] = box_sprintf (500, "Leading minus is allowed for year but not for time, the value is \"%.200s\"", str);
+	  return;
 	}
     }
   tzmin += (60 * fld_values[7]) + fld_values[8];
