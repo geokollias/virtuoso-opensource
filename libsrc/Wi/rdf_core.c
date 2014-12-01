@@ -749,10 +749,14 @@ ttlp_reset_stacks (ttlp_t * ttlp)
     dk_free_tree ((box_t) dk_set_pop (&(ttlp->ttlp_saved_uris)));
   while (NULL != ttlp->ttlp_unused_seq_bnodes)
     dk_free_tree ((box_t) dk_set_pop (&(ttlp->ttlp_unused_seq_bnodes)));
+  if (NULL != ttlp->ttlp_last_complete_uri)
+    {
+      if (ttlp->ttlp_last_complete_uri != ttlp->ttlp_obj)
+	dk_free_tree (ttlp->ttlp_last_complete_uri);
+      ttlp->ttlp_last_complete_uri = NULL;
+    }
   dk_free_tree (ttlp->ttlp_last_q_save);
   ttlp->ttlp_last_q_save = NULL;
-  dk_free_tree (ttlp->ttlp_last_complete_uri);
-  ttlp->ttlp_last_complete_uri = NULL;
   dk_free_tree (ttlp->ttlp_subj_uri);
   ttlp->ttlp_subj_uri = NULL;
   dk_free_tree (ttlp->ttlp_pred_uri);
@@ -1090,7 +1094,67 @@ ttlp_uri_resolve (ttlp_t * ttlp_arg, caddr_t qname)
 }
 
 void
-ttlp_triple_and_inf (ttlp_t * ttlp_arg, caddr_t o_uri)
+ttlp_triple_and_inf_prepare (ttlp_t * ttlp_arg, caddr_t o_uri)
+{
+  if (ttlp_arg[0].ttlp_obj != o_uri)
+    {
+      if (NULL != ttlp_arg[0].ttlp_obj)
+	dk_free_tree (ttlp_arg[0].ttlp_obj);
+      ttlp_arg[0].ttlp_obj = o_uri;
+    }
+  if (ttlp_arg[0].ttlp_triple_is_prepared)
+    ttlyyerror_impl (ttlp_arg, "", "Internal error: an triple is not processed before complete reading of next triple");
+  ttlp_arg[0].ttlp_triple_is_prepared = 'R';
+}
+
+void
+ttlp_triple_l_and_inf_prepare (ttlp_t * ttlp_arg, caddr_t o_sqlval, caddr_t o_dt, caddr_t o_lang)
+{
+  if (ttlp_arg[0].ttlp_obj != o_sqlval)
+    {
+      if (NULL != ttlp_arg[0].ttlp_obj)
+	dk_free_tree (ttlp_arg[0].ttlp_obj);
+      ttlp_arg[0].ttlp_obj = o_sqlval;
+    }
+  if (ttlp_arg[0].ttlp_obj_type != o_dt)
+    {
+      if (NULL != ttlp_arg[0].ttlp_obj_type)
+	dk_free_tree (ttlp_arg[0].ttlp_obj_type);
+      ttlp_arg[0].ttlp_obj_type = o_dt;
+    }
+  if (ttlp_arg[0].ttlp_obj_lang != o_lang)
+    {
+      if (NULL != ttlp_arg[0].ttlp_obj_lang)
+	dk_free_tree (ttlp_arg[0].ttlp_obj_lang);
+      ttlp_arg[0].ttlp_obj_lang = o_lang;
+    }
+  if (ttlp_arg[0].ttlp_triple_is_prepared)
+    ttlyyerror_impl (ttlp_arg, "", "Internal error: an triple is not processed before complete reading of next triple");
+  ttlp_arg[0].ttlp_triple_is_prepared = 'L';
+}
+
+void
+ttlp_triple_process_prepared (ttlp_t * ttlp_arg)
+{
+  switch (ttlp_arg[0].ttlp_triple_is_prepared)
+    {
+    case 'R':
+      ttlp_triple_and_inf_now (ttlp_arg, ttlp_arg[0].ttlp_obj);
+      ttlp_arg[0].ttlp_triple_is_prepared = 0;
+      return;
+    case 'L':
+      ttlp_triple_l_and_inf_now (ttlp_arg, ttlp_arg[0].ttlp_obj, ttlp_arg[0].ttlp_obj_type, ttlp_arg[0].ttlp_obj_lang);
+      ttlp_arg[0].ttlp_triple_is_prepared = 0;
+      return;
+    case 0:
+      return;
+    default:
+      GPF_T1 ("Bad ttlp_triple_is_prepared");
+    }
+}
+
+void
+ttlp_triple_and_inf_now (ttlp_t * ttlp_arg, caddr_t o_uri)
 {
   triple_feed_t *tf = ttlp_arg[0].ttlp_tf;
   caddr_t s = ttlp_arg[0].ttlp_subj_uri;
@@ -1117,7 +1181,7 @@ ttlp_triple_and_inf (ttlp_t * ttlp_arg, caddr_t o_uri)
 }
 
 void
-ttlp_triple_l_and_inf (ttlp_t * ttlp_arg, caddr_t o_sqlval, caddr_t o_dt, caddr_t o_lang)
+ttlp_triple_l_and_inf_now (ttlp_t * ttlp_arg, caddr_t o_sqlval, caddr_t o_dt, caddr_t o_lang)
 {
   triple_feed_t *tf = ttlp_arg[0].ttlp_tf;
   caddr_t s = ttlp_arg[0].ttlp_subj_uri;
@@ -4035,6 +4099,7 @@ bif_uriqa_dynamic_local_set (caddr_t * qst, caddr_t * err_ret, state_slot_t ** a
 void rdf_inf_init ();
 
 int iri_cache_size = 0;
+int32 enable_iri_nic_n = 1;
 
 
 dbe_key_t *
@@ -4302,7 +4367,8 @@ rdf_core_init (void)
   if (100 >= iri_cache_size)
     iri_cache_size = MIN (500000, main_bufs / 2);
   iri_name_cache = nic_allocate (iri_cache_size, 1, 0);
-  nic_set_n_ways (iri_name_cache, 64);
+  if (enable_iri_nic_n)
+    nic_set_n_ways (iri_name_cache, 64);
   iri_prefix_cache = nic_allocate (iri_cache_size / 10, 0, 0);
   nic_set_n_ways (iri_prefix_cache, 64);
   rdf_lang_cache = nic_allocate (255, 0, 0);

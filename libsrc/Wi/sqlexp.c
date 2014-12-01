@@ -2207,7 +2207,8 @@ ks_refd_slots (sql_comp_t * sc, key_source_t * ks, dk_hash_t * res, dk_hash_t * 
   DO_SET (search_spec_t *, sp, &ks->ks_hash_spec)
   {
     QNCAST (hash_range_spec_t, hrng, sp->sp_min_ssl);
-    REF_SSL (res, hrng->hrng_ht);
+    if (CL_RUN_LOCAL == cl_run_local_only)
+      REF_SSL (res, hrng->hrng_ht);	/* in cluster, the ht is not refd, the id is */
     REF_SSL (res, hrng->hrng_ht_id);
   }
   END_DO_SET ();

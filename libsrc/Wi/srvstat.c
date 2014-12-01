@@ -398,6 +398,7 @@ extern int32 cl_stage;
 extern int32 cl_batch_bytes;
 extern int32 cl_first_buf;
 extern int32 iri_range_size;
+extern int32 enable_iri_nic_n;
 extern int enable_small_int_part;
 extern int iri_seqs_used;
 int64 tn_max_memory = 1000000000;
@@ -418,6 +419,10 @@ int cl_no_auto_remove;
 extern int dbf_log_fsync;
 extern int dbf_assert_on_malformed_data;
 extern int dbf_max_itc_samples;
+
+extern int32 c_pcre_match_limit;
+extern int32 c_pcre_match_limit_recursion;
+extern int32 pcre_max_cache_sz;
 
 void trset_start (caddr_t * qst);
 void trset_printf (const char *str, ...);
@@ -965,13 +970,13 @@ bif_exec_status ()
 {
   id_hash_iterator_t hit;
   int64 *k;
-  bif_exec_stat_t *exs;
+  bif_exec_stat_t **exs;
   uint32 now = get_msec_real_time ();
   mutex_enter (&bif_exec_pending_mtx);
   id_hash_iterator (&hit, bif_exec_pending);
   while (hit_next (&hit, (caddr_t *) & k, (caddr_t *) & exs))
     {
-      rep_printf ("%d  %s\n", now - exs->exs_start, exs->exs_text);
+      rep_printf ("%d  %s\n", now - exs[0]->exs_start, exs[0]->exs_text);
     }
 
   mutex_leave (&bif_exec_pending_mtx);
@@ -1806,6 +1811,7 @@ stat_desc_t dbf_descs[] = {
   {"tc_qrc_recompile", &tc_qrc_recompile, NULL},
   {"tc_qrc_plan_miss", &tc_qrc_plan_miss, NULL},
   {"enable_dfg", (long *) &enable_dfg, SD_INT32},
+  {"enable_iri_nic_n", (long *) &enable_iri_nic_n, SD_INT32},
   {"enable_at_print", (long *) &enable_at_print, SD_INT32},
   {"enable_min_card", (long *) &enable_min_card},
   {"enable_distinct_sas", (long *) &enable_distinct_sas, SD_INT32},
@@ -1905,6 +1911,9 @@ stat_desc_t dbf_descs[] = {
   {"dk_n_nosz_free", &dk_n_nosz_free},
   {"dk_n_bytes", &dk_n_bytes},
 
+  {"pcre_match_limit", &c_pcre_match_limit, SD_INT32},
+  {"pcre_match_limit_recursion", &c_pcre_match_limit_recursion, SD_INT32},
+  {"pcre_max_cache_sz", &pcre_max_cache_sz, SD_INT32},
   {NULL, NULL, NULL}
 };
 
