@@ -3561,6 +3561,7 @@ ha_copy (hash_area_t * ha)
   NEW_VARZ (hash_area_t, ha_copy);
   memcpy (ha_copy, ha, sizeof (hash_area_t));
   BOXC (ha_copy->ha_slots);
+  BOXC (ha_copy->ha_non_null);
   BOXC (ha_copy->ha_key_cols);
   ha_copy->ha_cols = NULL;
   return ha_copy;

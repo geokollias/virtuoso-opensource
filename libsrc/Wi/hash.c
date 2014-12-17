@@ -504,11 +504,11 @@ key_hash_utf8 (caddr_t _utf8, long _n, uint32 code, collation_t * collation)
       uint32 b;
       if (inx1 == _n)
 	return code;
-      rc1 = (long) virt_mbrtowc (&wtmp1, (unsigned char *) (_utf8 + inx1), _n - inx1, &state1);
+      rc1 = (long) virt_mbrtowc_z (&wtmp1, (unsigned char *) (_utf8 + inx1), _n - inx1, &state1);
       if (rc1 <= 0)
 	GPF_T1 ("inconsistent wide char data");
       if (collation)
-	b = ((wchar_t *) collation->co_table)[wtmp1];
+	b = COLLATION_XLAT_WIDE (collation, wtmp1);
       else
 	b = wtmp1;
       code = (code * (b + 3 + inx2)) ^ (code >> 24);
@@ -535,7 +535,7 @@ key_hash_wide (caddr_t _wide, long *_len, uint32 code, collation_t * collation)
     {
       uint32 b;
       if (collation)
-	b = ((wchar_t *) collation->co_table)[((wchar_t *) _wide)[inx1]];
+	b = COLLATION_XLAT_WIDE (collation, ((wchar_t *) _wide)[inx1]);
       else
 	b = ((wchar_t *) _wide)[inx1];
       code = (code * (b + 3 + inx1)) ^ (code >> 24);
@@ -683,7 +683,7 @@ key_hash_box (caddr_t box, dtp_t dtp, uint32 code, int *var_len, collation_t * c
     {
       for (inx2 = 0; inx2 < len; inx2++)
 	{
-	  uint32 c = (uint32) collation->co_table[(unsigned int) box[inx2]];
+	  uint32 c = COLLATION_XLAT_WIDE (collation, box[inx2]);
 	  code = (code * (c + 3 + inx2)) ^ (code >> 24);
 	}
     }
@@ -1345,6 +1345,45 @@ For procedures, we have no memcache. */
   hi->hi_memcache = NULL;
 }
 
+static void
+dc_pop_last_ssl (caddr_t * inst, state_slot_t * ssl)
+{
+  data_col_t *dc;
+  dc = QST_BOX (data_col_t *, inst, ssl->ssl_index);
+  if (DCT_NUM_INLINE & dc->dc_type)
+    {
+      dc->dc_n_values--;
+      if (dc->dc_nulls)
+	DC_CLR_NULL (dc, dc->dc_n_values);
+    }
+  else
+    dc_pop_last (dc);
+}
+
+
+void
+memcache_pop_last_out (setp_node_t * setp, key_source_t * ks, caddr_t * inst, int last)
+{
+  int inx;
+  dk_set_t out_slots = ks->ks_out_slots;
+  state_slot_t *ssl = NULL;
+  DO_BOX_0 (state_slot_t *, ssl1, inx, setp->setp_keys_box)
+  {
+    ssl = (state_slot_t *) out_slots->data;
+    out_slots = out_slots->next;
+    dc_pop_last_ssl (inst, ssl);
+  }
+  END_DO_BOX;
+  DO_BOX_0 (state_slot_t *, ssl1, inx, setp->setp_dependent_box)
+  {
+    ssl = (state_slot_t *) out_slots->data;
+    if (inx == last)
+      break;
+    out_slots = out_slots->next;
+    dc_pop_last_ssl (inst, ssl);
+  }
+  END_DO_BOX;
+}
 
 void
 memcache_read_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
@@ -1405,7 +1444,14 @@ next_batch:
 	if (hi->hi_pool)
 	  {
 	    if (ts->ts_sort_read_mask && ts->ts_sort_read_mask[inx])
-	      qst_set (inst, ssl, box_deserialize_string (val[0][inx], INT32_MAX, 0));
+	      {
+		if (NULL == val[0][inx])
+		  {
+		    memcache_pop_last_out (setp, ks, inst, inx);
+		    goto next_row;
+		  }
+		qst_set (inst, ssl, box_deserialize_string (val[0][inx], INT32_MAX, 0));
+	      }
 	    else
 	      qst_set_copy (inst, ssl, val[0][inx]);
 	  }
@@ -1436,6 +1482,7 @@ next_batch:
 	  dc_reset_array (inst, (data_source_t *) ts, ts->src_gen.src_continue_reset, -1);
 	  goto next_batch;
 	}
+    next_row:;
     }
   if (!hi->hi_pool)
     {

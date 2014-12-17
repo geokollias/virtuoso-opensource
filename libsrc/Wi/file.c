@@ -304,7 +304,7 @@ dc_append_field (file_source_t * fs, data_col_t * dc, dbe_column_t * col, char *
       {
 	if (!field_len && fs->fs_null_empty_string)
 	  {
-	    is_null = 1;
+	    is_null = 2;
 	    break;
 	  }
 	dc_append_chars (dc, field, field_len);
@@ -320,8 +320,7 @@ dc_append_field (file_source_t * fs, data_col_t * dc, dbe_column_t * col, char *
 	dtp_t dt[DT_LENGTH];
 	if (!field_len)
 	  {
-	    caddr_t err_str = NULL;
-	    is_null = 1;
+	    is_null = 2;
 	    break;
 	  }
 	switch (col->col_sqt.sqt_dtp)
@@ -345,7 +344,7 @@ dc_append_field (file_source_t * fs, data_col_t * dc, dbe_column_t * col, char *
 	iso8601_or_odbc_string_to_dt_1 (field, dt, 0x31ff, dt_type, &err_str);
 	if (err_str)
 	  {
-	    is_null = 1;
+	    is_null = 2;
 	    break;
 	  }
 	memcpy_dt (dc->dc_values + DT_LENGTH * dc->dc_n_values, dt);
@@ -357,7 +356,12 @@ dc_append_field (file_source_t * fs, data_col_t * dc, dbe_column_t * col, char *
       break;
     }
   if (is_null)
-    dc_set_null (dc, dc->dc_n_values - 1);
+    {
+      if (2 == is_null)
+	dc_append_null (dc);
+      else
+	dc_set_null (dc, dc->dc_n_values - 1);
+    }
   else
     {
       if (dc->dc_nulls)
@@ -502,6 +506,7 @@ dc_col_cmp (data_col_t * dc, dbe_col_loc_t * cl, caddr_t value)
 	{
 	  while (1)
 	    {
+	      wchar_t xlat1, xlat2;
 	      if (inx == l1)
 		{
 		  if (inx == l2)
@@ -511,9 +516,11 @@ dc_col_cmp (data_col_t * dc, dbe_col_loc_t * cl, caddr_t value)
 		}
 	      if (inx == l2)
 		return DVC_GREATER;
-	      if (collation->co_table[(unsigned char) dv1[inx]] < collation->co_table[(unsigned char) dv2[inx]])
+	      xlat1 = COLLATION_XLAT_NARROW (collation, (unsigned char) dv1[inx]);
+	      xlat2 = COLLATION_XLAT_NARROW (collation, (unsigned char) dv2[inx]);
+	      if (xlat1 < xlat2)
 		return DVC_LESS;
-	      if (collation->co_table[(unsigned char) dv1[inx]] > collation->co_table[(unsigned char) dv2[inx]])
+	      if (xlat1 > xlat2)
 		return DVC_GREATER;
 	      inx++;
 	    }
@@ -569,8 +576,6 @@ dc_like_compare (data_col_t * dc, caddr_t pattern, search_spec_t * spec)
     {
     case DV_STRING:
     case DV_SHORT_STRING_SERIAL:
-      if (collation && collation->co_is_wide)
-	collation = NULL;
       break;
     case DV_WIDE:
       st = LIKE_ARG_UTF;

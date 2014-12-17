@@ -37,7 +37,11 @@
  */
 
 
+#ifdef USE_TLSF
+#define ht_alloc(ht, sz) tlsf_id_alloc (sz, ht->ht_tlsf_id)
+#else
 #define ht_alloc(ht, sz) DBG_NAME(dk_alloc) (DBG_ARGS sz)
+#endif
 
 typedef void (*maphash_func) (const void *k, void *data);
 typedef void (*maphash3_func) (const void *k, void *data, void *env);

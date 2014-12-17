@@ -1039,7 +1039,7 @@ soap_box_xml_entity (caddr_t * entity, caddr_t * err_ret, dtp_t proposed_type, i
 
   if (type != DV_ARRAY_OF_POINTER)
     {
-      caddr_t wide = box_utf8_as_wide_char ((caddr_t) entity, NULL, box_length (entity) - 1, 0, DV_WIDE);
+      caddr_t wide = box_utf8_as_wide_char ((caddr_t) entity, NULL, box_length (entity) - 1, 0);
       if (!proposed_type)
 	return wide;
       else
@@ -9172,7 +9172,7 @@ soap_wsdl_print_extensions (query_t * proc, char *operation_name, dk_session_t *
 		      }
 		    else
 		      {
-			caddr_t wide = box_utf8_as_wide_char (value, NULL, box_length (value) - 1, 0, DV_WIDE);
+			caddr_t wide = box_utf8_as_wide_char (value, NULL, box_length (value) - 1, 0);
 			/* Special cases for datatypes:
 			   float is mapped to double to increase the precision,
 			   string is mapped to the nvarchar for wide characters support */

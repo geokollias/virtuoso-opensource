@@ -646,7 +646,7 @@ void qst_set_double (caddr_t * state, state_slot_t * sl, double dv);
 
 void qst_set_string (caddr_t * state, state_slot_t * sl, db_buf_t data, size_t len, uint32 flags);
 
-void qst_set_wide_string (caddr_t * state, state_slot_t * sl, db_buf_t data, int len, dtp_t dtp, int isUTF8);
+void qst_set_wide_string (caddr_t * state, state_slot_t * sl, db_buf_t data, int len, int isUTF8);
 
 void qst_set_numeric_buf (caddr_t * state, state_slot_t * sl, db_buf_t xx);
 
@@ -1680,6 +1680,9 @@ int64 sqlo_p_stat_query (dbe_table_t * tb, caddr_t p);
 
 
 extern int32 enable_vec_reuse;
+#ifdef USE_TLSF
+extern tlsf_t *sqlc_tlsf;
+#else
 #define thr_set_tlsf(x, y) ;
 #ifndef WITH_TLSF
 #define WITH_TLSF(x) {
@@ -1688,5 +1691,6 @@ extern int32 enable_vec_reuse;
 #define B_NEW_VARZ(t, v) NEW_VARZ(t, v)
 #define tlsf_base_alloc(s) dk_alloc(s)
 
+#endif
 #endif
 #endif /* _SQLFN_H */

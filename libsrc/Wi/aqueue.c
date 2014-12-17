@@ -124,6 +124,10 @@ aq_thread_func (aq_thread_t * aqt)
   semaphore_enter (aqt->aqt_thread->thr_sem);
   SET_THR_ATTR (self, TA_IMMEDIATE_CLIENT, aqt->aqt_cli);
   sqlc_set_client (aqt->aqt_cli);
+#ifdef USE_TLSF
+  aqt->aqt_cli->cli_tlsf = tlsf_get ();
+  tlsf_set_comment (aqt->aqt_cli->cli_tlsf, "aq_tlsf");
+#endif
   for (;;)
     {
       int64 ts = rdtsc ();

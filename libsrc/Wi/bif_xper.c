@@ -450,7 +450,7 @@ start_tag_record (xper_stag_t * d)
 /* IvAn/TextXperIndex/000815 */
   LONG_SET_NA (rec + STR_START_WORD_OFF, d->wrs.xewr_main_beg);
 
-  colon = strrchr (d->name, ':');
+  colon = (char *) strrchr (d->name, ':');
   nspos = find_ns (d->name, colon ? colon - d->name : 0, d->nss_ptr);
   if (nspos)
     LONG_SET_NA (rec + STR_NS_OFF, nspos);
@@ -649,6 +649,12 @@ xper_blob_append_box (xper_ctx_t * ctx, caddr_t box)
   size_t len;
   tag = box_tag (box);
   len = box_length (box);
+  if (DV_STRING == tag)
+    {
+      len--;
+      if (len <= 255)
+	tag = DV_SHORT_STRING_SERIAL;
+    }
   ccc[0] = tag;
   if (DV_SHORT_STRING_SERIAL == tag)
     {
@@ -1447,6 +1453,8 @@ static caddr_t DBG_NAME (get_tag_data) (DBG_PARAMS xper_entity_t * xpe, volatile
       {
 	len = *(unsigned char *) (buf->bd_buffer + DP_DATA + pos % PAGE_DATA_SZ);
 	++pos;
+	box = DBG_NAME (dk_alloc_box) (DBG_ARGS len + 1, DV_STRING);
+	box[len] = '\0';
       }
     else
       {
@@ -1466,8 +1474,14 @@ static caddr_t DBG_NAME (get_tag_data) (DBG_PARAMS xper_entity_t * xpe, volatile
 	pos += 4;
 	if (0 == len)
 	  GPF_T;
+	if (DV_STRING == dtp)
+	  {
+	    box = DBG_NAME (dk_alloc_box) (DBG_ARGS len + 1, dtp);
+	    box[len] = '\0';
+	  }
+	else
+	  box = DBG_NAME (dk_alloc_box) (DBG_ARGS len, dtp);
       }
-    box = DBG_NAME (dk_alloc_box) (DBG_ARGS len, dtp);
     for (i = 0; i < len;)
       {
 	size_t cpsz = ((PAGE_DATA_SZ - pos % PAGE_DATA_SZ < len - i) ? PAGE_DATA_SZ - pos % PAGE_DATA_SZ : len - i);
@@ -1517,7 +1531,7 @@ caddr_t DBG_NAME (xper_get_namespace) (DBG_PARAMS xper_entity_t * xpe, long pos)
 
   /* TBD - namespace caching by pos */
   tmp = DBG_NAME (get_tag_data) (DBG_ARGS xpe, pos);
-  res = box_dv_uname_nchars (tmp, box_length (tmp));
+  res = box_dv_uname_nchars (tmp, box_length (tmp) - 1);
   dk_free_box (tmp);
   return res;
 }
@@ -1547,7 +1561,7 @@ fill_xper_entity (xper_entity_t * xpe, long pos)
   dtp = DV_TYPE_OF (tmp_box);
   len = box_length (tmp_box);
 
-  if (DV_SHORT_STRING_SERIAL == dtp || DV_STRING == dtp)
+  if ( /* DV_SHORT_STRING_SERIAL == dtp || -- No more boxes with DV_SHORT_STRING_SERIAL tag */ DV_STRING == dtp)
     {
       xpe->xper_type = XML_MKUP_TEXT;
       buf1len = ((len > 900) ? 0x1000 : len);
@@ -1555,6 +1569,7 @@ fill_xper_entity (xper_entity_t * xpe, long pos)
       buf1use = 0;
       do
 	{
+	  len--;
 	  if (buf1use + len > buf1len)
 	    {
 	      buf2len = buf1len + len;
@@ -1574,15 +1589,14 @@ fill_xper_entity (xper_entity_t * xpe, long pos)
 	    }
 	  memcpy (buf1 + buf1use, tmp_box, len);
 	  buf1use += len;
-	  pos += len + ((DV_SHORT_STRING_SERIAL == dtp) ? 2 : 5);
+	  pos += len + ((len <= 255) ? 2 : 5);
 	  dk_free_box (tmp_box);
 	  tmp_box = get_tag_data (xpe, pos);
 	  dtp = DV_TYPE_OF (tmp_box);
 	  len = box_length (tmp_box);
 	}
-      while ((DV_SHORT_STRING_SERIAL == dtp) || (DV_STRING == dtp));
-      xpe->xper_text = dk_alloc_box (buf1use, DV_STRING);
-      memcpy (xpe->xper_text, buf1, buf1use);
+      while ( /* (DV_SHORT_STRING_SERIAL == dtp) || -- no more boxes of DV_SHORT_STRING_SERIAL tag */ (DV_STRING == dtp));
+      xpe->xper_text = box_dv_short_nchars (buf1, buf1use);
       dk_free (buf1, buf1len);
       /* \c xpe->xper_parent and \c xpe->xper_left should be filled by caller */
       xpe->xper_right = ((XML_MKUP_ETAG == tmp_box[0]) ? 0 : pos);
@@ -1656,7 +1670,7 @@ fill_xper_entity (xper_entity_t * xpe, long pos)
       dk_free_box (tmp_box);
       tmp_box = get_tag_data (xpe, pos);
       dtp = DV_TYPE_OF (tmp_box);
-      if ((DV_SHORT_STRING_SERIAL == dtp) || (DV_STRING == dtp) || (XML_MKUP_ETAG != tmp_box[0]))
+      if ( /* (DV_SHORT_STRING_SERIAL == dtp) || */ (DV_STRING == dtp) || (XML_MKUP_ETAG != tmp_box[0]))
 	xpe->xper_right = pos;
       else
 	xpe->xper_right = 0;
@@ -2480,7 +2494,8 @@ xper_entity_t *DBG_NAME (xper_entity) (DBG_PARAMS query_instance_t * qi, caddr_t
       iter_data = &bdfi;
       goto parse_source;
     }
-  if ((dtp_of_source_arg == DV_SHORT_STRING_SERIAL) || (dtp_of_source_arg == DV_STRING) || (dtp_of_source_arg == DV_C_STRING))
+  if (				/*(dtp_of_source_arg == DV_SHORT_STRING_SERIAL) || */
+      (dtp_of_source_arg == DV_STRING) || (dtp_of_source_arg == DV_C_STRING))
     {
       if (!strncasecmp (source_arg, "file://", 7 /* strlen(("file://") */ ))
 	{
@@ -3629,11 +3644,12 @@ xp_copy_to_xte_head (xml_entity_t * xe)
 	pos = xpe->xper_pos;
 	for (;;)
 	  {
-	    session_buffered_write (ses, box, box_length (box));
-	    pos += box_length (box) + ((DV_SHORT_STRING_SERIAL == box_tag (box)) ? 2 : 5);
+	    int len = box_length (box) - 1;
+	    session_buffered_write (ses, box, len);
+	    pos += ((255 <= len) ? 2 : 5) + len;
 	    dk_free_box (box);
 	    box = get_tag_data (xpe, pos);
-	    if ((DV_STRING != box_tag (box)) && (DV_SHORT_STRING_SERIAL != box_tag (box)))
+	    if ((DV_STRING != box_tag (box)) /* && (DV_SHORT_STRING_SERIAL != box_tag (box)) */ )
 	      break;
 	  }
 	dk_free_box (box);
@@ -3767,11 +3783,12 @@ xp_copy_to_xte_subtree (xml_entity_t * xe)
 	pos = xpe->xper_pos;
 	for (;;)
 	  {
-	    session_buffered_write (ses, box, box_length (box));
-	    pos += box_length (box) + ((DV_SHORT_STRING_SERIAL == box_tag (box)) ? 2 : 5);
+	    int len = box_length (box) - 1;
+	    session_buffered_write (ses, box, len);
+	    pos += ((len <= 255) ? 2 : 5) + len;
 	    dk_free_box (box);
 	    box = get_tag_data (xpe, pos);
-	    if ((DV_STRING != box_tag (box)) && (DV_SHORT_STRING_SERIAL != box_tag (box)))
+	    if ((DV_STRING != box_tag (box)) /* && (DV_SHORT_STRING_SERIAL != box_tag (box)) */ )
 	      break;
 	  }
 	dk_free_box (box);
@@ -3985,7 +4002,6 @@ xp_build_expanded_name (xper_entity_t * xpe)
   len = box_length (name) - 1;
   if (uname___empty == ns)
     return box_copy (name);
-  nslen = box_length (ns);
   colon = name + len;
   while ((colon > name) && (colon[-1] != ':'))
     colon--;
@@ -4270,11 +4286,15 @@ void DBG_NAME (xp_string_value) (DBG_PARAMS xml_entity_t * xe, caddr_t * ret, dt
 #endif
 	  dk_free_box (box);
 	  box = get_tag_data (xpe, pos);
-	  pos += box_length (box) + ((DV_SHORT_STRING_SERIAL == box_tag (box)) ? 2 : 5);
-	  if ((DV_STRING == box_tag (box)) || (DV_SHORT_STRING_SERIAL == box_tag (box)))
-	    session_buffered_write (ses, box, box_length (box));
+	  if (DV_STRING == box_tag (box))
+	    {
+	      int len = box_length (box) - 1;
+	      pos += ((len <= 255) ? 2 : 5) + len;
+	      session_buffered_write (ses, box, len);
+	    }
 	  else
 	    {
+	      pos += 5 + box_length (box);
 	      ptr = (unsigned char *) box;
 	      type = *ptr++;
 	      namelen = (int) skip_string_length (&ptr);
@@ -4322,17 +4342,18 @@ void DBG_NAME (xp_string_value) (DBG_PARAMS xml_entity_t * xe, caddr_t * ret, dt
 	}
       goto done;
     }
-  if ((DV_STRING == box_tag (box)) || (DV_SHORT_STRING_SERIAL == box_tag (box)))
+  if ((DV_STRING == box_tag (box)) /*|| (DV_SHORT_STRING_SERIAL == box_tag (box)) */ )
     {
       long box_pos = pos = xpe->xper_pos;
       for (;;)
 	{
-	  session_buffered_write (ses, box, box_length (box));
+	  int len = box_length (box) - 1;
+	  session_buffered_write (ses, box, len);
 	  box_pos = pos;
-	  pos += box_length (box) + ((DV_SHORT_STRING_SERIAL == box_tag (box)) ? 2 : 5);
+	  pos += ((len <= 255) ? 2 : 5) + len;
 	  dk_free_box (box);
 	  box = get_tag_data (xpe, pos);
-	  if ((DV_STRING == box_tag (box)) || (DV_SHORT_STRING_SERIAL == box_tag (box)))
+	  if ((DV_STRING == box_tag (box)) /*|| (DV_SHORT_STRING_SERIAL == box_tag (box)) */ )
 	    continue;
 #if 0
 /* TBD: support for strings that starts in one subdocument and continues in a nested reference */
@@ -4427,14 +4448,16 @@ xp_string_value_is_nonempty (xml_entity_t * xe)
 #endif
 	  dk_free_box (box);
 	  box = get_tag_data (xpe, pos);
-	  pos += box_length (box) + ((DV_SHORT_STRING_SERIAL == box_tag (box)) ? 2 : 5);
-	  if ((DV_STRING == box_tag (box)) || (DV_SHORT_STRING_SERIAL == box_tag (box)))
+	  if ((DV_STRING == box_tag (box)) /*|| (DV_SHORT_STRING_SERIAL == box_tag (box)) */ )
 	    {
-	      if (box_length (box))
+	      int len = box_length (box) - 1;
+	      if (len)
 		return 1;
+	      pos += ((len <= 255) ? 2 : 5) + len;
 	    }
 	  else
 	    {
+	      pos += 5 + box_length (box);
 	      ptr = (unsigned char *) box;
 	      type = *ptr++;
 	      namelen = (int) skip_string_length (&ptr);
@@ -4484,18 +4507,19 @@ xp_string_value_is_nonempty (xml_entity_t * xe)
 	}
       return 0;
     }
-  if ((DV_STRING == box_tag (box)) || (DV_SHORT_STRING_SERIAL == box_tag (box)))
+  if ((DV_STRING == box_tag (box)) /*|| (DV_SHORT_STRING_SERIAL == box_tag (box)) */ )
     {
       long box_pos = pos = xpe->xper_pos;
       for (;;)
 	{
-	  if (box_length (box))
+	  int len = box_length (box) - 1;
+	  if (len)
 	    return 1;
 	  box_pos = pos;
-	  pos += box_length (box) + ((DV_SHORT_STRING_SERIAL == box_tag (box)) ? 2 : 5);
+	  pos += ((len <= 255) ? 2 : 5) + len;
 	  dk_free_box (box);
 	  box = get_tag_data (xpe, pos);
-	  if ((DV_STRING == box_tag (box)) || (DV_SHORT_STRING_SERIAL == box_tag (box)))
+	  if ((DV_STRING == box_tag (box)) /* || (DV_SHORT_STRING_SERIAL == box_tag (box)) */ )
 	    continue;
 #if 0
 /* TBD: support for strings that starts in one subdocument and continues in a nested reference */
@@ -4733,8 +4757,13 @@ before_element:
       error = srv_make_new_error ("42000", "XM008", "Error while serializing XML_PERSISTENT: invalid box tag");
       goto emit_error;
     }
-  pos += ((DV_SHORT_STRING_SERIAL == dtp) ? 2 : 5);
-  pos += box_length (box);
+  if (DV_STRING == dtp)
+    {
+      int len = box_length (box) - 1;
+      pos += ((len <= 255) ? 2 : 5) + len;
+    }
+  else
+    pos += 5 + box_length (box);
   dk_free_box (box);
   if (pos <= xpe->xper_end)
     goto before_element;	/* see above */
@@ -4770,11 +4799,10 @@ xp_serialize_element (xper_entity_t * xpe, long pos, dk_session_t * ses, dk_set_
   int namelen;
   long num_word, atts_fill, addons, alen, end_pos;
   int dtp = box_tag (box);
-  pos += ((DV_SHORT_STRING_SERIAL == dtp) ? 2 : 5);
-  pos += box_length (box);
   switch (dtp)
     {
     case DV_XML_MARKUP:
+      pos += 5 + box_length (box);
       type = *ptr++;
 
       namelen = (int) skip_string_length (&ptr);
@@ -4895,8 +4923,12 @@ xp_serialize_element (xper_entity_t * xpe, long pos, dk_session_t * ses, dk_set_
       break;
     case DV_STRING:
     case DV_SHORT_STRING_SERIAL:
-      write_escaped (ses, (unsigned char *) box, box_length (box), charset);
-      break;
+      {
+	int len = box_length (box) - 1;
+	pos += ((len <= 255) ? 2 : 5) + len;
+	write_escaped (ses, (unsigned char *) box, len, charset);
+	break;
+      }
     default:
       dk_free_box (box);
       sqlr_new_error ("XE000", "XP9B3", "Error while serializing XML_PERSISTENT: invalid box tag %d", dtp);
@@ -4990,13 +5022,19 @@ first_element:
   box = get_tag_data (xpe, curr_el_pos);
   dtp = box_tag (box);
   ptr = (unsigned char *) box;
-  curr_el_pos += ((DV_SHORT_STRING_SERIAL == dtp) ? 2 : 5);
-  el_length = box_length (box);
-  curr_el_pos += el_length;
+  if (DV_STRING == dtp)
+    {
+      el_length = box_length (box) - 1;
+      curr_el_pos += ((el_length <= 255) ? 2 : 5) + el_length;
+    }
+  else
+    {
+      el_length = box_length (box);
+      curr_el_pos += 5 + el_length;
+    }
   switch (dtp)
     {
-    case DV_STRING:
-    case DV_SHORT_STRING_SERIAL:
+    case DV_STRING:		/*case DV_SHORT_STRING_SERIAL: */
       s_frag_begin = ptr;
       old_word_pos = vtb->vtb_word_pos;
       box_end = (unsigned char *) box + el_length;
@@ -5952,8 +5990,8 @@ xp_get_sysid (xml_entity_t * xe, const char *ref_name)
 static size_t
 register_ns (volatile long *volatile end_of_cut_pos, dk_set_t * namespaces, size_t old_ns_pos, xper_entity_t * src_xpe)
 {
+  int ns_uri_len;
   xper_ns_t *new_ns;
-  dtp_t str_type;
   DO_SET (xper_ns_t *, ns_i, namespaces) if (ns_i->xpns_old_pos == old_ns_pos)
     return ns_i->xpns_pos;
   END_DO_SET ();
@@ -5963,9 +6001,8 @@ register_ns (volatile long *volatile end_of_cut_pos, dk_set_t * namespaces, size
   new_ns->xpns_uri = get_tag_data (src_xpe, (long) old_ns_pos);
   new_ns->xpns_old_pos = old_ns_pos;
   new_ns->xpns_pos = end_of_cut_pos[0];
-  str_type = box_tag (new_ns->xpns_uri);
-  end_of_cut_pos[0] += ((DV_SHORT_STRING_SERIAL == str_type) ? 2 : 5);
-  end_of_cut_pos[0] += box_length (new_ns->xpns_uri);
+  ns_uri_len = box_length (new_ns->xpns_uri) - 1;
+  end_of_cut_pos[0] += ((ns_uri_len <= 255) ? 2 : 5) + ns_uri_len;
   dk_set_push (namespaces, new_ns);
   return new_ns->xpns_pos;
 }

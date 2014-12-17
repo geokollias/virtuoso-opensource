@@ -1202,7 +1202,7 @@ new_xtree:
       digest := rdf_box (v, dt_twobyte, lang_twobyte, id, 1);
       -- if (ro_id_dict is null)
       --   {
-      --     dbg_obj_princ ('zero RO_FLAGS in sparql.sql:1124');
+      --     -- dbg_obj_princ ('zero RO_FLAGS in sparql.sql:1124');
       --     ;
       --   }
       insert into DB.DBA.RDF_OBJ (RO_ID, RO_VAL, RO_LONG, RO_FLAGS, RO_DT_AND_LANG) values
@@ -1782,10 +1782,16 @@ create function DB.DBA.RDF_MAKE_LONG_OF_TYPEDSQLVAL (in v any, in dt_iid IRI_ID,
             {
               v := rdf_box_data (v, 1);
               if (__tag of varchar <> __tag (v))
-                signal ('RDFXX', 'Language is set and the argument is invalid RDF box in DB.DBA.RDF_MAKE_LONG_OF_TYPEDSQLVAL()');
+                {
+                  -- dbg_obj_princ ('DB.DBA.RDF_MAKE_LONG_OF_TYPEDSQLVAL (', v, dt_iid, lang, ')');
+                  signal ('RDFXX', 'Language is set and the argument is invalid RDF box in DB.DBA.RDF_MAKE_LONG_OF_TYPEDSQLVAL()');
+                }
             }
           else
-            signal ('RDFXX', 'Language is specified for typed literal in DB.DBA.RDF_MAKE_LONG_OF_TYPEDSQLVAL()');
+            {
+              -- dbg_obj_princ ('DB.DBA.RDF_MAKE_LONG_OF_TYPEDSQLVAL (', v, dt_iid, lang, ')');
+              signal ('RDFXX', 'Language is specified for typed literal in DB.DBA.RDF_MAKE_LONG_OF_TYPEDSQLVAL()');
+            }
           if (dt_iid is not null)
             signal ('RDFXX', 'Both language and type are specified in call of DB.DBA.RDF_MAKE_LONG_OF_TYPEDSQLVAL()');
         }
@@ -7217,17 +7223,32 @@ create procedure DB.DBA.RDF_DELETE_TRIPLES_AGG (in graph_iid any, inout triples 
             {
               declare o_val any array;
               declare o_dt_and_lang_twobyte integer;
-              declare search_fields_are_ok integer;
-              search_fields_are_ok := __rdf_box_to_ro_id_search_fields (a_o, o_val, o_dt_and_lang_twobyte);
-              -- dbg_obj_princ ('__rdf_box_to_ro_id_search_fields (', a_o, ') returned ', search_fields_are_ok, o_val, o_dt_and_lang_twobyte);
               if (__tag of rdf_box = __tag (a_o) and rdf_box_ro_id (a_o)) -- was if (__tag of rdf_box = __tag (a_o) and rdf_box_is_complete (a_o))
-                delete from DB.DBA.RDF_QUAD where G = graph_iid and S = a_s and P = a_p and O = a_o;
-	      else if (search_fields_are_ok)
-                delete from DB.DBA.RDF_QUAD where G = graph_iid and S = a_s and P = a_p and O = (select rdf_box_from_ro_id(RO_ID) from DB.DBA.RDF_OBJ where RO_VAL = o_val and RO_DT_AND_LANG = o_dt_and_lang_twobyte);
-              else if (isstring (a_o)) /* it should be string IRI otherwise it's in RDF_OBJ */
-                delete from DB.DBA.RDF_QUAD where G = graph_iid and S = a_s and P = a_p and O = iri_to_id (a_o);
+                {
+                  -- dbg_obj_princ ('delete by O=a_o because the box has ro_id');
+                  delete from DB.DBA.RDF_QUAD where G = graph_iid and S = a_s and P = a_p and O = a_o;
+                }
               else
-                delete from DB.DBA.RDF_QUAD where G = graph_iid and S = a_s and P = a_p and O = a_o;
+                {
+                  declare search_fields_are_ok integer;
+                  search_fields_are_ok := __rdf_box_to_ro_id_search_fields (a_o, o_val, o_dt_and_lang_twobyte);
+                  -- dbg_obj_princ ('__rdf_box_to_ro_id_search_fields (', a_o, ') returned ', search_fields_are_ok, o_val, o_dt_and_lang_twobyte);
+                  if (search_fields_are_ok)
+                    {
+                      -- dbg_obj_princ ('delete by search fields, ro_id will be ', (select rdf_box_from_ro_id(RO_ID) from DB.DBA.RDF_OBJ where RO_VAL = o_val and RO_DT_AND_LANG = o_dt_and_lang_twobyte));
+                      delete from DB.DBA.RDF_QUAD where G = graph_iid and S = a_s and P = a_p and O = (select rdf_box_from_ro_id(RO_ID) from DB.DBA.RDF_OBJ where RO_VAL = o_val and RO_DT_AND_LANG = o_dt_and_lang_twobyte);
+                    }
+                  else if (isstring (a_o)) /* it should be string IRI otherwise it's in RDF_OBJ */
+                    {
+                      -- dbg_obj_princ ('delete of string iri, iri_id will be ', iri_to_id (a_o));
+                      delete from DB.DBA.RDF_QUAD where G = graph_iid and S = a_s and P = a_p and O = iri_to_id (a_o);
+                    }
+                  else
+                    {
+                      -- dbg_obj_princ ('delete by O=a_o as a fallback');
+                      delete from DB.DBA.RDF_QUAD where G = graph_iid and S = a_s and P = a_p and O = a_o;
+                    }
+                }
             }
         }
     }
@@ -8085,15 +8106,32 @@ create function DB.DBA.RDF_DELETE_QUADS (in dflt_graph_iri any, inout quads any,
                 {
                   declare o_val any array;
                   declare o_dt_and_lang_twobyte integer;
-                  declare search_fields_are_ok integer;
-                  search_fields_are_ok := __rdf_box_to_ro_id_search_fields (a_o, o_val, o_dt_and_lang_twobyte);
-                  -- dbg_obj_princ ('__rdf_box_to_ro_id_search_fields (', a_o, ') returned ', search_fields_are_ok, o_val, o_dt_and_lang_twobyte);
-                  if (search_fields_are_ok)
-                    delete from DB.DBA.RDF_QUAD where G = a_g and S = a_s and P = a_p and O = (select rdf_box_from_ro_id(RO_ID) from DB.DBA.RDF_OBJ where RO_VAL = o_val and RO_DT_AND_LANG = o_dt_and_lang_twobyte);
-                  else if (isstring (a_o)) /* it should be string IRI otherwise it's in RDF_OBJ */
-                    delete from DB.DBA.RDF_QUAD where G = a_g and S = a_s and P = a_p and O = iri_to_id (a_o);
+                  if (__tag of rdf_box = __tag (a_o) and rdf_box_ro_id (a_o)) -- was if (__tag of rdf_box = __tag (a_o) and rdf_box_is_complete (a_o))
+                    {
+                      -- dbg_obj_princ ('delete by O=a_o because the box has ro_id');
+                      delete from DB.DBA.RDF_QUAD where G = a_g and S = a_s and P = a_p and O = a_o;
+                    }
                   else
-                    delete from DB.DBA.RDF_QUAD where G = a_g and S = a_s and P = a_p and O = a_o;
+                    {
+                      declare search_fields_are_ok integer;
+                      search_fields_are_ok := __rdf_box_to_ro_id_search_fields (a_o, o_val, o_dt_and_lang_twobyte);
+                      -- dbg_obj_princ ('__rdf_box_to_ro_id_search_fields (', a_o, ') returned ', search_fields_are_ok, o_val, o_dt_and_lang_twobyte);
+                      if (search_fields_are_ok)
+                        {
+                          -- dbg_obj_princ ('delete by search fields, ro_id will be ', (select rdf_box_from_ro_id(RO_ID) from DB.DBA.RDF_OBJ where RO_VAL = o_val and RO_DT_AND_LANG = o_dt_and_lang_twobyte));
+                          delete from DB.DBA.RDF_QUAD where G = a_g and S = a_s and P = a_p and O = (select rdf_box_from_ro_id(RO_ID) from DB.DBA.RDF_OBJ where RO_VAL = o_val and RO_DT_AND_LANG = o_dt_and_lang_twobyte);
+                        }
+                      else if (isstring (a_o)) /* it should be string IRI otherwise it's in RDF_OBJ */
+                        {
+                          -- dbg_obj_princ ('delete of string iri, iri_id will be ', iri_to_id (a_o));
+                          delete from DB.DBA.RDF_QUAD where G = a_g and S = a_s and P = a_p and O = iri_to_id (a_o);
+                        }
+                      else
+                        {
+                          -- dbg_obj_princ ('delete by O=a_o as a fallback');
+                          delete from DB.DBA.RDF_QUAD where G = a_g and S = a_s and P = a_p and O = a_o;
+                        }
+                    }
                 }
             }
         }
@@ -8229,17 +8267,24 @@ create function DB.DBA.SPARQL_DELETE_QUAD_DICT_CONTENT (in dflt_graph_iri any, i
                     delete from DB.DBA.RDF_QUAD where G = a_g and S = a_s and P = a_p and O = a_o;
                   else
                     {
-                      declare o_val any array;
-                      declare o_dt_and_lang_twobyte integer;
                       declare search_fields_are_ok integer;
                       search_fields_are_ok := __rdf_box_to_ro_id_search_fields (a_o, o_val, o_dt_and_lang_twobyte);
                       -- dbg_obj_princ ('__rdf_box_to_ro_id_search_fields (', a_o, ') returned ', search_fields_are_ok, o_val, o_dt_and_lang_twobyte);
                       if (search_fields_are_ok)
-                        delete from DB.DBA.RDF_QUAD where G = a_g and S = a_s and P = a_p and O = (select rdf_box_from_ro_id(RO_ID) from DB.DBA.RDF_OBJ where RO_VAL = o_val and RO_DT_AND_LANG = o_dt_and_lang_twobyte);
+                        {
+                          -- dbg_obj_princ ('delete by search fields, ro_id will be ', (select rdf_box_from_ro_id(RO_ID) from DB.DBA.RDF_OBJ where RO_VAL = o_val and RO_DT_AND_LANG = o_dt_and_lang_twobyte));
+                          delete from DB.DBA.RDF_QUAD where G = a_g and S = a_s and P = a_p and O = (select rdf_box_from_ro_id(RO_ID) from DB.DBA.RDF_OBJ where RO_VAL = o_val and RO_DT_AND_LANG = o_dt_and_lang_twobyte);
+                        }
                       else if (isstring (a_o)) /* it should be string IRI otherwise it's in RDF_OBJ */
-                        delete from DB.DBA.RDF_QUAD where G = a_g and S = a_s and P = a_p and O = iri_to_id (a_o);
+                        {
+                          -- dbg_obj_princ ('delete of string iri, iri_id will be ', iri_to_id (a_o));
+                          delete from DB.DBA.RDF_QUAD where G = a_g and S = a_s and P = a_p and O = iri_to_id (a_o);
+                        }
                       else
-                        delete from DB.DBA.RDF_QUAD where G = a_g and S = a_s and P = a_p and O = a_o;
+                        {
+                          -- dbg_obj_princ ('delete by O=a_o as a fallback');
+                          delete from DB.DBA.RDF_QUAD where G = a_g and S = a_s and P = a_p and O = a_o;
+                        }
                     }
                 }
             }
@@ -17097,9 +17142,10 @@ create procedure DB.DBA.RDF_QUAD_LOAD_CACHE ()
       count (dict_put (__rdf_graph_iri2id_dict(), __uname (id_to_iri (RGU_GRAPH_IID)), RGU_GRAPH_IID)) +
       count (dict_put (__rdf_graph_id2iri_dict(), RGU_GRAPH_IID, __uname (id_to_iri (RGU_GRAPH_IID))))
       from DB.DBA.RDF_GRAPH_USER where RGU_GRAPH_IID <> #i8192 and RGU_GRAPH_IID <> #i0 );
-  for (select RGGM_GROUP_IID as group_iid, DB.DBA.VECTOR_AGG (RGGM_MEMBER_IID) as membs
-         from DB.DBA.RDF_GRAPH_GROUP_MEMBER join DB.DBA.RDF_GRAPH_GROUP on (RGGM_GROUP_IID = RGG_IID) ) do
+  for select RGG_IID as group_iid from DB.DBA.RDF_GRAPH_GROUP do
     {
+      declare membs any;
+      membs := (select DB.DBA.VECTOR_AGG (RGGM_MEMBER_IID) from DB.DBA.RDF_GRAPH_GROUP_MEMBER where RGGM_GROUP_IID = group_iid);
       if (length (membs) < 1000)
         {
           gvector_digit_sort (membs, 1, 0, 1);

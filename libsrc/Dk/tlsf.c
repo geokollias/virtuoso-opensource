@@ -954,7 +954,8 @@ tlsf_destroy (tlsf_t * tlsf)
   tlsf->tlsf_signature = 0;
   dk_mutex_destroy (&tlsf->tlsf_mtx);
 #ifdef MALLOC_DEBUG
-  id_hash_free (tlsf->tlsf_allocs);
+  if (tlsf->tlsf_allocs)
+    id_hash_free (tlsf->tlsf_allocs);
 #endif
 }
 
@@ -962,7 +963,9 @@ tlsf_t *
 tlsf_get ()
 {
   int inx;
+#ifndef USE_TLSF
   return NULL;
+#endif
   mutex_enter (&all_tlsf_mtx);
   for (inx = 3; inx <= tlsf_ctr; inx++)
     {
@@ -997,7 +1000,9 @@ tlsf_id_alloc (size_t sz, short tlsf_id)
   return ret;
 }
 
+#ifndef USE_TLSF
 #undef tlsf_base_alloc
+#endif
 
 void *
 tlsf_base_alloc (size_t sz)
@@ -1243,6 +1248,14 @@ thr_set_tlsf (du_thread_t * thr, tlsf_t * tlsf)
 void
 tlsf_set_comment (tlsf_t * tlsf, char * name)
 {
+#ifdef USE_TLSF
+  WITH_TLSF (dk_base_tlsf)
+  {
+    tlsf->tlsf_comment = box_dv_short_string (name);
+    mutex_option (&tlsf->tlsf_mtx, name, NULL, NULL);
+  }
+  END_WITH_TLSF;
+#endif
 }
 
 

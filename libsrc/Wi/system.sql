@@ -21,6 +21,9 @@
 --
 --
 
+DB.DBA.__MAKE_UNICODE3_COLLATIONS ()
+;
+
 create table SYS_VT_INDEX (VI_TABLE varchar, VI_INDEX varchar, VI_COL varchar,
 	VI_ID_COL varchar, VI_INDEX_TABLE varchar,
        VI_ID_IS_PK integer, VI_ID_CONSTR varchar,
@@ -6360,13 +6363,14 @@ create procedure csv_file_header_check (in f any, in num_to_check int := 10, in 
 create procedure csv_table_def (in f varchar, in tb_name varchar := null, in opts any := null)
 {
   declare head any;
-  declare s, r, ss any;
+  declare s, r, ss, pk any;
   declare i int;
   declare delim, quot, enc char;
-  declare mode, to_check int;
+  declare mode, to_check, pk_col_pos int;
 
   delim := quot := enc := mode := null;
   to_check := 10;
+  pk_col_pos := 0;
   if (isvector (opts) and mod (length (opts), 2) = 0)
     {
       delim := get_keyword ('csv-delimiter', opts);
@@ -6374,6 +6378,7 @@ create procedure csv_table_def (in f varchar, in tb_name varchar := null, in opt
       enc := get_keyword ('encoding', opts);
       mode := get_keyword ('mode', opts);
       to_check := get_keyword ('max-rows', opts, 10);
+      pk_col_pos := get_keyword ('pk-col-pos', opts, 0);
     }
 
   if (not csv_file_header_check (f, to_check, opts))
@@ -6387,17 +6392,28 @@ create procedure csv_table_def (in f varchar, in tb_name varchar := null, in opt
   r := get_csv_row (s, delim, quot, enc, mode);
   ss := string_output ();
   http (sprintf ('CREATE TABLE "%I"."%I"."%I" ( \n', name_part (tb_name, 0), name_part (tb_name, 1), name_part (tb_name, 2)), ss);
+  pk := '';
   for (i := 0; i < length (head) and isstring (head[i]); i := i + 1)
     {
-       declare tp any;
+       declare tp, cname any;
        if (r[i] is null)
          tp := 'VARCHAR';
        else
          tp := dv_type_title (__tag (r[i]));
-       http (sprintf ('\t"%I" %s', SYS_ALFANUM_NAME (head[i]), tp), ss);
+       cname := SYS_ALFANUM_NAME (head[i]);
+       if (isvector (pk_col_pos) and (i+1) in (pk_col_pos))
+         {
+	   if (pk = '')
+	     pk := ' PRIMARY KEY (';
+	   pk := pk || sprintf ('"%I"', cname) || ',';
+	 }
+       http (sprintf ('\t"%I" %s', cname, tp), ss);
        if (i < length (head) - 1 and isstring (head[i + 1]))
          http (', \n', ss);
     }
+  if (pk <> '')
+    pk := ',' || rtrim (pk, ',') || ')';
+  http (pk, ss);
   http (')', ss);
   return string_output_string (ss);
 }
@@ -6789,7 +6805,7 @@ create procedure ft_set_file (in tb varchar, in fname varchar, in delimiter varc
 ;
 
 create procedure attach_from_csv (in tb varchar, in fname varchar, in delimiter varchar := ',',
-in newline varchar :=  '\n', in esc varchar := null, in skip_rows int := 1)
+in newline varchar :=  '\n', in esc varchar := null, in skip_rows int := 1, in pk_col_pos any := null)
 {
   declare qr varchar;
   fname := aref (WS.WS.PARSE_URI (fname), 2);
@@ -6805,7 +6821,9 @@ in newline varchar :=  '\n', in esc varchar := null, in skip_rows int := 1)
   tb := complete_table_name (tb, 1);
   if (not exists (select 1 from sys_keys where key_table = tb))
     {
-      qr := csv_table_def (fname, tb, vector ('csv-delimiter', delimiter,'csv-quote', esc, 'encoding', null,'mode', 2, 'max-rows', 3));
+      if (isinteger (pk_col_pos))
+	pk_col_pos := vector (pk_col_pos);
+      qr := csv_table_def (fname, tb, vector ('csv-delimiter', delimiter,'csv-quote', esc, 'encoding', null,'mode', 2, 'max-rows', 3, 'pk-col-pos', pk_col_pos));
       exec (qr);
     }
   ft_set_file (tb, fname, delimiter, newline, esc, skip_rows);

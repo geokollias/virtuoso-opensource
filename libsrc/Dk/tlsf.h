@@ -36,6 +36,13 @@ extern void tlsf_free(void *ptr);
 extern void * tlsf_id_alloc (size_t sz, short tlsf_id);
 extern void * tlsf_base_alloc (size_t c);
 extern void tlsf_base_free (void * c, size_t sz);
+#ifdef USE_TLSF
+
+#ifdef MALLOC_DEBUG
+extern void *dbg_malloc(const char *file, u_int line, size_t size);
+extern void dbg_free (const char *file, u_int line, void *data);
+#endif
+#endif
 
 
 /*#define USE_SBRK        (0) */
