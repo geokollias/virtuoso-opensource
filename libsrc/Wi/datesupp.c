@@ -1714,6 +1714,8 @@ http_date_to_dt (const char *http_date, char *dt)
 	GMTimestamp_struct_to_dt (ts, dt);
 	DT_SET_TZ (dt, tz_min);
       }
+  if (timezoneless_datetimes == DT_TZL_PREFER)
+    DT_SET_TZL (dt, 1);
   DT_AUDIT_FIELDS (dt);
   return 1;
 }

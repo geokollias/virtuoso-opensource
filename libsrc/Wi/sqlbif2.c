@@ -1077,17 +1077,17 @@ bif_rfc1808_parse_uri (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       wchar_t *wideuri = (wchar_t *) uri;
       return list (6,
 	  box_wide_char_string ((caddr_t) (wideuri + split.schema_begin),
-	      (split.schema_end - split.schema_begin) * sizeof (wchar_t), DV_WIDE),
+	      (split.schema_end - split.schema_begin) * sizeof (wchar_t)),
 	  box_wide_char_string ((caddr_t) (wideuri + split.netloc_begin),
-	      (split.netloc_end - split.netloc_begin) * sizeof (wchar_t), DV_WIDE), (((split.path_end == split.path_begin)
-		  && (0 < split.two_slashes)) ? box_wide_char_string ((caddr_t) (L"/"), sizeof (wchar_t),
-		  DV_WIDE) : box_wide_char_string ((caddr_t) (wideuri + split.path_begin),
-		  (split.path_end - split.path_begin) * sizeof (wchar_t), DV_WIDE)),
+	      (split.netloc_end - split.netloc_begin) * sizeof (wchar_t)), (((split.path_end == split.path_begin)
+		  && (0 < split.two_slashes)) ? box_wide_char_string ((caddr_t) (L"/"),
+		  sizeof (wchar_t)) : box_wide_char_string ((caddr_t) (wideuri + split.path_begin),
+		  (split.path_end - split.path_begin) * sizeof (wchar_t))),
 	  box_wide_char_string ((caddr_t) (wideuri + split.params_begin),
-	      (split.params_end - split.params_begin) * sizeof (wchar_t), DV_WIDE),
-	  box_wide_char_string ((caddr_t) (wideuri + split.query_begin), (split.query_end - split.query_begin) * sizeof (wchar_t),
-	      DV_WIDE), box_wide_char_string ((caddr_t) (wideuri + split.fragment_begin),
-	      (split.fragment_end - split.fragment_begin) * sizeof (wchar_t), DV_WIDE));
+	      (split.params_end - split.params_begin) * sizeof (wchar_t)),
+	  box_wide_char_string ((caddr_t) (wideuri + split.query_begin), (split.query_end - split.query_begin) * sizeof (wchar_t)),
+	  box_wide_char_string ((caddr_t) (wideuri + split.fragment_begin),
+	      (split.fragment_end - split.fragment_begin) * sizeof (wchar_t)));
     }
   else
     {
@@ -1751,6 +1751,25 @@ bif_this_server (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   return NEW_DB_NULL;
 }
 
+#ifdef USE_TLSF
+static caddr_t
+bif_tlsf_test (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  int n = bif_long_arg (qst, args, 0, "tlsf_test");
+  int bytes = bif_long_arg (qst, args, 1, "tlsf_test");
+  int i;
+  caddr_t b;
+  dk_set_t set = NULL;
+  for (i = 0; i < n; i++)
+    {
+      b = dk_alloc (bytes);
+      dk_set_push (&set, b);
+    }
+  while (NULL != (b = dk_set_pop (&set)))
+    dk_free (b, bytes);
+  return 0;
+}
+#endif
 
 void
 sqlbif2_init (void)
@@ -1760,6 +1779,9 @@ sqlbif2_init (void)
 #ifndef KEYCOMP
   bif_define_ex ("itc_dive_transit_call_ctr", bif_itc_dive_transit_call_ctr, BMD_RET_TYPE, &bt_integer, BMD_DONE);
   bif_define_ex ("itc_try_land_call_ctr", bif_itc_try_land_call_ctr, BMD_RET_TYPE, &bt_integer, BMD_DONE);
+#endif
+#ifdef USE_TLSF
+  bif_define ("tlsf_test", bif_tlsf_test);
 #endif
   bif_define ("__ddl_read_constraints", bif_ddl_read_constraints);
   bif_define_ex ("sys_lockdown", bif_sys_lockdown, BMD_RET_TYPE, &bt_integer, BMD_DONE);

@@ -4689,6 +4689,8 @@ sqlg_set_ft_ts_specs (sql_comp_t * sc, table_source_t * ts)
   for (sp = ts->ts_order_ks->ks_spec.ksp_spec_array; sp; sp = sp->sp_next)
     {
       t_set_push (&sps, (void *) sp);
+      n_pars = MAX (n_pars, sp->sp_min + 1);
+      n_pars = MAX (n_pars, sp->sp_max + 1);
     }
   for (sp = ts->ts_order_ks->ks_row_spec; sp; sp = sp->sp_next)
     {
@@ -4786,12 +4788,16 @@ sqlg_vec_ts (sql_comp_t * sc, table_source_t * ts)
 	    {
 	      sqlg_vec_cast (sc, ks->ks_vec_source, ks->ks_vec_cast, ks->ks_dc_val_cast, &sp->sp_min_ssl, fill,
 		  &ks->ks_last_vec_param, &sp->sp_cl.cl_sqt, cast_changes_card);
+	      if (sc->sc_in_cursor_def && sp->sp_min_ssl->ssl_type == SSL_VARIABLE)
+		ks->ks_copy_search_pars = 1;
 	      fill++;
 	    }
 	  if (sp->sp_max_ssl)
 	    {
 	      sqlg_vec_cast (sc, ks->ks_vec_source, ks->ks_vec_cast, ks->ks_dc_val_cast, &sp->sp_max_ssl, fill,
 		  &ks->ks_last_vec_param, &sp->sp_cl.cl_sqt, cast_changes_card);
+	      if (sc->sc_in_cursor_def && sp->sp_max_ssl->ssl_type == SSL_VARIABLE)
+		ks->ks_copy_search_pars = 1;
 	      fill++;
 	    }
 
@@ -4808,6 +4814,8 @@ sqlg_vec_ts (sql_comp_t * sc, table_source_t * ts)
 		  &ks->ks_last_vec_param, &target_sqt, cast_changes_card);
 	      if (!ks->ks_first_row_vec_ssl && SSL_IS_VEC_OR_REF (sp->sp_min_ssl))
 		ks->ks_first_row_vec_ssl = sp->sp_min_ssl;
+	      if (sc->sc_in_cursor_def && sp->sp_min_ssl->ssl_type == SSL_VARIABLE)
+		ks->ks_copy_search_pars = 1;
 	      fill++;
 	    }
 	  if (sp->sp_max_ssl)
@@ -4819,6 +4827,8 @@ sqlg_vec_ts (sql_comp_t * sc, table_source_t * ts)
 		  &ks->ks_last_vec_param, &target_sqt, cast_changes_card);
 	      if (!ks->ks_first_row_vec_ssl && SSL_IS_VEC_OR_REF (sp->sp_max_ssl))
 		ks->ks_first_row_vec_ssl = sp->sp_max_ssl;
+	      if (sc->sc_in_cursor_def && sp->sp_max_ssl->ssl_type == SSL_VARIABLE)
+		ks->ks_copy_search_pars = 1;
 	      fill++;
 	    }
 	}

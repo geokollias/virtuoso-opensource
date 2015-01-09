@@ -1546,7 +1546,7 @@ file_native_name (caddr_t se_name)
 	  long len = box_length (se_name) - 1;
 	  if (len > PATH_MAX * 30)
 	    len = PATH_MAX * 30;
-	  se1 = box_utf8_as_wide_char (se_name, NULL, len, 0, DV_WIDE);
+	  se1 = box_utf8_as_wide_char (se_name, NULL, len, 0);
 	  res = file_native_name (se1);
 	  dk_free_box (se1);
 	  return res;
@@ -1685,8 +1685,11 @@ bif_string_to_file (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     {
       char buffer[64000];
       int to_read;
+      int64 len, ofs = 0;
       dk_session_t *ses = (dk_session_t *) string;
-      int64 len = strses_length (ses), ofs = 0;
+      if (ses->dks_session && ses->dks_session->ses_file && ses->dks_session->ses_file->ses_file_descriptor)
+	session_flush (ses);
+      len = strses_length (ses);
       while (ofs < len)
 	{
 	  int readed;

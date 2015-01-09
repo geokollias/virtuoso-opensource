@@ -718,7 +718,7 @@ blank_block_seq
 		    {
 		      ttlp_arg->ttlp_subj_uri = dk_set_pop (&(ttlp_arg->ttlp_saved_uris));
 		      ttlp_arg->ttlp_pred_uri = uname_rdf_ns_uri_rest;
-		      ttlp_triple_and_inf_now (ttlp_arg, uname_rdf_ns_uri_nil);
+		      ttlp_triple_and_inf_now (ttlp_arg, uname_rdf_ns_uri_nil, 0);
 		      dk_free_tree (ttlp_arg->ttlp_subj_uri);
 		      first_node = dk_set_pop (&(ttlp_arg->ttlp_saved_uris)); }
 		  ttlp_arg->ttlp_pred_uri = dk_set_pop (&(ttlp_arg->ttlp_saved_uris));
@@ -738,7 +738,7 @@ items
 		  if (NULL != ttlp_arg->ttlp_subj_uri)
 		    {
 		      ttlp_arg->ttlp_pred_uri = uname_rdf_ns_uri_rest;
-		      ttlp_triple_and_inf_now (ttlp_arg, last_node);
+		      ttlp_triple_and_inf_now (ttlp_arg, last_node, 0);
 		      dk_free_tree (ttlp_arg->ttlp_subj_uri);
 		      ttlp_arg->ttlp_subj_uri = NULL; }
 		  if (NULL == ttlp_arg->ttlp_unused_seq_bnodes)

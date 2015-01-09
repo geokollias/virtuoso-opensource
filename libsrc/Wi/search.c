@@ -732,8 +732,6 @@ itc_like_compare (it_cursor_t * itc, buffer_desc_t * buf, caddr_t pattern, searc
   switch (dtp1)
     {
     case DV_SHORT_STRING:
-      if (collation && collation->co_is_wide)
-	collation = NULL;
       break;
     case DV_WIDE:
       st = LIKE_ARG_UTF;
@@ -829,8 +827,6 @@ ce_like_filter (col_pos_t * cpo, int row, dtp_t flags, db_buf_t val, int len, in
   switch (dtp1)
     {
     case DV_SHORT_STRING:
-      if (collation && collation->co_is_wide)
-	collation = NULL;
       break;
     case DV_WIDE:
       st = LIKE_ARG_UTF;
@@ -3862,6 +3858,8 @@ itc_sample_next (it_cursor_t * itc, buffer_desc_t ** buf_ret)
     return -1;
   itc->itc_is_on_row = 1;
   itc->itc_map_pos = (*buf_ret)->bd_content_map->pm_count - 1;
+  if (itc->itc_geo_op)
+    return itc_next (itc, buf_ret);
   if (itc->itc_insert_key->key_is_bitmap)
     itc->itc_bp.bp_value = BITNO_MAX;
   ITC_SAVE_ROW_SPECS (itc);
@@ -3951,7 +3949,8 @@ make_est:
 	  }
 	if (ITC_STAT_ANGLE == it->itc_st.mode)
 	  break;
-	if (DVC_LESS == res && 0 == ctr && it->itc_map_pos == (*buf_ret)->bd_content_map->pm_count - 1 && any_leaf_match)
+	if ((DVC_LESS == res && 0 == ctr && it->itc_map_pos == (*buf_ret)->bd_content_map->pm_count - 1 && any_leaf_match)
+	    || (it->itc_geo_op && !ctr))
 	  {
 	    res2 = itc_sample_next (it, buf_ret);
 	    if (-1 == res2)
@@ -4080,6 +4079,8 @@ itc_local_sample (it_cursor_t * itc)
   dbe_table_t *tb = key->key_table;
   int n_samples, max_samples = key->key_partition && key->key_partition->kpd_map->clm_is_elastic ? 3 : MAX_SAMPLES;
   max_samples = MIN (max_samples, dbf_max_itc_samples);
+  if (itc->itc_geo_op)
+    max_samples = MAX_SAMPLES;	/* geo is not sampled in all partitions and not doing many angles will easily give 0 */
   itc->itc_st.n_rows_sampled = 0;
   itc->itc_st.n_row_spec_matches = 0;
   n_samples = 1;

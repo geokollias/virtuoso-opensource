@@ -2625,6 +2625,7 @@ sec_copy (cl_op_t * sec)
   cp->_.sec.g_rd_id = sec->_.sec.g_rd_id;
   cp->_.sec.g_wr = (index_tree_t *) box_copy ((caddr_t) sec->_.sec.g_wr);
   cp->_.sec.g_rd = (index_tree_t *) box_copy ((caddr_t) sec->_.sec.g_rd);
+  cp->_.sec.g_sponge = sec->_.sec.g_sponge;
   return cp;
 }
 

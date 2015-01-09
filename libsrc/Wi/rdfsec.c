@@ -275,6 +275,18 @@ bif_rdf_set_writable (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   return NULL;
 }
 
+caddr_t
+bif_rdf_set_sponge (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  QNCAST (QI, qi, qst);
+  client_connection_t *cli = qi->qi_client;
+  cl_op_t *sec = cli->cli_sec;
+  int f = bif_long_arg (qst, args, 0, "rdf_set_sponge");
+  if (sec)
+    sec->_.sec.g_sponge = f ? 1 : 0;
+  return NULL;
+}
+
 void
 cli_ensure_sec (query_instance_t * qi, client_connection_t * cli)
 {
@@ -350,6 +362,7 @@ rdf_sec_init ()
   rdf_ctx_qrs = id_str_hash_create (23);
   bif_define ("rdf_ctx_changed", bif_rdf_ctx_changed);
   bif_define ("rdf_set_writable", bif_rdf_set_writable);
+  bif_define ("rdf_set_sponge", bif_rdf_set_sponge);
   dk_mutex_init (&rdf_ctx_qr_mtx, MUTEX_TYPE_SHORT);
 }
 

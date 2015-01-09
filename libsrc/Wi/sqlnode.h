@@ -2123,6 +2123,7 @@ typedef struct local_cursor_s
   caddr_t *lc_inst;
   int lc_position;
   int lc_vec_n_rows;
+  int lc_sdfg_slice;		/* if reading top level dfg, the current branch */
   char lc_vec_at_end;
   caddr_t lc_error;
   caddr_t lc_proc_ret;		/* if stmt is a SQL procedure, this is the QA_PROC_RET block */

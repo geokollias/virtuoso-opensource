@@ -555,6 +555,7 @@ dc_col_cmp (data_col_t * dc, dbe_col_loc_t * cl, caddr_t value)
 	{
 	  while (1)
 	    {
+	      wchar_t xlat1, xlat2;
 	      if (inx == l1)
 		{
 		  if (inx == l2)
@@ -564,9 +565,11 @@ dc_col_cmp (data_col_t * dc, dbe_col_loc_t * cl, caddr_t value)
 		}
 	      if (inx == l2)
 		return DVC_GREATER;
-	      if (collation->co_table[(unsigned char) dv1[inx]] < collation->co_table[(unsigned char) dv2[inx]])
+	      xlat1 = COLLATION_XLAT_NARROW (collation, (unsigned char) dv1[inx]);
+	      xlat2 = COLLATION_XLAT_NARROW (collation, (unsigned char) dv2[inx]);
+	      if (xlat1 < xlat2)
 		return DVC_LESS;
-	      if (collation->co_table[(unsigned char) dv1[inx]] > collation->co_table[(unsigned char) dv2[inx]])
+	      if (xlat1 > xlat2)
 		return DVC_GREATER;
 	      inx++;
 	    }
@@ -622,8 +625,6 @@ dc_like_compare (data_col_t * dc, caddr_t pattern, search_spec_t * spec)
     {
     case DV_STRING:
     case DV_SHORT_STRING_SERIAL:
-      if (collation && collation->co_is_wide)
-	collation = NULL;
       break;
     case DV_WIDE:
       st = LIKE_ARG_UTF;
@@ -879,6 +880,29 @@ ft_set_cl_file (file_source_t * fs, QI * qi, caddr_t * file_name)
 
 int fs_file_in_buf_len = 2048 * 1024;
 
+void
+fs_set_params (file_source_t * fs, caddr_t * inst)
+{
+  caddr_t *box;
+  int inx, fill = 0;
+  if (!fs->fs_n_params)
+    return;
+  box = (caddr_t *) dk_alloc_box_zero (sizeof (caddr_t) * fs->fs_n_params, DV_BIN);
+  DO_BOX (search_spec_t *, sp, inx, fs->fs_specs)
+  {
+    for (sp = sp; sp; sp = sp->sp_next)
+      {
+	if (CMP_NONE != sp->sp_min_op)
+	  box[sp->sp_min] = qst_get (inst, sp->sp_min_ssl);
+	if (CMP_NONE != sp->sp_max_op)
+	  box[sp->sp_max] = qst_get (inst, sp->sp_max_ssl);
+      }
+  }
+  END_DO_BOX;
+  qst_set (inst, fs->fs_search_params, box);
+}
+
+
 int
 ft_ts_start_search (table_source_t * ts, caddr_t * inst)
 {
@@ -909,6 +933,7 @@ ft_ts_start_search (table_source_t * ts, caddr_t * inst)
       if (ks->ks_cl_local_cast)
 	ks_cl_local_cast (ks, inst);
     }
+  fs_set_params (fs, inst);
   is_nulls = ks_make_spec_list (itc, ks->ks_spec.ksp_spec_array, inst);
   is_nulls |= ks_make_spec_list (itc, ks->ks_row_spec, inst);
   if (is_nulls)
@@ -955,29 +980,6 @@ ft_ts_start_search (table_source_t * ts, caddr_t * inst)
     }
   ses->dks_limit = INT64_MAX - 10;
   return 1;
-}
-
-
-void
-fs_set_params (file_source_t * fs, caddr_t * inst)
-{
-  caddr_t *box;
-  int inx, fill = 0;
-  if (!fs->fs_n_params)
-    return;
-  box = (caddr_t *) dk_alloc_box_zero (sizeof (caddr_t) * fs->fs_n_params, DV_BIN);
-  DO_BOX (search_spec_t *, sp, inx, fs->fs_specs)
-  {
-    for (sp = sp; sp; sp = sp->sp_next)
-      {
-	if (CMP_NONE != sp->sp_min_op)
-	  box[sp->sp_min] = qst_get (inst, sp->sp_min_ssl);
-	if (CMP_NONE != sp->sp_max_op)
-	  box[sp->sp_max] = qst_get (inst, sp->sp_max_ssl);
-      }
-  }
-  END_DO_BOX;
-  qst_set (inst, fs->fs_search_params, box);
 }
 
 
@@ -1164,7 +1166,6 @@ file_source_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
   if (state)
     {
       nth_set = QST_INT (inst, ts->clb.clb_nth_set) = 0;
-      fs_set_params (fs, inst);
       if (!ft_ts_split (ts, inst, n_sets))
 	return;
       state = NULL;

@@ -337,10 +337,10 @@ struct encoding_handler_s {
   int eh_stable_ascii7;		/*!< Nonzero if the encoding translates any single 7-bit byte to identical unichar */
   void *eh_encodedlangs;	/*!< Data for finding language handlers, filled by application, should be NULL initially */
   void *eh_appdata;		/*!< Application-specific data for this encoding, should be NULL initially */
-  eh_decode_char_t *eh_decode_char;	/*!< Char-by-char decoder */
+  eh_decode_char_t *eh_decode_char;			/*!< Char-by-char decoder */
   eh_decode_buffer_t *eh_decode_buffer;			/*!< Buffer decoder, unichar */
   eh_decode_buffer_to_wchar_t *eh_decode_buffer_to_wchar;	/*!< Buffer decoder, wchar_t */
-  eh_encode_char_t *eh_encode_char;	/*!< Char-by-char encoder */
+  eh_encode_char_t *eh_encode_char;			/*!< Char-by-char encoder */
   eh_encode_buffer_t *eh_encode_buffer;			/*!< Buffer encoder, unichar */
   eh_encode_wchar_buffer_t *eh_encode_wchar_buffer;	/*!< Buffer encoder, wchar_t */
 };
@@ -370,9 +370,9 @@ struct eh_charset_s
   unsigned ecs_chars[0x100];	/*! \brief Forward translation table */
   char *ecs_names;		/*! \brief All names of charset,delimited by '|' char */
 
-  unsigned ecs_revbytes[0x100];	/*! \brief Reverse translation table for unichars smaller than 0x100 */
+  unsigned ecs_revbytes[0x100];		/*! \brief Reverse translation table for unichars smaller than 0x100 */
   ecs_revchar_t ecs_revhash[0x100];	/*! \brief Reverse translation hashtable for unichars larger than 0xFF */
-  int ecs_loaded;		/*! \brief Flags if charset was converted to encoding and should not be touched more */
+  int ecs_loaded;			/*! \brief Flags if charset was converted to encoding and should not be touched more */
 };
 
 typedef struct eh_charset_s eh_charset_t;

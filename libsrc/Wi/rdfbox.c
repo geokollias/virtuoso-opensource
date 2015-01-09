@@ -145,6 +145,8 @@ stat_desc_t rdf_preset_datatypes_descs[] = {
   {NULL, NULL, NULL}
 };
 
+#define RB_IS_DURATION(t) ((t) == rb_type__xsd_yearMonthDuration || (t) == rb_type__xsd_dayTimeDuration || (t) == rb_type__xsd_duration)
+
 caddr_t boxed_iid_of_virtrdf_ns_uri = NULL;
 caddr_t boxed_iid_of_virtrdf_ns_uri_rdf_repl_all = NULL;
 caddr_t boxed_iid_of_virtrdf_ns_uri_rdf_repl_graph_group = NULL;
@@ -2020,23 +2022,30 @@ bif_rdf_box_to_ro_id_search_fields (caddr_t * qst, caddr_t * err_ret, state_slot
       ro_dt_and_lang = rb->rb_type << 16 | rb->rb_lang;
       if (rb->rb_ro_id)
 	return NULL;		/* No need to search */
-      if (DV_XML_ENTITY == cdtp && rb->rb_chksum_tail)
+      if ( /* DV_XML_ENTITY == cdtp && */ rb->rb_chksum_tail)
 	{
 	  QNCAST (rdf_bigbox_t, rbb, rb);
 	  ro_val = box_copy_tree (rbb->rbb_chksum);
 	  goto res;		/* see below */
 	}
-      if (DV_STRING != cdtp)
-	{
-	  ro_val = box_copy_tree (content);
-	  goto res;		/* see below */
-	}
       if (DV_GEO == cdtp)
 	{
 	  caddr_t err = NULL;
-	  ro_val = box_to_any (content, &err);
+	  caddr_t serial = box_to_any_1 (content, &err, NULL, DKS_TO_DC);
 	  if (err)
 	    sqlr_resignal (err);
+	  len = box_length (serial) - 1;
+	  if (len > RB_BOX_HASH_MIN_LEN)
+	    {
+	      ro_val = mdigest5 (serial);
+	      goto res;		/* see below */
+	    }
+	  ro_val = serial;
+	  goto res;		/* see below */
+	}
+      if (DV_STRING != cdtp)
+	{
+	  ro_val = box_copy_tree (content);
 	  goto res;		/* see below */
 	}
       len = box_length (content) - 1;
@@ -3052,6 +3061,43 @@ http_json_write_xe (dk_session_t * ses, query_instance_t * qi, xml_entity_t * xe
 }
 
 static void
+http_ttl_write_duration (dk_session_t * ses, double boxdbl, char *intl)
+{
+  char tmpbuf[50];
+  int buffill;
+  TIMESTAMP_STRUCT ts;
+  memset (&ts, 0, sizeof (TIMESTAMP_STRUCT));
+  ts.year = 1970;
+  ts.month = 1;
+  ts.day = 1;
+  ts_add (&ts, boxdbl, intl);
+  strcpy (tmpbuf, "P");
+  buffill = 1;
+  if (ts.year > 1970)
+    buffill += sprintf (tmpbuf + buffill, "%dY", ts.year - 1970);
+  if (ts.month > 1)
+    buffill += sprintf (tmpbuf + buffill, "%dM", ts.month - 1);
+  if (ts.day > 1)
+    buffill += sprintf (tmpbuf + buffill, "%dD", ts.day - 1);
+
+  if (ts.hour > 0 || ts.minute > 0 || ts.second > 0)
+    {
+      strcat (tmpbuf, "T");
+      buffill++;
+    }
+  if (ts.hour > 0)
+    buffill += sprintf (tmpbuf + buffill, "%dH", ts.hour);
+  if (ts.minute > 0)
+    buffill += sprintf (tmpbuf + buffill, "%dM", ts.minute);
+  if (ts.second > 0)
+    buffill += sprintf (tmpbuf + buffill, "%dS", ts.second);
+
+  session_buffered_write_char ('"', ses);
+  session_buffered_write (ses, tmpbuf, buffill);
+  session_buffered_write_char ('"', ses);
+}
+
+static void
 http_ttl_write_obj (dk_session_t * ses, ttl_env_t * env, query_instance_t * qi, caddr_t obj, dtp_t obj_dtp, ttl_iriref_t * dt_ptr)
 {
   caddr_t obj_box_value;
@@ -3140,6 +3186,12 @@ http_ttl_write_obj (dk_session_t * ses, ttl_env_t * env, query_instance_t * qi, 
 	char tmpbuf[50];
 	int buffill;
 	double boxdbl = unbox_double (obj_box_value);
+	int rb_type = ((DV_RDF == obj_dtp) ? ((rdf_box_t *) obj)->rb_type : RDF_BOX_MIN_TYPE);
+	if (RB_IS_DURATION (rb_type))
+	  {
+	    http_ttl_write_duration (ses, boxdbl, "second");
+	    break;
+	  }
 	buffill = sprintf (tmpbuf, "%lg", boxdbl);
 	if ((NULL == strchr (tmpbuf, '.')) && (NULL == strchr (tmpbuf, 'E')) && (NULL == strchr (tmpbuf, 'e')))
 	  {
@@ -3175,8 +3227,15 @@ http_ttl_write_obj (dk_session_t * ses, ttl_env_t * env, query_instance_t * qi, 
       }
     default:
       {
-	caddr_t tmp_utf8_box = box_cast_to_UTF8 ((caddr_t *) qi, obj_box_value);	/* not box_cast_to_UTF8_xsd(), because float and double are handled above and there are no other differences between xsd and sql so far */
-	int need_quotes = ((DV_RDF == obj_dtp) || (DV_BLOB_HANDLE == obj_dtp) || (DV_BLOB_WIDE_HANDLE == obj_dtp));
+	caddr_t tmp_utf8_box;
+	int need_quotes, rb_type = ((DV_RDF == obj_dtp) ? ((rdf_box_t *) obj)->rb_type : RDF_BOX_MIN_TYPE);
+	if (RB_IS_DURATION (rb_type) && DV_LONG_INT == obj_box_value_dtp)
+	  {
+	    http_ttl_write_duration (ses, unbox (obj_box_value), "month");
+	    break;
+	  }
+	tmp_utf8_box = box_cast_to_UTF8 ((caddr_t *) qi, obj_box_value);	/* not box_cast_to_UTF8_xsd(), because float and double are handled above and there are no other differences between xsd and sql so far */
+	need_quotes = ((DV_RDF == obj_dtp) || (DV_BLOB_HANDLE == obj_dtp) || (DV_BLOB_WIDE_HANDLE == obj_dtp));
 	if (need_quotes)
 	  session_buffered_write_char ('"', ses);
 	session_buffered_write (ses, tmp_utf8_box, box_length (tmp_utf8_box) - 1);

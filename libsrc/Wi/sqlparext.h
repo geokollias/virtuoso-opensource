@@ -352,6 +352,8 @@ Note: bitwise OR of all these masks should be less than SMALLEST_POSSIBLE_POINTE
 #define OPT_NO_LOCK ((ptrlong)956)
 #define OPT_NO_DT_INLINE ((ptrlong)961)
 #define OPT_SEC_EXCEPT ((ptrlong)962)
+#define OPT_G_SEC ((ptrlong)963)
+
 
 #define OPT_EST_TIME ((ptrlong)950)
 #define OPT_EST_SIZE ((ptrlong)951)

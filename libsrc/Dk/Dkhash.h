@@ -39,7 +39,7 @@
 
 #ifdef USE_TLSF
 #ifdef MALLOC_DEBUG
-#define dbg_ht_alloc(ht,sz) dbg_tlsf_id_alloc (file, line, sz, ht->ht_tlsf_id)
+#define dbg_ht_alloc(ht,sz) tlsf_id_alloc (sz, ht->ht_tlsf_id)
 #else
 #define ht_alloc(ht,sz) tlsf_id_alloc (sz, ht->ht_tlsf_id)
 #endif

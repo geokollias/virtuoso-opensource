@@ -598,6 +598,9 @@ bif_vt_index (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     sqlr_error ("S0002", "No table in vt_index");
   if (!inx_tb)
     sqlr_error ("S0002", "No index table in vt_index");
+  if (is_geo)
+    inx_tb->tb_primary_key->key_is_geo = 1;	/* set here, so even if missing inxes, the geo flag is set */
+
   DO_SET (dbe_key_t *, key, &tb->tb_keys)
   {
     if (0 == strcmp (key->key_name, index_name))

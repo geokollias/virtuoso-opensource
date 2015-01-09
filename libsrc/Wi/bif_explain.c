@@ -992,6 +992,7 @@ fs_print (table_source_t * ts)
 {
   int inx;
   file_source_t *fs = ts->ts_fs;
+  key_source_t *ks = ts->ts_order_ks;
   stmt_printf (("From file %s %9.6g rows", fs->fs_table->tb_ft->ft_file, (double) ts->ts_cardinality));
   ssl_array_print (fs->fs_out_slots);
   stmt_printf (("\n"));
@@ -1001,6 +1002,11 @@ fs_print (table_source_t * ts)
   }
   END_DO_BOX;
   stmt_printf (("\n"));
+  if (ks->ks_vec_cast)
+    {
+      ks_print_vec_cast (ks->ks_vec_cast, ks->ks_vec_source);
+      stmt_printf (("\n"));
+    }
 }
 
 
@@ -3530,7 +3536,8 @@ qr_print_top_xml (QI * qi, query_t * qr)
       ssl_list_print_xml (qr->qr_parms, s);
       SES_PRINT (s, "</params>");
     }
-  node_print_xml (qi, s, qr->qr_head_node);
+  if (qr->qr_head_node)
+    node_print_xml (qi, s, qr->qr_head_node);
   SES_PRINT (s, "</report>\n");
   return (caddr_t) s;
 }

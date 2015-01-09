@@ -3777,7 +3777,7 @@ vec_merge_setp (setp_node_t ** setp_ret, hash_area_t ** ha_ret, setp_node_t * tm
   if (tmp_ha)
     {
       *tmp_ha = **ha_ret;
-      tmp_ha->ha_org_ha = *ha_ret;
+      tmp_ha->ha_org_ha = (*setp_ret)->setp_ha;
       tmp_ha->ha_set_no = NULL;
       tmp_ha->ha_slots = (state_slot_t **) box_copy ((caddr_t) tmp_ha->ha_slots);
       DO_BOX (state_slot_t *, ssl, inx, tmp_ha->ha_slots)

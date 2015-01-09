@@ -272,8 +272,8 @@ extern void ttlp_triple_and_inf_prepare (ttlp_t * ttlp_arg, caddr_t o_uri);
 extern void ttlp_triple_l_and_inf_prepare (ttlp_t * ttlp_arg, caddr_t o_sqlval, caddr_t o_dt, caddr_t o_lang);
 extern void ttlp_triple_process_prepared (ttlp_t * ttlp_arg);
 #define ttlp_triple_forget_prepared(ttlp_arg) do { (ttlp_arg)->ttlp_triple_is_prepared = 0; } while (0)
-extern void ttlp_triple_and_inf_now (ttlp_t * ttlp_arg, caddr_t o_uri);
-extern void ttlp_triple_l_and_inf_now (ttlp_t * ttlp_arg, caddr_t o_sqlval, caddr_t o_dt, caddr_t o_lang);
+extern void ttlp_triple_and_inf_now (ttlp_t * ttlp_arg, caddr_t o_uri, int is_reverse);
+extern void ttlp_triple_l_and_inf_now (ttlp_t * ttlp_arg, caddr_t o_sqlval, caddr_t o_dt, caddr_t o_lang, int is_reverse);
 extern void ttlp_triples_for_bnodes_debug (ttlp_t * ttlp_arg, caddr_t bnode_iid, int lineno, caddr_t label);
 
 #define RDFXML_COMPLETE		0

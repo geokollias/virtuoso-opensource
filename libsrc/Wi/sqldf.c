@@ -271,6 +271,25 @@ sqlo_is_tautology (ST * tree)
   return 2;
 }
 
+int
+sqlo_in_is_always_true (df_elt_t * dfe)
+{
+  df_elt_t **args;
+  int inx, len;
+  if (!dfe || DFE_TRUE == dfe || DFE_FALSE == dfe || DFE_BOP_PRED != dfe->dfe_type || 1 != dfe->_.bin.is_in_list)
+    return 0;
+  args = dfe->_.bin.right->_.call.args;
+  len = BOX_ELEMENTS (args);
+  for (inx = 1; args[0]->dfe_type == DFE_CONST && inx < len; inx++)
+    {
+      if (args[inx]->dfe_type != DFE_CONST)
+	break;
+      if (box_equal (args[0]->dfe_tree, args[inx]->dfe_tree))
+	return 1;
+    }
+  return 0;
+}
+
 
 df_elt_t *
 sqlo_new_dfe (sqlo_t * so, int type, ST * tree)
@@ -576,16 +595,21 @@ sqlo_wrap_dfe_true_or_false (sqlo_t * so, df_elt_t * const_dfe)
 void
 sqlo_push_pred (sqlo_t * so, df_elt_t * dfe)
 {
-  df_elt_t *c;
-  if (!dfe || DFE_TRUE == dfe || DFE_FALSE == dfe)
+  df_elt_t *c = DFE_FALSE;
+  if (!dfe || DFE_TRUE == dfe)
     return;
+  if (DFE_FALSE == dfe)
+    goto push_false;
   if (!dfe->dfe_tables && 1 == sqlo_is_tautology (dfe->dfe_tree))
+    return;
+  if (!dfe->dfe_tables && sqlo_in_is_always_true (dfe))
     return;
   c = sqlo_const_cond (so, dfe);
   if (DFE_TRUE == c)
     return;
   if (DFE_FALSE == c)
     {
+    push_false:
       so->so_this_dt->ot_is_contradiction = 1;
       so->so_this_dt->ot_preds = NULL;
       dfe = sqlo_wrap_dfe_true_or_false (so, c);
@@ -8067,15 +8091,20 @@ sqlo_unique_rows (sql_comp_t * sc, op_table_t * top_ot, ST * tree)
 }
 
 void
-sqlo_need_rdf_sec (sqlo_t * so)
+sqlo_need_rdf_sec (sqlo_t * so, ST * tree)
 {
 #ifdef RDF_SECURITY_CLO
   char *q_name = "g_ctx_query";
   client_connection_t *cli;
+  ST *texp = NULL;
   if (!enable_g_in_sec)
     return;
+  if (ST_P (tree, SELECT_STMT) && BOX_ELEMENTS (tree) >= 5 && ST_P (tree->_.select_stmt.table_exp, TABLE_EXP))
+    texp = tree->_.select_stmt.table_exp;
   cli = sqlc_client ();
-  if (!cli->cli_user || G_ID_DBA != cli->cli_user->usr_g_id || id_hash_get (cli->cli_globals, (caddr_t) & q_name))
+  if (!cli->cli_user || G_ID_DBA != cli->cli_user->usr_g_id
+      || id_hash_get (cli->cli_globals, (caddr_t) & q_name)
+      || (texp && sqlo_opt_value (ST_OPT (texp, caddr_t *, _.table_exp.opts), OPT_G_SEC)))
     so->so_sc->sc_gen_rdf_rd_sec = 1;
 #endif
 }
@@ -8094,7 +8123,7 @@ sqlo_top_2 (sqlo_t * so, sql_comp_t * sc, ST ** ptree)
   sqlo_scope (so, ptree);
   tree = *ptree;
   if (sc->sc_any_rdf)
-    sqlo_need_rdf_sec (so);
+    sqlo_need_rdf_sec (so, tree);
   if (so->so_is_select)
     {
       DO_SET (op_table_t *, ot, &so->so_tables)

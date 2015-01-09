@@ -7103,7 +7103,10 @@ sqlg_top_1 (sqlo_t * so, df_elt_t * dfe, state_slot_t *** sel_out_ret)
     sqlg_parallel_ts_seq (so->so_sc, dfe, (table_source_t *) so->so_sc->sc_cc->cc_query->qr_head_node, NULL, NULL);
   sqlg_set_no_if_needed (so->so_sc, &so->so_sc->sc_cc->cc_query->qr_head_node);
   if (so->so_sc->sc_gen_rdf_rd_sec)
-    so->so_sc->sc_cc->cc_query->qr_need_cli_sec = 1;
+    {
+      so->so_sc->sc_cc->cc_query->qr_need_cli_sec = 1;
+      top_sc->sc_cc->cc_query->qr_need_cli_sec = 1;
+    }
   if (so->so_sc->sc_any_clb)
     {
       so->so_sc->sc_sel_out = sel_out_ret ? *sel_out_ret : NULL;

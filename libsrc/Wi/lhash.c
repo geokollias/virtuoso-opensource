@@ -1152,7 +1152,7 @@ dv_from_dc_val (dtp_t * temp, int64 val, dtp_t dtp)
       temp[0] = DV_SINGLE_FLOAT;
       flt = *(float *) &val;
       FLOAT_TO_EXT (&temp[1], &flt);
-      return temp;
+      return (int64) temp;
     case DV_DATETIME:
       temp[0] = DV_DATETIME;
       memcpy_dt (temp + 1, val);
@@ -1576,7 +1576,7 @@ cha_part_adjust (setp_node_t * setp, chash_t * cha, size_t prev_sz, size_t new_s
 	n_part = clm_all->clm_distinct_slices;
     }
   card /= n_part;
-  if (card / n_part > 1e9);
+  if (card / n_part > 1e9);	/* XXX: error ??? */
   return new_sz;
   if (prev_sz > card / 3 && new_sz < card * 1.1)
     new_sz = card * 1.1;
@@ -3745,50 +3745,54 @@ chash_merge (setp_node_t * setp, chash_t * cha, chash_t * delta, int n_to_go)
 }
 
 
-void
+int
 dc_append_cha (data_col_t * dc, hash_area_t * ha, chash_t * cha, int64 * row, int col)
 {
   if (!cha->cha_sqt[col].sqt_non_null
       && DV_ANY != cha->cha_sqt[col].sqt_dtp && !(((db_buf_t) row)[cha->cha_null_flags + (col >> 3)] & (1 << (col & 7))))
     {
       dc_append_null (dc);
-      return;
+      return 0;
     }
   if ((DCT_BOXES & dc->dc_type))
     {
       switch (cha->cha_sqt[col].sqt_dtp)
 	{
 	case DV_ANY:
+	  if (0 == ((caddr_t *) row)[col])
+	    return 1;
 	  ((caddr_t *) dc->dc_values)[dc->dc_n_values++] = box_deserialize_string (((caddr_t *) row)[col], INT32_MAX, 0);
-	  return;
+	  return 0;
 	case DV_ARRAY_OF_POINTER:
 	  ((caddr_t *) dc->dc_values)[dc->dc_n_values++] = (caddr_t) row[col];
 	  row[col] = 0;
-	  return;
+	  return 0;
 	case DV_LONG_INT:
 	  ((caddr_t *) dc->dc_values)[dc->dc_n_values++] = box_num (row[col]);
-	  return;
+	  return 0;
 	case DV_DOUBLE_FLOAT:
 	  ((caddr_t *) dc->dc_values)[dc->dc_n_values++] = box_double (((double *) row)[col]);
-	  return;
+	  return 0;
 	case DV_IRI_ID:
 	  ((caddr_t *) dc->dc_values)[dc->dc_n_values++] = box_iri_id (row[col]);
-	  return;
+	  return 0;
 	case DV_SINGLE_FLOAT:
 	  ((caddr_t *) dc->dc_values)[dc->dc_n_values++] = box_float (((float *) row)[col]);
-	  return;
+	  return 0;
 	case DV_DATETIME:
 	  {
 	    caddr_t dt = dk_alloc_box (DT_LENGTH, DV_DATETIME);
 	    memcpy_dt (dt, ((db_buf_t *) row)[col]);
 	    ((caddr_t *) dc->dc_values)[dc->dc_n_values++] = dt;
-	    return;
+	    return 0;
 	  }
 	default:
+	  if (0 == ((caddr_t *) row)[col])
+	    return 1;
 	  ((caddr_t *) dc->dc_values)[dc->dc_n_values++] = box_deserialize_string (((caddr_t *) row)[col], INT32_MAX, 0);
-	  return;
+	  return 0;
 	}
-      return;
+      return 0;
     }
   switch (cha->cha_sqt[col].sqt_dtp)
     {
@@ -3796,27 +3800,30 @@ dc_append_cha (data_col_t * dc, hash_area_t * ha, chash_t * cha, int64 * row, in
       {
 	int len;
 	db_buf_t dv = (db_buf_t) (ptrlong) row[col];
+	if (0 == dv)
+	  return 1;
 	DB_BUF_TLEN (len, dv[0], dv);
 	dc_append_bytes (dc, dv, len, NULL, 0);
-	return;
+	return 0;
       }
     case DV_LONG_INT:
     case DV_DOUBLE_FLOAT:
     case DV_IRI_ID:
       ((int64 *) dc->dc_values)[dc->dc_n_values++] = row[col];
-      return;
+      return 0;
     case DV_SINGLE_FLOAT:
       ((int32 *) dc->dc_values)[dc->dc_n_values++] = *(int32 *) & ((int64 *) row)[col];
-      return;
+      return 0;
     case DV_DATETIME:
       memcpy_dt (dc->dc_values + DT_LENGTH * dc->dc_n_values, ((db_buf_t *) row)[col]);
       dc->dc_n_values++;
-      return;
+      return 0;
     case DV_ARRAY_OF_POINTER:
       dc_append_box (dc, (caddr_t) row[col]);
-      return;
+      return 0;
     }
   GPF_T1 ("dc_append_cha(): unsupported type, non-boxed dc");
+  return 0;
 }
 
 
@@ -3968,6 +3975,19 @@ chash_read_setp (table_source_t * ts, caddr_t * inst, setp_node_t ** setp_ret, h
     }
 }
 
+void
+chash_pop_last_out (key_source_t * ks, caddr_t * inst, int last)
+{
+  int inx = 0;
+  DO_SET (state_slot_t *, ssl, &ks->ks_out_slots)
+  {
+    if (inx == last)
+      break;
+    dc_pop_last_ssl (inst, ssl);
+    inx++;
+  }
+  END_DO_SET ();
+}
 
 void
 chash_read_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
@@ -4136,7 +4156,11 @@ next_batch:
 		    if (SSL_VEC == out_ssl->ssl_type)
 		      {
 			data_col_t *out_dc = QST_BOX (data_col_t *, inst, out_ssl->ssl_index);
-			dc_append_cha (out_dc, ha, cha, ent, k_inx);
+			if (dc_append_cha (out_dc, ha, cha, ent, k_inx))
+			  {
+			    chash_pop_last_out (ks, inst, k_inx);
+			    goto next_row;
+			  }
 		      }
 		    else
 		      GPF_T1 ("need vec ssl in chash read");
@@ -4165,6 +4189,7 @@ next_batch:
 		      is_next_branch = 0;
 		      goto next_batch;
 		    }
+		next_row:;
 		}
 	      row = 0;
 	    }
@@ -7670,13 +7695,16 @@ ks_add_hash_spec (key_source_t * ks, caddr_t * inst, it_cursor_t * itc)
     if ((HRNG_RD_SEC & hrng->hrng_flags))
       {
 	cl_op_t *sec = qi->qi_client->cli_sec;
+	index_tree_t *it;
 	if (!sec || sec->_.sec.g_all_allowed)
 	  continue;
 	if (sec->_.sec.g_rd_empty)
 	  return 1;		/* no g read perms at all */
 	if (!sec->_.sec.g_rd_id && !sec->_.sec.g_rd)
 	  continue;		/* no read restrictions */
-	sp->sp_is_reverse = sec->_.sec.g_rd->it_hi->hi_is_reverse;
+	if (sec->_.sec.g_rd)
+	  it = sec->_.sec.g_rd;
+	sp->sp_is_reverse = it ? it->it_hi->hi_is_reverse : 0;
       }
     sps[fill++] = sp;
     if (fill > 255)
@@ -8103,6 +8131,7 @@ bif_chash_in_init (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   /* elements, dtp, tree_ret, id_ret, qi_ret */
   QNCAST (QI, caller, qst);
   data_col_t *dc;
+  cl_slice_t *old_csl = caller->qi_client->cli_csl;
   dtp_t dtp = dtp_canonical[(dtp_t) bif_long_arg (qst, args, 0, "chash_in_init")];
   int inx;
   hash_fill_qr_t *hfq = DV_LONG_INT == dtp ? &in_int_hfq : DV_IRI_ID == dtp ? &in_iri_hfq : &in_any_hfq;
@@ -8252,6 +8281,12 @@ bif_chash_in_init (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   else
     {
       qst_set (qst, args[2], box_copy_tree (qst_get ((caddr_t *) qi, hfq->hfq_fill_fref->fnr_setp->setp_ht_id)));
+    }
+  if (old_csl)
+    {
+      caddr_t err = NULL;
+      cli_set_slice (caller->qi_client, old_csl->csl_clm, old_csl->csl_id, &err);
+      dk_free_tree (err);
     }
   return NULL;
 }

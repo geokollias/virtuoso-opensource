@@ -2739,6 +2739,44 @@ dbg_print_string_box (ccaddr_t object, FILE * out)
 }
 
 void
+dbg_print_wide_string_box (ccaddr_t object, FILE * out)
+{
+  const wchar_t *end = (const wchar_t *) object + box_length (object) / sizeof (wchar_t) - 1;
+  const wchar_t *tail;
+  for (tail = (const wchar_t *) object; tail < end; tail++)
+    {
+      switch (tail[0])
+	{
+	case '\'':
+	  fprintf (out, "\\\'");
+	  break;
+	case '\"':
+	  fprintf (out, "\\\"");
+	  break;
+	case '\r':
+	  fprintf (out, "\\r");
+	  break;
+	case '\n':
+	  fprintf (out, "\\n");
+	  break;
+	case '\t':
+	  fprintf (out, "\\t");
+	  break;
+	case '\\':
+	  fprintf (out, "\\\\");
+	  break;
+	default:
+	  if (tail[0] > 0xffffffff)
+	    fprintf (out, "\\U%08x", (int) (tail[0]));
+	  else if (tail[0] > 0x7f || tail[0] < L' ')
+	    fprintf (out, "\\u%04x", (int) (tail[0]));
+	  else
+	    fputc (tail[0], out);
+	}
+    }
+}
+
+void
 dbg_print_box_aux (caddr_t object, FILE * out, dk_hash_t * known)
 {
   char temp[0x100];
@@ -2937,8 +2975,9 @@ dbg_print_box_aux (caddr_t object, FILE * out, dk_hash_t * known)
 	  break;
 	case DV_WIDE:
 	case DV_LONG_WIDE:
-	  box_wide_string_as_narrow (object, temp, sizeof (temp) - 1, NULL);
-	  fprintf (out, "N\"%s\"", temp);
+	  fprintf (out, "N'");
+	  dbg_print_wide_string_box (object, out);
+	  fprintf (out, "'");
 	  break;
 #ifdef BIF_XML
 	case DV_XML_ENTITY:

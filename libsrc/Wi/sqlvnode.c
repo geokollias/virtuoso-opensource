@@ -40,6 +40,29 @@
 #include "replsr.h"
 
 
+void
+sel_top_sdfg (select_node_t * sel, caddr_t * inst)
+{
+  /* a sdfg branch without aggregation gets input.  The branch will not continue until sdfg threads stop and all non-empty branches are read. */
+  QNCAST (QI, qi, inst);
+  if (qi->qi_is_dfg_slice)
+    {
+      stage_node_t *stn;
+      data_source_t *qn;
+      for (qn = sel->src_gen.src_prev; qn; qn = qn->src_prev)
+	{
+	  if (IS_STN (qn))
+	    {
+	      stn = (stage_node_t *) qn;
+	      QST_INT (inst, stn->stn_out_bytes) = 0x7fffffff;
+	      longjmp_splice (qi->qi_thread->thr_reset_ctx, RST_ENOUGH);
+	    }
+	}
+      sqlr_new_error ("SDFGS", "SDFGS", "Top level sdfg with no stn");
+    }
+}
+
+
 db_buf_t
 sel_extend_bits (select_node_t * sel, caddr_t * inst, int row_no, int *bits_max)
 {

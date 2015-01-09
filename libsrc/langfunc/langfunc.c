@@ -45,7 +45,7 @@ unicode_block_t raw_uniblocks[] = {
 { "A-zone (alphabetic)"				, UCP_MIX	, 0x0000	, 0x33FF	, NULL	, NULL	, NULL	},
 { "General Scripts Area"			, UCP_ALPHA	, 0x0000	, 0x1FFF	, NULL	, NULL	, NULL	},
 { "Basic Latin (US-ASCII)"			, UCP_MIX	, 0x0000	, 0x007F	, NULL	, NULL	, NULL	},
-{ "Latin-1 (ISO-8859-1)"			, UCP_MIX	, 0x0080	, 0x00FF	, NULL	, NULL	, NULL	},
+{ "Latin-1 (ISO-8859-1)"				, UCP_MIX	, 0x0080	, 0x00FF	, NULL	, NULL	, NULL	},
 { "Latin Extended"				, UCP_ALPHA	, 0x0100	, 0x024F	, NULL	, NULL	, NULL	},
 { "IPA Extensions"				, UCP_ALPHA	, 0x0250	, 0x02AF	, NULL	, NULL	, NULL	},
 { "Spacing Modifier Letters"			, UCP_ALPHA	, 0x02B0	, 0x02FF	, NULL	, NULL	, NULL	},
@@ -131,7 +131,7 @@ unicode_block_t raw_uniblocks[] = {
 { "Enclosed CJK Letters and Months"		, UCP_IDEO	, 0x3200	, 0x32FF	, NULL	, NULL	, NULL	},
 { "CJK Compatibility"				, UCP_IDEO	, 0x3300	, 0x33FF	, NULL	, NULL	, NULL	},
 /*----------------------------------------------|---------------|---------------|---------------|-------|-------|-------|*/
-{ "I-zone (ideographic)"			, UCP_IDEO	, 0x3400	, 0x9FFF	, NULL	, NULL	, NULL	},
+{ "I-zone (ideographic)"				, UCP_IDEO	, 0x3400	, 0x9FFF	, NULL	, NULL	, NULL	},
 { "CJK Unified Ideographs, Extension A"		, UCP_IDEO	, 0x3400	, 0x4DFF	, NULL	, NULL	, NULL	}, /* Hangul syllables in Unicode 1, undefined in Unicode 2, ideographs in Unicode 3 */
 { "CJK Unified Ideographs"			, UCP_IDEO	, 0x4E00	, 0x9FA5	, NULL	, NULL	, NULL	},
 /*----------------------------------------------|---------------|---------------|---------------|-------|-------|-------|*/
@@ -603,14 +603,14 @@ int lh_normalize_word__xany (const unichar *srcbuf, size_t srcbufsize, unichar *
       tgt_count = srcbufsize;
       break;
     case 0:
-  for (ctr = 0; ctr < srcbufsize; ctr++)
-    {
+      for (ctr = 0; ctr < srcbufsize; ctr++)
+        {
           unichar u = srcbuf[ctr];
           u = unichar_getucase (u);
           tgtbuf[ctr] = u;
           /* if (u < 'A')
-        isspecial = 1; */
-    }
+            isspecial = 1; */
+        }
       tgt_count = srcbufsize;
       break;
     }

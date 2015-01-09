@@ -374,6 +374,7 @@ typedef struct cl_op_s
       index_tree_t *g_rd;
       char g_rd_empty;
       char g_all_allowed;	/* for example inside sec query itself */
+      char g_sponge;		/* sponge rules are separate, don't check for writing on non-existing g */
     } sec;
   } _;
 } cl_op_t;

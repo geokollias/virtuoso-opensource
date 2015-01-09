@@ -1046,8 +1046,7 @@ ks_search_param_wide (it_cursor_t * itc, search_spec_t * sp, caddr_t data, dtp_t
     {
       caddr_t err = NULL;
       caddr_t utf_data;
-      data = box_cast_to (itc->itc_out_state, data, dtp, DV_LONG_WIDE,
-	  sp->sp_cl.cl_sqt.sqt_precision, sp->sp_cl.cl_sqt.sqt_scale, &err);
+      data = box_cast_to (itc->itc_out_state, data, dtp, DV_WIDE, sp->sp_cl.cl_sqt.sqt_precision, sp->sp_cl.cl_sqt.sqt_scale, &err);
       if (err)
 	{
 	  query_instance_t *qi = (query_instance_t *) itc->itc_out_state;
@@ -1550,7 +1549,8 @@ ks_start_search (key_source_t * ks, caddr_t * inst, caddr_t * state,
       else
 	itc->itc_lock_mode = qp_even_if_lock ? PL_SHARED : (PL_EXCLUSIVE == qr->qr_lock_mode ? PL_EXCLUSIVE : PL_SHARED);
       /* if the statement is not a SELECT, take excl. lock */
-      if (qi->qi_isolation < ISO_REPEATABLE && qi->qi_client->cli_row_autocommit && qr->qr_is_mt_insert)
+      if (!ks->ks_is_vec_plh && qi->qi_isolation < ISO_REPEATABLE && qi->qi_client->cli_row_autocommit && (enable_mt_txn
+	      || qi->qi_non_txn_insert))
 	itc->itc_lock_mode = PL_SHARED;
       itc->itc_isolation = qi->qi_isolation;
       if (ks->ks_isolation)
@@ -4899,6 +4899,8 @@ qr_subq_exec (client_connection_t * cli, query_t * qr,
   {
     if (n_actual_params == -1)
       sqlr_new_error ("07001", "SR206", "Not enough actual parameters.");
+    if (qr->qr_need_cli_sec)
+      cli_ensure_sec (qi, cli);
     qn_input (qr->qr_head_node, inst, state);
   }
   QR_RESET_CODE
@@ -5361,6 +5363,7 @@ lc_vec_next (local_cursor_t * lc, query_t * qr, select_node_t * sel)
 	return 0;
       lc->lc_position = 0;
       lc->lc_vec_n_rows = 0;
+      lc->lc_sdfg_slice = -1;
       state = qr_more (lc->lc_inst);
       lc->lc_error = state;
       if (state != (caddr_t) SQL_SUCCESS)

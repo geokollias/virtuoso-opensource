@@ -4855,12 +4855,20 @@ array_extend (caddr_t ** ap, int len)
 }
 
 extern size_t cha_max_gb_bytes;
+#ifdef USE_TLSF
+tlsf_t *sqlc_tlsf;
+#endif
 void
 wi_init_globals (void)
 {
   PrpcInitialize ();
   blobio_init ();
   wi_init_process ();
+#ifdef USE_TLSF
+  tlsf_set_comment (dk_base_tlsf, "base");
+  sqlc_tlsf = tlsf_new (2000000);
+  tlsf_set_comment (sqlc_tlsf, "sqlc_tlsf");
+#endif
 #ifdef PAGE_SET_CHECKSUM
   page_set_checksums = hash_table_allocate (203);
 #endif

@@ -1104,7 +1104,7 @@ ttlp_triple_and_inf_prepare (ttlp_t * ttlp_arg, caddr_t o_uri)
     }
   if (ttlp_arg[0].ttlp_triple_is_prepared)
     ttlyyerror_impl (ttlp_arg, "", "Internal error: an triple is not processed before complete reading of next triple");
-  ttlp_arg[0].ttlp_triple_is_prepared = 'R';
+  ttlp_arg[0].ttlp_triple_is_prepared = ttlp_arg[0].ttlp_pred_is_reverse ? 'r' : 'R';
 }
 
 void
@@ -1130,7 +1130,7 @@ ttlp_triple_l_and_inf_prepare (ttlp_t * ttlp_arg, caddr_t o_sqlval, caddr_t o_dt
     }
   if (ttlp_arg[0].ttlp_triple_is_prepared)
     ttlyyerror_impl (ttlp_arg, "", "Internal error: an triple is not processed before complete reading of next triple");
-  ttlp_arg[0].ttlp_triple_is_prepared = 'L';
+  ttlp_arg[0].ttlp_triple_is_prepared = ttlp_arg[0].ttlp_pred_is_reverse ? 'l' : 'L';
 }
 
 void
@@ -1139,11 +1139,19 @@ ttlp_triple_process_prepared (ttlp_t * ttlp_arg)
   switch (ttlp_arg[0].ttlp_triple_is_prepared)
     {
     case 'R':
-      ttlp_triple_and_inf_now (ttlp_arg, ttlp_arg[0].ttlp_obj);
+      ttlp_triple_and_inf_now (ttlp_arg, ttlp_arg[0].ttlp_obj, 0);
+      ttlp_arg[0].ttlp_triple_is_prepared = 0;
+      return;
+    case 'r':
+      ttlp_triple_and_inf_now (ttlp_arg, ttlp_arg[0].ttlp_obj, 1);
       ttlp_arg[0].ttlp_triple_is_prepared = 0;
       return;
     case 'L':
-      ttlp_triple_l_and_inf_now (ttlp_arg, ttlp_arg[0].ttlp_obj, ttlp_arg[0].ttlp_obj_type, ttlp_arg[0].ttlp_obj_lang);
+      ttlp_triple_l_and_inf_now (ttlp_arg, ttlp_arg[0].ttlp_obj, ttlp_arg[0].ttlp_obj_type, ttlp_arg[0].ttlp_obj_lang, 0);
+      ttlp_arg[0].ttlp_triple_is_prepared = 0;
+      return;
+    case 'l':
+      ttlp_triple_l_and_inf_now (ttlp_arg, ttlp_arg[0].ttlp_obj, ttlp_arg[0].ttlp_obj_type, ttlp_arg[0].ttlp_obj_lang, 1);
       ttlp_arg[0].ttlp_triple_is_prepared = 0;
       return;
     case 0:
@@ -1154,7 +1162,7 @@ ttlp_triple_process_prepared (ttlp_t * ttlp_arg)
 }
 
 void
-ttlp_triple_and_inf_now (ttlp_t * ttlp_arg, caddr_t o_uri)
+ttlp_triple_and_inf_now (ttlp_t * ttlp_arg, caddr_t o_uri, int pred_is_reverse)
 {
   triple_feed_t *tf = ttlp_arg[0].ttlp_tf;
   caddr_t s = ttlp_arg[0].ttlp_subj_uri;
@@ -1162,7 +1170,7 @@ ttlp_triple_and_inf_now (ttlp_t * ttlp_arg, caddr_t o_uri)
   caddr_t o = o_uri;
   if ((NULL == s) || (NULL == p))
     return;
-  if (ttlp_arg[0].ttlp_pred_is_reverse)
+  if (pred_is_reverse)
     {
       caddr_t swap = o;
       o = s;
@@ -1181,14 +1189,14 @@ ttlp_triple_and_inf_now (ttlp_t * ttlp_arg, caddr_t o_uri)
 }
 
 void
-ttlp_triple_l_and_inf_now (ttlp_t * ttlp_arg, caddr_t o_sqlval, caddr_t o_dt, caddr_t o_lang)
+ttlp_triple_l_and_inf_now (ttlp_t * ttlp_arg, caddr_t o_sqlval, caddr_t o_dt, caddr_t o_lang, int is_reverse)
 {
   triple_feed_t *tf = ttlp_arg[0].ttlp_tf;
   caddr_t s = ttlp_arg[0].ttlp_subj_uri;
   caddr_t p = ttlp_arg[0].ttlp_pred_uri;
   if ((NULL == s) || (NULL == p))
     return;
-  if (ttlp_arg[0].ttlp_pred_is_reverse)
+  if (is_reverse)
     {
       if (!(ttlp_arg[0].ttlp_flags & TTLP_SKIP_LITERAL_SUBJECTS))
 	ttlyyerror_impl (ttlp_arg, "", "Virtuoso does not support literal subjects");

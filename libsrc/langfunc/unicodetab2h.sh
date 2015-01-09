@@ -1,25 +1,25 @@
 #!/bin/sh
-#  
+#
 #  $Id$
 #
 #  This file is part of the OpenLink Software Virtuoso Open-Source (VOS)
 #  project.
-#  
+#
 #  Copyright (C) 1998-2014 OpenLink Software
-#  
+#
 #  This project is free software; you can redistribute it and/or modify it
 #  under the terms of the GNU General Public License as published by the
 #  Free Software Foundation; only version 2 of the License, dated June 1991.
-#  
+#
 #  This program is distributed in the hope that it will be useful, but
 #  WITHOUT ANY WARRANTY; without even the implied warranty of
 #  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
 #  General Public License for more details.
-#  
+#
 #  You should have received a copy of the GNU General Public License along
 #  with this program; if not, write to the Free Software Foundation, Inc.,
 #  51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
-#  
+#
 
 # ----------------------------------------------------------------------
 #  Fix issues with LOCALE
@@ -27,7 +27,6 @@
 LANG=C
 LC_ALL=POSIX
 export LANG LC_ALL
-
 
 tabtoheader()
 {
@@ -116,5 +115,12 @@ tabtoheader tmp/tmp2.c unicode3_uppers.h
 tabtoheader tmp/tmp3.c unicode3_spaces.h
 tabtoheader tmp/tmp4.c unicode3_basechars.h
 tabtoheader unicode3.dat unicode3_all_chars.h
+cat unicode3_all_chars.h | \
+  sed 's/UNICODE3_HEADER/UNICODE3_HEADER();/g' | \
+  sed 's/UNICODE3_FOOTER/UNICODE3_FOOTER();/g' | \
+  sed 's/^\(UNICODE3_REC.*\)$/\1;/g' | \
+  sed 's/UNICODE3_S\([1-9X]\)(UNICODE3_\([a-zA-Z0-9]*\)/UNICODE3_S\1(UNICODE3_G("\2")/g' | \
+  sed "s/\"/'/g" | \
+  sed 's/0x\([0-9A-F][0-9A-F][0-9A-F][0-9A-F]\)/0hex\1/g' > unicode3_all_chars.sql
 
 rm -rf tmp

@@ -682,6 +682,10 @@ client_connection_free (client_connection_t * cli)
     }
   cli_set_sec (cli, NULL);
   dk_free_box ((caddr_t) cli->cli_ql_strses);
+#ifdef USE_TLSF
+  if (cli->cli_tlsf)
+    cli->cli_tlsf->tlsf_on_thread = TLSF_FREE;
+#endif
   dk_free ((caddr_t) cli, sizeof (client_connection_t));
 }
 
@@ -1023,7 +1027,7 @@ make_login_answer (client_connection_t * cli)
       list (2,
       box_string (cli->cli_charset->chrs_name),
       box_wide_char_string ((caddr_t) & (cli->cli_charset->chrs_table[1]),
-	  sizeof (cli->cli_charset->chrs_table) - sizeof (wchar_t), DV_WIDE));
+	  sizeof (cli->cli_charset->chrs_table) - sizeof (wchar_t)));
   return ret;
 }
 
@@ -1240,6 +1244,10 @@ sf_sql_connect (char *username, char *password, char *cli_ver, caddr_t * info)
 
   dk_free_tree ((caddr_t) info);
   srv_add_login (cli);
+#ifdef USE_TLSF
+  cli->cli_tlsf = tlsf_get ();
+  tlsf_set_comment (cli->cli_tlsf, client->dks_peer_name);
+#endif
   return ret;
 }
 
@@ -3778,6 +3786,9 @@ srv_global_init (char *mode)
 #endif
 
   db_read_cfg (NULL, mode);
+#ifdef USE_TLSF
+  dk_set_initial_mem (main_bufs * 200);
+#endif
   PrpcInitialize1 (lite_mode ? DK_ALLOC_RESERVE_DISABLED : DK_ALLOC_RESERVE_PREPARED);
   background_sem = semaphore_allocate (0);
 
