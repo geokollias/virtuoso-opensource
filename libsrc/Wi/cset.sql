@@ -15,7 +15,7 @@ create function new_cset_id () returns int
 create procedure cset_changed (in cs_id int)
 {
   declare ign int;
-  select count (cset_def (cset_id, cset_range, cset_table, cset_rq_table, cset_id_range)) into ign from rdf_cset where cset_id = cs_id;
+  select count (cset_def (cset_id, cset_range, cset_table, cset_rq_table, cset_id_range, cset_bn_id_range)) into ign from rdf_cset where cset_id = cs_id;
   select count (cset_p_def (csetp_cset, csetp_nth, csetp_iid, csetp_col, csetp_options)) into ign from rdf_cset_p where csetp_cset = cs_id;
   select count (cset_type_def (cst_cset, cst_type)) into ign from rdf_cset_type where cst_cset = cs_id;
   select count (cset_uri_def (csu_cset, csu_pattern)) into ign from rdf_cset_uri where csu_cset = cs_id;
@@ -23,9 +23,10 @@ create procedure cset_changed (in cs_id int)
 }
 ;
 
-create procedure rdf_cset (in name varchar, in properties any, in types any)
+create procedure rdf_cset (in name varchar, in properties any, in types any,
+        in n_slices int := null, in slice_bits int := null, in txn_n_ways int := null, in chunk int := 1)
 {
-  declare inx, cs_id, g_id, s_id, k_id, rid, ign int;
+  declare inx, cs_id, g_id, s_id, k_id, rid, bn_rid, ign int;
   declare tn varchar;
   declare opt, indexed any;
   tn := 'DB.DBA.' || name || '_cset';
@@ -51,10 +52,13 @@ create procedure rdf_cset (in name varchar, in properties any, in types any)
  s_id := new_col_id (sys_stat ('__internal_first_id'));
   insert into sys_cols ("TABLE", "COLUMN", col_id, col_dtp, col_prec, col_scale, col_nullable, col_options)
     values (tn, 'S', s_id, 244, 20, 0, 0, vector ());
- cs_id := new_cset_id ();  sequence_set (tn || '_S', bit_shift (cs_id, 53), 0);
- rid := ir_init (tn || '_rng', tn || '_S', ir_max => bit_shift (cs_id + 1, 53));
-  insert into  rdf_cset (cset_id, cset_name, cset_table, cset_rq_table, cset_range, cset_id_range, cset_options)
-    values (cs_id, name, tn, 'DB.DBA.RDF_QUAD', cs_id, rid, vector ());
+ cs_id := new_cset_id ();
+  sequence_set (tn || '_S', bit_shift (cs_id, 53), 0);
+  sequence_set (tn || '_bn_S', iri_id_num (min_bnode_iri_id ()) + bit_shift (cs_id, 53), 0);
+ rid := ir_init (tn || '_rng', tn || '_S', ir_max => bit_shift (cs_id + 1, 53), n_slices => n_slices, slice_bits => slice_bits, txn_n_ways => txn_n_ways, chunk => chunk);
+ bn_rid := ir_init (tn || '_bn_rng', tn || '_bn_S', ir_max => iri_id_num (min_bnode_iri_id ()) + bit_shift (cs_id + 1, 53), n_slices => n_slices, slice_bits => slice_bits, txn_n_ways => txn_n_ways, chunk => chunk);
+  insert into  rdf_cset (cset_id, cset_name, cset_table, cset_rq_table, cset_range, cset_id_range, cset_bn_id_range, cset_options)
+    values (cs_id, name, tn, 'DB.DBA.RDF_QUAD', cs_id, rid, bn_rid, vector ());
 
  g_id := new_col_id (sys_stat ('__internal_first_id'));
   insert into sys_cols ("TABLE", "COLUMN", col_id, col_dtp, col_prec, col_scale, col_nullable, col_options)
@@ -91,6 +95,7 @@ create procedure rdf_cset (in name varchar, in properties any, in types any)
   pd[1] := tn;
   pd[2] := name_part (tn, 2);
   pd[4][0][1] := 'S';
+  __ddl_changed (tn);
   insert into sys_partition (part_table, part_key, part_version, part_cluster, part_data) values (tn, tn, 0, pc, pd);
  np:
   __ddl_changed (tn);
@@ -99,9 +104,9 @@ create procedure rdf_cset (in name varchar, in properties any, in types any)
 ;
 
 
-create procedure cset_iri_pattern (in name varchar, in pattern varchar, in fields any)
+create procedure cset_iri_pattern (in name varchar, in pattern varchar, in fields any, in int_range int := 0)
 {
-  declare sz, inx, start, cset, rid, ign int;
+  declare sz, inx, start, cset, rid, ign, ns, nb, ch, grain int;
   declare tb, seq varchar;
   sz := 1;
   for (inx := 0; inx < length (fields); inx := inx + 1)
@@ -111,11 +116,14 @@ create procedure cset_iri_pattern (in name varchar, in pattern varchar, in field
     }
   whenever not found goto nocs;
   select cset_table, cset_id, cset_id_range into tb, cset, rid from rdf_cset where cset_name = name;
+  select ir_n_slices, ir_slice_bits, ir_chunk into ns,nb,ch from sys_id_range where ir_id = rid;
+  grain := ns * bit_shift (1, nb) * ch;
  seq := tb || '_S';
  start := sequence_next (seq);
-  sequence_set (seq, start + sz, 0);
+ start := __roundup (start, grain);
+  sequence_set (seq, __roundup (start + sz, grain), 0);
   insert into rdf_iri_pattern (rip_pattern, rip_cset, rip_start, rip_fields, rip_int_range, rip_exc_range)
-    values (pattern, cset, iri_id_from_num (start), fields, 0, rid);
+    values (pattern, cset, iri_id_from_num (start), fields, int_range, rid);
   select count (iri_pattern_def (rip_pattern, rip_start, rip_fields, rip_cset, rip_int_range, rip_exc_range)) into ign from rdf_iri_pattern where rip_pattern = pattern;
   iri_pattern_changed ();
   log_text ('  select count (iri_pattern_def (rip_pattern, rip_start, rip_fields, rip_cset, rip_int_range, rip_exc_range)) into ign from rdf_iri_pattern where rip_pattern = ?', pattern);

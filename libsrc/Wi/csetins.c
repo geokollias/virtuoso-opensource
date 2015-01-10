@@ -331,7 +331,7 @@ itc_cset_update (it_cursor_t * itc, buffer_desc_t * buf, insert_node_t * ins)
 	    {
 	      col_ins_error = 1;
 	      log_error ("insert in cset has a matched range of more than 1 rows on unique sg");
-	      return;
+	      return 0;
 	    }
 	  if (itc_is_own_del_clk (itc, itc->itc_ranges[inx].r_first, &clk, &point, &next))
 	    {

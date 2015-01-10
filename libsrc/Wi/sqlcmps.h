@@ -112,6 +112,7 @@ typedef struct col_ref_rec_s
   int crr_order;		/* if appears n order by, asc/desc */
   int crr_is_as_alias;
   int crr_proc_table_mode;
+  char crr_is_refd;
 } col_ref_rec_t;
 
 
@@ -246,6 +247,7 @@ typedef struct sql_comp_s
   int sc_chash_in_ctr;
   char sc_nest_non_colocated;
   char sc_in_dfg_subq;
+  char sc_in_trans_clause;
   char sc_fref_nesting;		/* if nested gby/oby, true if colocating the gby */
   char sc_qf_n_temp_trees;	/* how many gb/oby temps in qf.  If many, make shorter batches to save mem */
   char sc_is_scalar_agg;	/* aggregation in scalar subq, no group by */
@@ -301,6 +303,8 @@ typedef struct sql_comp_s
   dk_hash_t *sc_tree_to_dfe;
   dk_hash_t *sc_cset_param;
   state_slot_t *sc_cset_o_scan_mode;
+  query_frag_t *sc_trans_qf;	/* in trans stmt, the qf of the dfg of the clause */
+  gb_op_t *sc_in_group_by_exec;
 } sql_comp_t;
 
 
@@ -317,6 +321,8 @@ typedef struct sql_comp_s
 #define SC_DELAY_FOR_UNION 1
 #define SC_DELAY_FOR_DT 2
 
+/* sc_in_trans_clause */
+#define SC_TRANS_TOP 2		/* set if doing trans clause, do not colocate and do not vector except in finishing the trans stmt */
 
 #define SC_G_ID(sc) \
   (sc->sc_client->cli_user ? sc->sc_client->cli_user->usr_g_id : G_ID_DBA)
@@ -748,5 +754,14 @@ col_partition_t *cp_copy (col_partition_t * cp, int col_id);
 key_partition_def_t *kpd_copy (key_partition_def_t * kpd);
 
 
+#define  SQL_PROC_SAVE \
+  {  dk_set_t _r_c = sc->sc_routine_code; \
+  sc->sc_routine_code = NULL;
+
+#define SQL_PROC_RESTORE \
+  sc->sc_routine_code = _r_c; }
+
+state_slot_t *sqlg_group_by_exec_col (sql_comp_t * sc, ST * tree);
+void sqlo_cset_partition (dbe_table_t * tb);
 
 #endif /* _SQLCMPS_H */

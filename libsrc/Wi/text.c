@@ -4043,6 +4043,7 @@ again:
   batch_sz = QST_INT (inst, txs->src_gen.src_batch_size);	/* May vary, receiver may increase the batch size to improve the locality */
   QST_INT (inst, qn->src_out_fill) = 0;
   dc_reset_array (inst, qn, qn->src_continue_reset, -1);
+  SET_THR_ATTR (qi->qi_thread, TA_QST, (void *) inst);
   for (; nth_set < n_sets; nth_set++)
     {
       cl_op_t *clo = NULL;
@@ -4121,6 +4122,7 @@ again:
 	    break;
 	}
     }
+  SET_THR_ATTR (qi->qi_thread, TA_QST, NULL);
   if (QST_INT (inst, qn->src_out_fill))
     {
       QST_INT (inst, txs->clb.clb_nth_set) = nth_set;

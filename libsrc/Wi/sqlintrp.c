@@ -74,7 +74,8 @@ unsigned char ins_lengths[INS_MAX + 1] = {
   ALIGN_INSTR (sizeof (dummy_ins_t._.bif)),
   ALIGN_INSTR (sizeof (dummy_ins_t._.bret)),
   ALIGN_INSTR (sizeof (dummy_ins_t._.agg)),
-  ALIGN_INSTR (sizeof (dummy_ins_t._.for_vect))
+  ALIGN_INSTR (sizeof (dummy_ins_t._.for_vect)),
+  ALIGN_INSTR (sizeof (dummy_ins_t._.trans))
 };
 
 
@@ -3310,7 +3311,7 @@ ins_not_vect (caddr_t * inst, instruction_t * ins)
 
 
 void
-code_vec_run_v (code_vec_t code_vec, caddr_t * qst, int offset, int run_until, int n_sets, data_col_t * ret_dc, int *bool_ret,
+code_vec_run_v (code_vec_t code_vec, caddr_t * qst, int offset, int run_until, int64 n_sets, data_col_t * ret_dc, int *bool_ret,
     ssl_index_t bool_ret_fill)
 {
   volatile int nesting_level = 0;
@@ -3326,8 +3327,17 @@ code_vec_run_v (code_vec_t code_vec, caddr_t * qst, int offset, int run_until, i
     n_sets = qi->qi_n_sets;
   else if (n_sets < -1)
     {
-      first_set = -2 - n_sets;
-      n_sets = first_set + 1;
+      /* run a single set or a range of sets */
+      if ((n_sets & 3L << 62))
+	{
+	  first_set = n_sets & 0xffffffff;
+	  n_sets = (n_sets >> 32) & 0x3fffffff;
+	}
+      else
+	{
+	  first_set = -2 - n_sets;
+	  n_sets = first_set + 1;
+	}
     }
   else
     qi->qi_n_sets = n_sets;

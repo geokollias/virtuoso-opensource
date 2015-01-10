@@ -37,10 +37,18 @@
  */
 
 
+#ifdef USE_TLSF
+#ifdef MALLOC_DEBUG
+#define dbg_ht_alloc(ht,sz) tlsf_id_alloc (sz, ht->ht_tlsf_id)
+#else
+#define ht_alloc(ht,sz) tlsf_id_alloc (sz, ht->ht_tlsf_id)
+#endif
+#else
 #ifdef MALLOC_DEBUG
 #define dbg_ht_alloc(ht,sz) dbg_dk_alloc (file, line, sz)
 #else
 #define ht_alloc(ht,sz) dk_alloc (sz)
+#endif
 #endif
 
 typedef void (*maphash_func) (const void *k, void *data);
@@ -62,6 +70,7 @@ typedef struct
   uint32 	ht_actual_size;
   short		ht_tlsf_id;
   unsigned char 	ht_rehash_threshold;
+  void *	ht_mp;
 #ifdef MTX_DEBUG
   dk_mutex_t *	ht_required_mtx;
 #endif

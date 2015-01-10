@@ -271,6 +271,28 @@ sqlo_is_tautology (ST * tree)
   return 2;
 }
 
+int
+sqlo_in_is_always_true (df_elt_t * dfe)
+{
+  df_elt_t **args;
+  int inx, len;
+  if (!dfe || DFE_TRUE == dfe || DFE_FALSE == dfe || DFE_BOP_PRED != dfe->dfe_type || 1 != dfe->_.bin.is_in_list)
+    return 0;
+  args = dfe->_.bin.right->_.call.args;
+  len = BOX_ELEMENTS (args);
+  for (inx = 1; args[0]->dfe_type == DFE_CONST && inx < len; inx++)
+    {
+      if (args[inx]->dfe_type != DFE_CONST)
+	break;
+      if (box_equal (args[0]->dfe_tree, args[inx]->dfe_tree))
+	return 1;
+    }
+  return 0;
+}
+
+
+
+
 
 df_elt_t *
 sqlo_new_dfe (sqlo_t * so, int type, ST * tree)
@@ -302,10 +324,43 @@ sqlo_new_dfe (sqlo_t * so, int type, ST * tree)
 }
 
 void
+sqlo_proc_table_opts (sqlo_t * so, df_elt_t * dfe)
+{
+  int inx, inx2;
+  op_table_t *ot = dfe->_.sub.ot;
+  ST ***values = (ST ***) sqlo_opt_value (ot->ot_opts, OPT_VALUES);
+  DO_BOX (ST **, vs, inx, values) DO_BOX (ST *, val, inx2, vs) sqlo_df (so, val);
+  END_DO_BOX;
+  END_DO_BOX;
+}
+
+
+int
+sqlo_df_exec_cb (ST * tree, void *cd)
+{
+  QNCAST (sqlo_t, so, cd);
+  if (ST_P (tree, SELECT_STMT))
+    {
+      sqlo_df (so, tree);
+      return 1;
+    }
+  return 0;
+}
+
+
+void
+sqlo_df_exec (sqlo_t * so, ST * tree)
+{
+  sqlo_map_st (tree, sqlo_df_exec_cb, (void *) so);
+}
+
+
+void
 sqlo_df_from (sqlo_t * so, df_elt_t * tb_dfe, ST ** from)
 {
   /* will do the df graphs of dt's and will add join conds to predicates and will inline suitable dts */
   op_table_t *top_ot = so->so_this_dt;
+  ST *exec;
   DO_SET (op_table_t *, ot, &so->so_this_dt->ot_from_ots)
   {
     df_elt_t *dfe;
@@ -322,6 +377,8 @@ sqlo_df_from (sqlo_t * so, df_elt_t * tb_dfe, ST ** from)
 	}
 	END_DO_SET ();
 	sqlo_df (so, ot->ot_dt);
+	if (ST_P (ot->ot_dt, PROC_TABLE))
+	  sqlo_proc_table_opts (so, dfe);
       }
     else
       {
@@ -371,6 +428,9 @@ sqlo_df_from (sqlo_t * so, df_elt_t * tb_dfe, ST ** from)
 	sqlo_df (so, ot->ot_enclosing_where_cond);
 	ot->ot_enclosing_where_cond = NULL;
       }
+    exec = (ST *) sqlo_opt_value (ot->ot_opts, OPT_EXECUTE);
+    if (exec)
+      sqlo_df_exec (so, exec);
   }
   END_DO_SET ();
 }
@@ -570,19 +630,27 @@ sqlo_wrap_dfe_true_or_false (sqlo_t * so, df_elt_t * const_dfe)
   return res;
 }
 
+/*#define IS_ONE_OF_THESE(name)  (0 == stricmp (name, "one_of_these")) */
+#define IS_ONE_OF_THESE(n) (n == uname_one_of_these)
+
 void
 sqlo_push_pred (sqlo_t * so, df_elt_t * dfe)
 {
-  df_elt_t *c;
-  if (!dfe || DFE_TRUE == dfe || DFE_FALSE == dfe)
+  df_elt_t *c = DFE_FALSE;
+  if (!dfe || DFE_TRUE == dfe)
     return;
+  if (DFE_FALSE == dfe)
+    goto push_false;
   if (!dfe->dfe_tables && 1 == sqlo_is_tautology (dfe->dfe_tree))
+    return;
+  if (!dfe->dfe_tables && sqlo_in_is_always_true (dfe))
     return;
   c = sqlo_const_cond (so, dfe);
   if (DFE_TRUE == c)
     return;
   if (DFE_FALSE == c)
     {
+    push_false:
       so->so_this_dt->ot_is_contradiction = 1;
       so->so_this_dt->ot_preds = NULL;
       dfe = sqlo_wrap_dfe_true_or_false (so, c);
@@ -590,7 +658,12 @@ sqlo_push_pred (sqlo_t * so, df_elt_t * dfe)
   if (enable_g_in_sec)
     {
       df_elt_t **in_list = sqlo_in_list (dfe, NULL, NULL);
-      if (in_list && st_is_call (in_list[1]->dfe_tree, "rgs_user_perms_clo", 2))
+      if (!in_list && DFE_BOP_PRED == dfe->dfe_type && dfe->_.bin.is_in_list > 0 && BOP_LT == dfe->_.bin.op &&
+	  DFE_CONST == dfe->_.bin.left->dfe_type && !unbox ((ccaddr_t) (dfe->_.bin.left->dfe_tree)) &&
+	  DFE_CALL == dfe->_.bin.right->dfe_type && dfe->_.bin.right->_.call.func_name &&
+	  IS_ONE_OF_THESE (dfe->_.bin.right->_.call.func_name))
+	in_list = dfe->_.bin.right->_.call.args;
+      if (in_list && st_is_call (in_list[1]->dfe_tree, "__rgs_user_perms_clo", 2))
 	return;
     }
   t_set_push (&so->so_this_dt->ot_preds, (void *) dfe);
@@ -663,7 +736,7 @@ sqlo_df (sqlo_t * so, ST * tree)
       {
 	int old_top_and = so->so_is_top_and;
 	op_table_t *prev_dt = so->so_this_dt;
-	ST *texp = tree->_.select_stmt.table_exp;
+	ST *texp = tree->_.select_stmt.table_exp, *exec;
 	ST *top_exp = SEL_TOP (tree);
 	df_elt_t *head;
 	dfe = sqlo_new_dfe (so, DFE_DT, tree);
@@ -695,6 +768,10 @@ sqlo_df (sqlo_t * so, ST * tree)
 	dfe->_.sub.first = head;
 	dfe->_.sub.last = head;
 	sqlo_select_deps (so, dfe);
+	exec = (ST *) sqlo_opt_value (dfe->_.sub.ot->ot_opts, OPT_EXECUTE);
+	if (exec)
+	  sqlo_df_exec (so, exec->_.gb_ext.stmt);
+
 	if (!dfe->dfe_tables)
 	  t_set_push (&so->so_const_subqs, (void *) dfe);
 	return dfe;
@@ -1599,7 +1676,8 @@ sqlo_place_col (sqlo_t * so, df_elt_t * super, df_elt_t * dfe)
 	      sqlo_record_lp (so, tb_dfe, dfe);
 	      return so->so_gen_pt;
 	    }
-	  if (!dfe->_.col.vc || HR_REF == tb_dfe->_.table.hash_role)
+	  if (DFE_TABLE == tb_dfe->dfe_type &&
+	      ((!dfe->_.col.vc || HR_REF == tb_dfe->_.table.hash_role) || (HR_FILL == tb_dfe->_.table.hash_role)))
 	    t_set_push (&tb_dfe->_.table.out_cols, (void *) dfe);
 	  tb_dfe->dfe_unit = 0;
 	  sqlo_rdf_col_card (so, tb_dfe, dfe);
@@ -3462,9 +3540,6 @@ sqlo_is_sec_in_list (df_elt_t ** in_list)
 }
 
 
-/*#define IS_ONE_OF_THESE(name)  (0 == stricmp (name, "one_of_these")) */
-#define IS_ONE_OF_THESE(n) (n == uname_one_of_these)
-
 
 int do_sqlo_in_list = 1;
 
@@ -3599,6 +3674,54 @@ sqlo_key_part_best (dbe_column_t * col, dk_set_t col_preds, int upper_only)
   }
   END_DO_SET ();
   return best;
+}
+
+typedef struct proc_col_cb_s
+{
+  sqlo_t *so;
+  df_elt_t *super;
+} proc_col_cb_t;
+
+
+int
+sqlo_proc_col_cb (ST * tree, void *cd)
+{
+  QNCAST (proc_col_cb_t, cb, cd);
+  sqlo_t *so = cb->so;
+  if (ST_P (tree, SELECT_STMT))
+    {
+      df_elt_t *dfe = sqlo_df_elt (so, tree);
+      df_elt_t *best, *super = so->so_gen_pt;
+      dfe->_.sub.ot->ot_work_dfe = dfe_container (so, DFE_DT, so->so_gen_pt);
+      dfe->_.sub.ot->ot_work_dfe->_.sub.in_arity = so->so_gen_pt->dfe_arity;
+      best = sqlo_layout (so, dfe->_.sub.ot, SQLO_LAY_VALUES, super);
+      dfe->_.sub.generated_dfe = best;
+      return 1;
+    }
+  if (ST_P (tree, COL_DOTTED))
+    {
+      sqlo_t *so = cb->so;
+      op_table_t *ot = sqlo_cname_ot_1 (so, tree->_.col_ref.prefix, 0);
+      df_elt_t *col_dfe;
+      if (!ot || !ot->ot_dfe)
+	return 1;
+      col_dfe = sqlo_df (cb->so, tree);
+      if (col_dfe && DFE_COLUMN == col_dfe->dfe_type)
+	sqlo_place_col (cb->so, cb->super, col_dfe);
+      return 1;
+    }
+  return 0;
+}
+
+
+void
+sqlo_place_proc_cols (sqlo_t * so, ST * tree, df_elt_t * super)
+{
+  /* when placing a exec section for table scan or gby, make sure the refd columns are placed */
+  proc_col_cb_t cb;
+  cb.so = so;
+  cb.super = super;
+  sqlo_map_st (tree, sqlo_proc_col_cb, (void *) &cb);
 }
 
 
@@ -4381,6 +4504,7 @@ sqlo_place_col_pred_exp (sqlo_t * so, df_elt_t * super, df_elt_t * exp)
 void
 sqlo_tb_col_preds (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t preds, dk_set_t nj_preds)
 {
+  ST *exec;
   dk_set_t merged_col_preds = NULL, vdb_preds = NULL;
   dk_set_t col_preds = NULL;
   dk_set_t after_preds = NULL;
@@ -4528,6 +4652,9 @@ sqlo_tb_col_preds (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t preds, dk_set_t nj_p
   sqlo_in_place_in_pred (so, tb_dfe, &merged_col_preds, &after_preds);
   sqlo_tb_order (so, tb_dfe, merged_col_preds);
   sqlo_top_pred (so, tb_dfe->_.table.ot->ot_super, tb_dfe);
+  exec = (ST *) sqlo_opt_value (tb_dfe->_.table.ot->ot_opts, OPT_EXECUTE);
+  if (exec)
+    sqlo_place_proc_cols (so, exec, tb_dfe);
   if (after_preds)
     {
       tb_dfe->_.table.join_test = sqlo_and_list_body (so, tb_dfe->dfe_locus, tb_dfe, after_preds);
@@ -8084,8 +8211,22 @@ sqlo_unique_rows (sql_comp_t * sc, op_table_t * top_ot, ST * tree)
 }
 
 void
-sqlo_need_rdf_sec (sqlo_t * so)
+sqlo_need_rdf_sec (sqlo_t * so, ST * tree)
 {
+#ifdef RDF_SECURITY_CLO
+  char *q_name = "g_ctx_query";
+  client_connection_t *cli;
+  ST *texp = NULL;
+  if (!enable_g_in_sec)
+    return;
+  if (ST_P (tree, SELECT_STMT) && BOX_ELEMENTS (tree) >= 5 && ST_P (tree->_.select_stmt.table_exp, TABLE_EXP))
+    texp = tree->_.select_stmt.table_exp;
+  cli = sqlc_client ();
+  if (!cli->cli_user || G_ID_DBA != cli->cli_user->usr_g_id
+      || id_hash_get (cli->cli_globals, (caddr_t) & q_name)
+      || (texp && sqlo_opt_value (ST_OPT (texp, caddr_t *, _.table_exp.opts), OPT_G_SEC)))
+    so->so_sc->sc_gen_rdf_rd_sec = 1;
+#endif
 }
 
 
@@ -8103,7 +8244,7 @@ sqlo_top_2 (sqlo_t * so, sql_comp_t * sc, ST ** ptree)
   sqlo_scope (so, ptree);
   tree = *ptree;
   if (sc->sc_any_rdf)
-    sqlo_need_rdf_sec (so);
+    sqlo_need_rdf_sec (so, tree);
   if (so->so_is_select)
     {
       DO_SET (op_table_t *, ot, &so->so_tables)

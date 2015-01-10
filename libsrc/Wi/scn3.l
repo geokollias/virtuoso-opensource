@@ -54,7 +54,7 @@ extern const struct keyword *lex_hash_kw (register const char *str, register uns
 #include "numeric.h"
 #include "sqlcmps.h"
 #include "sqlcstate.h"
-
+extern simple_rdf_numbers;
 struct yyguts_t;
 
 extern void *scn3yyalloc (yy_size_t ,yyscan_t yyscanner );
@@ -633,6 +633,11 @@ EXEC[ \t]+SQL		{ sqlp_bin_op_serial = 0; BEGIN SQL;  }
 
 <SQL>[0-9]+("."[0-9]*)* |
 <SQL>"."[0-9]+ {
+  if (simple_rdf_numbers)
+    {
+      yylval->box = t_box_double (atof (yytext));
+      RETURN_CODE (APPROXNUM);
+    }
   numeric_t num = t_numeric_allocate ();
   int rc = numeric_from_string (num, yytext);
   if (NUMERIC_STS_SUCCESS == rc)

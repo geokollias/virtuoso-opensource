@@ -306,7 +306,7 @@ box_t
 blob_layout_ctor (dtp_t blob_handle_dtp, dp_addr_t start, dp_addr_t dir_start, int64 length, int64 diskbytes, index_tree_t * it)
 {
   blob_layout_t *ret;
-#ifdef DEBUG
+#ifdef BLOB_HANDLE_DEBUG
   if (DV_BLOB_HANDLE != blob_handle_dtp && DV_BLOB_WIDE_HANDLE != blob_handle_dtp && DV_BLOB_XPER_HANDLE != blob_handle_dtp)
     GPF_T1 ("blob_layout_ctor failed");
 #endif
@@ -327,7 +327,7 @@ blob_layout_from_handle_ctor (blob_handle_t * bh)
 {
   blob_layout_t *ret = (blob_layout_t *) dk_alloc_box_zero (sizeof (blob_layout_t), DV_CUSTOM);
   ret->bl_blob_handle_dtp = (dtp_t) DV_TYPE_OF (bh);
-#ifdef DEBUG
+#ifdef BLOB_HANDLE_DEBUG
   if (DV_BLOB_HANDLE != ret->bl_blob_handle_dtp &&
       DV_BLOB_WIDE_HANDLE != ret->bl_blob_handle_dtp && DV_BLOB_XPER_HANDLE != ret->bl_blob_handle_dtp)
     GPF_T1 ("blob_layout_from_handle_ctor failed");
@@ -3284,7 +3284,7 @@ strings_ready:
       MAKE_TRX_ERROR (lt->lt_error, err, LT_ERROR_DETAIL (lt));
       sqlr_resignal (err);
     }
-  if (NULL == (out = dk_try_alloc_box (bytes + sizeof_symbol, isWide ? DV_LONG_WIDE : DV_LONG_STRING)))
+  if (NULL == (out = dk_try_alloc_box (bytes + sizeof_symbol, isWide ? DV_WIDE : DV_STRING)))
     {
       caddr_t err = NULL;
       SET_DK_MEM_RESERVE_STATE (lt);
@@ -3378,7 +3378,7 @@ blob_to_string_isp (lock_trx_t * lt, caddr_t bhp)
       MAKE_TRX_ERROR (lt->lt_error, err, LT_ERROR_DETAIL (lt));
       sqlr_resignal (err);
     }
-  if (NULL == (out = dk_try_alloc_box (bytes + sizeof_symbol, isWide ? DV_LONG_WIDE : DV_LONG_STRING)))
+  if (NULL == (out = dk_try_alloc_box (bytes + sizeof_symbol, isWide ? DV_WIDE : DV_STRING)))
     {
       caddr_t err;
       SET_DK_MEM_RESERVE_STATE (lt);

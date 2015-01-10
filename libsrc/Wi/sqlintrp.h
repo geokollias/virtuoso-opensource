@@ -95,7 +95,7 @@ typedef long jmp_label_t;
 #define IN_BRET 		27
 #define IN_AGG 		28
 #define INS_FOR_VECT	29
-#define INS_MAX			30
+#define INS_MAX			31
 #define INS_MIN			IN_ARTM_FPTR
 #define INS_TRANS 31
 
@@ -282,7 +282,10 @@ struct instruction_s
     struct
     {
       char ins_type;
+      code_vec_t init;
+      state_slot_t *superstep;
       query_t **qrs;
+      code_vec_t *conds;
     } trans;
   } _;
 };

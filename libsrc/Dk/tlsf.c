@@ -429,22 +429,59 @@ void destroy_memory_pool(void *mem_pool)
     dk_mutex_destroy (&tlsf->tlsf_mtx);
 }
 
+#define TLSF_SIZE_MMAP 0xffffffff  /* if block mmap'd outside of tlsf area, this is size in bhdr, actual size if int64 below bhdr */
+#define BHDR_MMAP_SIZE(bhdr) *(&((int64*)bhdr)[-1])
+
+
+size_t
+tlsf_block_size (caddr_t ptr)
+{
+  bhdr_t * b = BHDR (ptr);
+  if (TLSF_SIZE_MMAP == b->size)
+    {
+      return BHDR_MMAP_SIZE (b) - (BHDR_OVERHEAD + sizeof (int64));
+    }
+  if ((FREE_BLOCK & b->size))
+    GPF_T1 ("tlsf length of free b,block by bhdr free bit");
+  return b->size;
+}
+
+
+
 
 void*
 tlsf_large_alloc (tlsf_t * tlsf, size_t size)
 {
   void * ret;
+  size_t min_alloc = size + BHDR_OVERHEAD + sizeof (int64), alloc_size;
+  int nth;
   bhdr_t * bhdr;
-  ret = mm_large_alloc (size + BHDR_OVERHEAD);
-  memzero (ret, BHDR_OVERHEAD);
-  bhdr = (bhdr_t*)ret;
+  alloc_size = mm_next_size (min_alloc, &nth);
+  ret = mm_large_alloc (alloc_size);
+  memzero (ret, BHDR_OVERHEAD + sizeof (int64));
+  bhdr = (bhdr_t*)(((char*)ret) + sizeof (int64));
+  *(int64*)ret = alloc_size;
   bhdr->bhdr_info = tlsf->tlsf_id;
-  bhdr->size = size;
+  bhdr->size = TLSF_SIZE_MMAP;
   return (void*)bhdr->ptr.buffer;
 }
 
 
 int no_place_limit = 0;
+
+#if defined(MALLOC_DEBUG) && defined(USE_TLSF)
+void *
+dbg_malloc(const char *file, u_int line, size_t size)
+{
+  return tlsf_malloc(DBG_ARGS size, THREAD_CURRENT_THREAD);
+}
+
+void
+dbg_free (const char *file, u_int line, void *data)
+{
+  tlsf_free (data);
+}
+#endif
 
 void *
 tlsf_malloc(DBG_PARAMS size_t size, du_thread_t * thr)
@@ -481,13 +518,13 @@ tlsf_free(void *ptr)
   short tlsf_id = bhdr->bhdr_info & TLSF_ID_MASK;
   uint32 size = bhdr->size  & BLOCK_SIZE;
   tlsf_t * tlsf = dk_all_tlsfs[tlsf_id];
-  if (tlsf->tlsf_id != tlsf_id) GPF_T1 ("bad tlsf in block header in free");
+  if (tlsf->tlsf_id != tlsf_id && size < tlsf_mmap_threshold) GPF_T1 ("bad tlsf in block header in free");
 #ifdef MALLOC_DEBUG
   tlsf_mdbg_free (tlsf, BHDR (ptr));
 #endif
-  if (size >= tlsf_mmap_threshold)
+  if (TLSF_SIZE_MMAP == bhdr->size)
     {
-      mm_free_sized (bhdr,  bhdr->size);
+      mm_free_sized (((char*)bhdr) - sizeof (int64), BHDR_MMAP_SIZE (bhdr));
       return;
     }
   __builtin_prefetch (((char*)ptr) + size);
@@ -498,6 +535,19 @@ tlsf_free(void *ptr)
 
 }
 
+#if defined(MALLOC_DEBUG) && defined(USE_TLSF)
+void *
+dbg_malloc(const char *file, u_int line, size_t size)
+{
+  return tlsf_malloc(DBG_ARGS size, THREAD_CURRENT_THREAD);
+}
+
+void
+dbg_free (const char *file, u_int line, void *data)
+{
+  tlsf_free (data);
+}
+#endif
 
 /******************************************************************/
 void *malloc_ex(size_t size, void *mem_pool)
@@ -917,7 +967,8 @@ tlsf_destroy (tlsf_t * tlsf)
   tlsf->tlsf_signature = 0;
   dk_mutex_destroy (&tlsf->tlsf_mtx);
 #ifdef MALLOC_DEBUG
-  id_hash_free (tlsf->tlsf_allocs);
+  if (tlsf->tlsf_allocs)
+    id_hash_free (tlsf->tlsf_allocs);
 #endif
 }
 
@@ -1110,6 +1161,64 @@ tlsf_check (tlsf_t * tlsf, int mode)
 
 
 int
+tlsf_by_addr (caddr_t * ptr)
+{
+  int64 * arr;
+  int64 ts;
+  int t_inx;
+  int fill = 0, inx;
+  for (t_inx = 1; t_inx < tlsf_ctr; t_inx++)
+    {
+      tlsf_t * tlsf = dk_all_tlsfs[t_inx];
+
+      int64 *sz;
+
+      area_info_t *ai;
+      uint32 size;
+      bhdr_t *next, * end;
+      mutex_enter (&tlsf->tlsf_mtx);
+      ai = tlsf->area_head;
+      while (ai)
+	{
+	  next = (bhdr_t *) ((char *) ai - BHDR_OVERHEAD);
+	  end = ai->end;
+	  if ((ptrlong)ptr > (ptrlong)ai && (ptrlong)ptr < (ptrlong)ai->end)
+	    {
+	      while (next)
+		{
+		  int64 sz = next->size & BLOCK_SIZE;
+		  if ((ptrlong)ptr >= (ptrlong)next && (ptrlong)ptr < (ptrlong)next + sz)
+		    {
+
+		      if (FREE_BLOCK & next->size)
+			{
+			  printf ("%p in area %p of tlsf %p\n", next, ai, tlsf);
+			  mutex_leave (&tlsf->tlsf_mtx);
+			  return t_inx;
+			}
+		      else
+			{
+			  printf ("%p in area %p of tlsf %p\n", next, ai, tlsf);
+			  mutex_leave (&tlsf->tlsf_mtx);
+			  return t_inx;
+			}
+		    }
+
+		  if ((next->size & BLOCK_SIZE))
+		    next = GET_NEXT_BLOCK(next->ptr.buffer, next->size & BLOCK_SIZE);
+		  else
+		    next = NULL;
+		}
+	    }
+	  ai = ai->next;
+	}
+      mutex_leave (&tlsf->tlsf_mtx);
+    }
+  return 0;
+}
+
+
+int
 tlsf_cmp (const void * p1, const void * p2)
 {
   int64 n1, n2;
@@ -1242,7 +1351,7 @@ tlsf_mdbg_alloc (tlsf_t * tlsf, const char * file, int line, bhdr_t * b)
 {
   boxint id = 0;
   mdbg_stat_t * place;
-  uint32 sz = b->size & BLOCK_SIZE;
+  size_t sz = tlsf_block_size (b->ptr.buffer);
   if (!mdbg_tlsf || tlsf == mdbg_tlsf || !mdbg_place_to_id || !mdbg_id_to_place)
     return;
 #if 1
@@ -1284,7 +1393,7 @@ tlsf_mdbg_free (tlsf_t * tlsf, bhdr_t * b)
   if (mds)
     {
       mds->mds_frees++;
-      mds->mds_bytes -= b->size & BLOCK_SIZE;
+      mds->mds_bytes -= tlsf_block_size (b->ptr.buffer);
     }
 }
 
@@ -1451,6 +1560,8 @@ tlsf_check_alloc (void * ptr)
   bhdr_t * b = BHDR (ptr);
   uint32 i = b->bhdr_info;
   int tid = i & TLSF_ID_MASK;
+  if (TLSF_SIZE_MMAP == b->size)
+    return NULL;
   if (b->size & FREE_BLOCK)
     return "pointer to freed";
   if (TLSF_IN_MP == tid)

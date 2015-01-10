@@ -21,6 +21,9 @@
 --
 --
 
+DB.DBA.__MAKE_UNICODE3_COLLATIONS ()
+;
+
 create table SYS_VT_INDEX (VI_TABLE varchar, VI_INDEX varchar, VI_COL varchar,
 	VI_ID_COL varchar, VI_INDEX_TABLE varchar,
        VI_ID_IS_PK integer, VI_ID_CONSTR varchar,
@@ -1107,6 +1110,7 @@ create procedure ddl_pk_modify_check (in tb varchar, in cols any)
   pk_id := (select KEY_ID from DB.DBA.SYS_KEYS where KEY_TABLE = tb and KEY_MIGRATE_TO is null and KEY_IS_MAIN = 1);
   if (exists (select 1 from DB.DBA.SYS_KEY_SUBKEY where SUB = pk_id)
       or exists (select 1 from DB.DBA.SYS_REMOTE_TABLE where RT_NAME = tb)
+      or exists (select 1 from DB.DBA.SYS_FILE_TABLE where FST_TABLE = tb)
       or exists (select 1 from DB.DBA.SYS_VT_INDEX where VI_TABLE = tb)
       or exists (select 1 from DB.DBA.SYS_KEY_SUBKEY, DB.DBA.SYS_KEYS where SUPER = pk_id and KEY_ID = SUB and KEY_MIGRATE_TO is null)
       )
@@ -5422,6 +5426,13 @@ create procedure cl_call_local_slices (in tb varchar, in k varchar, in func varc
 }
 ;
 
+
+create procedure key_stat_clear ()
+{
+  return select count (key_stat (key_table, name_part (key_name, 2), 'reset')) from sys_keys where key_migrate_to is null;
+}
+;
+
 create procedure CL_STAT_SRV (in x varchar, in k varchar, in fl varchar, in clr int)
 {
   if (k is not null)
@@ -5627,6 +5638,10 @@ create procedure cl_elastic_init ()
   exec ('create table DB.DBA.RDF_IRI (RI_NAME varchar not null primary key (not column), RI_ID IRI_ID_8 not null unique (not column))
       alter index RDF_IRI on RDF_IRI partition cluster ELASTIC (RI_NAME varchar (-10, 0hexffff))
       alter index DB_DBA_RDF_IRI_UNQC_RI_ID on DB.DBA.RDF_IRI partition cluster ELASTIC (RI_ID int (0hexffff00))');
+  exec ('drop table RDF_N_IRI');
+  exec ('create table DB.DBA.RDF_N_IRI (RIN_EXT_ID iri_id_8 not null primary key (not column), RIN_INT_ID IRI_ID_8 not null)
+alter index RDF_N_IRI on RDF_N_IRI partition cluster ELASTIC  (RIN_EXT_ID int (0hexffff00))
+create column index RI_N_REV on RDF_N_IRI (RIN_INT_ID) partition cluster ELASTIC (RIN_INT_ID int (0hexffff00))');
 
   exec ('create table DB.DBA.RDF_OBJ (
 	RO_ID bigint primary key (not column),
@@ -6399,13 +6414,14 @@ create procedure csv_file_header_check (in f any, in num_to_check int := 10, in 
 create procedure csv_table_def (in f varchar, in tb_name varchar := null, in opts any := null)
 {
   declare head any;
-  declare s, r, ss any;
+  declare s, r, ss, pk any;
   declare i int;
   declare delim, quot, enc char;
-  declare mode, to_check int;
+  declare mode, to_check, pk_col_pos int;
 
   delim := quot := enc := mode := null;
   to_check := 10;
+  pk_col_pos := 0;
   if (isvector (opts) and mod (length (opts), 2) = 0)
     {
       delim := get_keyword ('csv-delimiter', opts);
@@ -6413,6 +6429,7 @@ create procedure csv_table_def (in f varchar, in tb_name varchar := null, in opt
       enc := get_keyword ('encoding', opts);
       mode := get_keyword ('mode', opts);
       to_check := get_keyword ('max-rows', opts, 10);
+      pk_col_pos := get_keyword ('pk-col-pos', opts, 0);
     }
 
   if (not csv_file_header_check (f, to_check, opts))
@@ -6426,17 +6443,28 @@ create procedure csv_table_def (in f varchar, in tb_name varchar := null, in opt
   r := get_csv_row (s, delim, quot, enc, mode);
   ss := string_output ();
   http (sprintf ('CREATE TABLE "%I"."%I"."%I" ( \n', name_part (tb_name, 0), name_part (tb_name, 1), name_part (tb_name, 2)), ss);
+  pk := '';
   for (i := 0; i < length (head) and isstring (head[i]); i := i + 1)
     {
-       declare tp any;
+       declare tp, cname any;
        if (r[i] is null)
          tp := 'VARCHAR';
        else
          tp := dv_type_title (__tag (r[i]));
-       http (sprintf ('\t"%I" %s', SYS_ALFANUM_NAME (head[i]), tp), ss);
+       cname := SYS_ALFANUM_NAME (head[i]);
+       if (isvector (pk_col_pos) and (i+1) in (pk_col_pos))
+         {
+	   if (pk = '')
+	     pk := ' PRIMARY KEY (';
+	   pk := pk || sprintf ('"%I"', cname) || ',';
+	 }
+       http (sprintf ('\t"%I" %s', cname, tp), ss);
        if (i < length (head) - 1 and isstring (head[i + 1]))
          http (', \n', ss);
     }
+  if (pk <> '')
+    pk := ',' || rtrim (pk, ',') || ')';
+  http (pk, ss);
   http (')', ss);
   return string_output_string (ss);
 }
@@ -6821,6 +6849,7 @@ create procedure ft_set_file (in tb varchar, in fname varchar, in delimiter varc
       if (esc is not null)
       opts := vector_concat (opts, vector ('escape', esc));
       insert into sys_file_table values (tb, fname, opts);
+      update SYS_KEYS set KEY_OPTIONS = NULL where KEY_TABLE = tb;
       __ddl_changed (tb);
     }
   if (fname is not null)
@@ -6830,7 +6859,7 @@ create procedure ft_set_file (in tb varchar, in fname varchar, in delimiter varc
 ;
 
 create procedure attach_from_csv (in tb varchar, in fname varchar, in delimiter varchar := ',',
-in newline varchar :=  '\n', in esc varchar := null, in skip_rows int := 1)
+in newline varchar :=  '\n', in esc varchar := null, in skip_rows int := 1, in pk_col_pos any := null)
 {
   declare qr varchar;
   fname := aref (WS.WS.PARSE_URI (fname), 2);
@@ -6846,10 +6875,18 @@ in newline varchar :=  '\n', in esc varchar := null, in skip_rows int := 1)
   tb := complete_table_name (tb, 1);
   if (not exists (select 1 from sys_keys where key_table = tb))
     {
-      qr := csv_table_def (fname, tb, vector ('csv-delimiter', delimiter,'csv-quote', esc, 'encoding', null,'mode', 2, 'max-rows', 3));
+      if (isinteger (pk_col_pos))
+	pk_col_pos := vector (pk_col_pos);
+      qr := csv_table_def (fname, tb, vector ('csv-delimiter', delimiter,'csv-quote', esc, 'encoding', null,'mode', 2, 'max-rows', 3, 'pk-col-pos', pk_col_pos));
       exec (qr);
     }
   ft_set_file (tb, fname, delimiter, newline, esc, skip_rows);
+}
+;
+
+create function __roundup (in sz bigint, in al bigint)
+{
+return ((((SZ) + AL - 1) / AL) * AL);
 }
 ;
 
@@ -6858,7 +6895,7 @@ create procedure ir_init (in name varchar, in seq varchar, in  txn_n_ways int :=
 {
   declare id, ign, mx, seq_start int;
  mx := ir_max;
- id := 1 + sequence_next ('__range_id_id');
+ id := 3 + sequence_next ('__range_id_id', 1, 1);
   if (txn_n_ways is null)
   txn_n_ways := sys_stat ('iri_seqs_used');
   if (0 = sys_stat ('cl_run_local_only'))
@@ -6874,10 +6911,56 @@ create procedure ir_init (in name varchar, in seq varchar, in  txn_n_ways int :=
     slice_bits := 8;
     }
   seq_start := sequence_set (seq, 0, 2);
+  seq_start := __roundup (seq_start, bit_shift (1, slice_bits ) * n_slices * chunk);
+  sequence_set (seq, seq_start, 0);
   insert into sys_id_range (ir_id, ir_name, ir_N_way_txn, ir_n_slices, ir_slice_bits, ir_hist_depth, ir_chunk, ir_main_seq, ir_cluster, ir_mode, ir_allocator_host, ir_max, ir_start, ir_options)
-    values (id, name, txn_n_ways, n_slices, slice_bits, hist_depth, bit_shift (1, slice_bits) * n_slices * chunk, seq, '', mode, 0, mx, seq_start, vector ());
-  log_text ('select ir_def (ir_name, ir_id, ir_cluster, ir_mode , ir_n_way_txn, ir_allocator_host, ir_main_seq, ir_slice_bits, ir_chunk, ir_max, ir_hist_depth, ir_n_slices, ir_start, ir_options) from sys_id_range where ir_id = ?', id);
-  select ir_def (ir_name, ir_id, ir_cluster, ir_mode , ir_n_way_txn, ir_allocator_host, ir_main_seq, ir_slice_bits, ir_chunk, ir_max, ir_hist_depth, ir_n_slices, ir_start, ir_options) into ign from sys_id_range where ir_id = id;
+    values (id, name, txn_n_ways, n_slices, slice_bits, hist_depth, chunk, seq, '', mode, 0, mx, seq_start, vector ());
+  cl_exec ('log_text (''select ir_def (ir_name, ir_id, ir_cluster, ir_mode , ir_n_way_txn, ir_allocator_host, ir_main_seq, ir_slice_bits, ir_chunk, ir_max, ir_hist_depth, ir_n_slices, ir_start, ir_options) from sys_id_range where ir_id = ?'', ?)', params => vector (id));
+  cl_exec ('select count (ir_def (ir_name, ir_id, ir_cluster, ir_mode , ir_n_way_txn, ir_allocator_host, ir_main_seq, ir_slice_bits, ir_chunk, ir_max, ir_hist_depth, ir_n_slices, ir_start, ir_options)) from sys_id_range where ir_id = ?', params => vector (id));
   return id;
+}
+;
+
+create procedure ir_init_subs (in super_name varchar, in n_subs int, in txn_n_ways int := null, in slice_bits int := null,
+			  in n_slices int := null, in hist_depth int := 5, in chunk int := 1)
+{
+  declare super_id, sub_ir_id, ign, mx, nth int;
+  declare main_seq, name varchar;
+  whenever not found goto nosup;
+  select ir_id, ir_max, ir_main_seq into super_id, mx, main_seq from sys_id_range where ir_name = super_name;
+  if (txn_n_ways is null)
+  txn_n_ways := sys_stat ('iri_seqs_used');
+  if (0 = sys_stat ('cl_run_local_only'))
+    {
+      if (n_slices is null)
+      n_slices := 2048;
+      if (slice_bits is null)
+      slice_bits := 8;
+    }
+  else
+    {
+    n_slices := 2048;
+    slice_bits := 8;
+    }
+  for (nth := 0; nth < n_subs; nth := nth + 1)
+    {
+      declare opts varchar;
+    opts := vector ('super', super_id, 'nth_sub', nth);
+    sub_ir_id := 3 + sequence_next ('__range_id_id', 1, 1);
+    name := sprintf ('%s_sub_%d', super_name, nth);
+  insert into sys_id_range (ir_id, ir_name, ir_N_way_txn, ir_n_slices, ir_slice_bits, ir_hist_depth, ir_chunk, ir_main_seq, ir_cluster, ir_mode, ir_allocator_host, ir_max, ir_start, ir_options)
+    values (sub_ir_id, name, txn_n_ways, n_slices, slice_bits, hist_depth, chunk, main_seq, '', 0, 0, mx, 0, opts);
+  cl_exec ('log_text (''select ir_def (ir_name, ir_id, ir_cluster, ir_mode , ir_n_way_txn, ir_allocator_host, ir_main_seq, ir_slice_bits, ir_chunk, ir_max, ir_hist_depth, ir_n_slices, ir_start, ir_options) from sys_id_range where ir_id = ?'', ?)', params => vector (sub_ir_id));
+  cl_exec ('select count (ir_def (ir_name, ir_id, ir_cluster, ir_mode , ir_n_way_txn, ir_allocator_host, ir_main_seq, ir_slice_bits, ir_chunk, ir_max, ir_hist_depth, ir_n_slices, ir_start, ir_options)) from sys_id_range where ir_id = ?', params => vector (sub_ir_id));
+    }
+  return;
+ nosup:
+  signal ('NOSRN', 'No super id range when creating subranges');
+}
+;
+
+create procedure ir_by_name (in n varchar)
+{
+  return (select ir_id from sys_id_range where ir_name = n);
 }
 ;

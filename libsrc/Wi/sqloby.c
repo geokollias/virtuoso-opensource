@@ -1108,7 +1108,9 @@ sqlo_fun_ref_epilogue (sqlo_t * so, op_table_t * from_ot)
   df_elt_t *group_dfe = from_ot->ot_group_dfe;
   ST *texp = from_ot->ot_dt->_.select_stmt.table_exp;
   ST **group = group_dfe ? group_dfe->_.setp.specs : NULL;
-
+  ST *exec = (ST *) sqlo_opt_value (from_ot->ot_opts, GROUP_BY_EXEC);
+  if (exec)
+    sqlo_place_proc_cols (so, exec->_.gb_ext.stmt, from_ot->ot_work_dfe);
   if (from_ot->ot_invariant_preds && !from_ot->ot_invariant_placed)
     {
       df_elt_t *gen_pt = so->so_gen_pt;

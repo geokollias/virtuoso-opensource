@@ -727,8 +727,8 @@ bif_st_distance (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 caddr_t
 bif_geo_pred (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, char *f, int op)
 {
-  geo_t *g1 = bif_geo_arg (qst, args, 0, f, GEO_ARG_ANY_NULLABLE);
-  geo_t *g2 = bif_geo_arg (qst, args, 1, f, GEO_ARG_ANY_NULLABLE);
+  geo_t *g1 = bif_geo_arg (qst, args, 0, f, GEO_ARG_NONNULL);
+  geo_t *g2 = bif_geo_arg (qst, args, 1, f, GEO_ARG_NONNULL);
   double prec = 0;
   int srid1, srid2;
   if (BOX_ELEMENTS (args) > 2)
@@ -1059,8 +1059,10 @@ geo_point_intersects (geo_srcode_t srcode, geoc pX, geoc pY, geo_t * g2, double 
 	return 0;
       }
     }
+#ifdef __SOMETHING_SOMETHING__
   sqlr_new_error ("42000", "GEO..",
       "for after check of geo intersects, and a given point, supported types of second argument are POINT, BOX, POLYGON, LINESTRING, POINTLIST, and their MULTI... and COLLECTIONs");
+#endif
   return 0;
 }
 
@@ -1575,8 +1577,10 @@ geo_pred (geo_t * g1, geo_t * g2, int op, double prec)
       }
     }
 unsupported_intersects:
+#ifdef __SOMETHING_SOMETHING__
   sqlr_new_error ("42000", "GEO..",
       "for after check of geo intersects, some shape types (e.g., polygon rings and curves) are not yet supported");
+#endif
   return 0;
 }
 

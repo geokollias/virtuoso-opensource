@@ -2218,7 +2218,7 @@ create procedure WS.WS.SPARQL_ENDPOINT_STYLE ()
 	body {
 	    padding: 0;
 	    margin: 0;
-    	    font-family:Gill Sans, Arial, Helvetica, sans-serif;
+	    font-family:Arial, Helvetica, sans-serif;
 	    font-size: 9pt;
 	    color: #333;
 	    background-color: #FDFDFD;
@@ -3465,6 +3465,8 @@ host_found:
   start_time := msec_time();
   exec ( concat ('sparql {', full_query, '\n}'), state, msg, qry_params, vector ('max_rows', maxrows, 'use_cache', 1), metas, rset);
   commit work;
+  if (isvector (rset) and length (rset) = maxrows)
+    http_header (http_header_get () || sprintf ('X-SPARQL-MaxRows: %d\r\n', maxrows));
   -- dbg_obj_princ ('exec metas=', metas, ', state=', state, ', msg=', msg);
   if (state = '00000')
     goto write_results;

@@ -162,6 +162,15 @@ gb_agg_any (setp_node_t * setp, caddr_t * inst, chash_t * cha, int64 ** groups, 
   int inx, dep_box_inx = dep_inx - setp->setp_ha->ha_n_keys, rc;
   state_slot_t *ssl = setp->setp_dependent_box[dep_box_inx];
   sql_type_t *sqt = &cha->cha_sqt[dep_inx];
+  if (AMMSC_EXEC == op->go_op)
+    {
+      gb_op_t *go = op;
+      int64 set_range;
+      int nth, set;
+      data_col_t *rows_dc = QST_BOX (data_col_t *, inst, go->go_exec_rows->ssl_index);
+      rows_dc->dc_values = (db_buf_t) groups;
+      qst_set_long (inst, go->go_exec_base_set, set);
+    }
   for (inx = 0; inx < n_sets; inx++)
     {
       int64 *group;
@@ -233,6 +242,24 @@ gb_agg_any (setp_node_t * setp, caddr_t * inst, chash_t * cha, int64 ** groups, 
 	      }
 	    code_vec_run_this_set (op->go_ua_acc_setp_call, inst);
 	    go_ua_store (inst, op, NULL, cha, dep_ptr);
+	    break;
+	  }
+	case AMMSC_EXEC:
+	  {
+	    int nth;
+	    DO_BOX (state_slot_t *, ssl, nth, op->go_exec_ssls)
+	    {
+	      data_col_t *dc;
+	      if (!ssl)
+		continue;
+	      dc = QST_BOX (data_col_t *, inst, ssl->ssl_index);
+	      dc_reset (dc);
+	      DC_CHECK_LEN (dc, qi->qi_set);
+	      dc->dc_n_values = qi->qi_set;
+	      dc_append_cha (dc, ha, cha, groups[inx], nth);
+	    }
+	    END_DO_BOX;
+	    code_vec_run_this_set (op->go_ua_acc_setp_call, inst);
 	    break;
 	  }
 	}
@@ -1152,7 +1179,7 @@ dv_from_dc_val (dtp_t * temp, int64 val, dtp_t dtp)
       temp[0] = DV_SINGLE_FLOAT;
       flt = *(float *) &val;
       FLOAT_TO_EXT (&temp[1], &flt);
-      return temp;
+      return (int64) temp;
     case DV_DATETIME:
       temp[0] = DV_DATETIME;
       memcpy_dt (temp + 1, val);
@@ -1589,7 +1616,7 @@ cha_part_adjust (setp_node_t * setp, chash_t * cha, size_t prev_sz, size_t new_s
 	n_part = clm_all->clm_distinct_slices;
     }
   card /= n_part;
-  if (card / n_part > 1e9);
+  if (card / n_part > 1e9);	/* XXX: error ??? */
   return new_sz;
   if (prev_sz > card / 3 && new_sz < card * 1.1)
     new_sz = card * 1.1;
@@ -2502,6 +2529,7 @@ index_tree_t *
 cha_allocate (setp_node_t * setp, caddr_t * inst, int64 card)
 {
   hash_area_t *ha = setp->setp_ha;
+  int is_temp = ha->ha_key->key_table && ha->ha_key->key_table->tb_is_temp;
   int n_slots = BOX_ELEMENTS (ha->ha_slots), inx;
   index_tree_t *tree = it_temp_allocate (wi_inst.wi_temp);
   hash_index_t *hi;
@@ -2524,38 +2552,54 @@ cha_allocate (setp_node_t * setp, caddr_t * inst, int64 card)
   cha->cha_sqt = (sql_type_t *) mp_alloc_box (cha->cha_pool, sizeof (sql_type_t) * n_slots, DV_BIN);
   cha->cha_new_sqt = (sql_type_t *) mp_alloc_box (cha->cha_pool, sizeof (sql_type_t) * n_slots, DV_BIN);
   memset (cha->cha_sqt, 0, box_length (cha->cha_sqt));
-  DO_BOX (state_slot_t *, ssl, inx, ha->ha_slots)
-  {
-    if (SSL_CONSTANT == ssl->ssl_type)
+  if (is_temp)
+    {
+      int nth = 0;
+      DO_SET (dbe_column_t *, col, &ha->ha_key->key_parts)
       {
-	cha->cha_sqt[inx].sqt_dtp = ssl->ssl_sqt.sqt_dtp;
-	cha->cha_sqt[inx].sqt_non_null = 1;
+	cha->cha_sqt[nth] = col->col_sqt;
+	nth++;
       }
-    else
+      END_DO_SET ();
+    }
+  else
+    {
+      DO_BOX (state_slot_t *, ssl, inx, ha->ha_slots)
       {
-	data_col_t *dc = QST_BOX (data_col_t *, inst, ssl->ssl_index);
-	if (HA_FILL == ha->ha_op)
-	  cha->cha_sqt[inx].sqt_dtp = cha_dtp (dtp_canonical[ha->ha_key_cols[inx].cl_sqt.sqt_dtp], inx < ha->ha_n_keys);
+	if (SSL_CONSTANT == ssl->ssl_type)
+	  {
+	    cha->cha_sqt[inx].sqt_dtp = ssl->ssl_sqt.sqt_dtp;
+	    cha->cha_sqt[inx].sqt_non_null = 1;
+	  }
 	else
 	  {
-	    dtp_t dtp;
-	    gb_op_t *go = NULL;
-	    if (inx >= ha->ha_n_keys)
-	      go = (gb_op_t *) dk_set_nth (setp->setp_gb_ops, inx - ha->ha_n_keys);
-	    if (go && go->go_ua_arglist)
-	      dtp = DV_ANY;
+	    data_col_t *dc = QST_BOX (data_col_t *, inst, ssl->ssl_index);
+	    if (HA_FILL == ha->ha_op)
+	      cha->cha_sqt[inx].sqt_dtp = cha_dtp (dtp_canonical[ha->ha_key_cols[inx].cl_sqt.sqt_dtp], inx < ha->ha_n_keys);
 	    else
-	      dtp = cha_gb_dtp (dc->dc_dtp, inx < ha->ha_n_keys, go);
-	    cha->cha_sqt[inx].sqt_dtp = dtp;
-	    if (DV_ARRAY_OF_POINTER == dtp)
-	      cha->cha_has_gb_boxes = 1;
+	      {
+		dtp_t dtp;
+		gb_op_t *go = NULL;
+		if (inx >= ha->ha_n_keys)
+		  go = (gb_op_t *) dk_set_nth (setp->setp_gb_ops, inx - ha->ha_n_keys);
+		if (go && AMMSC_EXEC == go->go_op)
+		  continue;
+		if (go && go->go_ua_arglist)
+		  dtp = DV_ANY;
+		else
+		  dtp = cha_gb_dtp (dc->dc_dtp, inx < ha->ha_n_keys, go);
+		cha->cha_sqt[inx].sqt_dtp = dtp;
+		if (DV_ARRAY_OF_POINTER == dtp)
+		  cha->cha_has_gb_boxes = 1;
+	      }
+	    cha->cha_sqt[inx].sqt_non_null = ssl->ssl_sqt.sqt_non_null;
+	    if (ha->ha_non_null)
+	      cha->cha_sqt[inx].sqt_non_null = ha->ha_non_null[inx];
 	  }
-	cha->cha_sqt[inx].sqt_non_null = ssl->ssl_sqt.sqt_non_null;
+	memcpy (&(cha->cha_new_sqt[inx]), &(cha->cha_sqt[inx]), sizeof (sql_type_t));
       }
-    memcpy (&(cha->cha_new_sqt[inx]), &(cha->cha_sqt[inx]), sizeof (sql_type_t));
-  }
-  END_DO_BOX;
-
+      END_DO_BOX;
+    }
   if (HA_GROUP == ha->ha_op || setp->setp_distinct)
     cha->cha_size = MIN (2 * ha->ha_row_count, chash_init_gb_size);
   else
@@ -3320,37 +3364,48 @@ chash_to_memcache (caddr_t * inst, index_tree_t * tree, hash_area_t * ha)
     }
   if (!hi->hi_memcache_from_mp)
     GPF_T1 ("writing mp boxes in non-mp memcache");
-  for (part = 0; part < MAX (cha->cha_n_partitions, 1); part++)
-    {
-      chash_t *cha_p = CHA_PARTITION (cha, part);
-      for (chp = cha_p->cha_init_page; chp; chp = chp->h.h.chp_next)
-	{
-	  int pos;
-	  for (pos = 0; pos < chp->h.h.chp_fill; pos += cha->cha_first_len)
-	    {
-	      caddr_t *key = (caddr_t *) mp_alloc_box_ni (cha->cha_pool, sizeof (caddr_t) * ha->ha_n_keys, DV_ARRAY_OF_POINTER);
-	      caddr_t *data;
-	      uint32 h = HC_INIT;
-	      int var_len = 0, inx;
-	      CKE ((&chp->chp_data[pos]));
-	      for (inx = 0; inx < ha->ha_n_keys; inx++)
-		{
-		  key[inx] = cha_box_col (cha, ha, &chp->chp_data[pos], inx);
-		  h = key_hash_box (key[inx], DV_TYPE_OF (key[inx]), h, &var_len, NULL, ha->ha_key_cols[inx].cl_sqt.sqt_dtp, 1);
-		  HASH_NUM_SAFE (h);
-		}
-	      hmk.hmk_data = key;
-	      hmk.hmk_var_len = var_len;
-	      hmk.hmk_hash = h & ID_HASHED_KEY_MASK;
-	      hmk.hmk_ha = ha;
-	      data = (caddr_t *) mp_alloc_box_ni (cha->cha_pool, sizeof (caddr_t) * (n_slots - ha->ha_n_keys), DV_ARRAY_OF_POINTER);
-	      for (inx = ha->ha_n_keys; inx < n_slots; inx++)
-		data[inx - ha->ha_n_keys] = cha_box_col (cha, ha, &chp->chp_data[pos], inx);
-	      mc_sets++;
-	      t_id_hash_set (hi->hi_memcache, (caddr_t) & hmk, (caddr_t) & data);
-	    }
-	}
-    }
+  QR_RESET_CTX
+  {
+    for (part = 0; part < MAX (cha->cha_n_partitions, 1); part++)
+      {
+	chash_t *cha_p = CHA_PARTITION (cha, part);
+	for (chp = cha_p->cha_init_page; chp; chp = chp->h.h.chp_next)
+	  {
+	    int pos;
+	    for (pos = 0; pos < chp->h.h.chp_fill; pos += cha->cha_first_len)
+	      {
+		caddr_t *key = (caddr_t *) mp_alloc_box_ni (cha->cha_pool, sizeof (caddr_t) * ha->ha_n_keys, DV_ARRAY_OF_POINTER);
+		caddr_t *data;
+		uint32 h = HC_INIT;
+		int var_len = 0, inx;
+		CKE ((&chp->chp_data[pos]));
+		for (inx = 0; inx < ha->ha_n_keys; inx++)
+		  {
+		    key[inx] = cha_box_col (cha, ha, &chp->chp_data[pos], inx);
+		    h = key_hash_box (key[inx], DV_TYPE_OF (key[inx]), h, &var_len, NULL, ha->ha_key_cols[inx].cl_sqt.sqt_dtp, 1);
+		    HASH_NUM_SAFE (h);
+		  }
+		hmk.hmk_data = key;
+		hmk.hmk_var_len = var_len;
+		hmk.hmk_hash = h & ID_HASHED_KEY_MASK;
+		hmk.hmk_ha = ha;
+		data =
+		    (caddr_t *) mp_alloc_box_ni (cha->cha_pool, sizeof (caddr_t) * (n_slots - ha->ha_n_keys), DV_ARRAY_OF_POINTER);
+		for (inx = ha->ha_n_keys; inx < n_slots; inx++)
+		  data[inx - ha->ha_n_keys] = cha_box_col (cha, ha, &chp->chp_data[pos], inx);
+		mc_sets++;
+		t_id_hash_set (hi->hi_memcache, (caddr_t) & hmk, (caddr_t) & data);
+	      }
+	  }
+      }
+  }
+  QR_RESET_CODE
+  {
+    POP_QR_RESET;
+    SET_THR_TMP_POOL (NULL);
+    longjmp_splice (THREAD_CURRENT_THREAD->thr_reset_ctx, reset_code);
+  }
+  END_QR_RESET;
   SET_THR_TMP_POOL (NULL);
   hi->hi_chash = NULL;
 }
@@ -3745,50 +3800,54 @@ chash_merge (setp_node_t * setp, chash_t * cha, chash_t * delta, int n_to_go)
 }
 
 
-void
+int
 dc_append_cha (data_col_t * dc, hash_area_t * ha, chash_t * cha, int64 * row, int col)
 {
   if (!cha->cha_sqt[col].sqt_non_null
       && DV_ANY != cha->cha_sqt[col].sqt_dtp && !(((db_buf_t) row)[cha->cha_null_flags + (col >> 3)] & (1 << (col & 7))))
     {
       dc_append_null (dc);
-      return;
+      return 0;
     }
   if ((DCT_BOXES & dc->dc_type))
     {
       switch (cha->cha_sqt[col].sqt_dtp)
 	{
 	case DV_ANY:
+	  if (0 == ((caddr_t *) row)[col])
+	    return 1;
 	  ((caddr_t *) dc->dc_values)[dc->dc_n_values++] = box_deserialize_string (((caddr_t *) row)[col], INT32_MAX, 0);
-	  return;
+	  return 0;
 	case DV_ARRAY_OF_POINTER:
 	  ((caddr_t *) dc->dc_values)[dc->dc_n_values++] = (caddr_t) row[col];
 	  row[col] = 0;
-	  return;
+	  return 0;
 	case DV_LONG_INT:
 	  ((caddr_t *) dc->dc_values)[dc->dc_n_values++] = box_num (row[col]);
-	  return;
+	  return 0;
 	case DV_DOUBLE_FLOAT:
 	  ((caddr_t *) dc->dc_values)[dc->dc_n_values++] = box_double (((double *) row)[col]);
-	  return;
+	  return 0;
 	case DV_IRI_ID:
 	  ((caddr_t *) dc->dc_values)[dc->dc_n_values++] = box_iri_id (row[col]);
-	  return;
+	  return 0;
 	case DV_SINGLE_FLOAT:
 	  ((caddr_t *) dc->dc_values)[dc->dc_n_values++] = box_float (((float *) row)[col]);
-	  return;
+	  return 0;
 	case DV_DATETIME:
 	  {
 	    caddr_t dt = dk_alloc_box (DT_LENGTH, DV_DATETIME);
 	    memcpy_dt (dt, ((db_buf_t *) row)[col]);
 	    ((caddr_t *) dc->dc_values)[dc->dc_n_values++] = dt;
-	    return;
+	    return 0;
 	  }
 	default:
+	  if (0 == ((caddr_t *) row)[col])
+	    return 1;
 	  ((caddr_t *) dc->dc_values)[dc->dc_n_values++] = box_deserialize_string (((caddr_t *) row)[col], INT32_MAX, 0);
-	  return;
+	  return 0;
 	}
-      return;
+      return 0;
     }
   switch (cha->cha_sqt[col].sqt_dtp)
     {
@@ -3796,27 +3855,30 @@ dc_append_cha (data_col_t * dc, hash_area_t * ha, chash_t * cha, int64 * row, in
       {
 	int len;
 	db_buf_t dv = (db_buf_t) (ptrlong) row[col];
+	if (0 == dv)
+	  return 1;
 	DB_BUF_TLEN (len, dv[0], dv);
 	dc_append_bytes (dc, dv, len, NULL, 0);
-	return;
+	return 0;
       }
     case DV_LONG_INT:
     case DV_DOUBLE_FLOAT:
     case DV_IRI_ID:
       ((int64 *) dc->dc_values)[dc->dc_n_values++] = row[col];
-      return;
+      return 0;
     case DV_SINGLE_FLOAT:
       ((int32 *) dc->dc_values)[dc->dc_n_values++] = *(int32 *) & ((int64 *) row)[col];
-      return;
+      return 0;
     case DV_DATETIME:
       memcpy_dt (dc->dc_values + DT_LENGTH * dc->dc_n_values, ((db_buf_t *) row)[col]);
       dc->dc_n_values++;
-      return;
+      return 0;
     case DV_ARRAY_OF_POINTER:
       dc_append_box (dc, (caddr_t) row[col]);
-      return;
+      return 0;
     }
   GPF_T1 ("dc_append_cha(): unsupported type, non-boxed dc");
+  return 0;
 }
 
 
@@ -3973,11 +4035,14 @@ chash_read_setp (table_source_t * ts, caddr_t * inst, setp_node_t ** setp_ret, h
 #define TN_STOP 3		/* stop reading */
 #define TN_ACTIVE_BIT 4		/* read all with active bit on */
 
+
 char
-cha_tn_mode (table_source_t * ts, caddr_t * inst, int is_start)
+cha_tn_mode (table_source_t * ts, caddr_t * inst, int is_start, chash_page_t * chp)
 {
   trans_read_t *trr = ts->ts_trans_read;
   int sst;
+  if (!trr->trr_is_step)
+    return TN_INSIDE;
   if (trr->trr_active_bit)
     return TN_ACTIVE_BIT;
   if (!is_start)
@@ -3985,9 +4050,26 @@ cha_tn_mode (table_source_t * ts, caddr_t * inst, int is_start)
   sst = unbox (QST_GET_V (inst, trr->trr_superstep));
   if (0 == sst)
     return TN_INSIDE;
-  return TN_BEFORE;
+  for (chp = chp; chp; chp = chp->h.h.chp_next)
+    if (chp->h.h.chp_prev_start)
+      return TN_BEFORE;
+  return TN_INSIDE;
 }
 
+
+void
+chash_pop_last_out (key_source_t * ks, caddr_t * inst, int last)
+{
+  int inx = 0;
+  DO_SET (state_slot_t *, ssl, &ks->ks_out_slots)
+  {
+    if (inx == last)
+      break;
+    dc_pop_last_ssl (inst, ssl);
+    inx++;
+  }
+  END_DO_SET ();
+}
 
 void
 chash_read_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
@@ -4018,13 +4100,10 @@ chash_read_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
   if (ks->ks_set_no_col_ssl || SSL_VEC != ha->ha_tree->ssl_type)
     n_sets = 1;
   if (SSL_VEC == ha->ha_tree->ssl_type)
-
     {
       data_col_t *dc = QST_BOX (data_col_t *, inst, ha->ha_tree->ssl_index);
       n_sets = dc->dc_n_values;
     }
-  if (state && ts->ts_trans_read && ts->ts_trans_read->trr_is_step)
-    cha_next_superstep (ts, inst);
   if (!state && -1 == QST_INT (inst, ts->clb.clb_nth_set))
     state = inst;
   if (state)
@@ -4140,10 +4219,10 @@ next_batch:
 	      chp = cha_p->cha_init_page;
 	      row = 0;
 	      if (ts->ts_trans_read)
-		tn_mode = cha_tn_mode (ts, inst, 1);
+		tn_mode = cha_tn_mode (ts, inst, 1, chp);
 	    }
 	  else if (ts->ts_trans_read)
-	    tn_mode = cha_tn_mode (ts, inst, 0);
+	    tn_mode = cha_tn_mode (ts, inst, 0, chp);
 	  for (chp = chp; chp; chp = chp->h.h.chp_next)
 	    {
 	      int fill = chp->h.h.chp_prev_fill;
@@ -4168,29 +4247,39 @@ next_batch:
 		  if (setp && has_surviving && cha_check_survival (cha, inst, setp, ent, surviving))
 		    continue;
 		  all_survived = 0;
-		  DO_SET (state_slot_t *, out_ssl, &ks->ks_out_slots)
-		  {
-		    if (SSL_REF == out_ssl->ssl_type)
-		      out_ssl = ((state_slot_ref_t *) out_ssl)->sslr_ssl;
-		    if (SSL_VEC == out_ssl->ssl_type)
-		      {
-			data_col_t *out_dc = QST_BOX (data_col_t *, inst, out_ssl->ssl_index);
-			dc_append_cha (out_dc, ha, cha, ent, k_inx);
-		      }
-		    else
-		      GPF_T1 ("need vec ssl in chash read");
-		    k_inx++;
-		  }
-		  END_DO_SET ();
-		  if (ks->ks_set_no_col_ssl)
-		    {
-		      data_col_t *dc = QST_BOX (data_col_t *, inst, ks->ks_set_no_col_ssl->ssl_index);
-		      int set_no = ((int64 *) dc->dc_values)[dc->dc_n_values - 1];
-		      qn_result ((data_source_t *) ts, inst, set_no);
-		    }
+		  if (ts->ts_trans_read && !ts->ts_trans_read->trr_is_step)
+		    cha_bsp_result (ts, ha, inst, cha, ent, &n_results, &row);
 		  else
-		    qn_result ((data_source_t *) ts, inst, set);
-		  if (++n_results == QST_INT (inst, ts->src_gen.src_batch_size))
+		    {
+		      DO_SET (state_slot_t *, out_ssl, &ks->ks_out_slots)
+		      {
+			if (SSL_REF == out_ssl->ssl_type)
+			  out_ssl = ((state_slot_ref_t *) out_ssl)->sslr_ssl;
+			if (SSL_VEC == out_ssl->ssl_type)
+			  {
+			    data_col_t *out_dc = QST_BOX (data_col_t *, inst, out_ssl->ssl_index);
+			    if (dc_append_cha (out_dc, ha, cha, ent, k_inx))
+			      {
+				chash_pop_last_out (ks, inst, k_inx);
+				goto next_row;
+			      }
+			  }
+			else
+			  GPF_T1 ("need vec ssl in chash read");
+			k_inx++;
+		      }
+		      END_DO_SET ();
+		      if (ks->ks_set_no_col_ssl)
+			{
+			  data_col_t *dc = QST_BOX (data_col_t *, inst, ks->ks_set_no_col_ssl->ssl_index);
+			  int set_no = ((int64 *) dc->dc_values)[dc->dc_n_values - 1];
+			  qn_result ((data_source_t *) ts, inst, set_no);
+			}
+		      else
+			qn_result ((data_source_t *) ts, inst, set);
+		      n_results++;
+		    }
+		  if (n_results == QST_INT (inst, ts->src_gen.src_batch_size))
 		    {
 		      SRC_IN_STATE (ts, inst) = inst;
 		      QST_INT (inst, ks->ks_pos_in_temp) = row + cha->cha_first_len;
@@ -4204,13 +4293,17 @@ next_batch:
 		      is_next_branch = 0;
 		      goto next_batch;
 		    }
+		next_row:;
 		}
 	      row = 0;
 	      if (TN_STOP == tn_mode)
-		break;
+		{
+		  chp = NULL;
+		  break;
+		}
 	    }
 	}
-      if (!all_survived || !any_result)
+      if ((!all_survived || !any_result) && !(ts->ts_trans_read && ts->ts_trans_read->trr_is_step))
 	{
 	  int64 *save_survival = (int64 *) cha->cha_bloom;
 	  cha->cha_bloom = NULL;
@@ -7702,22 +7795,6 @@ ks_add_hash_spec (key_source_t * ks, caddr_t * inst, it_cursor_t * itc)
     if (((HR_RANGE_ONLY | HR_NO_BLOOM) & hrng->hrng_flags)
 	&& 0 == QST_INT (inst, hrng->hrng_min) && 0xffffffff == (uint32) QST_INT (inst, hrng->hrng_max))
       continue;			/* no partition, no merged hash join */
-    if ((HRNG_SEC & hrng->hrng_flags))
-      {
-	if (!qi->qi_client->cli_sec)
-	  continue;
-	itc->itc_sec_hash_spec = 1;
-      }
-    if ((HRNG_RD_SEC & hrng->hrng_flags))
-      {
-	cl_op_t *sec = qi->qi_client->cli_sec;
-	if (!sec || sec->_.sec.g_all_allowed)
-	  continue;
-	if (sec->_.sec.g_rd_empty)
-	  return 1;		/* no g read perms at all */
-	if (!sec->_.sec.g_rd_id && !sec->_.sec.g_rd)
-	  continue;		/* no read restrictions */
-      }
     sps[fill++] = sp;
     if (fill > 255)
       sqlr_new_error ("420000", "CHA..", "Not more than 255 hash joins allowed per fact table");
@@ -7759,7 +7836,7 @@ ks_add_hash_spec (key_source_t * ks, caddr_t * inst, it_cursor_t * itc)
 		tree = qi_g_tree (inst, hrng->hrng_ht, 0);
 	      else
 		tree = qst_get_chash (inst, hrng->hrng_ht, hrng->hrng_ht_id, NULL);
-	      cha = tree ? tree->it_hi->hi_chash : NULL;
+	      cha = tree && !tree->it_invalidated ? tree->it_hi->hi_chash : NULL;
 	      if (!cha || (!cha->cha_distinct_count && !cha->cha_n_bloom))
 		{
 		  /* join with empty chash is like null in search params, always empty. Empty chash can have replicated bloom though  which still makes it valid  */
@@ -8064,6 +8141,7 @@ chash_fill_input (fun_ref_node_t * fref, caddr_t * inst, caddr_t * state)
 	GPF_T1 ("hash filler reset for partition over full not implemented");
       }
       END_QR_RESET;
+      tree->it_hi->hi_is_reverse = fref->fnr_sec_reverse;
       {
 	int64 da_time = 0;
 	if (fref->src_gen.src_stat)
@@ -8142,6 +8220,7 @@ bif_chash_in_init (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   /* elements, dtp, tree_ret, id_ret, qi_ret */
   QNCAST (QI, caller, qst);
   data_col_t *dc;
+  cl_slice_t *old_csl = caller->qi_client->cli_csl;
   dtp_t dtp = dtp_canonical[(dtp_t) bif_long_arg (qst, args, 0, "chash_in_init")];
   int inx;
   hash_fill_qr_t *hfq = DV_LONG_INT == dtp ? &in_int_hfq : DV_IRI_ID == dtp ? &in_iri_hfq : &in_any_hfq;
@@ -8183,6 +8262,58 @@ bif_chash_in_init (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       int inx2;
       switch (DV_TYPE_OF (vals))
 	{
+#ifdef RDF_SECURITY_CLO
+	case DV_CLOP:
+	  {
+	    cl_op_t *clo = (cl_op_t *) vals;
+	    if (CLO_RDF_GRAPH_USER_PERMS == clo->clo_op)
+	      {
+		dk_hash_64_t *ht = clo->_.rdf_graph_user_perms.ht;
+		int req_perms = clo->_.rdf_graph_user_perms.req_perms;
+		dk_hash_64_iterator_t iter;
+		int64 *g_iid_num_ptr, *g_perms_ptr;
+		int need_dupe_check = (0 != dc->dc_n_values);
+		if (clo->_.rdf_graph_user_perms.g_read_qr)
+		  {
+		    index_tree_t *tree =
+			rdf_ctx_hash (qi, clo->_.rdf_graph_user_perms.g_read_qr, clo->_.rdf_graph_user_perms.g_read_param);
+		    if (!args[3] || !ssl_is_settable (args[3]))
+		      qst_set (qst, args[1], (caddr_t) tree);
+		    else
+		      qst_set (qst, args[2], box_num (tree->it_hi->hi_cl_id));
+		    return NULL;
+		  }
+		rwlock_rdlock (ht->ht_rwlock);
+		dbg_printf (("Chash from user %d, req perms %d\n\n", (int) (clo->_.rdf_graph_user_perms.u_id), req_perms));
+		dk_hash_64_iterator (&iter, ht);
+		while (dk_hash_64_hit_next (&iter, &g_iid_num_ptr, &g_perms_ptr))
+		  {
+		    dbg_printf ((BOXINT_FMT " <%s> has %d\n", (boxint) (g_iid_num_ptr[0]), key_id_to_iri (qst, g_iid_num_ptr[0]),
+			    (int) (g_perms_ptr[0])));
+		    if ((g_perms_ptr[0] & req_perms) == req_perms)
+		      {
+			char val_buf[sizeof (int64) + BOX_AUTO_OVERHEAD];
+			caddr_t val;
+			BOX_AUTO (val, val_buf, sizeof (int64), DV_IRI_ID);
+			((int64 *) val)[0] = g_iid_num_ptr[0];
+			if (need_dupe_check)
+			  {
+			    for (inx2 = 0; inx2 < dc->dc_n_values; inx2++)
+			      {
+				qi->qi_set = inx2;
+				if (DVC_MATCH == cmp_boxes (val, qst_get ((caddr_t *) qi, hfq->hfq_fill_dc), NULL, NULL))
+				  goto next_in_rgu_clo;
+			      }
+			  }
+			dc_append_box (dc, val);
+		      }
+		  next_in_rgu_clo:;
+		  }
+		rwlock_unlock (ht->ht_rwlock);
+	      }
+	    break;
+	  }
+#endif
 	case DV_ARRAY_OF_POINTER:
 	  {
 	    int nth, n_vals = BOX_ELEMENTS (vals);
@@ -8240,6 +8371,12 @@ bif_chash_in_init (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     {
       qst_set (qst, args[2], box_copy_tree (qst_get ((caddr_t *) qi, hfq->hfq_fill_fref->fnr_setp->setp_ht_id)));
     }
+  if (old_csl)
+    {
+      caddr_t err = NULL;
+      cli_set_slice (caller->qi_client, old_csl->csl_clm, old_csl->csl_id, &err);
+      dk_free_tree (err);
+    }
   return NULL;
 }
 
@@ -8270,6 +8407,94 @@ hfq_prepare (hash_fill_qr_t * hfq, char *text)
 }
 
 
+caddr_t
+bif_gby_set_vec (caddr_t * inst, caddr_t * err_ret, state_slot_t ** args, state_slot_t * ret)
+{
+  /* args: the chash of this partition, dc of group rows, base set of group rows, dtp/offset of assigned, value, shadow_ssl */
+
+  data_col_t *group_dc = QST_BOX (data_col_t *, inst, args[1]->ssl_index);
+  int base_set = bif_long_arg (inst, args, 2, "__gby_set");
+  int fld = unbox_inline (args[3]->ssl_constant);
+  caddr_t val = bif_arg (inst, args, 4, "__gby_set");
+  index_tree_t *tree = QST_BOX (index_tree_t *, inst, args[0]->ssl_index);
+  QNCAST (QI, qi, inst);
+  int64 *ent = ((int64 **) group_dc->dc_values)[qi->qi_set - base_set];
+  dtp_t dtp = fld & 0xff, val_dtp;
+  int nth = fld >> 8;
+  chash_t *cha = tree && tree->it_hi ? tree->it_hi->hi_chash : NULL;
+  if (!cha)
+    sqlr_new_error ("NTREE", "NTREE", "No chash in scope for assigning value in trans / group by exec");
+  val_dtp = DV_TYPE_OF (val);
+  if (DV_DB_NULL == val_dtp)
+    {
+      GB_NO_VALUE (cha->cha_ha, ent, nth);
+      return NULL;
+    }
+  else if (dtp)
+    GB_HAS_VALUE (cha->cha_ha, ent, nth);
+  switch (dtp)
+    {
+    case 0:			/* bit field */
+      if (unbox (val))
+	{
+	  GB_HAS_VALUE (cha->cha_ha, ent, nth);
+	}
+      else
+	GB_NO_VALUE (cha->cha_ha, ent, nth);
+      break;
+    case DV_ANY:
+      ent[nth] = cha_any (cha, val);
+      break;
+    case DV_LONG_INT:
+      ent[nth] = unbox (val);
+      break;
+    }
+  return NULL;
+}
+
+
+caddr_t
+bif_temp_table (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  /* tree ret, id ret, temp tb as a boxed int */
+  QNCAST (QI, qi, qst);
+  ptrlong ptb = bif_long_arg (qst, args, 2, "__temp_table");
+  QNCAST (dbe_table_t, tb, ptb);
+  setp_node_t setp_a;
+  hash_area_t ha_a;
+  setp_node_t *setp = &setp_a;
+  int n_slots = dk_set_length (tb->tb_primary_key->key_parts);
+  state_slot_t **ssl_arr = (state_slot_t **) dk_alloc_box (sizeof (caddr_t) * n_slots, DV_BIN);
+  state_slot_t *ssls = (state_slot_t *) dk_alloc_box (n_slots * sizeof (state_slot_t), DV_BIN);
+  dbe_key_t *key = tb->tb_primary_key;
+  int nth = 0;
+  memzero (&setp_a, sizeof (setp_a));
+  memzero (&ha_a, sizeof (ha_a));
+  setp->setp_ha = &ha_a;
+  ha_a.ha_tree = args[0];
+  ha_a.ha_key = tb->tb_primary_key;
+  sqlg_temp_hs_ha (NULL, tb, &ha_a);
+  DO_SET (dbe_column_t *, col, &key->key_parts)
+  {
+    ssl_arr[nth] = &ssls[nth];
+    ssls[nth].ssl_sqt = col->col_sqt;
+    nth++;
+  }
+  END_DO_SET ();
+  setp->setp_ha->ha_slots = ssl_arr;
+  cha_allocate (setp, qst, tb->tb_count_estimate);
+  if (CL_RUN_LOCAL != cl_run_local_only && ssl_is_settable (args[1]))
+    {
+      uint64 ssl_id = ((int64) setp->setp_ht_id->ssl_index << 48);
+      ssl_id = qi_new_ht_id (qi) | ssl_id;
+      qst_set_long (qst, args[1], ssl_id);
+    }
+  dk_free_box ((caddr_t) ssls);
+  dk_free_box ((caddr_t) ssl_arr);
+  return NULL;
+}
+
+
 void
 chash_in_init ()
 {
@@ -8280,7 +8505,9 @@ chash_in_init ()
   hfq_prepare (&in_iri_hfq,
       "select count (*) from rdf_iri a table option (no cluster), rdf_iri b table option (no cluster, hash, hash replication) where a.ri_id = b.ri_id option (order)");
   bif_define ("chash_in_init", bif_chash_in_init);
+  bif_define ("__temp_table", bif_temp_table);
   enable_chash_in = 1;
+  bsp_init ();
 }
 
 

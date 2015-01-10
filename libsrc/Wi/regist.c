@@ -35,8 +35,13 @@ cli_bootstrap_cli ()
 {
   if (!bootstrap_cli)
     {
+      user_t *tmp_dba = (user_t *) dk_alloc (sizeof (user_t));
+      memset (tmp_dba, 0, sizeof (user_t));
       bootstrap_cli = client_connection_create ();
       local_start_trx (bootstrap_cli);
+      tmp_dba->usr_id = U_ID_DBA;
+      tmp_dba->usr_name = box_dv_short_string ("dba");
+      bootstrap_cli->cli_user = tmp_dba;
     }
 }
 
@@ -463,6 +468,8 @@ registry_exec ()
   while (hit_next (&it, (caddr_t *) & name, (caddr_t *) & value))
     {
       caddr_t str = *value;
+      if (*name && 0 == strncmp (*name, "__rng", 5))
+	continue;
       if (str && str[0] == 'X' && str[1] == ' ')
 	{
 	  caddr_t err;
@@ -474,8 +481,8 @@ registry_exec ()
 	    }
 	  if (IS_BOX_POINTER (err))
 	    {
-	      log_error ("Error reading registry: %s: %s\n%s",
-		  ((caddr_t *) err)[QC_ERRNO], ((caddr_t *) err)[QC_ERROR_STRING], str);
+	      log_error ("Error reading registry: key %s: %s: %s\n%s",
+		  *name, ((caddr_t *) err)[QC_ERRNO], ((caddr_t *) err)[QC_ERROR_STRING], str);
 	    }
 	}
     }

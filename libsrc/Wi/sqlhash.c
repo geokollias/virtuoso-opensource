@@ -210,6 +210,83 @@ setp_set_ahash (setp_node_t * setp)
 }
 
 
+void
+setp_temp_loc_ts (sql_comp_t * sc, setp_node_t * setp)
+{
+  hash_area_t *ha = setp->setp_ha;
+  dbe_key_t *key = ha->ha_key;
+  int nth;
+  setp->setp_partitioned = 1;
+  key_partition_def_t *kpd = setp->setp_ha->ha_key->key_partition;
+  for (nth = 0; nth < key->key_n_significant; nth++)
+    {
+      if (kpd->kpd_cols[0]->cp_col_id == ha->ha_key_cols[nth].cl_col_id)
+	goto found;
+    }
+  sqlc_new_error (sc->sc_cc, "TMPNK", "TMPNK", "partitioned temp tablegroup by and no grouping col given");
+found:;
+  {
+    search_spec_t **prev = NULL;
+    key_source_t *ks = (key_source_t *) dk_alloc (sizeof (key_source_t));
+    SQL_NODE_INIT (table_source_t, ts, table_source_input, ts_free);
+    memset (ks, 0, sizeof (key_source_t));
+    ts->ts_order_ks = ks;
+    ks->ks_key = key;
+    prev = &ks->ks_spec.ksp_spec_array;
+    {
+      NEW_VARZ (search_spec_t, sp);
+      *prev = sp;
+      prev = &sp->sp_next;
+      sp->sp_min_op = CMP_EQ;
+      sp->sp_col = (dbe_column_t *) dk_set_nth (key->key_parts, nth);
+      sp->sp_cl = *key_find_cl (key, sp->sp_col->col_id);
+      sp->sp_min_ssl = ha->ha_slots[nth];
+    }
+    setp->setp_loc_ts = ts;
+  }
+}
+
+
+void
+setp_temp_table (sql_comp_t * sc, setp_node_t * setp)
+{
+  int n_slots, inx;
+  gb_op_t *go = (gb_op_t *) setp->setp_gb_ops->data;
+  dbe_table_t *tb = go->go_temp_table;
+  hash_area_t *ha = dk_alloc (sizeof (hash_area_t));
+  memset (ha, 0, sizeof (hash_area_t));
+  ha->ha_row_size = 0;
+  ha->ha_key = tb->tb_primary_key;
+  setp->setp_ha = setp->setp_reserve_ha = ha;
+  ha->ha_tree = tb->tb_temp_ssl;
+  ha->ha_n_keys = ha->ha_key->key_n_significant;
+  ha->ha_n_deps = dk_set_length (ha->ha_key->key_parts) - ha->ha_key->key_n_significant;
+  ha->ha_row_count = tb->tb_count_estimate;
+  ha->ha_key_cols = (dbe_col_loc_t *) dk_alloc_box_zero ((ha->ha_n_deps + ha->ha_n_keys + 1) * sizeof (dbe_col_loc_t), DV_BIN);
+  for (inx = 0; inx < ha->ha_n_keys + ha->ha_n_deps; inx++)
+    {
+      dbe_col_loc_t *cl = key_find_cl (ha->ha_key, inx + 1);
+      ha->ha_key_cols[inx] = cl[0];
+    }
+  ha->ha_slots = (state_slot_t **) list_to_array (dk_set_conc (dk_set_copy (setp->setp_keys), dk_set_copy (setp->setp_dependent)));
+  ha->ha_allow_nulls = 1;
+  ha->ha_op = HA_GROUP;
+  n_slots = dk_set_length (ha->ha_key->key_parts);
+  ha->ha_ch_len = sizeof (int64) * (enable_lin_hash ? n_slots : 1 + n_slots);
+  if (ha_non_null (ha) && !tb->tb_extra_bits && !tb->tb_trans_border)
+    {
+      ha->ha_ch_nn_flags = 0;
+    }
+  else
+    {
+      ha->ha_ch_nn_flags = ha->ha_ch_len;
+      ha->ha_ch_len += ALIGN_8 ((n_slots + setp->setp_top_gby + 2 * tb->tb_trans_border + tb->tb_extra_bits)) / 8;
+    }
+  ha->ha_ch_len = ALIGN_8 (ha->ha_ch_len);
+  if (ha->ha_key->key_partition)
+    setp_temp_loc_ts (sc, setp);
+}
+
 
 void
 setp_distinct_hash (sql_comp_t * sc, setp_node_t * setp, uint64 n_rows, int op)
@@ -222,6 +299,11 @@ setp_distinct_hash (sql_comp_t * sc, setp_node_t * setp, uint64 n_rows, int op)
   int n_keys = dk_set_length (setp->setp_keys);
   int n_deps = dk_set_length (setp->setp_dependent);
   hash_area_t *ha;
+  if (setp->setp_gb_ops && AMMSC_EXEC == ((gb_op_t *) setp->setp_gb_ops->data)->go_op)
+    {
+      setp_temp_table (sc, setp);
+      return;
+    }
   if (op != HA_DISTINCT && n_keys > CHASH_GB_MAX_KEYS)
     sqlc_new_error (sc->sc_cc, "42000", "SQ186", "Over %d keys in group by or hash join", CHASH_GB_MAX_KEYS);
   if (HA_DISTINCT == op && SETP_DISTINCT_MAX_KEYS <= n_keys)
@@ -270,6 +352,13 @@ setp_distinct_hash (sql_comp_t * sc, setp_node_t * setp, uint64 n_rows, int op)
   ha->ha_op = op;
   if (setp->setp_any_user_aggregate_gos)
     ha->ha_memcache_only = 1;
+  if (HA_FILL == op)
+    {
+      int inx;
+      ha->ha_non_null = dk_alloc_box (BOX_ELEMENTS (ha->ha_slots), DV_BIN);
+      DO_BOX (state_slot_t *, ssl, inx, ha->ha_slots) ha->ha_non_null[inx] = ha->ha_slots[inx]->ssl_sqt.sqt_non_null;
+      END_DO_BOX;
+    }
   if (HA_GROUP == op && !setp->setp_ahash_kr)
     setp_set_ahash (setp);
   if ((HA_GROUP == op && ha->ha_n_keys <= CHASH_GB_MAX_KEYS) || setp->setp_distinct)

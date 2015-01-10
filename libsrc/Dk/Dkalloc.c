@@ -43,7 +43,18 @@ dk_set_initial_mem (size_t sz)
 {
   dk_init_size = sz;
 }
+#ifdef USE_TLSF
+void
+dk_tlsf_init ()
+{
+  if (dk_base_tlsf)
+    dk_base_tlsf->tlsf_grow_quantum = MAX (dk_init_size, 2000000);
+  else
+    dk_base_tlsf = tlsf_new (MAX (dk_init_size, 2000000));
+}
+#else
 #define dk_tlsf_init()
+#endif
 
 
 int64 dk_n_allocs;
@@ -53,6 +64,7 @@ int64 dk_max_bytes;
 int64 dk_n_free;
 int64 dk_n_nosz_free;
 int64 dk_n_bytes;
+int64 dk_n_max_allocs;
 
 
 #ifndef MALLOC_DEBUG
@@ -720,9 +732,15 @@ dk_cache_allocs (size_t sz, size_t cache_sz)
     av_adjust ((av_list_t*) av, align_sz);
 
 
+#ifdef USE_TLSF
+#define MALLOC_IN_DK_ALLOC(c) \
+  tlsf_malloc (c, thr ? thr : THREAD_CURRENT_THREAD)
+#define FREE_IN_DK_FREE(c) tlsf_free (c)
+#else
 #define MALLOC_IN_DK_ALLOC(c) \
   dk_alloc_reserve_malloc (c, 1)
 #define FREE_IN_DK_FREE(c) free (c)
+#endif
 
 
 void *
@@ -800,6 +818,8 @@ dk_alloc (size_t c)
       dk_n_bytes += align_sz;
     }
 #endif
+  if (dk_n_allocs > dk_n_max_allocs)
+    dk_n_max_allocs = dk_n_allocs;
 
   SET_END_MARK (thing, align_sz);
 
@@ -842,7 +862,9 @@ dk_try_alloc (size_t c)
 void
 dk_free (void *ptr, size_t sz)
 {
+#ifndef USE_TLSF
   ASSERT_NOT_IN_POOL (ptr);
+#endif
 #ifdef MEMDBG
   {
     size_t alloc_sz;
@@ -944,15 +966,25 @@ dk_check_end_marks (void)
 void
 dk_alloc_assert (void *ptr)
 {
+#ifndef USE_TLSF
   const char *err = dbg_find_allocation_error (ptr, NULL);
   if (err)
     GPF_T1 (err);
+#endif
 }
 
+#ifdef USE_TLSF
+extern tlsf_t * mdbg_tlsf;
+#endif
 
 void
 dk_memory_initialize (int do_malloc_cache)
 {
+#ifdef USE_TLSF
+  dk_tlsf_init ();
+  tlsf_mdbg_init ();
+    tlsf_set_comment (mdbg_tlsf, "mdbg");
+#endif
 #ifdef UNIX
   init_brk = (long) sbrk (0);
 #endif
@@ -1080,7 +1112,11 @@ new_allocs_after (int res_no)
 void *
 dk_alloc (size_t c)
 {
+#ifdef USE_TLSF
+  void * thing = tlsf_malloc (__FILE__, __LINE__, c, THREAD_CURRENT_THREAD);
+#else
   void *thing = dbg_malloc (__FILE__, __LINE__, c);
+#endif
   if (NULL == thing)
     {
       dbg_dump_mem();
@@ -1093,12 +1129,16 @@ dk_alloc (size_t c)
 void *
 dbg_dk_alloc (DBG_PARAMS size_t c)
 {
+#ifndef USE_TLSF
   void *thing = dbg_malloc (DBG_ARGS c);
   if (NULL == thing)
     {
       dbg_dump_mem();
       GPF_T1 ("Out of memory");
     }
+#else
+  void *thing = tlsf_malloc (DBG_ARGS c, THREAD_CURRENT_THREAD);
+#endif
   return thing;
 }
 
@@ -1107,14 +1147,22 @@ dbg_dk_alloc (DBG_PARAMS size_t c)
 void *
 dk_try_alloc (size_t c)
 {
+#ifdef USE_TLSF
+  return tlsf_malloc (__FILE__, __LINE__, c, THREAD_CURRENT_THREAD);
+#else
   return dbg_malloc (__FILE__, __LINE__, c);
+#endif
 }
 
 
 void *
 dbg_dk_try_alloc (DBG_PARAMS size_t c)
 {
+#ifdef USE_TLSF
+  return tlsf_malloc (DBG_ARGS c, THREAD_CURRENT_THREAD);
+#else
   return dbg_malloc (DBG_ARGS c);
+#endif
 }
 
 
@@ -1122,7 +1170,11 @@ dbg_dk_try_alloc (DBG_PARAMS size_t c)
 void
 dk_free (void *ptr, size_t sz)
 {
+#ifdef USE_TLSF
+  tlsf_free (ptr);
+#else
   dbg_free_sized (__FILE__, __LINE__, ptr, sz);
+#endif
 }
 #endif
 

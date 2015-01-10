@@ -59,7 +59,7 @@ map_resize (buffer_desc_t * buf, page_map_t ** pm_ret, int new_sz)
 {
   page_map_t *pm = *pm_ret;
   page_map_t *new_pm;
-#ifndef PM_TLSF
+#if 1
   new_pm = (page_map_t *) pm_get (buf, (new_sz));
 #ifdef VALGRIND
   new_pm->pm_entries[new_sz - 1] = 0xc0c0;	/* for valgrind */

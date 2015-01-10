@@ -401,13 +401,13 @@ xqi_cast (xp_instance_t * xqi, int slot, dtp_t dtp)
 	{
 	  xte_string_value_from_tree ((caddr_t *) val, XQI_ADDRESS (xqi, slot), DV_LONG_STRING);
 	  val = XQI_GET (xqi, slot);
-	  XQI_SET (xqi, slot, box_utf8_as_wide_char (val, NULL, strlen (val), 0, dtp));
+	  XQI_SET (xqi, slot, box_utf8_as_wide_char (val, NULL, strlen (val), 0));
 	}
       else if (DV_XML_ENTITY == val_dtp)
 	{
 	  xe_string_value_1 ((xml_entity_t *) val, XQI_ADDRESS (xqi, slot), DV_LONG_STRING);
 	  val = XQI_GET (xqi, slot);
-	  XQI_SET (xqi, slot, box_utf8_as_wide_char (val, NULL, strlen (val), 0, dtp));
+	  XQI_SET (xqi, slot, box_utf8_as_wide_char (val, NULL, strlen (val), 0));
 	}
       else if (DV_NUMERIC == val_dtp)
 	{
@@ -421,7 +421,7 @@ xqi_cast (xp_instance_t * xqi, int slot, dtp_t dtp)
 	    XQI_SET (xqi, slot, box_narrow_string_as_wide ((unsigned char *) tmp, NULL, -1, NULL, NULL, 0));
 	}
       else
-	XQI_SET (xqi, slot, box_utf8_as_wide_char (val, NULL, strlen (val), 0, dtp));
+	XQI_SET (xqi, slot, box_utf8_as_wide_char (val, NULL, strlen (val), 0));
       return (XQI_GET (xqi, slot));
     }
   GPF_T1 ("Bad target type in xqi_cast");
@@ -1236,8 +1236,7 @@ xslt_format_number (numeric_t value, caddr_t format, xslt_number_format_t * nf)
 {
   int currency_format = 0;
 
-  wchar_t *pattern = (wchar_t *) box_utf8_as_wide_char (format, NULL, strlen (format), 0,
-      DV_WIDE);
+  wchar_t *pattern = (wchar_t *) box_utf8_as_wide_char (format, NULL, strlen (format), 0);
 
   caddr_t res = NULL, res1;
   caddr_t res_prefix, res_suffix;
@@ -1278,7 +1277,7 @@ xslt_format_number (numeric_t value, caddr_t format, xslt_number_format_t * nf)
 
 #define LOAD_FROM_XSNF(varname,field_name) \
   memset (&c_state, 0, sizeof (c_state)); \
-  virt_mbrtowc (&varname, (utf8char *)nf->field_name, strlen (nf->field_name), &c_state);
+  virt_mbrtowc_z (&varname, (utf8char *)nf->field_name, strlen (nf->field_name), &c_state);
 
   LOAD_FROM_XSNF (digit, xsnf_digit);
   LOAD_FROM_XSNF (zero_digit, xsnf_zero_digit);
@@ -3874,7 +3873,7 @@ xqr_ready:
 	  {
 	    if (DV_STRINGP (val))
 	      {
-		val = box_utf8_as_wide_char (val, NULL, box_length (val), 0, DV_WIDE);
+		val = box_utf8_as_wide_char (val, NULL, box_length (val), 0);
 		if (NULL == val)
 		  sqlr_new_error ("22003", "SR476",
 		      "Out of memory allocation limits: %s() tries to return an abnormally long NVARCHAR", funname);
@@ -8522,14 +8521,14 @@ xn_init (xpath_node_t * xn, query_instance_t * qi)
     if (XPDV_NODESET == predicted)
       {
 	XN_QST_SET (xn, qst, xn->xn_output_val, DV_STRINGP (val) ?
-	    box_utf8_as_wide_char (val, NULL, box_length (val), 0, DV_WIDE) : box_copy_tree (val));
+	    box_utf8_as_wide_char (val, NULL, box_length (val), 0) : box_copy_tree (val));
 	save_xqi = 1;
       }
     else
       {
 	rc = SQL_SUCCESS;
 	XN_QST_SET (xn, qst, xn->xn_output_val, DV_STRINGP (val) ?
-	    box_utf8_as_wide_char (val, NULL, box_length (val), 0, DV_WIDE) : box_copy_tree (val));
+	    box_utf8_as_wide_char (val, NULL, box_length (val), 0) : box_copy_tree (val));
       }
     if (save_xqi)
       qst_set (qst, xn->xn_xqi, (caddr_t) xqi);
@@ -8607,7 +8606,7 @@ xn_next (xpath_node_t * xn, caddr_t * qst)
       }
     if (NULL != xn->xn_output_val)
       XN_QST_SET (xn, qst, xn->xn_output_val, DV_STRINGP (val) ?
-	  box_utf8_as_wide_char (val, NULL, box_length (val), 0, DV_WIDE) : box_copy_tree (val));
+	  box_utf8_as_wide_char (val, NULL, box_length (val), 0) : box_copy_tree (val));
   }
   QR_RESET_CODE
   {

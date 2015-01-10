@@ -826,14 +826,20 @@ sqlg_virtual_col_ssl (sqlo_t * so, op_virt_col_t * vc)
     return NULL;
 }
 
+int
+col_is_o_or_cset (dbe_column_t * col)
+{
+  return 0 != col->col_cset_iri || 0 == stricmp (col->col_name, "O");
+}
+
 
 state_slot_t *
 sqlg_rdf_text_check (df_elt_t * tb_dfe, text_node_t * txs, df_elt_t * col_dfe, state_slot_t * id_ssl, dk_set_t * code)
 {
   sql_comp_t *sc = tb_dfe->dfe_sqlo->so_sc;
-  if (tb_is_rdf_quad (tb_dfe->_.table.ot->ot_table))
+  if (tb_is_rdf_quad_or_cset (tb_dfe->_.table.ot->ot_table))
     {
-      if (id_ssl->ssl_column && 0 == stricmp (id_ssl->ssl_column->col_name, "O"))
+      if (id_ssl->ssl_column && col_is_o_or_cset (id_ssl->ssl_column))
 	{
 	  state_slot_t *id2 = sqlc_new_temp (sc, "ro_id", DV_LONG_INT);
 	  cv_call (code, NULL, t_sqlp_box_id_upcase ("ro_digest_id"), id2, (state_slot_t **) sc_list (1, id_ssl));
@@ -882,7 +888,90 @@ sqlg_geo_index_table (dbe_key_t * text_key, ST ** geo_args)
 	    sqlc_new_error (top_sc->sc_cc, "28008", "GEOTB", "No geo index table %s", inx_name);
 	}
     }
+  if (!text_key)
+    {
+      dbe_table_t *r_geo = sch_name_to_table (wi_inst.wi_schema, "DB.DBA.RDF_GEO");
+      if (!r_geo)
+	sqlc_new_error (top_sc->sc_cc, "NOGEO", "NOGEO", "RDF_GEO  table does not exist and no other geo inx table is given");
+      return r_geo;
+    }
   return text_key->key_geo_table;
+}
+
+
+
+
+void
+sqlg_cset_leading_text (sqlo_t * so, df_elt_t * tb_dfe, text_node_t * txs)
+{
+  /* text node, posg, then cset table on s. */
+  dbe_column_t *s_col, *cset_col;
+  df_elt_t *cset_col_dfe;
+  state_slot_t *s_ssl;
+  sql_comp_t *sc = so->so_sc;
+  op_table_t *ot = tb_dfe->_.table.ot;
+  dbe_key_t *key = tb_dfe->_.table.key;
+  dbe_column_t *col = (dbe_column_t *) key->key_parts->data;
+  df_elt_t *col_dfe = sqlo_df (so, t_listst (3, COL_DOTTED, ot->ot_new_prefix, col->col_name));
+  state_slot_t *text_id = sqlg_dfe_ssl (so, col_dfe);
+  {
+    dbe_table_t *rq = tb_dfe->_.table.ot->ot_table->tb_closest_cset->cset_rq_table;
+    key_source_t *ks = (key_source_t *) dk_alloc (sizeof (key_source_t));
+    SQL_NODE_INIT (table_source_t, ts, table_source_input, ts_free);
+    search_spec_t *sp1 = (search_spec_t *) dk_alloc (sizeof (search_spec_t));
+    search_spec_t *sp2 = (search_spec_t *) dk_alloc (sizeof (search_spec_t));
+    memzero (ks, sizeof (key_source_t));
+    memzero (sp1, sizeof (search_spec_t));
+    memzero (sp2, sizeof (search_spec_t));
+    clb_init (so->so_sc->sc_cc, &ts->clb, 1);
+    ts->ts_order_cursor = ssl_new_itc (sc->sc_cc);
+    cset_col_dfe = sqlo_df (so, tb_dfe->_.table.text_pred->_.text.args[0]);
+    if (DFE_COLUMN != cset_col_dfe->dfe_type)
+      sqlc_new_error (sc->sc_cc, "NGCOL", "NGCOL", "cset geo pred does not ref a col in the cset");
+    cset_col = cset_col_dfe->_.col.col;
+    ts->ts_order_ks = ks;
+    ks->ks_key = tb_px_key (rq, tb_name_to_column (rq, "O"));
+    ks->ks_spec.ksp_spec_array = sp1;
+    sp1->sp_min_op = CMP_EQ;
+    sp1->sp_min_ssl = ssl_new_constant (sc->sc_cc, t_box_iri_id (cset_col->col_cset_iri));
+    sp1->sp_col = tb_name_to_column (rq, "P");
+    sp1->sp_cl = *cl_list_find (ks->ks_key->key_key_fixed, sp1->sp_col->col_id);
+    sp1->sp_next = sp2;
+    sp2->sp_min_op = CMP_EQ;
+    sp2->sp_min_ssl = txs->txs_d_id;
+    sp2->sp_col = tb_name_to_column (rq, "O");
+    sp2->sp_cl = *cl_list_find (ks->ks_key->key_key_var, sp2->sp_col->col_id);
+    s_col = tb_name_to_column (rq, "S");
+    dk_set_push (&ks->ks_out_cols, (void *) s_col);
+    ts->ts_cardinality = 1;
+    ts->ts_inx_cardinality = 1;
+    ts->ts_cost = 2;
+    s_ssl = ssl_new_column (sc->sc_cc, "txs_s", s_col);
+    dk_set_push (&ks->ks_out_slots, (void *) s_ssl);
+    txs->src_gen.src_continuations = dk_set_cons ((void *) ts, NULL);
+    sqlg_ks_col_alter (ks);
+    table_source_om (sc->sc_cc, ts);
+  }
+}
+
+
+void
+sqlg_cset_leading_text_final (sqlo_t * so, df_elt_t * tb_dfe, table_source_t * ts)
+{
+  /* join between posg and the cset on s */
+  text_node_t *txs = tb_dfe->_.table.text_node;
+  table_source_t *posg_ts = (table_source_t *) qn_next ((data_source_t *) txs);
+  key_source_t *posg_ks = posg_ts->ts_order_ks;
+  key_source_t *ks = ts->ts_order_ks;
+  NEW_VARZ (search_spec_t, sp);
+  txs->txs_d_id = ssl_new_variable (so->so_sc->sc_cc, "d_id", DV_ANY);
+  ks->ks_spec.ksp_spec_array = sp;
+  sp->sp_min_op = CMP_EQ;
+  sp->sp_min_ssl = (state_slot_t *) posg_ks->ks_out_slots->data;
+  sp->sp_col = (dbe_column_t *) ks->ks_key->key_parts->data;
+  sp->sp_cl = *cl_list_find (ks->ks_key->key_row_var, sp->sp_col->col_id);
+  posg_ks->ks_spec.ksp_spec_array->sp_next->sp_min_ssl = txs->txs_d_id;
+  ks_set_search_params (so->so_sc->sc_cc, NULL, posg_ks);
 }
 
 
@@ -906,7 +995,11 @@ sqlg_text_node (sqlo_t * so, df_elt_t * tb_dfe, index_choice_t * ic)
   if (geo_args)
     txs->txs_geo = gtype;
   txs->txs_card = text_pred->dfe_arity;
-  if (tb_dfe->_.table.is_text_order && !ic)
+  if (tb_dfe->_.table.is_text_order && tb_dfe->_.table.ot->ot_table->tb_closest_cset)
+    {
+      sqlg_cset_leading_text (so, tb_dfe, txs);
+    }
+  else if (tb_dfe->_.table.is_text_order && !ic)
     {
       df_elt_t *text_pred = tb_dfe->_.table.text_pred;
       text_id = sqlc_new_temp (sc, "text_id", DV_LONG_INT);
@@ -919,7 +1012,7 @@ sqlg_text_node (sqlo_t * so, df_elt_t * tb_dfe, index_choice_t * ic)
     {
       dbe_column_t *col = (dbe_column_t *) text_key->key_parts->data;
       df_elt_t *col_dfe = sqlo_df (so, t_listst (3, COL_DOTTED, ot->ot_new_prefix, col->col_name));
-      if (geo_args && !tb_is_rdf_quad (tb_dfe->_.table.ot->ot_table))
+      if (geo_args && !tb_is_rdf_quad_or_cset (tb_dfe->_.table.ot->ot_table))
 	return;			/* After test in a sql table geo pred is a function call, no text node */
       text_id = sqlg_dfe_ssl (so, col_dfe);
       if (!tb_dfe->_.table.is_text_order)
@@ -930,7 +1023,7 @@ sqlg_text_node (sqlo_t * so, df_elt_t * tb_dfe, index_choice_t * ic)
   txs->txs_cached_string = ssl_new_variable (sc->sc_cc, "text_search_cached_exp_string", DV_SHORT_STRING);
   txs->txs_cached_compiled_tree = ssl_new_variable (sc->sc_cc, "text_search_cached_tree", DV_ARRAY_OF_POINTER);
   txs->txs_cached_dtd_config = ssl_new_variable (sc->sc_cc, "text_search_dtd_config", DV_ARRAY_OF_POINTER);
-  if (ot->ot_table && tb_is_rdf_quad (ot->ot_table))
+  if (ot->ot_table && tb_is_rdf_quad_or_cset (ot->ot_table))
     txs->txs_is_rdf = 1;
   txs->txs_tie = text_pred->_.text.tie;
   if (txs->txs_tie)
@@ -1556,7 +1649,7 @@ ts_add_cset (sql_comp_t * sc, df_elt_t * tb_dfe, table_source_t * ts)
     csts->csts_scalar_ssls[inx] = ssl_new_variable (sc->sc_cc, "_cset_scalar", DV_ANY);
   for (inx = 0; inx < n_places; inx++)
     csts->csts_qi_places[inx] = cc_new_instance_slot (sc->sc_cc);
-  n_sets = ht->ht_count + n_opts + 3;
+  n_sets = ht->ht_count * 3 + n_opts + 4;
   csts->csts_qi_sets = (ssl_index_t *) dk_alloc_box (sizeof (ssl_index_t) * n_sets, DV_BIN);
   for (inx = 0; inx < n_sets; inx++)
     csts->csts_qi_sets[inx] = cc_new_instance_slot (sc->sc_cc);
@@ -1720,7 +1813,11 @@ sqlg_make_np_ts (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * pre_code)
   ts->ts_inx_cardinality = tb_dfe->_.table.inx_card;
   so->so_sc->sc_order = ord;
   if (tb_dfe->_.table.ot->ot_table->tb_closest_cset)
-    ts_add_cset (sc, tb_dfe, ts);
+    {
+      if (tb_dfe->_.table.is_text_order)
+	sqlg_cset_leading_text_final (so, tb_dfe, ts);
+      ts_add_cset (sc, tb_dfe, ts);
+    }
   if (TS_CSET_POSG == tb_dfe->_.table.cset_role)
     ts_add_cset_posg (sc, tb_dfe, ts);
   if (sc->sc_gen_rdf_rd_sec)
@@ -1756,15 +1853,132 @@ hs_make_signature (setp_node_t * setp, dbe_table_t * tb)
   return hsi;
 }
 
+data_source_t *sqlg_hash_source (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * pre_code);
+
+
+data_source_t *
+sqlg_make_temp_ts (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * pre_code)
+{
+  sql_comp_t *sc = so->so_sc;
+  dk_set_t refs = NULL;
+  dbe_key_t *key = tb_dfe->_.table.key;
+  dbe_table_t *tb = tb_dfe->_.table.ot->ot_table;
+  int nth = 0;
+  dk_set_t out_slots = NULL, out_cols = NULL;
+  DO_SET (dbe_column_t *, col, &key->key_parts)
+  {
+    df_elt_t *cp = sqlo_key_part_best (col, tb_dfe->_.table.col_preds, 0);
+    if (!cp || !PRED_IS_EQ (cp))
+      break;
+    NCONCF1 (refs, cp->_.bin.right);
+    if (++nth == key->key_n_significant)
+      {
+	tb_dfe->_.table.hash_refs = refs;
+	return sqlg_hash_source (so, tb_dfe, pre_code);
+      }
+  }
+  END_DO_SET ();
+  /* not an eq by pk, scan like a gby temp */
+  {
+    SQL_NODE_INIT (table_source_t, ts, table_source_input, ts_free);
+    {
+      NEW_VARZ (key_source_t, ks);
+      ts->ts_order_ks = ks;
+      ks->ks_key = tb_dfe->_.table.key;
+      ks->ks_row_check = itc_row_check;
+      ks->ks_set_no = sc->sc_is_single_state ? NULL : sc->sc_set_no_ssl;
+      DO_SET (df_elt_t *, out, &tb_dfe->_.table.out_cols)
+      {
+	state_slot_t *ssl = sqlg_dfe_ssl (so, out);
+	NCONCF1 (out_slots, ssl);
+	NCONCF1 (out_cols, out->_.col.col);
+      }
+      END_DO_SET ();
+
+      if (tb->tb_set_no_in_key)
+	{
+	  ks->ks_set_no_col_ssl = ssl_new_variable (sc->sc_cc, "gb_set_no", DV_LONG_INT);
+	  dk_set_push (&out_slots, (void *) ks->ks_set_no_col_ssl);
+	  t_set_push (&out_cols, (void *) 0);
+	}
+      DO_SET (state_slot_t *, ssl, &out_slots)
+      {
+	ssl->ssl_type = SSL_VEC;
+	ssl->ssl_always_vec = 1;
+      }
+      END_DO_SET ();
+      ks->ks_out_cols = out_cols;
+      ks->ks_out_slots = out_slots;
+      ks->ks_from_temp_tree = tb->tb_temp_ssl;
+      ts->src_gen.src_input = (qn_input_fn) chash_read_input;
+      ts->clb.clb_nth_set = cc_new_instance_slot (sc->sc_cc);
+      ks->ks_pos_in_temp = cc_new_instance_slot (sc->sc_cc);
+      ks->ks_nth_cha_part = cc_new_instance_slot (sc->sc_cc);
+      ks->ks_cha_chp = cc_new_instance_slot (sc->sc_cc);
+    }
+
+    return ((data_source_t *) ts);
+  }
+}
+
 
 data_source_t *
 sqlg_make_ts (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * pre_code)
 {
   so->so_sc->sc_is_rdf_type_p = dfe_is_rdf_type_p (tb_dfe);
-  if (tb_dfe->_.table.index_path)
+  data_source_t *qn;
+  if (tb_dfe->_.table.ot->ot_table->tb_is_temp)
+    return sqlg_make_temp_ts (so, tb_dfe, pre_code);
+  else if (tb_dfe->_.table.index_path)
     return sqlg_make_path_ts (so, tb_dfe);
   else
     return sqlg_make_np_ts (so, tb_dfe, pre_code);
+}
+
+
+data_source_t *
+sqlg_ts_exec_opt (sqlo_t * so, df_elt_t * tb_dfe, data_source_t * last_qn)
+{
+  /* table option execute as part of trans statement.  queries in the exec block have tb_dfe as previous dfg stage */
+  QNCAST (table_source_t, ts, last_qn);
+  end_node_t *en2;
+  sql_comp_t *sc = so->so_sc;
+  ST *stmt = (ST *) sqlo_opt_value (tb_dfe->_.table.ot->ot_opts, OPT_EXECUTE);
+  if (stmt && !IS_QN (ts, chash_read_input))
+    sqlc_new_error (sc->sc_cc, "SCEXE", "SCEXE", "Scan execute option is only allowed after a trans temp  scan");
+  if (stmt)
+    {
+      int n_cols;
+      gb_op_t *save_go = sc->sc_in_group_by_exec;
+      NEW_VAR (trans_read_t, trr);
+      NEW_VARZ (gb_op_t, go);
+      SQL_PROC_SAVE;
+      memzero (trr, sizeof (trans_read_t));
+      go->go_op = AMMSC_TRANS_SCAN;
+      go->go_exec_rows = ssl_new_vec (sc->sc_cc, "trans_scan_rows", DV_LONG_INT);
+      go->go_exec_base_set = ssl_new_constant (sc->sc_cc, NULL);
+      go->go_exec_ssls = (state_slot_t **) dk_alloc_box_zero (sizeof (caddr_t) * n_cols, DV_BIN);
+      trr->trr_rows_dc = go->go_exec_rows;
+      ts->ts_trans_read = trr;
+      sqlg_sdfg_empty_qf (sc, last_qn);
+      go->go_temp_table = tb_dfe->_.table.ot->ot_table;
+      n_cols = dk_set_length (go->go_temp_table->tb_primary_key->key_parts);
+      {
+	SQL_NODE_INIT (end_node_t, en, end_node_input, NULL);
+	sc->sc_in_trans_clause = 1;
+	sc->sc_in_group_by_exec = go;
+	sc->sc_cc->cc_query->qr_proc_vectored = QR_VEC_STMT;
+	sqlc_compound_stmt (sc, stmt, NULL);
+	en->src_gen.src_pre_code = code_to_cv (sc, sc->sc_routine_code);
+	sc->sc_in_trans_clause = 0;
+	sc->sc_in_group_by_exec = save_go;
+	last_qn->src_continuations = CONS (en, NULL);
+	en2 = en;
+	SQL_PROC_RESTORE;
+	return en2;
+      }
+    }
+  return last_qn;
 }
 
 
@@ -1938,6 +2152,7 @@ sqlg_hash_filler_dt (sqlo_t * so, df_elt_t * dt_dfe, subq_source_t * sqs)
   caddr_t *opts = ref ? (DFE_DT == ref->dfe_type ? ref->_.sub.ot->ot_opts : ref->_.table.ot->ot_opts) : NULL;
   int decl_unq = sqlo_opt_value (opts, OPT_HASH_UNIQUE);
   int decl_no_drop = sqlo_opt_value (opts, OPT_HASH_NO_DROP);
+  int sec_except = sqlo_opt_value (opts, OPT_SEC_EXCEPT);
   if (dt_dfe->_.sub.gby_hash_filler)
     {
       /* the dt has a group by.  The group by serves as hash build side.  The hash is not partitionable. */
@@ -2034,6 +2249,7 @@ sqlg_hash_filler_dt (sqlo_t * so, df_elt_t * dt_dfe, subq_source_t * sqs)
     fref->fnr_select = head;
     fref->fnr_select_nodes = sqlg_continue_list (head);
     fref->fnr_setp = setp;
+    fref->fnr_sec_reverse = sec_except;
     setp->setp_ht_no_drop |= decl_no_drop;
     setp->setp_fref = fref;
     if (enable_par_fill && enable_chash_join && enable_qp > 1)
@@ -2072,11 +2288,22 @@ hash_source_free (hash_source_t * hs)
 
 
 static void
-setp_ha_find_col (setp_node_t * setp, dbe_column_t * col, dbe_col_loc_t * ret_loc, ptrlong * ret_idx)
+setp_ha_find_col (setp_node_t * setp, df_elt_t * tb_dfe, dbe_column_t * col, dbe_col_loc_t * ret_loc, ptrlong * ret_idx)
 {
   /* get the col loc in the hash temp which corresponds to this col of the table */
-  int nth = 0;
-  int n_keys = dk_set_length (setp->setp_keys);
+  int nth = 0, n_keys;
+  if (!setp)
+    {
+      /* named temp hash */
+      dbe_key_t *key = tb_dfe->_.table.ot->ot_table->tb_primary_key;
+      int pos = dk_set_position (key->key_parts, col);
+      if (-1 == pos)
+	SQL_GPF_T1 (top_sc->sc_cc, "no col in temp table");
+      *ret_idx = pos;
+      *ret_loc = *key_find_cl (key, col->col_id);
+      return;
+    }
+  n_keys = dk_set_length (setp->setp_keys);
   DO_SET (state_slot_t *, ssl, &setp->setp_keys)
   {
     if (ssl->ssl_column == col)
@@ -2169,6 +2396,8 @@ setp_node_t *
 sqlg_tb_hash_filler (df_elt_t * tb_dfe)
 {
   df_elt_t *filler;
+  if (!tb_dfe->_.table.hash_filler)
+    return NULL;
   if (!tb_dfe->_.table.hash_filler_reuse)
     return tb_dfe->_.table.ot->ot_hash_filler;
   filler = tb_dfe->_.table.hash_filler;
@@ -2178,6 +2407,43 @@ sqlg_tb_hash_filler (df_elt_t * tb_dfe)
   return NULL;
 }
 
+
+int
+key_non_null (dbe_key_t * key)
+{
+  DO_SET (dbe_column_t *, col, &key->key_parts) if (!col->col_sqt.sqt_non_null)
+    return 0;
+  END_DO_SET ();
+  return 1;
+}
+
+
+void
+sqlg_temp_hs_ha (sql_comp_t * sc, dbe_table_t * tb, hash_area_t * ha)
+{
+  int n_slots = dk_set_length (tb->tb_primary_key->key_parts), inx;
+  memzero (ha, sizeof (hash_area_t));
+  ha->ha_key = tb->tb_primary_key;
+  ha->ha_n_keys = tb->tb_primary_key->key_n_significant;
+  ha->ha_ch_len = sizeof (int64) * n_slots;
+  ha->ha_tree = tb->tb_temp_ssl;
+  ha->ha_key_cols = (dbe_col_loc_t *) dk_alloc_box_zero ((n_slots + 1) * sizeof (dbe_col_loc_t), DV_BIN);
+  for (inx = 0; inx < n_slots; inx++)
+    {
+      dbe_col_loc_t *cl = key_find_cl (ha->ha_key, inx + 1);
+      ha->ha_key_cols[inx] = cl[0];
+    }
+  if (key_non_null (tb->tb_primary_key))
+    {
+      ha->ha_ch_nn_flags = 0;
+    }
+  else
+    {
+      ha->ha_ch_nn_flags = ha->ha_ch_len;
+      ha->ha_ch_len += ALIGN_8 ((n_slots)) / 8;
+    }
+  ha->ha_ch_len = ALIGN_8 (ha->ha_ch_len);
+}
 
 data_source_t *
 sqlg_hash_source (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * pre_code)
@@ -2190,20 +2456,23 @@ sqlg_hash_source (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * pre_code)
   int inx = 0;
   dk_set_t col_refs = NULL;
   dk_set_t ref_slots = NULL, out_slots = NULL;
-  int is_fill_dt = DFE_DT == tb_dfe->_.table.hash_filler->dfe_type;
   op_table_t *ot = tb_dfe->_.table.ot;
+  int is_fill_dt = tb_dfe->_.table.hash_filler && DFE_DT == tb_dfe->_.table.hash_filler->dfe_type;
   setp_node_t *setp = sqlg_tb_hash_filler (tb_dfe);
-  hash_area_t *ha = setp->setp_ha;
+  hash_area_t *ha = setp ? setp->setp_ha : NULL;
   SQL_NODE_INIT (hash_source_t, hs, hash_source_input, hash_source_free);
   hs->hs_cardinality = tb_dfe->dfe_arity;
-  hs->hs_filler = setp->setp_fref;
-  hs->hs_part_min = hs->hs_filler->fnr_hash_part_min;
-  hs->hs_part_max = hs->hs_filler->fnr_hash_part_max;
-  hs->hs_no_partition = dfe_is_in_hash_filler (tb_dfe);
-  hs->hs_cl_part_opt = sqlo_opt_value (ot->ot_opts, OPT_HASH_REPLICATION) ? HS_CL_REPLICATED
-      : sqlo_opt_value (ot->ot_opts, OPT_HASH_PARTITION) ? HS_CL_PART : 0;
-  if (tb_dfe->_.table.hash_need_colocate)
-    hs->hs_cl_part_opt = HS_CL_REPLICATED;
+  if (setp)
+    {
+      hs->hs_filler = setp->setp_fref;
+      hs->hs_part_min = hs->hs_filler->fnr_hash_part_min;
+      hs->hs_part_max = hs->hs_filler->fnr_hash_part_max;
+      hs->hs_no_partition = dfe_is_in_hash_filler (tb_dfe);
+      hs->hs_cl_part_opt = sqlo_opt_value (ot->ot_opts, OPT_HASH_REPLICATION) ? HS_CL_REPLICATED
+	  : sqlo_opt_value (ot->ot_opts, OPT_HASH_PARTITION) ? HS_CL_PART : 0;
+      if (tb_dfe->_.table.hash_need_colocate)
+	hs->hs_cl_part_opt = HS_CL_REPLICATED;
+    }
   hs->clb.clb_fill = cc_new_instance_slot (so->so_sc->sc_cc);
   hs->hs_current_inx = cc_new_instance_slot (so->so_sc->sc_cc);
   hs->hs_saved_hmk = cc_new_instance_slot (so->so_sc->sc_cc);
@@ -2222,10 +2491,19 @@ sqlg_hash_source (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * pre_code)
   }
   END_DO_SET ();
   ref_slots = dk_set_nreverse (ref_slots);
-  memcpy (ha_copy, ha, sizeof (hash_area_t));
-  ha_copy->ha_slots = (state_slot_t **) dk_set_to_array (ref_slots);
-  ha_copy->ha_key_cols = (dbe_col_loc_t *) box_copy ((caddr_t) ha->ha_key_cols);
-  ha_copy->ha_cols = NULL;
+  if (setp)
+    {
+      memcpy (ha_copy, ha, sizeof (hash_area_t));
+      ha_copy->ha_slots = (state_slot_t **) dk_set_to_array (ref_slots);
+      ha_copy->ha_non_null = box_copy (ha->ha_non_null);
+      ha_copy->ha_key_cols = (dbe_col_loc_t *) box_copy ((caddr_t) ha->ha_key_cols);
+      ha_copy->ha_cols = NULL;
+    }
+  else
+    {
+      sqlg_temp_hs_ha (sc, tb_dfe->_.table.ot->ot_table, ha_copy);
+      hs->hs_cl_id = tb_dfe->_.table.ot->ot_table->tb_temp_id_ssl;
+    }
   hs->hs_ref_slots = (state_slot_t **) list_to_array (ref_slots);
   hs->hs_ha = ha_copy;
   if (enable_chash_join)
@@ -2242,8 +2520,8 @@ sqlg_hash_source (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * pre_code)
 	    setp_ha_find_col_ref (setp, ref_name, &cl, &nth);
 	  }
 	else
-	  setp_ha_find_col (setp, out->_.col.col, &cl, &nth);
-	if (nth < ha->ha_n_keys)
+	  setp_ha_find_col (setp, tb_dfe, out->_.col.col, &cl, &nth);
+	if (nth < ha_copy->ha_n_keys)
 	  {
 	    if (2 == tb_dfe->_.table.is_right_oj)
 	      t_set_push (&roj_key_out, (void *) ssl);
@@ -2286,7 +2564,7 @@ sqlg_hash_source (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * pre_code)
 	    setp_ha_find_col_ref (setp, ref_name, hs->hs_out_cols + inx, hs->hs_out_cols_indexes + inx);
 	  }
 	else
-	  setp_ha_find_col (setp, out->_.col.col, hs->hs_out_cols + inx, hs->hs_out_cols_indexes + inx);
+	  setp_ha_find_col (setp, tb_dfe, out->_.col.col, hs->hs_out_cols + inx, hs->hs_out_cols_indexes + inx);
 	inx++;
       }
       END_DO_SET ();
@@ -2396,6 +2674,7 @@ sqlg_make_dt_hash_ref (sqlo_t * so, df_elt_t * tb_dfe, ST ** target_names, dk_se
   ref_slots = dk_set_nreverse (ref_slots);
   memcpy (ha_copy, ha, sizeof (hash_area_t));
   ha_copy->ha_slots = (state_slot_t **) dk_set_to_array (ref_slots);
+  ha_copy->ha_non_null = box_copy (ha->ha_non_null);
   ha_copy->ha_key_cols = (dbe_col_loc_t *) box_copy ((caddr_t) ha->ha_key_cols);
   ha_copy->ha_cols = NULL;
   hs->hs_ref_slots = (state_slot_t **) list_to_array (ref_slots);
@@ -2573,8 +2852,88 @@ sqlg_proc_table_params (sqlo_t * so, df_elt_t * dt_dfe, dk_set_t * precompute)
 }
 
 
+void
+sqlg_proc_table_opts (sqlo_t * so, tvf_node_t * tvf, op_table_t * ot, dk_set_t * pre_code)
+{
+  int inx1, inx2;
+  ST ***values = (ST ***) sqlo_opt_value (ot->ot_opts, OPT_VALUES);
+  if (!values)
+    return;
+  int n = BOX_ELEMENTS (values);
+  int nr = BOX_ELEMENTS (values[0]);
+  state_slot_t **ssls = (state_slot_t **) dk_alloc_box_zero (n * nr * sizeof (caddr_t), DV_BIN);
+  int fill = 0;
+  DO_BOX (ST **, vals, inx1, values) DO_BOX (ST *, val, inx2, vals) ssls[fill++] = scalar_exp_generate (so->so_sc, val, pre_code);
+  END_DO_BOX;
+  END_DO_BOX;
+  tvf->tvf_values = ssls;
+}
+
+
+void
+tvf_free (tvf_node_t * tvf)
+{
+  dk_free_box ((caddr_t) tvf->tvf_out_slots);
+  dk_free_box ((caddr_t) tvf->tvf_params);
+  dk_free_box ((caddr_t) tvf->tvf_values);
+}
+
 data_source_t *
-sqlg_generate_proc_ts (sqlo_t * so, df_elt_t * dt_dfe, dk_set_t * precompute)
+sqlg_tvf (sqlo_t * so, df_elt_t * dt_dfe, dk_set_t * precompute)
+{
+  ptrlong out_ctr = 3;
+  state_slot_t **params = NULL;
+  int inx;
+  op_table_t *ot = dfe_ot (dt_dfe);
+  ST **values = (ST **) sqlo_opt_value (ot->ot_opts, OPT_VALUES);
+  ST *tree = dt_dfe->_.sub.ot->ot_dt;
+  sql_comp_t *sc = so->so_sc;
+  dk_set_t out_slots = NULL, blob_to_string_code = NULL;
+  caddr_t blob_to_string_func = t_sqlp_box_id_upcase ("blob_to_string");
+  state_slot_t *ssl;
+  state_slot_t *ssl_1 = ssl_new_constant (sc->sc_cc, t_box_num (1));
+  SQL_NODE_INIT (tvf_node_t, tvf, tvf_node_input, tvf_free);
+
+  for (inx = 0; inx < (int) BOX_ELEMENTS (tree->_.proc_table.cols); inx += 2)
+    {
+      df_elt_t *col_df;
+      if (!tree->_.proc_table.cols[inx])
+	continue;
+      if (0 == strcmp ((caddr_t) tree->_.proc_table.cols[inx], "_IDN"))
+	continue;
+      col_df = sqlo_df (so, t_listst (3, COL_DOTTED, ot->ot_new_prefix, tree->_.proc_table.cols[inx]));
+      ssl = sqlg_dfe_ssl (so, col_df);
+      ddl_type_to_sqt (&(ssl->ssl_sqt), ((caddr_t ***) tree->_.proc_table.cols)[inx + 1][0]);
+      NCONCF1 (out_slots, ssl);
+      if (ssl && IS_BLOB_DTP (ssl->ssl_dtp) && !ssl->ssl_sqt.sqt_is_xml)
+	cv_call (&blob_to_string_code, NULL, blob_to_string_func, ssl, (state_slot_t **) /*list */ sc_list (2, ssl, ssl_1));
+    }
+  params = sqlg_proc_table_params (so, dt_dfe, precompute);
+  sqlg_proc_table_opts (so, tvf, ot, precompute);
+  DO_BOX (caddr_t, param, inx, tree->_.proc_table.params)
+  {
+    df_elt_t *col_df;
+    state_slot_t *ssl;
+    col_df = sqlo_df (so, t_listst (3, COL_DOTTED, ot->ot_new_prefix, param));
+    ssl = sqlg_dfe_ssl (so, col_df);
+    if (ssl && params[inx])
+      {
+	cv_artm (precompute, (ao_func_t) box_identity, ssl, params[inx], NULL);
+	ssl->ssl_sqt = params[inx]->ssl_sqt;
+      }
+  }
+  END_DO_BOX;
+  tvf->tvf_params = params;
+  tvf->tvf_out_slots = list_to_array (out_slots);
+  tvf->src_gen.src_after_test = sqlg_pred_body_1 (so, dt_dfe->_.sub.after_join_test, blob_to_string_code);
+  tvf->tvf_ctr = cc_new_instance_slot (sc->sc_cc);
+  tvf->tvf_nth_set = cc_new_instance_slot (sc->sc_cc);
+  return (data_source_t *) tvf;
+}
+
+
+data_source_t *
+sqlg_generate_proc_ts_1 (sqlo_t * so, df_elt_t * dt_dfe, dk_set_t * precompute)
 {
   ptrlong out_ctr = 3;
   state_slot_t **params = NULL;
@@ -2663,6 +3022,17 @@ sqlg_generate_proc_ts (sqlo_t * so, df_elt_t * dt_dfe, dk_set_t * precompute)
   ts->src_gen.src_after_test = sqlg_pred_body_1 (so, dt_dfe->_.sub.after_join_test, blob_to_string_code);
   return (data_source_t *) ts;
 }
+
+
+data_source_t *
+sqlg_generate_proc_ts (sqlo_t * so, df_elt_t * dt_dfe, dk_set_t * precompute)
+{
+  ST ***vals = (ST ***) sqlo_opt_value (dt_dfe->_.sub.ot->ot_opts, OPT_VALUES);
+  if (vals)
+    return sqlg_tvf (so, dt_dfe, precompute);
+  return sqlg_generate_proc_ts_1 (so, dt_dfe, precompute);
+}
+
 
 int enable_inline_sqs = 1;
 
@@ -3364,6 +3734,22 @@ sqlg_dfe_code (sqlo_t * so, df_elt_t * dfe, dk_set_t * code, int succ, int fail,
 	qr->qr_select_node->sel_vec_role = SEL_VEC_SCALAR;
 	qr->qr_select_node->sel_is_scalar_agg = sc->sc_is_scalar_agg;
 	qr->qr_select_node->sel_vec_set_mask = cc_new_instance_slot (sc->sc_cc);
+	sqlg_parallel_ts_seq (sc, dfe, (table_source_t *) qr->qr_head_node, NULL, qr->qr_select_node);
+	dk_set_push (&sc->sc_cc->cc_query->qr_subq_queries, qr);
+	break;
+      }
+    case DFE_DT:
+      {
+	/* select for effect &in a trans clause */
+	char old_colo = so->so_sc->sc_delay_colocate;
+	int old_ord = so->so_sc->sc_order;
+	query_t *qr;
+	df_elt_t *org_dfe;
+	so->so_sc->sc_order = TS_ORDER_NONE;
+	qr = sqlg_dt_query (so, dfe, NULL, (ST **) t_list (0));	/* this is to prevent assignment of NULL to constant ssl */
+	cv_subq_qr (sc, code, qr);
+	so->so_sc->sc_order = old_ord;
+	so->so_sc->sc_delay_colocate = old_colo;
 	sqlg_parallel_ts_seq (sc, dfe, (table_source_t *) qr->qr_head_node, NULL, qr->qr_select_node);
 	dk_set_push (&sc->sc_cc->cc_query->qr_subq_queries, qr);
 	break;
@@ -4502,6 +4888,16 @@ sqlg_parallel_ts_seq (sql_comp_t * sc, df_elt_t * dt_dfe, table_source_t * ts, f
 	  ts->ts_qf = sc->sc_qf;
 	  prev_ts = ts;
 	}
+      if (is_sdfg && IS_QN (ts, chash_read_input) && ts->ts_is_bsp_reader)
+	{
+	  ts->ts_part_gby_reader = 1;
+	  ts->ts_aq_state = cc_new_instance_slot (sc->sc_cc);
+	  ts->ts_aq_qis = qi_ssl;
+	  ts->clb.clb_itcl = sdfg_itcl;
+	  ts->ts_in_sdfg = sdfg_state;
+	  ts->ts_qf = sc->sc_qf;
+	  prev_ts = ts;
+	}
       if (is_sdfg && IS_QN (ts, setp_node_input))
 	{
 	  if (fref)
@@ -4599,6 +4995,7 @@ ha_copy (hash_area_t * ha)
   NEW_VARZ (hash_area_t, ha_copy);
   memcpy (ha_copy, ha, sizeof (hash_area_t));
   BOXC (ha_copy->ha_slots);
+  BOXC (ha_copy->ha_non_null);
   BOXC (ha_copy->ha_key_cols);
   ha_copy->ha_cols = NULL;
   return ha_copy;
@@ -4962,8 +5359,10 @@ sqlg_fref_qp (sql_comp_t * sc, fun_ref_node_t * fref, df_elt_t * dt_dfe)
 	  || qn_is_hash_fill ((data_source_t *) ts)
 	  || qn_is_iter ((data_source_t *) ts) || IS_QN (ts, subq_node_input) || IS_QN (ts, txs_input))
 	continue;
-      if (IS_TS (ts))
+      if (IS_TS (ts) || (IS_QN (ts, setp_node_input) && ((setp_node_t *) ts)->setp_partitioned))
 	{
+	  if (!IS_TS (first_ts) && !sc->sc_qf)
+	    sqlg_sdfg_empty_qf (sc, fref->fnr_select);
 	  sqlg_parallel_ts_seq (sc, dt_dfe, first_ts, fref, NULL);
 	  return;
 	}
@@ -5114,6 +5513,40 @@ sqlg_top_gby_nth_col (df_elt_t * dt_dfe, setp_node_t * setp)
 
 
 void
+sqlg_gby_exec (sqlo_t * so, df_elt_t * dt_dfe, setp_node_t * setp)
+{
+  sql_comp_t *sc = so->so_sc;
+  ST *exec = (ST *) sqlo_opt_value (dt_dfe->_.sub.ot->ot_opts, GROUP_BY_EXEC);
+  if (exec)
+    {
+      SQL_PROC_SAVE;
+      int n_cols;
+      dbe_table_t *tmp_tb = so_name_to_temp_table (so, exec->_.gb_ext.table);
+      NEW_VARZ (gb_op_t, go);
+      sc->sc_in_group_by_exec = go;
+      if (tmp_tb->tb_primary_key->key_partition)
+	{
+	  setp->setp_partitioned = 1;
+	  setp->setp_ht_id = tmp_tb->tb_temp_id_ssl;
+	}
+      n_cols = dk_set_length (tmp_tb->tb_primary_key->key_parts);
+      dk_set_push (&setp->setp_gb_ops, (void *) go);
+      go->go_op = AMMSC_EXEC;
+      go->go_temp_table = tmp_tb;
+      go->go_exec_base_set = ssl_new_variable (sc->sc_cc, "base_set", DV_LONG_INT);
+      go->go_exec_base_set->ssl_qr_global = 1;
+      go->go_exec_rows = ssl_new_variable (sc->sc_cc, "gby_rows", DV_LONG_INT);
+      go->go_exec_ssls = (state_slot_t **) dk_alloc_box_zero (sizeof (caddr_t) * n_cols, DV_BIN);
+      sqlc_compound_stmt (so->so_sc, exec->_.gb_ext.stmt, NULL);
+      go->go_ua_acc_setp_call = code_to_cv (sc, sc->sc_routine_code);
+      SQL_PROC_RESTORE;
+
+      sc->sc_in_group_by_exec = NULL;
+    }
+}
+
+
+void
 sqlg_make_sort_nodes (sqlo_t * so, data_source_t ** head, ST ** order_by,
     state_slot_t ** ssl_out, df_elt_t * tb_dfe, int is_gb, dk_set_t o_code, df_elt_t * oby, ST ** selection)
 {
@@ -5259,6 +5692,7 @@ sqlg_make_sort_nodes (sqlo_t * so, data_source_t ** head, ST ** order_by,
 		setp->setp_is_streaming = 1;
 		setp->setp_streaming_ssl = scalar_exp_generate (sc, oby->_.setp.order_col->dfe_tree, &code);
 	      }
+	    sqlg_gby_exec (so, tb_dfe, setp);
 	    DO_SET (ST *, fref, &tb_dfe->_.table.ot->ot_fun_refs)
 	    {
 	      state_slot_t *aggregate;
@@ -6731,6 +7165,7 @@ sqlg_dt_query_1 (sqlo_t * so, df_elt_t * dt_dfe, query_t * ext_query, ST ** targ
 		    last_qn = dfe->_.table.xpath_node;
 		  else if (dfe->_.table.text_node && !dfe->_.table.is_text_order)
 		    last_qn = dfe->_.table.text_node;
+		  last_qn = sqlg_ts_exec_opt (so, dfe, last_qn);
 		}
 	      else if (DFE_DT == dfe->dfe_type)
 		{
@@ -7253,7 +7688,10 @@ sqlg_top_1 (sqlo_t * so, df_elt_t * dfe, state_slot_t *** sel_out_ret)
     sqlg_parallel_ts_seq (so->so_sc, dfe, (table_source_t *) so->so_sc->sc_cc->cc_query->qr_head_node, NULL, NULL);
   sqlg_set_no_if_needed (so->so_sc, &so->so_sc->sc_cc->cc_query->qr_head_node);
   if (so->so_sc->sc_gen_rdf_rd_sec)
-    so->so_sc->sc_cc->cc_query->qr_need_cli_sec = 1;
+    {
+      so->so_sc->sc_cc->cc_query->qr_need_cli_sec = 1;
+      top_sc->sc_cc->cc_query->qr_need_cli_sec = 1;
+    }
   if (so->so_sc->sc_any_clb)
     {
       so->so_sc->sc_sel_out = sel_out_ret ? *sel_out_ret : NULL;

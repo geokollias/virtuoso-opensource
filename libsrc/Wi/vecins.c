@@ -224,9 +224,9 @@ itc_new_seq_col (it_cursor_t * itc, buffer_desc_t * buf, caddr_t seq_box)
   {
     if (DV_LONG_INT == DV_TYPE_OF (seq_box))
       {
-	uint32 seq_no = unbox (seq_box) / 4;
+	uint32 seq_no = unbox (seq_box) & ~BF_N_IRI;
 	int64 log_id;
-	if (seq_no < 1)
+	if (seq_no <= BF_UTF8)
 	  goto named_iri;
 	res = ir_new_id (itc->itc_out_state, seq_no, &log_id);
 	if (REPL_NO_LOG != itc->itc_ltrx->lt_replicate)
@@ -247,6 +247,8 @@ itc_new_seq_col (it_cursor_t * itc, buffer_desc_t * buf, caddr_t seq_box)
 	caddr_t err = NULL;
 	if (CL_RUN_LOCAL == cl_run_local_only)
 	  res = sequence_next_inc (seq_box, OUTSIDE_MAP, 1);
+	if (!strcmp (seq_box, "RDF_RO_ID"))
+	  seq_dbg_log (seq_box, res, 0);
 	if (err)
 	  sqlr_resignal (err);
 	log_sequence (itc->itc_ltrx, seq_box, res + 1);
@@ -292,11 +294,13 @@ itc_ins_fetch (it_cursor_t * itc, buffer_desc_t * buf, insert_node_t * ins, int 
     }
   else
     {
+      QNCAST (QI, qi, itc->itc_out_state);
+      int save = qi->qi_set;
       int icol;
       int64 res;
       caddr_t seq_box;
       dtp_t dtp;
-      ((QI *) inst)->qi_set = itc->itc_param_order[itc->itc_set];
+      qi->qi_set = itc->itc_param_order[itc->itc_set];
       seq_box = qst_get (inst, ins->ins_seq_name);
       dtp = DV_TYPE_OF (seq_box);
       if (dtp != DV_STRING && dtp != DV_LONG_INT)
@@ -308,6 +312,7 @@ itc_ins_fetch (it_cursor_t * itc, buffer_desc_t * buf, insert_node_t * ins, int 
       icol = key_col_in_layout_seq (itc->itc_insert_key, ins->ins_seq_col);
       rd->rd_values[icol] = IS_INT_DTP (ins->ins_seq_col->col_sqt.sqt_dtp) ? mp_box_num (mp, res) : mp_box_iri_id (mp, res);
       ret = 0;
+      qi->qi_set = save;
     }
   dc = QST_BOX (data_col_t *, inst, ins->ins_fetch_flag->ssl_index);
   if (!dc || !(DCT_NUM_INLINE & dc->dc_type))
@@ -880,6 +885,40 @@ tb_is_rdf_quad (dbe_table_t * tb)
 }
 
 
+int
+tb_is_rdf_quad_or_cset (dbe_table_t * tb)
+{
+  int is_rq = tb_is_rdf_quad (tb);
+  return is_rq ? 1 : NULL != tb->tb_closest_cset;
+}
+
+
+void
+dc_ins_string_col_flags (data_col_t * dc, db_buf_t prev)
+{
+  /* if inserting a string key col with values with box flags, skip the box flags because these must not affect sorting.  Put them back later */
+}
+
+void
+itc_string_bf_cmps (it_cursor_t * itc, dc_cmp_t cmp)
+{
+  dbe_key_t *key = itc->itc_insert_key;
+  int ctr = 0;
+  DO_SET (dbe_column_t *, col, &key->key_parts)
+  {
+    if (DV_STRING == col->col_sqt.sqt_dtp)
+      {
+	data_col_t *dc = ITC_P_VEC (itc, ctr);
+	if (dc && DV_ANY == dc->dc_sqt.sqt_dtp)
+	  dc->dc_sort_cmp = cmp;
+      }
+    if (++ctr == key->key_n_significant)
+      break;
+  }
+  END_DO_SET ();
+}
+
+
 int dbf_ko_pk;
 int dbf_ko_key;
 sort_cmp_func_t itc_param_cmp_func (it_cursor_t * itc);
@@ -1116,6 +1155,7 @@ key_vec_insert (insert_node_t * ins, caddr_t * qst, it_cursor_t * itc, ins_key_t
     itc_make_param_order (itc, qi, n_rows);
   if (!itc->itc_n_sets)
     goto done;
+  itc_string_bf_cmps (itc, dc_any_cmp_nf);
   if (!itc_vec_digit_sort (itc))
     {
       int save = itc->itc_n_vec_sort_cols;
@@ -1127,6 +1167,8 @@ key_vec_insert (insert_node_t * ins, caddr_t * qst, it_cursor_t * itc, ins_key_t
       gen_qsort (itc->itc_param_order, other, itc->itc_n_sets, 0, itc_param_cmp_func (itc), (void *) itc);
       itc->itc_n_vec_sort_cols = save;
     }
+  itc_string_bf_cmps (itc, dc_any_cmp);
+
   /*itc_ins_order_ck (itc); */
   itc->itc_v_out_map = ins->ins_v_out_map;
   itc->itc_asc_eq = 1;

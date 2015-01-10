@@ -1153,7 +1153,7 @@ sqlg_cl_table_source (sqlo_t * so, df_elt_t * tb_dfe, table_source_t * ts)
   op_table_t *ot = tb_dfe->_.table.ot;
   if (ts->ts_inx_op)
     return;
-  if (!sqlo_opt_value (ot->ot_opts, OPT_NO_CLUSTER) && !key_is_local_copy (ts->ts_order_ks->ks_key))
+  if (!sqlo_opt_value (ot->ot_opts, OPT_NO_CLUSTER) && !so->so_sc->sc_cset_param && !key_is_local_copy (ts->ts_order_ks->ks_key))
     {
       clb_init (so->so_sc->sc_cc, &ts->clb, 1);
       so->so_sc->sc_any_clb = 1;
@@ -1857,6 +1857,26 @@ stn_init (sql_comp_t * sc, stage_node_t * stn)
   stn->stn_dre = ssl_new_variable (sc->sc_cc, "stn_dre", DV_ANY);
 }
 
+
+stage_node_t **
+stn_array (dk_set_t nodes, int n_stages)
+{
+  stage_node_t **stages = (stage_node_t **) dk_alloc_box_zero (sizeof (caddr_t) * n_stages, DV_BIN);
+  int inx;
+  for (inx = 0; inx < n_stages; inx++)
+    {
+      DO_SET (stage_node_t *, stn, &nodes)
+      {
+	if (IS_QN (stn, stage_node_input) && inx + 1 == stn->stn_nth)
+	  {
+	    stages[inx] = stn;
+	    break;
+	  }
+      }
+      END_DO_SET ();
+    }
+  return stages;
+}
 
 
 void

@@ -30,6 +30,7 @@
 
 #include "odbcinc.h"
 #include "wi.h"
+#include "geo.h"
 
 typedef struct instruction_s instruction_t;
 typedef struct instruction_s *code_vec_t;
@@ -582,6 +583,7 @@ typedef struct hash_area_s
   state_slot_t **ha_slots;	/* slots where values to feed come from if they do not come from columns direct */
   struct hash_area_s *ha_org_ha;	/* can be a temp ha on stack for merge of gby or such, must ref the originnal allocated ha in the ht */
   ha_key_range_t *ha_key_ranges;	/* for array group by when hash keys known in small range */
+  caddr_t ha_non_null;		/* non null flags of ssls in ha_slots, can be nn in ha and nullable elsewhere for hash oj  */
   int ha_n_keys;
   int ha_n_deps;
   char ha_op;
@@ -762,6 +764,7 @@ typedef struct inx_op_s
 
 typedef struct trans_read_s
 {
+  state_slot_t *trr_rows_dc;	/* In reading a trans temp, put rows here to allow update in the code block */
   state_slot_t *trr_ext_sets;	/* for trans gby reader, from in trans to ext set nos */
   state_slot_t *trr_path_no_ret;
   state_slot_t *trr_step_no_ret;
@@ -891,8 +894,8 @@ typedef struct table_source_s
   bitf_t ts_part_gby_reader:1;	/* If reader of partitioned gby, to invoke postprocessing of aggregation in each slice */
   bitf_t ts_cl_part_reader:1;
   bitf_t ts_may_count_scan:1;
-  bitf_t ts_top_oby_test;
   bitf_t ts_is_dml:1;		/* if del/upd with a joined expressed as in subq, mark the ts that is deld/updated */
+  bitf_t ts_is_bsp_reader:1;
   caddr_t ts_rnd_pcnt;
   code_vec_t ts_after_join_test;
   struct inx_op_s *ts_inx_op;
@@ -1548,8 +1551,10 @@ typedef struct select_node_s
   state_slot_t *sel_cn_set_no;	/* if in multistate exists or value subq, this is set no of containing code node.  As soon as one result is produced, advance the multistate qr to the next set as per this set no */
   state_slot_t *sel_scalar_ret;
   set_ctr_node_t *sel_set_ctr;	/* if inlined subq ends here, this is the set ctr that marks the strat of the subq */
+  state_slot_t *sel_sdfg_qis;
   ssl_index_t sel_vec_set_mask;	/* In vectored subq, if top = 1, bit mask where each exists marks a 1 at the set no.  If top > 1, array of ints with row count in the set in question. */
   ssl_index_t sel_client_batch_start;	/* set no of 1st result row in current batch of rows to sql client */
+  ssl_index_t sel_sdfg_mode;
   char sel_vec_role;
   char sel_is_scalar_agg;	/* scalar subq with aggregate and no group by */
   char sel_subq_inlined;
@@ -1571,6 +1576,20 @@ typedef struct select_node_s
   sel->sel_out_quota = cc_new_instance_slot (cc); \
   sel->sel_total_rows = cc_new_instance_slot (cc); \
   cc->cc_query->qr_select_node = sel;
+
+
+/* table valued function, values clause */
+typedef struct tvf_node_s
+{
+  data_source_t src_gen;
+  state_slot_t **tvf_params;
+  state_slot_t **tvf_out_slots;
+  state_slot_t *tvf_state;
+  ssl_index_t tvf_ctr;
+  ssl_index_t tvf_nth_set;
+  caddr_t tvvf_proc;
+  state_slot_t **tvf_values;
+} tvf_node_t;
 
 
 typedef struct skip_node_s
@@ -1601,6 +1620,10 @@ typedef struct gb_op_s
   struct setp_node_s *go_distinct_setp;
   instruction_t *go_ua_init_setp_call;
   instruction_t *go_ua_acc_setp_call;
+  state_slot_t **go_exec_ssls;	/* 1:1 to cols of gby temp, copy values for the exec vector */
+  state_slot_t *go_exec_base_set;
+  state_slot_t *go_exec_rows;	/* dc of group rows for group by exec */
+  dbe_table_t *go_temp_table;
 } gb_op_t;
 
 
@@ -1752,6 +1775,7 @@ typedef struct fun_ref_node_s
   char fnr_stream_ok_with_hash_part;	/* true if streaming is still OK if hash join partitioning is applied.  True if stuff being agregated does not depend on the hash partition or if results depend on hash partitioning but are again aggregated without conditions  */
   char fnr_is_chash_in;		/* set if filling a hash for in predicate */
   char fnr_has_sdfg;		/* contains a dfg in single server */
+  char fnr_sec_reverse;
 } fun_ref_node_t;
 
 /* fnr_partitioned */
@@ -2263,6 +2287,7 @@ typedef struct local_cursor_s
   caddr_t *lc_inst;
   int lc_position;
   int lc_vec_n_rows;
+  int lc_sdfg_slice;		/* if reading top level dfg, the current branch */
   char lc_vec_at_end;
   caddr_t lc_error;
   caddr_t lc_proc_ret;		/* if stmt is a SQL procedure, this is the QA_PROC_RET block */
@@ -2316,7 +2341,20 @@ extern cset_uri_t *cset_uri;
 
 extern int cset_uri_fill;
 
+typedef struct sq_s
+{
+  int sq_id;
+  geo_XYbox_t sq_box;
+} square_t;
 
+typedef struct sqlst_s
+{
+  square_t *sqls_sqs;
+  int sqls_size;
+  int sqls_fill;
+} square_list_t;
+
+void sp_set_like_flags (search_spec_t * sp);
 
 extern int lite_mode;
 extern client_connection_t *bootstrap_cli;

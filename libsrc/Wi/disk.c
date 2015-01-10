@@ -732,6 +732,7 @@ it_temp_free (index_tree_t * it)
     }
   it->it_hi = NULL;
   it->it_hi_reuses = 0;
+  it->it_invalidated = 0;
   it_temp_tree_done (it);
   if (it->it_maps[0].itm_remap.ht_actual_size != IT_INIT_HASH_SIZE / IT_N_MAPS)
     it_free (it);		/* rehashed to non-standard size. do not recycle.  */
@@ -4854,12 +4855,20 @@ array_extend (caddr_t ** ap, int len)
 }
 
 extern size_t cha_max_gb_bytes;
+#ifdef USE_TLSF
+tlsf_t *sqlc_tlsf;
+#endif
 void
 wi_init_globals (void)
 {
   PrpcInitialize ();
   blobio_init ();
   wi_init_process ();
+#ifdef USE_TLSF
+  tlsf_set_comment (dk_base_tlsf, "base");
+  sqlc_tlsf = tlsf_new (2000000);
+  tlsf_set_comment (sqlc_tlsf, "sqlc_tlsf");
+#endif
 #ifdef PAGE_SET_CHECKSUM
   page_set_checksums = hash_table_allocate (203);
 #endif

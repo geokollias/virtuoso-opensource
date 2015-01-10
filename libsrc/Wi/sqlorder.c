@@ -41,11 +41,29 @@ ha_free (hash_area_t * ha)
 {
   dk_free_box ((caddr_t) ha->ha_key_cols);
   dk_free_box ((caddr_t) ha->ha_slots);
+  dk_free_box (ha->ha_non_null);
   dk_free_box ((caddr_t) ha->ha_cols);
   dk_free ((caddr_t) ha, sizeof (hash_area_t));
 }
 
-
+void
+go_free (gb_op_t * go)
+{
+  if (go->go_distinct_ha)
+    {
+      ha_free (go->go_distinct_ha);
+      if (go->go_distinct_setp)
+	{
+	  go->go_distinct_setp->setp_reserve_ha = NULL;
+	  setp_node_free (go->go_distinct_setp);
+	}
+    }
+  dk_free_box ((caddr_t) go->go_exec_ssls);
+  dk_free_box ((caddr_t) go->go_ua_arglist);
+  cv_free (go->go_ua_init_setp_call);
+  cv_free (go->go_ua_acc_setp_call);
+  dk_free ((caddr_t) go, sizeof (gb_op_t));
+}
 
 
 void
@@ -53,22 +71,7 @@ setp_node_free (setp_node_t * setp)
 {
   dk_set_free (setp->setp_keys);
   dk_set_free (setp->setp_dependent);
-  DO_SET (gb_op_t *, go, &setp->setp_gb_ops)
-  {
-    if (go->go_distinct_ha)
-      {
-	ha_free (go->go_distinct_ha);
-	if (go->go_distinct_setp)
-	  {
-	    go->go_distinct_setp->setp_reserve_ha = NULL;
-	    setp_node_free (go->go_distinct_setp);
-	  }
-      }
-    dk_free_box ((caddr_t) go->go_ua_arglist);
-    cv_free (go->go_ua_init_setp_call);
-    cv_free (go->go_ua_acc_setp_call);
-    dk_free ((caddr_t) go, sizeof (gb_op_t));
-  }
+  DO_SET (gb_op_t *, go, &setp->setp_gb_ops) go_free (go);
   END_DO_SET ();
   dk_set_free (setp->setp_gb_ops);
   setp->setp_gb_ops = NULL;

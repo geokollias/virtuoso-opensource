@@ -397,7 +397,10 @@ sqlc_mark_pred_deps (sql_comp_t * sc, predicate_t * pred, sql_tree_t * tree)
 	sqlc_mark_pred_deps (sc, pred, tree);
       else
 	{
-	  col_ref_rec_t *cr = sqlc_col_or_param (sc, tree, 0);
+	  col_ref_rec_t *cr;
+	  if (sc->sc_so)
+	    return;
+	  cr = sqlc_col_or_param (sc, tree, 0);
 	  if (cr->crr_ct)
 	    if (pred)
 	      t_set_pushnew (&pred->pred_tables, (void *) cr->crr_ct);

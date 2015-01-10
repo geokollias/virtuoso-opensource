@@ -702,6 +702,9 @@ scalar_exp_generate (sql_comp_t * sc, ST * tree, dk_set_t * code)
   char is_re_emit = sc->sc_re_emit_code;
   if (sc->sc_so)
     {
+      state_slot_t *ssl;
+      if (sc->sc_in_group_by_exec && ST_P (tree, COL_DOTTED) && (ssl = sqlg_group_by_exec_col (sc, tree)))
+	return ssl;
       if (ST_P (tree, LIT_PARAM))
 	return scalar_exp_generate (sc, tree->_.lit_param.value, code);
       dfe = sqlo_df (sc->sc_so, tree);
@@ -966,6 +969,16 @@ cv_asg_broader_type (instruction_t * ins)
       res->ssl_sqt.sqt_scale = MAX (l->ssl_sqt.sqt_scale, res->ssl_sqt.sqt_scale);
     }
   res->ssl_dc_dtp = res->ssl_dtp;
+}
+
+
+void
+ssl_broader_type (state_slot_t * ssl1, state_slot_t * ssl2)
+{
+  instruction_t ins;
+  ins._.artm.left = ssl1;
+  ins._.artm.right = ssl2;
+  cv_asg_broader_type (&ins);
 }
 
 
@@ -1327,7 +1340,7 @@ cv_subq_ret (sql_comp_t * sc, instruction_t * ins)
 {
   query_t *qr = ins->_.subq.query;
   select_node_t *sel = qr->qr_select_node;
-  if (!sel)
+  if (!sel || !BOX_ELEMENTS (sel->sel_out_slots))
     return NULL;
   qr->qr_select_node->sel_vec_role = SEL_VEC_SCALAR;
   qr->qr_select_node->sel_out_slots[0]->ssl_sqt.sqt_non_null = 0;
@@ -2208,7 +2221,8 @@ ks_refd_slots (sql_comp_t * sc, key_source_t * ks, dk_hash_t * res, dk_hash_t * 
   DO_SET (search_spec_t *, sp, &ks->ks_hash_spec)
   {
     QNCAST (hash_range_spec_t, hrng, sp->sp_min_ssl);
-    REF_SSL (res, hrng->hrng_ht);
+    if (CL_RUN_LOCAL == cl_run_local_only)
+      REF_SSL (res, hrng->hrng_ht);	/* in cluster, the ht is not refd, the id is */
     REF_SSL (res, hrng->hrng_ht_id);
   }
   END_DO_SET ();
@@ -2276,6 +2290,15 @@ qn_refd_slots (sql_comp_t * sc, data_source_t * qn, dk_hash_t * res, dk_hash_t *
 	  REF_SSL (res, ts->ts_fs->fs_file_name);
 	  REF_SSL (res, ts->ts_fs->fs_start_offset);
 	  REF_SSL (res, ts->ts_fs->fs_limit);
+	}
+      if (ts->ts_trans_read)
+	{
+	  trans_read_t *trr = ts->ts_trans_read;
+	  if (!trr->trr_is_step)
+	    REF_SSL (res, trr->trr_ext_sets);
+	  REF_SSL (res, trr->trr_superstep);
+	  ASG_SSL (res, all_res, trr->trr_path_no_ret);
+	  ASG_SSL (res, all_res, trr->trr_step_no_ret);
 	}
       return;
     }

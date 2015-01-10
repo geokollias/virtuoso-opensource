@@ -38,11 +38,34 @@
 
 dk_hash_t id_to_cset;
 dk_hash_t rdfs_type_cset;
+dk_hash_t int_seq_to_cset;	/* if iri pattern goes to rdf_n_iri for clustering, map the seq of the num iri string to the cset of the pattern */
 dk_hash_t p_to_csetp_list;
 rt_range_t rt_ranges[512];
 cset_uri_t *cset_uri;
 int cset_uri_fill;
 extern dk_hash_t rdf_iri_always_cached;
+#define SQ_N_BASE 450
+square_list_t base_squares[SQ_N_BASE];
+id_hash_t *cscl_funcs;
+
+
+void
+cscl_define (char *name, cset_cluster_t * func)
+{
+  id_hash_set (cscl_funcs, (caddr_t) & name, (caddr_t) & func);
+}
+
+caddr_t
+cset_opt_value (caddr_t * opts, char *opt)
+{
+  int inx, len = opts ? BOX_ELEMENTS (opts) : 0;
+  for (inx = 0; inx < len - 1; inx++)
+    {
+      if (DV_STRINGP (opts[inx]) && !stricmp (opts[inx], opt))
+	return opts[inx + 1];
+    }
+  return NULL;
+}
 
 
 caddr_t
@@ -54,9 +77,11 @@ bif_cset_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   caddr_t tn = bif_string_arg (qst, args, 2, "cset_def");
   caddr_t rq_tn = bif_string_arg (qst, args, 3, "cset_def");
   ptrlong ir_id = bif_long_arg (qst, args, 4, "cset_def");
+  ptrlong bn_ir_id = bif_long_arg (qst, args, 5, "cset_def");
   cset_t *cset = (cset_t *) gethash ((void *) id, &id_to_cset);
   id_range_t *ir = (id_range_t *) gethash ((void *) ir_id, &id_to_ir);
-  if (!ir)
+  id_range_t *bn_ir = (id_range_t *) gethash ((void *) bn_ir_id, &id_to_ir);
+  if (!bn_ir)
     sqlr_new_error ("42000", "NOIRN", "No id range object for cset %ld", id);
   if (!cset)
     {
@@ -79,6 +104,7 @@ bif_cset_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   snprintf (tmp, sizeof (tmp), "%s_S", cset->cset_table->tb_name);
   cset->cset_rtr->rtr_seq = box_dv_short_string (tmp);
   cset->cset_ir = ir;
+  cset->cset_bn_ir = bn_ir;
   return NULL;
 }
 
@@ -90,7 +116,7 @@ bif_cset_p_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   int nth = bif_long_arg (qst, args, 1, "cset_p_def");
   iri_id_t iri = bif_iri_id_arg (qst, args, 2, "cset_p_def");
   caddr_t cn = bif_string_arg (qst, args, 3, "cset_p_def");
-  caddr_t opts = bif_arg (qst, args, 4, "cset_p_def");
+  caddr_t *opts = (caddr_t *) bif_arg (qst, args, 4, "cset_p_def");
   cset_t *cset = (cset_t *) gethash ((void *) id, &id_to_cset);
   dbe_column_t *col;
   if (!cset)
@@ -100,6 +126,10 @@ bif_cset_p_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     sqlr_new_error ("420000", "CSENC", "cset %ld has no col %s", id, cn);
   {
     dk_set_t list;
+    caddr_t max_inl;
+    caddr_t cscl_func = NULL;
+    caddr_t cscl_cd = NULL;
+    cset_cluster_t *cf = NULL;
     NEW_VARZ (cset_p_t, csetp);
     sethash ((void *) iri, &cset->cset_p, (void *) csetp);
     csetp->csetp_iri = iri;
@@ -110,7 +140,22 @@ bif_cset_p_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     col->col_csetp = csetp;
     csetp->csetp_nth = nth;
     csetp->csetp_cset = cset;
-    csetp->csetp_index_o = inx_opt_flag ((caddr_t *) opts, "index");
+    csetp->csetp_index_o = inx_opt_flag (opts, "index");
+    max_inl = cset_opt_value (opts, "inline");
+    if (max_inl && DV_LONG_INT == DV_TYPE_OF (max_inl))
+      {
+	int mx = unbox (max_inl);;
+	csetp->csetp_inline_max = mx < 0 ? 0 : mx > 4000 ? 4000 : mx;
+      }
+    cscl_func = cset_opt_value (opts, "cluster");
+    cscl_cd = cset_opt_value (opts, "cluster_params");
+    if (DV_STRINGP (cscl_func))
+      cf = (cset_cluster_t *) id_hash_get (cscl_funcs, (caddr_t) & cscl_func);
+    if (cf && cscl_cd)
+      {
+	csetp->csetp_cluster = *cf;
+	csetp->csetp_cluster_cd = box_copy_tree (cscl_cd);
+      }
   }
   return NULL;
 }
@@ -155,6 +200,80 @@ bif_cset_uri_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   return NULL;
 }
 
+#define SQ_INIT_SZ 32
+
+double
+coord_normalize (double coord, double range)
+{
+  int n;
+  if (coord >= -range && coord < range)
+    return coord;
+  coord += range;
+  n = floor (coord / (2 * range));
+  coord -= range * n;
+  return coord - range;
+}
+
+
+caddr_t
+bif_cset_sq_clr (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  int inx;
+  for (inx = 0; inx < SQ_N_BASE; inx++)
+    {
+      dk_free_box (base_squares[inx].sqls_sqs);
+      base_squares[inx].sqls_sqs = NULL;
+      base_squares[inx].sqls_fill = 0;
+    }
+  return NULL;
+}
+
+#define XY_PLACE(x, rng) ((coord_normalize (x, rng)+rng)/12)
+#define XY_NTH(x,y) (((int)XY_PLACE((x), 180) * 15) + (int)XY_PLACE((y), 90))
+
+caddr_t
+bif_cset_sq_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  geo_t *g = bif_geo_arg (qst, args, 0, "cset_sq_def", GEO_ARG_ANY_NONNULL);
+  ptrlong id = bif_long_arg (qst, args, 1, "cset_sq_def");
+#if 0
+  ptrlong s_n_id = bif_long_arg (qst, args, 2, "cset_sq_def");
+  ptrlong s_w_id = bif_long_arg (qst, args, 3, "cset_sq_def");
+#endif
+  square_t *sqs;
+  int nth = -1;
+  square_t sq;
+  double X = (g->XYbox.Xmax + g->XYbox.Xmin) / 2.0;
+  double Y = (g->XYbox.Ymax + g->XYbox.Ymin) / 2.0;
+  sq.sq_id = id;
+#if 0
+  sq.sq_s_id = s_n_id;
+  sq.sq_s_w_id = s_w_id;
+#endif
+  sq.sq_box = g->XYbox;
+  nth = (int) XY_NTH (X, Y);
+  if (nth < 0 || nth >= SQ_N_BASE)
+    sqlr_new_error ("22023", "CSETQ", "Can not find base square place");
+  sqs = (base_squares[nth].sqls_sqs);
+  if (!sqs)
+    {
+      sqs = dk_alloc_box (SQ_INIT_SZ * sizeof (square_t), DV_BIN);
+      base_squares[nth].sqls_sqs = sqs;
+      base_squares[nth].sqls_size = SQ_INIT_SZ;
+      base_squares[nth].sqls_fill = 0;
+    }
+  else if (base_squares[nth].sqls_fill >= base_squares[nth].sqls_size)
+    {
+      caddr_t new;
+      base_squares[nth].sqls_size *= 2;
+      new = dk_alloc_box (base_squares[nth].sqls_size * sizeof (square_t), DV_BIN);
+      memcpy (new, sqs, base_squares[nth].sqls_fill * sizeof (square_t));
+      dk_free_box (sqs);
+      base_squares[nth].sqls_sqs = sqs = (square_t *) new;
+    }
+  sqs[base_squares[nth].sqls_fill++] = sq;
+  return NULL;
+}
 
 cset_t *
 iri_cset_by_name (caddr_t str)
@@ -175,6 +294,155 @@ iri_cset_by_name (caddr_t str)
   return NULL;
 }
 
+square_t *
+cset_set_sq_id (caddr_t box)
+{
+  square_t *sq = NULL;
+  rdf_box_t *o_val = ((rdf_box_t *) (box));
+  geo_t *g;
+  int inx, nth = -1;
+  int id = 0;
+  double X, Y;
+
+  if (DV_TYPE_OF (box) != DV_RDF || ((rdf_box_t *) (box))->rb_type != RDF_BOX_GEO)
+    return NULL;
+  g = (geo_t *) (o_val->rb_box);
+  X = (g->XYbox.Xmax + g->XYbox.Xmin) / 2.0;
+  Y = (g->XYbox.Ymax + g->XYbox.Ymin) / 2.0;
+  nth = (int) XY_NTH (X, Y);
+  /* look for smallest containing square */
+  for (inx = 0; nth >= 0 && inx < base_squares[nth].sqls_fill; inx++)
+    {
+      geo_XYbox_t p = base_squares[nth].sqls_sqs[inx].sq_box;
+      if (X >= p.Xmin && X < p.Xmax && Y >= p.Ymin && Y < p.Ymax)
+	{
+	  sq = &base_squares[nth].sqls_sqs[inx];
+	  id = sq->sq_id;
+	}
+    }
+  if (id > 0)
+    box_flags (o_val->rb_box) = id;
+  return sq;
+}
+
+
+void
+dc_set_box_flags (data_col_t * dc, int inx, uint32 flags)
+{
+  /* the dc is boxes or anies.  Set the box flags */
+  if (DV_ANY == dc->dc_sqt.sqt_dtp)
+    {
+      db_buf_t dv = ((db_buf_t *) dc->dc_values)[inx];
+      if (DV_BOX_FLAGS == *dv)
+	LONG_SET_NA (dv + 1, flags);
+      else
+	{
+	  int len;
+	  DB_BUF_TLEN (len, dv[0], dv);
+	  int save = dc->dc_n_values;
+	  dtp_t tmp[5];
+	  tmp[0] = DV_BOX_FLAGS;
+	  LONG_SET_NA (&tmp[1], flags);
+	  dc->dc_n_values = inx;
+	  dc_append_bytes (dc, dv, len, tmp, 5);
+	  dc->dc_n_values = save;
+	}
+    }
+}
+
+
+uint64
+cu_ro_slice (cucurbit_t * cu, cu_line_t * o_cul, cu_func_t * o_cf, value_state_t ** vs_ret, caddr_t o)
+{
+  /* get the vs for the o. return vs to permit affecting the params.  */
+  value_state_t **place = (value_state_t **) id_hash_get (o_cul->cul_values, (caddr_t) & o);
+  *vs_ret = NULL;
+  if (place)
+    {
+      static cu_func_t *o_look_cf;
+      int32 rem = 0;
+      data_col_t *dc;
+      uint32 hash;
+      value_state_t *vs = *place;
+      key_partition_def_t *kpd;
+      cluster_map_t *clm;
+      cl_slice_t *csl;
+      *vs_ret = vs;
+      if (!vs->vs_call_clo)
+	return -1;
+      if (!o_look_cf)
+	o_look_cf = cu_func ("O_LOOK1", 1);
+      dc = (data_col_t *) vs->vs_call_clo->_.call.params[0];
+      kpd = o_look_cf->cf_part_key->key_partition;
+      clm = kpd->kpd_map;
+      hash = dc_part_hash (kpd->kpd_cols[0], dc, vs->vs_dc_inx, &rem);
+      csl = clm->clm_slices[hash % clm->clm_n_slices];
+
+      return ((uint64) csl->csl_id);
+    }
+  return -1;
+}
+
+id_range_t *geocl_o_seq;	/* the seq no of the top level seq for geo clustering of o's */
+
+void
+cscl_geo (void *cup, cset_t * cset, cset_p_t * csetp, caddr_t * row, int s_col, int p_col, int o_col, int g_col, caddr_t cd)
+{
+  value_state_t **place;
+  uint32 flags;
+  cu_line_t *o_cul;
+  cu_line_t *s_cul;
+  id_range_t *subseq;
+  QNCAST (cucurbit_t, cu, cup);
+  square_t *sq = cset_set_sq_id (row[o_col + 1]);
+  if (sq)
+    {
+      caddr_t s = row[s_col];
+      dtp_t s_dtp = DV_TYPE_OF (s);
+      uint64 o_slice = 0;
+      value_state_t *vs;
+      static cu_func_t *o_cf;
+      static cu_func_t *s_cf;
+      if (!s_cf)
+	{
+	  if (CL_RUN_LOCAL == cl_run_local_only)
+	    {
+	      o_cf = cu_func ("L_MAKE_RO", 1);
+	      s_cf = cu_func ("L_IRI_TO_ID", 1);
+	    }
+	  else
+	    {
+	      o_cf = cu_func ("MAKE_RO_1", 1);
+	      s_cf = cu_func ("IRI_TO_ID_1", 1);
+	    }
+	}
+      flags = sq->sq_id;
+      o_cul = cu_line (cu, o_cf);
+      o_slice = cu_ro_slice (cu, o_cul, o_cf, &vs, row[o_col + 1]);
+      if (o_slice != -1)
+	{
+	  if (!geocl_o_seq)
+	    geocl_o_seq = ir_by_name ("geo_o_init");
+	  subseq = ir_sub_ir (geocl_o_seq, sq->sq_id);
+	  flags = subseq->ir_id | (1L << (IR_SLICE_SHIFT - 1)) | (o_slice << IR_SLICE_SHIFT);
+	  dc_set_box_flags ((data_col_t *) vs->vs_call_clo->_.call.params[0], vs->vs_dc_inx, flags);
+	  if (DV_STRING == s_dtp)
+	    {
+	      s_cul = cu_line (cu, s_cf);
+	      place = (value_state_t **) id_hash_get (s_cul->cul_values, (caddr_t) & row[s_col]);
+	      if (place)
+		{
+		  vs = *place;
+		  subseq = ir_sub_ir (cset->cset_ir, sq->sq_id);
+		  flags = (box_flags (s) & BF_N_IRI) | subseq->ir_id | (1L << (IR_SLICE_SHIFT - 1)) | (o_slice << IR_SLICE_SHIFT);
+		  dc_set_box_flags ((data_col_t *) vs->vs_call_clo->_.call.params[0], vs->vs_dc_inx, flags);
+		}
+	    }
+	}
+    }
+}
+
+
 void
 cset_ld_ids (cl_req_group_t * clrg, int s_col, int p_col, int o_col, int g_col, iri_id_t fixed_g)
 {
@@ -184,11 +452,33 @@ cset_ld_ids (cl_req_group_t * clrg, int s_col, int p_col, int o_col, int g_col, 
   for (inx = 0; inx < cu->cu_fill; inx++)
     {
       caddr_t *row = (caddr_t *) cu->cu_rows[inx];
+      caddr_t p = row[p_col];
+      dtp_t p_dtp = DV_TYPE_OF (p);
+      caddr_t s = row[s_col];
+      dtp_t s_dtp = DV_TYPE_OF (s);
+      uint32 flags;
       iri_cset_by_name (row[s_col]);
-      iri_cset_by_name (row[p_col]);
+      iri_cset_by_name (p);
       iri_cset_by_name (row[o_col]);
       if (-1 != g_col)
 	iri_cset_by_name (row[g_col]);
+      p = row[p_col];
+      p_dtp = DV_TYPE_OF (p);
+      s = row[s_col];
+      s_dtp = DV_TYPE_OF (s);
+      if (DV_IRI_ID == p_dtp && DV_STRING == s_dtp && (flags = box_flags (s)) > BF_UTF8)
+	{
+	  cset_t *cset;
+	  flags &= ~BF_N_IRI;
+	  cset = (cset_t *) gethash ((void *) (ptrlong) flags, &int_seq_to_cset);
+	  if (cset)
+	    {
+	      iri_id_t p_id = unbox_iri_id (p);
+	      cset_p_t *csetp = (cset_p_t *) gethash ((void *) p_id, &cset->cset_p);
+	      if (csetp && csetp->csetp_cluster)
+		csetp->csetp_cluster ((void *) cu, cset, csetp, row, s_col, p_col, o_col, g_col, csetp->csetp_cluster_cd);
+	    }
+	}
     }
 }
 
@@ -202,12 +492,16 @@ csi_init (cset_ins_t * csi, cset_t * cset, int n_places)
   if (!cset->cset_ins || !cset->cset_del)
     {
       caddr_t err = NULL;
-      cset->cset_ins = cset_ins_qr (cset, &err);
-      if (err)
-	sqlr_resignal (err);
-      cset->cset_del = cset_del_qr (cset, &err);
-      if (err)
-	sqlr_resignal (err);
+      WITHOUT_TMP_POOL
+      {
+	cset->cset_ins = cset_ins_qr (cset, &err);
+	if (err)
+	  sqlr_resignal (err);
+	cset->cset_del = cset_del_qr (cset, &err);
+	if (err)
+	  sqlr_resignal (err);
+      }
+      END_WITHOUT_TMP_POOL;
     }
   if (!iri_tmp.ssl_sqt.sqt_dtp)
     {
@@ -258,6 +552,51 @@ sg_cmp (sg_key_t * x1, sg_key_t * x2)
 
 
 void
+csi_add_o (cset_p_t * csetp, data_col_t * dc, int r, data_col_t * o, int inx)
+{
+  db_buf_t dv = ((db_buf_t *) o->dc_values)[inx];
+  if (DV_RDF == dv[0])
+    {
+      if (csetp->csetp_inline_max)
+	{
+	  int l = rbs_length (dv);
+	  if (l < csetp->csetp_inline_max + 12)
+	    {
+	      ((db_buf_t *) dc->dc_values)[r] = dv;
+	      goto set_len;
+	    }
+	}
+      {
+	int l;
+	dtp_t temp[10];
+	int64 id = rbs_ro_id (dv);
+	int save = dc->dc_n_values;
+	if (id > INT32_MAX || id < INT32_MIN)
+	  {
+	    temp[0] = DV_RDF_ID_8;
+	    INT64_SET_NA (&temp[1], id);
+	    l = 9;
+	  }
+	else
+	  {
+	    temp[0] = DV_RDF_ID;
+	    LONG_SET_NA (&temp[1], id);
+	    l = 5;
+	  }
+	dc->dc_n_values = r;
+	dc_append_bytes (dc, temp, l, NULL, 0);
+	dc->dc_n_values = MAX (r + 1, save);
+      }
+    }
+  else
+    ((db_buf_t *) dc->dc_values)[r] = dv;
+set_len:
+  if (r >= dc->dc_n_values)
+    dc->dc_n_values = r + 1;
+}
+
+
+void
 csi_new_row (cset_ins_t * csi, cset_p_t * csetp, sg_key_t * k, iri_id_t pi, data_col_t * o, int nth_row)
 {
   cset_t *cset = csi->csi_cset;
@@ -272,7 +611,9 @@ csi_new_row (cset_ins_t * csi, cset_p_t * csetp, sg_key_t * k, iri_id_t pi, data
       data_col_t *dc = csi->csi_dcs[inx + 2];
       DC_CHECK_LEN (dc, dc->dc_n_values);
       if (inx == csetp->csetp_nth)
-	((db_buf_t *) dc->dc_values)[dc->dc_n_values++] = ((db_buf_t *) o->dc_values)[nth_row];
+	{
+	  csi_add_o (csetp, dc, dc->dc_n_values, o, nth_row);
+	}
       else
 	((db_buf_t *) dc->dc_values)[dc->dc_n_values++] = &dv_null;
     }
@@ -371,6 +712,8 @@ csi_del_add (data_col_t * dc, int r, data_col_t * o, int o_row, dk_hash_t ** csi
 }
 
 
+int rq_labels_inited = 0;
+
 int
 cset_ld_indices (cl_req_group_t * clrg, data_col_t * s, data_col_t * p, data_col_t * o, data_col_t * g, int is_del)
 {
@@ -384,10 +727,16 @@ cset_ld_indices (cl_req_group_t * clrg, data_col_t * s, data_col_t * p, data_col
   cucurbit_t *cu = clrg->clrg_cu;
   int fill = s->dc_n_values;
   SET_THR_TMP_POOL (clrg->clrg_pool);
+  if (!rq_labels_inited)
+    {
+      dbe_table_t *quad_tb = sch_name_to_table (wi_inst.wi_schema, "DB.DBA.RDF_QUAD");
+      rdf_quad_key_labels (quad_tb);
+      rq_labels_inited = 1;
+    }
   if (!cu->cu_inx_bits || box_length (cu->cu_inx_bits[0]) < 10 + (cu->cu_fill / 8))
     {
       int n_bytes = ALIGN_8 (cu->cu_fill + 10000) / 8;
-      cu->cu_inx_bits = t_alloc_box (sizeof (caddr_t) * 5, DV_BIN);
+      cu->cu_inx_bits = (db_buf_t *) t_alloc_box (sizeof (caddr_t) * 5, DV_BIN);
       for (inx = 0; inx < 5; inx++)
 	cu->cu_inx_bits[inx] = (db_buf_t) t_alloc_box (n_bytes, DV_BIN);
     }
@@ -460,7 +809,7 @@ cset_ld_indices (cl_req_group_t * clrg, data_col_t * s, data_col_t * p, data_col
 		    goto quad;
 		}
 	      DC_CHECK_LEN (dc, r);
-	      ((db_buf_t *) dc->dc_values)[r] = ((db_buf_t *) o->dc_values)[inx];
+	      csi_add_o (cs_p, dc, r, o, inx);
 	      if (cs_p->csetp_index_o)
 		{
 		  BIT_SET (posg_bits, inx);
@@ -529,23 +878,30 @@ cset_init ()
 {
   int save;
   csg_init ();
+  cscl_funcs = id_str_hash_create (11);
   hash_table_init (&p_to_csetp_list, 211);
   hash_table_init (&id_to_cset, 223);
   hash_table_init (&rdfs_type_cset, 223);
+  hash_table_init (&int_seq_to_cset, 51);
   bif_define ("cset_def", bif_cset_def);
   bif_define ("cset_p_def", bif_cset_p_def);
   bif_define ("cset_type_def", bif_cset_type_def);
   bif_define ("cset_uri_def", bif_cset_uri_def);
+  bif_define ("cset_sq_def", bif_cset_sq_def);
+  bif_define ("cset_sq_clear", bif_cset_sq_clr);
   save = enable_qp;
   enable_qp = 1;
+  cscl_define ("cscl_geo", cscl_geo);
   ddl_ensure_table ("do this always",
-      "select count (cset_def (cset_id, cset_range, cset_table, cset_rq_table, cset_id_range)) from rdf_cset");
+      "select count (cset_def (cset_id, cset_range, cset_table, cset_rq_table, cset_id_range, cset_bn_id_range)) from rdf_cset");
   ddl_ensure_table ("do this always",
       "select count (cset_p_def (csetp_cset, csetp_nth, csetp_iid, csetp_col, csetp_options)) from rdf_cset_p");
   ddl_ensure_table ("do this always", "select count (cset_type_def (cst_cset, cst_type)) from rdf_cset_type");
   cset_uri = NULL;
   ddl_ensure_table ("do this always", "select count (cset_uri_def (csu_cset, csu_pattern)) from rdf_cset_uri");
-
+  ddl_ensure_table ("do this always",
+      "select count (iri_pattern_def (rip_pattern, rip_start, rip_fields, rip_cset, rip_int_range, rip_exc_range))  from rdf_iri_pattern");
+  ddl_ensure_table ("do this always", "iri_pattern_changed ()");
   enable_qp = save;
 }
 

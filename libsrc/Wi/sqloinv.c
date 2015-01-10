@@ -635,13 +635,22 @@ dfe_geo_col_of (df_elt_t * dfe, op_table_t * ot, ST ** new_col)
 {
   if (dfe->dfe_tables ? (void *) ot == dfe->dfe_tables->data && !dfe->dfe_tables->next : 0)
     {
-      if (!stricmp (ot->ot_table->tb_name, "DB.DBA.RDF_QUAD"))
+      if (tb_is_rdf_quad (ot->ot_table))
 	{
 	  if (DFE_CALL == dfe->dfe_type && !stricmp ("__ro2sq", dfe->dfe_tree->_.call.name))
 	    {
 	      *new_col = dfe->dfe_tree->_.call.params[0];
 	      return 1;
 	    }
+	}
+      if (ot->ot_table->tb_closest_cset)
+	{
+	  if (DFE_CALL == dfe->dfe_type && !stricmp ("__ro2sq", dfe->dfe_tree->_.call.name))
+	    {
+	      *new_col = dfe->dfe_tree->_.call.params[0];
+	      return 1;
+	    }
+	  return DFE_COLUMN == dfe->dfe_type && DV_ANY == dfe->_.col.col->col_sqt.sqt_col_dtp;
 	}
       return (DFE_COLUMN == dfe->dfe_type && dfe->_.col.col->col_is_geo_index);
     }

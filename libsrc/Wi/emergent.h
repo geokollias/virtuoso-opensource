@@ -20,6 +20,8 @@ extern rt_range_t rt_ranges[512];
 
 extern id_hash_t cset_p_by_string;
 extern dk_hash_t cset_p_by_id;
+extern dk_hash_t int_seq_to_cset;
+
 
 typedef struct cset_s
 {
@@ -33,21 +35,31 @@ typedef struct cset_s
   struct query_s *cset_ins;
   struct query_s *cset_del;
   id_range_t *cset_ir;
+  id_range_t *cset_bn_ir;
 } cset_t;
 
-typedef struct cset_p_s
+typedef struct cset_p_s cset_p_t;
+
+typedef void (*cset_cluster_t) (void *cu, cset_t * cset, cset_p_t * csetp, caddr_t * row, int s_col, int p_col, int o_col,
+    int g_col, caddr_t cd);
+
+
+struct cset_p_s
 {
   iri_id_t csetp_iri;
   cset_t *csetp_cset;
   dbe_key_t *csetp_key;
   dbe_column_t *csetp_col;
   int csetp_nth;
+  int csetp_inline_max;
   char csetp_index_o;
   uint32 csetp_n_bloom;
   uint64 *csetp_bloom;
   dk_mutex_t csetp_bloom_mtx;	/* serialize writing to bloom */
   id_hash_t *csetp_non_index_o;
-} cset_p_t;
+  cset_cluster_t csetp_cluster;
+  caddr_t csetp_cluster_cd;
+};
 
 
 
@@ -98,3 +110,7 @@ typedef struct dv_arr_iter_s
 #define CSQ_G_MIX (2 * CSET_MAX)
 #define CSQ_LOOKUP (3 * CSET_MAX)
 #define CSQ_RUN (CSET_MAX * 16)	/* bit set if in the middle of a mode, continue in mode until at end */
+
+caddr_t cset_opt_value (caddr_t * opts, char *opt);
+id_range_t *ir_by_name (char *name);
+id_range_t *ir_sub_ir (id_range_t * super, int nth);

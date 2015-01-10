@@ -77,13 +77,13 @@ itc_cset_unmatched_by_s (it_cursor_t * itc)
   cset_t *cset = itc->itc_insert_key->key_table->tb_cset;
   cset_p_t *csp[100];
   int last_unmatched = itc->itc_last_cset_unmatched_set;
-  for (inx = last_unmatched; inx < n_reqd; inx++)
+  for (inx = 0; inx < n_reqd; inx++)
     {
       csp[inx] = gethash ((void *) reqd_ps[inx], &cset->cset_p);
-      if (!csp[inx]->csetp_n_bloom)
+      if (!csp[inx] || !csp[inx]->csetp_n_bloom)
 	return 0;
     }
-  for (inx = 0; inx < itc->itc_range_fill; inx++)
+  for (inx = last_unmatched; inx < itc->itc_range_fill; inx++)
     {
       if (itc->itc_ranges[inx].r_first == itc->itc_ranges[inx].r_end)
 	{
@@ -529,6 +529,18 @@ qr_cset_adjust_dcs (query_t * qr, caddr_t * inst)
       dc->dc_sqt.sqt_col_dtp = ssl->ssl_sqt.sqt_col_dtp;
   }
   END_DO_BOX;
+  for (qn = qr->qr_head_node; qn; qn = qn_next (qn))
+    {
+      SRC_IN_STATE (qn, inst) = NULL;
+      if (IS_TS (qn))
+	{
+	  QNCAST (table_source_t, ts, qn);
+	  key_source_t *ks = ts->ts_order_ks;
+	  it_cursor_t *itc = TS_ORDER_ITC (ts, inst);
+	  if (itc && DV_ITC == DV_TYPE_OF (itc))
+	    itc_col_free (itc);
+	}
+    }
 }
 
 
@@ -924,7 +936,7 @@ itc_cset_s_param_nos (it_cursor_t * itc, int n_values)
 	nos[fill++] = inx;
     }
   itc->itc_n_sets = fill;
-  return 1;
+  return;
 }
 
 
@@ -1123,6 +1135,7 @@ cset_psog_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
 	  state = SRC_IN_STATE (ts, inst);
 	  if (!state)
 	    return;
+	  order_itc = TS_ORDER_ITC (ts, inst);
 	  if (ts->ts_aq && ts_handle_aq (ts, inst, &order_buf, &order_buf_preset))
 	    return;
 	}

@@ -507,6 +507,26 @@ cu_func (caddr_t name, int must_find)
   return *place;
 }
 
+int
+treehashcmp_nf (char *x, char *y)
+{
+  /* string eq func that does not consider box flags for top level strings  */
+  caddr_t s1 = *(caddr_t *) x;
+  caddr_t s2 = *(caddr_t *) y;
+  if (DV_STRINGP (s1) && DV_STRINGP (s2))
+    {
+      int l1 = box_length (s1) - 1;
+      int l2 = box_length (s2) - 1;
+      if (l1 != l2)
+	return 0;
+      memcmp_8 (s1, s2, l1, neq);
+      return 1;
+    neq:
+      return 0;
+    }
+  return box_strong_equal (s1, s2);
+}
+
 
 cu_line_t *
 cu_line (cucurbit_t * cu, cu_func_t * func)
@@ -523,7 +543,7 @@ cu_line (cucurbit_t * cu, cu_func_t * func)
     memset (cul, 0, sizeof (cu_line_t));
     dk_set_push (&cu->cu_lines, (void *) cul);
     cul->cul_func = func;
-    cul->cul_values = id_hash_allocate (141, sizeof (caddr_t), sizeof (caddr_t), treehash, treehashcmp);
+    cul->cul_values = id_hash_allocate (141, sizeof (caddr_t), sizeof (caddr_t), treehash, treehashcmp_nf);
     cul->cul_values->ht_allow_dups = 1;
     id_hash_set_rehash_pct (cul->cul_values, 150);
     return cul;
@@ -732,11 +752,15 @@ cu_value (cucurbit_t * cu, cu_func_t * cf, caddr_t arg, int irow, caddr_t * row,
   {
     value_state_t *vs = (value_state_t *) mp_alloc (pool, sizeof (value_state_t));
     memset (vs, 0, sizeof (value_state_t));
+    vs->vs_dc_inx = -1;		/* no call for this vs yet */
+    vs->vs_call_clo = cu->cu_clrg->clrg_last_call_clo;
     vs->vs_org_value = mp_full_box_copy_tree (pool, arg);
     *ret = vs->vs_org_value;
     id_hash_set (cul->cul_values, (caddr_t) & vs->vs_org_value, (caddr_t) & vs);
     mp_set_push (pool, &vs->vs_references, (void *) VPLACE (cu, ret, irow));
     cu_dispatch (cu, vs, cf, arg);
+    if (DV_STRINGP (arg))
+      box_flags (vs->vs_org_value) = box_flags (arg);
     return V_PENDING;
   }
 }
@@ -771,6 +795,8 @@ cu_free (cucurbit_t * cu)
     hash_table_free (cu->cu_key_dup);
   if (cu->cu_rdf_last_g)
     dk_free_tree (cu->cu_rdf_last_g);
+  if (cu->cu_batch_p)
+    dk_free_box (cu->cu_batch_p);
   dk_free ((caddr_t) cu, sizeof (cucurbit_t));
 }
 
@@ -804,6 +830,7 @@ cu_clear (cucurbit_t * cu)
   cu->cu_fill = 0;
   cu->cu_nth_set = 0;
   cu->cu_n_redo = 0;
+  cu->cu_cset_done = 0;
   clrg->clrg_param_rows = NULL;
   clrg->clrg_nth_param_row = 0;
   clrg->clrg_nth_set = 0;
@@ -824,6 +851,9 @@ cu_clear (cucurbit_t * cu)
   clrg->clrg_host_clibs = NULL;
   if (cu->cu_key_dup)
     clrhash (cu->cu_key_dup);
+  if (cu->cu_csi)
+    clrhash (cu->cu_csi);
+  cu->cu_inx_bits = NULL;
   cu->cu_qst = NULL;
   cu->cu_clrg->clrg_inst = NULL;
 }
@@ -1058,6 +1088,7 @@ cu_ssl_row (cucurbit_t * cu, caddr_t * qst, state_slot_t ** args, int first_ssl)
 }
 
 void cl_rdf_call_insert_cb (cucurbit_t * cu, caddr_t * qst, caddr_t * err_ret);
+void cu_cl_cset_cols (cucurbit_t * cu, caddr_t g_iid);
 caddr_t bif_rollback (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args);
 void rb_id_serialize (rdf_box_t * rb, dk_session_t * ses);
 void cu_rl_local_exec (cucurbit_t * cu);
@@ -1194,6 +1225,9 @@ bif_dpipe_input (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   return NULL;
 }
 
+
+long tc_rdf_load_flush;
+long tc_rdf_load_p_flush;
 
 caddr_t
 bif_dpipe_next (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)

@@ -31,6 +31,8 @@ typedef int (*qpq_rangecheck_callback) (caddr_t * n, int do_what);
 typedef void (*qpq_oper_callback) (caddr_t * n, const char *arg1, const char *arg2, int do_what);
 typedef void (*qpq_teroper_callback) (caddr_t * n, const char *arg1, const char *arg2, const char *arg3, int do_what);
 
+extern long simple_rdf_numbers;
+
 typedef struct xqf_str_parser_desc_s
 {
   const char *p_name;
@@ -38,7 +40,7 @@ typedef struct xqf_str_parser_desc_s
   qpq_rangecheck_callback p_rcheck;
   int p_opcode;
   dtp_t p_can_default;
-  int p_rdf_boxed;
+  int p_rdf_boxed;		/*!< Bit 1 means box if simple_rdf_numbers is not set, bit 2 means box always */
   dtp_t p_dest_dtp;
   const char *p_typed_bif_name;
   const char *p_sql_cast_type;

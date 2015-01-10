@@ -81,6 +81,7 @@ struct id_hash_s
     size_t 		ht_dict_max_mem_in_use;	/*!< Memory size limit to prevent exausting of the physical memory */
     rwlock_t *		ht_rwlock;		/*!< Optional rwlock, esp. popular when this is a dictionary propagated across threads of async queue. The rwlock is NOT owned by the hashtable box! */
     id_hash_free_t	ht_free_hook;
+    void * 		ht_mp;
 #ifdef RH_TRACE
     int64		ht_rem_k;
     char *		ht_rem_file;

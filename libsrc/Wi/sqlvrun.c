@@ -190,6 +190,39 @@ dc_any_cmp (data_col_t * dc, int r1, int r2, int r_prefetch)
 
 
 int
+dc_any_cmp_nf (data_col_t * dc, int r1, int r2, int r_prefetch)
+{
+  /* for a string key col, no box flags counted in compare */
+  db_buf_t i1 = ((db_buf_t *) dc->dc_values)[r1];
+  db_buf_t i2 = ((db_buf_t *) dc->dc_values)[r2];
+  dtp_t dtp1 = i1[0], dtp2 = i2[0];
+  __builtin_prefetch (((db_buf_t *) dc->dc_values)[r_prefetch]);
+  if (DV_BOX_FLAGS == dtp1)
+    {
+      i1 += 5;
+      dtp1 = i1[0];
+    }
+  if (DV_BOX_FLAGS == dtp2)
+    {
+      i2 += 5;
+      dtp1 = i2[0];
+    }
+  if (dc->dc_any_null)
+    {
+      if (DV_DB_NULL == dtp1 && DV_DB_NULL == dtp2)
+	return DVC_MATCH;
+      if (DV_DB_NULL == dtp1)
+	return DVC_LESS;
+      if (DV_DB_NULL == dtp2)
+	return DVC_GREATER;
+    }
+  if (DV_RDF == dtp1 && DV_RDF == dtp2)
+    return dv_rdf_dc_compare (i1, i2) & ~DVC_NOORDER;
+  return dv_compare (i1, i2, NULL, 0) & ~DVC_NOORDER;
+}
+
+
+int
 dc_datetime_cmp (data_col_t * dc, int r1, int r2, int r_prefetch)
 {
   db_buf_t i1 = ((db_buf_t) dc->dc_values) + DT_LENGTH * r1;
@@ -3854,7 +3887,7 @@ vec_merge_setp (setp_node_t ** setp_ret, hash_area_t ** ha_ret, setp_node_t * tm
   if (tmp_ha)
     {
       *tmp_ha = **ha_ret;
-      tmp_ha->ha_org_ha = *ha_ret;
+      tmp_ha->ha_org_ha = (*setp_ret)->setp_ha;
       tmp_ha->ha_set_no = NULL;
       tmp_ha->ha_slots = (state_slot_t **) box_copy ((caddr_t) tmp_ha->ha_slots);
       DO_BOX (state_slot_t *, ssl, inx, tmp_ha->ha_slots)

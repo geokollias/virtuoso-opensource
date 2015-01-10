@@ -77,18 +77,14 @@ create procedure L_O_LOOK (inout val_str varchar, inout dt_lang int, inout lng v
 create procedure RL_I2ID_NP (inout pref varchar, inout name varchar, inout id iri_id_8)
 {
   vectored;
-  declare pref_fetched, id_fetched, pref_id int;
+  declare pref_fetched, id_fetched, pref_id, flags int;
   insert into rdf_prefix index rdf_prefix option (fetch pref_id by 'RDF_PREF_SEQ' set pref_fetched) (rp_name, rp_id) values (pref, pref_id);
   if (0 = pref_fetched)
     insert soft rdf_prefix index DB_DBA_RDF_PREFIX_UNQC_RP_ID (rp_name, rp_id) values (pref, pref_id);
   rdf_cache_id ('p', pref, pref_id);
   __rl_set_pref_id (name, pref_id);
---  name[0] := bit_shift (pref_id, -24);
---  name[1] := bit_shift (pref_id, -16);
---  name[2] := bit_shift (pref_id, -8);
---  name[3] := pref_id;
-
-  insert into rdf_iri index rdf_iri option (fetch id by 'RDF_URL_IID_NAMED' set id_fetched) (ri_name, ri_id) values (name, id);
+  flags := __box_flags (name);
+  insert into rdf_iri index rdf_iri option (fetch id by flags set id_fetched) (ri_name, ri_id) values (name, id);
   if (0 = id_fetched)
     insert into RDF_IRI index DB_DBA_RDF_IRI_UNQC_RI_ID (RI_ID, RI_NAME) values (id, name);
 }

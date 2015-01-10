@@ -349,7 +349,7 @@ dc_append_field (file_source_t * fs, data_col_t * dc, dbe_column_t * col, char *
       {
 	if (!field_len && fs->fs_null_empty_string)
 	  {
-	    is_null = 1;
+	    is_null = 2;
 	    break;
 	  }
 	dc_append_chars (dc, field, field_len);
@@ -361,35 +361,39 @@ dc_append_field (file_source_t * fs, data_col_t * dc, dbe_column_t * col, char *
     case DV_TIME:
       {
 	caddr_t err_str = NULL;
-	int dt_type;
+	int dt_type, dtflags;
 	dtp_t dt[DT_LENGTH];
 	if (!field_len)
 	  {
-	    is_null = 1;
+	    is_null = 2;
 	    break;
 	  }
 	switch (col->col_sqt.sqt_dtp)
 	  {
 	  case DV_DATE:
 	    dt_type = DT_TYPE_DATE;
+	    dtflags = DTFLAG_DATE;
 	    break;
 	  case DV_DATETIME:
 	  case DV_TIMESTAMP:
 	    dt_type = DT_TYPE_DATETIME;
+	    dtflags = DTFLAG_DATE | DTFLAG_TIME;
 	    break;
 	  case DV_TIME:
 	    dt_type = DT_TYPE_TIME;
+	    dtflags = DTFLAG_TIME;
 	    break;
 	  default:
 	    dt_type = -1;
 	    break;
 	  }
 	field[field_len] = 0;
-
-	iso8601_or_odbc_string_to_dt_1 (field, (char *) dt, 0x31ff, dt_type, &err_str);
+	iso8601_or_odbc_string_to_dt_1 (field, (char *) dt,
+	    dtflags | DTFLAG_TIMEZONE | DTFLAG_ALLOW_JAVA_SYNTAX | DTFLAG_ALLOW_ODBC_SYNTAX | DTFLAG_T_FORMAT_SETS_TZL,
+	    dt_type, &err_str);
 	if (err_str)
 	  {
-	    is_null = 1;
+	    is_null = 2;
 	    break;
 	  }
 	memcpy_dt (dc->dc_values + DT_LENGTH * dc->dc_n_values, dt);
@@ -401,7 +405,12 @@ dc_append_field (file_source_t * fs, data_col_t * dc, dbe_column_t * col, char *
       break;
     }
   if (is_null)
-    dc_set_null (dc, dc->dc_n_values - 1);
+    {
+      if (2 == is_null)
+	dc_append_null (dc);
+      else
+	dc_set_null (dc, dc->dc_n_values - 1);
+    }
   else
     {
       if (dc->dc_nulls)
@@ -546,6 +555,7 @@ dc_col_cmp (data_col_t * dc, dbe_col_loc_t * cl, caddr_t value)
 	{
 	  while (1)
 	    {
+	      wchar_t xlat1, xlat2;
 	      if (inx == l1)
 		{
 		  if (inx == l2)
@@ -555,9 +565,11 @@ dc_col_cmp (data_col_t * dc, dbe_col_loc_t * cl, caddr_t value)
 		}
 	      if (inx == l2)
 		return DVC_GREATER;
-	      if (collation->co_table[(unsigned char) dv1[inx]] < collation->co_table[(unsigned char) dv2[inx]])
+	      xlat1 = COLLATION_XLAT_NARROW (collation, (unsigned char) dv1[inx]);
+	      xlat2 = COLLATION_XLAT_NARROW (collation, (unsigned char) dv2[inx]);
+	      if (xlat1 < xlat2)
 		return DVC_LESS;
-	      if (collation->co_table[(unsigned char) dv1[inx]] > collation->co_table[(unsigned char) dv2[inx]])
+	      if (xlat1 > xlat2)
 		return DVC_GREATER;
 	      inx++;
 	    }
@@ -613,8 +625,6 @@ dc_like_compare (data_col_t * dc, caddr_t pattern, search_spec_t * spec)
     {
     case DV_STRING:
     case DV_SHORT_STRING_SERIAL:
-      if (collation && collation->co_is_wide)
-	collation = NULL;
       break;
     case DV_WIDE:
       st = LIKE_ARG_UTF;
@@ -838,7 +848,7 @@ ft_set_cl_file (file_source_t * fs, QI * qi, caddr_t * file_name)
 	sqlr_new_error ("420000", "FS....", "File nam,e in file name array is not a string");
       if (DV_LONG_INT == dtp)
 	{
-	  if (local_cll.cll_this_host != unbox (nos))
+	  if (local_cll.cll_this_host != unbox ((caddr_t) nos))
 	    goto next;
 	  qst_set_long ((caddr_t *) qi, fs->fs_n_slices, BOX_ELEMENTS (chg->chg_hosted_slices));
 	  qst_set_long ((caddr_t *) qi, fs->fs_nth_slice, box_position ((caddr_t *) chg->chg_hosted_slices,
@@ -870,6 +880,29 @@ ft_set_cl_file (file_source_t * fs, QI * qi, caddr_t * file_name)
 
 int fs_file_in_buf_len = 2048 * 1024;
 
+void
+fs_set_params (file_source_t * fs, caddr_t * inst)
+{
+  caddr_t *box;
+  int inx, fill = 0;
+  if (!fs->fs_n_params)
+    return;
+  box = (caddr_t *) dk_alloc_box_zero (sizeof (caddr_t) * fs->fs_n_params, DV_BIN);
+  DO_BOX (search_spec_t *, sp, inx, fs->fs_specs)
+  {
+    for (sp = sp; sp; sp = sp->sp_next)
+      {
+	if (CMP_NONE != sp->sp_min_op)
+	  box[sp->sp_min] = qst_get (inst, sp->sp_min_ssl);
+	if (CMP_NONE != sp->sp_max_op)
+	  box[sp->sp_max] = qst_get (inst, sp->sp_max_ssl);
+      }
+  }
+  END_DO_BOX;
+  qst_set (inst, fs->fs_search_params, box);
+}
+
+
 int
 ft_ts_start_search (table_source_t * ts, caddr_t * inst)
 {
@@ -900,6 +933,7 @@ ft_ts_start_search (table_source_t * ts, caddr_t * inst)
       if (ks->ks_cl_local_cast)
 	ks_cl_local_cast (ks, inst);
     }
+  fs_set_params (fs, inst);
   is_nulls = ks_make_spec_list (itc, ks->ks_spec.ksp_spec_array, inst);
   is_nulls |= ks_make_spec_list (itc, ks->ks_row_spec, inst);
   if (is_nulls)
@@ -946,29 +980,6 @@ ft_ts_start_search (table_source_t * ts, caddr_t * inst)
     }
   ses->dks_limit = INT64_MAX - 10;
   return 1;
-}
-
-
-void
-fs_set_params (file_source_t * fs, caddr_t * inst)
-{
-  caddr_t *box;
-  int inx, fill = 0;
-  if (!fs->fs_n_params)
-    return;
-  box = (caddr_t *) dk_alloc_box_zero (sizeof (caddr_t) * fs->fs_n_params, DV_BIN);
-  DO_BOX (search_spec_t *, sp, inx, fs->fs_specs)
-  {
-    for (sp = sp; sp; sp = sp->sp_next)
-      {
-	if (CMP_NONE != sp->sp_min_op)
-	  box[sp->sp_min] = qst_get (inst, sp->sp_min_ssl);
-	if (CMP_NONE != sp->sp_max_op)
-	  box[sp->sp_max] = qst_get (inst, sp->sp_max_ssl);
-      }
-  }
-  END_DO_BOX;
-  qst_set (inst, fs->fs_search_params, box);
 }
 
 
@@ -1091,7 +1102,7 @@ nosplit:
 }
 
 
-caddr_t
+caddr_t *
 ft_ts_handle_aq (table_source_t * ts, caddr_t * inst, caddr_t * state, int *n_sets_ret)
 {
   /* called when continuing a file ts with an aq.  Return inst if ts should start, null if should continue from position, -1 if should return */
@@ -1135,7 +1146,7 @@ ft_ts_handle_aq (table_source_t * ts, caddr_t * inst, caddr_t * state, int *n_se
 	ts_aq_result (ts, inst);
 	if (qi->qi_client->cli_activity.da_anytime_result)
 	  cli_anytime_timeout (qi->qi_client);
-	return 1;
+	return (caddr_t *) 1;
       }
     }
   return NULL;
@@ -1155,7 +1166,6 @@ file_source_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
   if (state)
     {
       nth_set = QST_INT (inst, ts->clb.clb_nth_set) = 0;
-      fs_set_params (fs, inst);
       if (!ft_ts_split (ts, inst, n_sets))
 	return;
       state = NULL;
@@ -1215,7 +1225,6 @@ again:
 	      goto again;
 	    }
 	}
-    next_set:
       state = inst;
     }
   SRC_IN_STATE (ts, inst) = NULL;

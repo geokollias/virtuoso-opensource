@@ -2043,35 +2043,16 @@ create procedure DB.DBA.SPONGING_ALLOWED ()
 
 create function DB.DBA.RDF_SPONGE_UP (in graph_iri varchar, in options any, in uid integer := -1)
 {
-  declare aq, cookie varchar;
-  declare dest, local_iri varchar;
+  declare rc any;
 
-  if (coalesce (virtuoso_ini_item_value ('SPARQL', 'AsyncQueue'), '0') = '0' or get_keyword ('__rdf_sponge_queue', options) = 1)
-    {
-      return DB.DBA.RDF_SPONGE_UP_1 (graph_iri, options, uid);
-    }
-  commit work;
-  --set_user_id ('dba', 1);
-  cookie := connection_get ('__rdf_sponge_sid');
-  if (cookie is not null)
-    options := vector_concat (options, vector ('rdf_sponge_sid', cookie));
-  if (connection_get ('__rdf_sponge_debug') is not null)
-    options := vector_concat (options, vector ('rdf_sponge_debug', connection_get ('__rdf_sponge_debug')));
-  if (is_http_ctx ())
-    options := vector_concat (options, vector ('http_host', http_request_header(http_request_header (), 'Host', null, null)));
-  options := vector_concat (options, vector ('__rdf_sponge_log_mode', log_enable (null, 1)));
-  aq := async_queue (1);
-  aq_request (aq, 'DB.DBA.RDF_SPONGE_UP_1', vector (graph_iri, options, uid));
-  commit work;
-  aq_wait_all (aq);
-
-  graph_iri := cast (graph_iri as varchar);
-  dest := get_keyword_ucase ('get:destination', options);
-  if (dest is not null)
-    local_iri := 'destMD5=' || md5(dest) || '&graphMD5=' || md5(graph_iri);
-  else
-    local_iri := graph_iri;
-  return local_iri;
+  declare exit handler for sqlstate '*' {
+    rdf_set_sponge (0);
+    resignal;
+  };
+  rdf_set_sponge (1);
+  rc := DB.DBA.RDF_SPONGE_UP_1 (graph_iri, options, uid);
+  rdf_set_sponge (0);
+  return rc;
 }
 ;
 
@@ -2120,7 +2101,7 @@ create function DB.DBA.RDF_SPONGE_UP_1 (in graph_iri varchar, in options any, in
         {
           -- dbg_obj_princ ('Exists and get:soft=soft, leaving');
           perms := DB.DBA.RDF_GRAPH_USER_PERMS_GET (dest, case (uid) when -1 then http_nobody_uid() else uid end);
-          if (not bit_and (perms, 1))
+          if (not bit_and (perms, 1) and 0 = sys_stat ('enable_g_in_sec'))
             {
                -- dbg_obj_princ (dest, ' graph is OK as it is but not returned from RDF_SPONGE_UP_1 due to lack of read permission for user ', uid);
                return null;
@@ -2146,7 +2127,7 @@ create function DB.DBA.RDF_SPONGE_UP_1 (in graph_iri varchar, in options any, in
   else
     {
       perms := DB.DBA.RDF_GRAPH_USER_PERMS_GET (dest, case (uid) when -1 then http_nobody_uid() else uid end);
-      if (not bit_and (perms, 4))
+      if (not bit_and (perms, 4) and 0 = sys_stat ('enable_g_in_sec'))
         {
            if (get_keyword_ucase ('get:error-recovery', options, 'signal') = 'signal')
              signal ('RDFZZ', sprintf (

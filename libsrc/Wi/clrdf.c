@@ -149,7 +149,7 @@ cu_rdf_ins_label_normalize (mem_pool_t * mp, caddr_t lbl)
   caddr_t ret;
   int i, j, l;
 
-  l = (size_t) box_utf8_as_wide_char (lbl, (caddr_t) tmp, box_length (lbl) - 1, sizeof (tmp) / sizeof (wchar_t) - 1, DV_WIDE);
+  l = (size_t) box_utf8_as_wide_char (lbl, (caddr_t) tmp, box_length (lbl) - 1, sizeof (tmp) / sizeof (wchar_t) - 1);
   for (i = 0, j = 0; i < l; i++)
     {
       if (!wcschr (L"\'\",.", tmp[i]))
@@ -719,20 +719,60 @@ bif_dpipe_set_rdf_load (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     cu->cu_ready_cb = cu_rdf_del_cb;
   if ((cu->cu_rdf_load_mode & RDF_LD_MASK) != RDF_LD_DELETE && !cu->cu_key_dup)
     cu->cu_key_dup = hash_table_allocate (5);
-  if (cu->cu_rdf_load_mode & RDF_LD_DEL_INS)
-    cu->cu_ready_cb = NULL;
-  if (cu->cu_rdf_load_mode & RDF_LD_DEL_GS)
+  if (cu->cu_rdf_load_mode & RDF_LD_DEL_INS || enable_cset)
+    {
+      cu->cu_ready_cb = NULL;
+      if (!cu->cu_rdf_load_mode)
+	cu->cu_rdf_load_mode = RDF_LD_CSET;
+    }
+  else if (cu->cu_rdf_load_mode & RDF_LD_DEL_GS)
     cu->cu_ready_cb = cu_rdf_del_cb;
-  if (cu->cu_rdf_load_mode & RDF_LD_INS_GS)
+  else if (cu->cu_rdf_load_mode & RDF_LD_INS_GS)
     cu->cu_ready_cb = cu_rdf_ins_cb;
   return NULL;
 }
+
+
+extern long tc_rdf_load_p_flush;
+extern int32 cl_batch_bytes;
+
+caddr_t
+bif_rdf_load_is_batch_end (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  /* if cset load with set of s with p as major order, flush when the first p comes around again and there are enough rows.  If very many rrows and the p does not come around again then flush anyway */
+  cl_req_group_t *clrg = bif_clrg_arg (qst, args, 0, "rdf_lad_is_batch_end");
+  caddr_t p = bif_arg (qst, args, 1, "rdf_load_is_batch_end");
+  cucurbit_t *cu = clrg->clrg_cu;
+  QNCAST (query_instance_t, qi, qst);
+  if (!cu)
+    sqlr_new_error ("42000", "CL...", "Not a dpipe daq");
+  if (cu->cu_fill > dc_max_batch_sz - 10)
+    goto full_no_rep;
+  if (clrg->clrg_pool->mp_bytes < (cl_batch_bytes / 3))
+    return NULL;
+  if (clrg->clrg_pool->mp_bytes > cl_batch_bytes)
+    goto full_no_rep;
+  if (!cu->cu_batch_p)
+    cu->cu_batch_p = box_copy (p);
+  else if (box_equal (p, cu->cu_batch_p))
+    {
+      TC (tc_rdf_load_p_flush);
+      return box_num (1);
+    }
+  return NULL;
+full_no_rep:
+  dk_free_box (cu->cu_batch_p);
+  cu->cu_batch_p = box_copy (p);
+  return box_num (1);
+}
+
 
 
 void
 cl_rdf_init ()
 {
   bif_define ("dpipe_set_rdf_load", bif_dpipe_set_rdf_load);
+  bif_define_typed ("rdf_load_is_batch_end", bif_rdf_load_is_batch_end, &bt_integer);
   bif_define_ex ("dpipe_rdf_load_mode", bif_dpipe_rdf_load_mode, BMD_RET_TYPE, &bt_integer, BMD_DONE);
   bif_define ("dpipe_exec_rdf_callback", bif_dpipe_exec_rdf_callback);
   rdf_ld_batch_sz = dc_batch_sz;

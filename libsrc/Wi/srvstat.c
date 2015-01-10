@@ -231,6 +231,7 @@ extern long tc_qrc_plan_miss;
 extern int enable_no_free;
 #endif
 extern int32 enable_rdf_box_const;
+extern simple_rdf_numbers;
 extern int enable_subscore;
 extern int cl_no_init;
 extern int enable_dfg;
@@ -269,7 +270,7 @@ extern long tc_dfg_max_empty_mores;
 extern int mp_local_rc_sz;
 extern int enable_distinct_sas;
 extern int enable_inline_sqs;
-extern enable_joins_only;
+extern int enable_joins_only;
 int32 ha_rehash_pct = 300;
 extern int c_use_aio;
 extern int32 sqlo_sample_dep_cols;
@@ -400,6 +401,7 @@ extern int32 cl_stage;
 extern int32 cl_batch_bytes;
 extern int32 cl_first_buf;
 extern int32 iri_range_size;
+extern int32 enable_iri_nic_n;
 extern int enable_small_int_part;
 extern int iri_seqs_used;
 int64 tn_max_memory = 1000000000;
@@ -414,12 +416,20 @@ extern int chash_per_query_pct;
 extern int enable_chash_gb;
 extern long tc_slow_temp_insert;
 extern long tc_slow_temp_lookup;
+extern long tc_rdf_load_flush;
+extern long tc_rdf_load_p_flush;
+
+
 extern int enable_ksp_fast;
 int cl_log_from_sync = 0;
 int cl_no_auto_remove;
 extern int dbf_log_fsync;
 extern int dbf_assert_on_malformed_data;
 extern int dbf_max_itc_samples;
+
+extern int32 c_pcre_match_limit;
+extern int32 c_pcre_match_limit_recursion;
+extern int32 pcre_max_cache_sz;
 
 void trset_start (caddr_t * qst);
 void trset_printf (const char *str, ...);
@@ -967,13 +977,13 @@ bif_exec_status ()
 {
   id_hash_iterator_t hit;
   int64 *k;
-  bif_exec_stat_t *exs;
+  bif_exec_stat_t **exs;
   uint32 now = get_msec_real_time ();
   mutex_enter (&bif_exec_pending_mtx);
   id_hash_iterator (&hit, bif_exec_pending);
   while (hit_next (&hit, (caddr_t *) & k, (caddr_t *) & exs))
     {
-      rep_printf ("%d  %s\n", now - exs->exs_start, exs->exs_text);
+      rep_printf ("%d  %s\n", now - exs[0]->exs_start, exs[0]->exs_text);
     }
 
   mutex_leave (&bif_exec_pending_mtx);
@@ -1240,6 +1250,7 @@ extern int64 dk_n_total;
 extern int64 dk_n_nosz_free;
 extern int64 dk_n_bytes;
 extern int64 dk_n_mmaps;
+extern int64 dk_n_max_allocs;
 size_t http_threads_mem_report ();
 size_t dk_alloc_global_cache_total ();
 size_t aq_thr_mem_cache_total ();
@@ -1584,6 +1595,8 @@ stat_desc_t stat_descs[] = {
   {"tc_no_thread_kill_running", &tc_no_thread_kill_running, NULL},
   {"tc_deld_row_rl_rb", &tc_deld_row_rl_rb, NULL},
   {"tc_pg_write_compact", &tc_pg_write_compact, NULL},
+  {"tc_rdf_load_flush", &tc_rdf_load_flush},
+  {"tc_rdf_load_p_flush", &tc_rdf_load_p_flush},
   {"tft_random_seek", &tft_random_seek, NULL},
   {"tft_seq_seek", &tft_seq_seek, NULL},
 
@@ -1810,6 +1823,7 @@ stat_desc_t dbf_descs[] = {
   {"enable_bsp_trans", &enable_bsp_trans, SD_INT32},
   {"enable_cset", &enable_cset, SD_INT32},
   {"iri_seqs_used", &iri_seqs_used, SD_INT32},
+  {"enable_iri_nic_n", (long *) &enable_iri_nic_n, SD_INT32},
   {"enable_at_print", (long *) &enable_at_print, SD_INT32},
   {"enable_min_card", (long *) &enable_min_card},
   {"enable_distinct_sas", (long *) &enable_distinct_sas, SD_INT32},
@@ -1902,6 +1916,7 @@ stat_desc_t dbf_descs[] = {
   {"enable_no_free", &enable_no_free, SD_INT32},
 #endif
   {"enable_rdf_box_const", &enable_rdf_box_const, SD_INT32},
+  {"simple_rdf_numbers", &simple_rdf_numbers, SD_INT32},
   {"col_seg_max_rows", &col_seg_max_rows, SD_INT32},
   {"dk_n_allocs", &dk_n_allocs},
   {"dk_n_free", &dk_n_free},
@@ -1909,6 +1924,9 @@ stat_desc_t dbf_descs[] = {
   {"dk_n_nosz_free", &dk_n_nosz_free},
   {"dk_n_bytes", &dk_n_bytes},
 
+  {"pcre_match_limit", &c_pcre_match_limit, SD_INT32},
+  {"pcre_match_limit_recursion", &c_pcre_match_limit_recursion, SD_INT32},
+  {"pcre_max_cache_sz", &pcre_max_cache_sz, SD_INT32},
   {NULL, NULL, NULL}
 };
 
@@ -2285,6 +2303,22 @@ bif_col_stat (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 
   sqlr_new_error ("42000", "ST002", "Bad attribute name in col_stat");
   return NULL;
+}
+
+
+caddr_t
+bif_buf_stat (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  ushort flags;
+  ptrlong nth = bif_long_arg (qst, args, 0, "buf_stat");
+  buffer_desc_t *buf;
+  if (nth >= main_bufs)
+    return NEW_DB_NULL;
+  buf = &wi_inst.wi_bps[nth / wi_inst.wi_bps[0]->bp_n_bufs]->bp_bufs[nth % wi_inst.wi_bps[0]->bp_n_bufs];
+  flags = SHORT_REF (buf->bd_buffer + DP_FLAGS);
+  return list (4, box_num (flags), buf->bd_tree
+      && buf->bd_tree->it_key ? box_num (buf->bd_tree->it_key->key_id) : NULL, box_num (LONG_REF (buf->bd_buffer + DP_PARENT)),
+      (ptrlong) buf->bd_is_dirty);
 }
 
 
@@ -2718,6 +2752,44 @@ dbg_print_string_box (ccaddr_t object, FILE * out)
 }
 
 void
+dbg_print_wide_string_box (ccaddr_t object, FILE * out)
+{
+  const wchar_t *end = (const wchar_t *) object + box_length (object) / sizeof (wchar_t) - 1;
+  const wchar_t *tail;
+  for (tail = (const wchar_t *) object; tail < end; tail++)
+    {
+      switch (tail[0])
+	{
+	case '\'':
+	  fprintf (out, "\\\'");
+	  break;
+	case '\"':
+	  fprintf (out, "\\\"");
+	  break;
+	case '\r':
+	  fprintf (out, "\\r");
+	  break;
+	case '\n':
+	  fprintf (out, "\\n");
+	  break;
+	case '\t':
+	  fprintf (out, "\\t");
+	  break;
+	case '\\':
+	  fprintf (out, "\\\\");
+	  break;
+	default:
+	  if (tail[0] > 0xffffffff)
+	    fprintf (out, "\\U%08x", (int) (tail[0]));
+	  else if (tail[0] > 0x7f || tail[0] < L' ')
+	    fprintf (out, "\\u%04x", (int) (tail[0]));
+	  else
+	    fputc (tail[0], out);
+	}
+    }
+}
+
+void
 dbg_print_box_aux (caddr_t object, FILE * out, dk_hash_t * known)
 {
   char temp[0x100];
@@ -2916,8 +2988,9 @@ dbg_print_box_aux (caddr_t object, FILE * out, dk_hash_t * known)
 	  break;
 	case DV_WIDE:
 	case DV_LONG_WIDE:
-	  box_wide_string_as_narrow (object, temp, sizeof (temp) - 1, NULL);
-	  fprintf (out, "N\"%s\"", temp);
+	  fprintf (out, "N'");
+	  dbg_print_wide_string_box (object, out);
+	  fprintf (out, "'");
 	  break;
 #ifdef BIF_XML
 	case DV_XML_ENTITY:
@@ -4853,6 +4926,7 @@ bif_status_init (void)
   bif_define ("sys_stat", bif_sys_stat);
   bif_define ("__dbf_set", bif_dbf_set);
   bif_define_ex ("key_stat", bif_key_stat, BMD_RET_TYPE, &bt_integer, BMD_DONE);
+  bif_define_ex ("buf_stat", bif_buf_stat, BMD_RET_TYPE, &bt_any_box, BMD_DONE);
   bif_define_ex ("key_estimate", bif_key_estimate, BMD_RET_TYPE, &bt_integer, BMD_DONE);
   bif_define_ex ("col_stat", bif_col_stat, BMD_RET_TYPE, &bt_any_box, BMD_DONE);
   bif_define ("__col_info", bif_col_info);

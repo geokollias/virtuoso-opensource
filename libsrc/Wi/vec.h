@@ -238,6 +238,7 @@ void dc_heterogenous (data_col_t * dc);
 void dc_convert_empty (data_col_t * dc, dtp_t dtp);
 void dc_set_flags (data_col_t * dc, sql_type_t * sqt, dtp_t dcdtp);
 int dc_any_cmp (data_col_t * dc, int r1, int r2, int r_prefetch);
+int dc_any_cmp_nf (data_col_t * dc, int r1, int r2, int r_prefetch);
 int dtp_is_chash_inlined (dtp_t dtp);
 void vec_ssl_assign (caddr_t * inst, state_slot_t * to, state_slot_t * from);
 void vec_qst_set_temp_box (caddr_t * qst, state_slot_t * ssl, caddr_t data);

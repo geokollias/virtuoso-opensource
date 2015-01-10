@@ -128,6 +128,9 @@
 #define AMMSC_USER		(ptrlong)7
 #define AMMSC_ONE (long)8	/* return of scalar subq in vectored exec, align set no to calling outside subq  sets */
 #define AMMSC_TRANS ((ptrlong)9)
+#define AMMSC_EXEC ((ptrlong)10)
+#define AMMSC_TRANS_SCAN 11
+
 #define ORDER_BY		(ptrlong)111
 
 #define TABLE_DEF		(ptrlong)500
@@ -200,7 +203,7 @@
 #define TRANS_STMT ((ptrlong)634)
 #define TRANS_CLAUSE ((ptrlong)635)
 #define FROM_STMT ((ptrlong)636)
-#define TEMP_TABLE ((ptrlong)637)
+#define TEMP_TABLE ((ptrlong)638)
 
 #define IN_MODE			(ptrlong)1
 #define OUT_MODE		(ptrlong)2
@@ -355,6 +358,13 @@ Note: bitwise OR of all these masks should be less than SMALLEST_POSSIBLE_POINTE
 #define OPT_NO_PART_GBY ((ptrlong)946)
 #define OPT_NO_LOCK ((ptrlong)956)
 #define OPT_NO_DT_INLINE ((ptrlong)961)
+#define OPT_SEC_EXCEPT ((ptrlong)962)
+#define OPT_CARDINALITY ((ptrlong)963)
+#define OPT_VALUES ((ptrlong)964)
+#define OPT_EXECUTE ((ptrlong)965)
+#define OPT_BORDER ((ptrlong)966)
+#define OPT_G_SEC ((ptrlong)967)
+
 
 #define OPT_EST_TIME ((ptrlong)950)
 #define OPT_EST_SIZE ((ptrlong)951)
@@ -799,7 +809,8 @@ typedef struct sql_tree_s
     struct
     {
       ST **cols;
-      caddr_t name;
+      caddr_t table;
+      caddr_t prefix;
       ST *filter;
       ST *stmt;
     } gb_ext;
@@ -816,8 +827,10 @@ typedef struct sql_tree_s
     } trans_stmt;
     struct
     {
-      caddr_t temp;
+      caddr_t table;
+      caddr_t prefix;
       ST *stmt;
+      ST *cond;
     } trans_clause;
     struct
     {

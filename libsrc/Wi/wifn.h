@@ -1160,6 +1160,7 @@ EXE_EXPORT (box_t, registry_get_all, (void));	/* returns the name,value, name,va
      void hi_free (hash_index_t * hi);
      void hic_clear (void);
      void it_hi_invalidate (index_tree_t * it, int in_hic);
+     void it_hi_invalidate_in_mtx (index_tree_t * it);
 /* bif_repl.c */
      extern unsigned long cfg_scheduler_period;
      extern unsigned long main_continuation_reason;

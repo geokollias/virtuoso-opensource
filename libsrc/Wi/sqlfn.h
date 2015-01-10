@@ -154,6 +154,8 @@ void qf_select_node_input (qf_select_node_t * qfs, caddr_t * inst, caddr_t * sta
 void cli_send_row_count (client_connection_t * cli, long n_affected, caddr_t * ret, du_thread_t * thr);
 void skip_node_input (skip_node_t * ins, caddr_t * inst, caddr_t * state);
 void qfs_free (qf_select_node_t * qfs);
+void tvf_node_input (tvf_node_t * tvf, caddr_t * inst, caddr_t * state);
+void tvf_free (tvf_node_t * tvf);
 
 void qn_input (data_source_t * xx, caddr_t * inst, caddr_t * state);
 void qn_restore_local_save (data_source_t * qn, caddr_t * inst);
@@ -272,6 +274,7 @@ int inx_opt_flag (caddr_t * opts, char *name);
 int inx_opt_flag (caddr_t * opts, char *name);
 
 int inx_opt_flag (caddr_t * opts, char *name);
+void ssl_broader_type (state_slot_t * ssl1, state_slot_t * ssl2);
 
 dtp_t ddl_type_to_dtp (caddr_t * type);
 int dtp_parse_options (char *ck, sql_type_t * psqt, caddr_t * opts);
@@ -319,6 +322,7 @@ int ks_make_spec_list (it_cursor_t * it, search_spec_t * ks_spec, caddr_t * stat
 
 int ks_start_search (key_source_t * ks, caddr_t * inst, caddr_t * state,
     it_cursor_t * itc, buffer_desc_t ** buf_ret, table_source_t * ts, int search_mode);
+void ks_cl_local_cast (key_source_t * ks, caddr_t * inst);
 int itc_il_search (it_cursor_t * itc, buffer_desc_t ** buf_ret, caddr_t * qst, inx_locality_t * il, placeholder_t * pl, int is_asc);
 
 void ts_outer_output (table_source_t * ts, caddr_t * qst);
@@ -547,6 +551,8 @@ EXE_EXPORT (void, sqlr_resignal, (caddr_t err));
 #define TA_CL_CHASH_SSL_ID 1219
 #define TA_STAT_COMM 1220
 
+#define TA_QST 3000
+
 void update_node_input (update_node_t * del, caddr_t * inst, caddr_t * state);
 
 void current_of_node_input (current_of_node_t * del, caddr_t * inst, caddr_t * state);
@@ -648,7 +654,7 @@ void qst_set_double (caddr_t * state, state_slot_t * sl, double dv);
 
 void qst_set_string (caddr_t * state, state_slot_t * sl, db_buf_t data, size_t len, uint32 flags);
 
-void qst_set_wide_string (caddr_t * state, state_slot_t * sl, db_buf_t data, int len, dtp_t dtp, int isUTF8);
+void qst_set_wide_string (caddr_t * state, state_slot_t * sl, db_buf_t data, int len, int isUTF8);
 
 void qst_set_numeric_buf (caddr_t * state, state_slot_t * sl, db_buf_t xx);
 
@@ -1329,7 +1335,9 @@ void rdf_inf_pre_input (rdf_inf_pre_node_t * ri, caddr_t * inst, caddr_t * volat
 void trans_node_input (trans_node_t * tn, caddr_t * inst, caddr_t * state);
 void tn_qn_init (data_source_t * qn, caddr_t * inst);
 void tn_bsp_run (trans_node_t * tn, caddr_t * inst);
-void cha_next_superstep (table_source_t * ts, caddr_t * inst);
+void cha_next_superstep (table_source_t * ts, caddr_t * inst, int sst);
+void cha_bsp_result (table_source_t * ts, hash_area_t * ha, caddr_t * inst, chash_t * cha, int64 * ent, int *n_results, int *row);
+
 
 void query_frag_input (query_frag_t * qf, caddr_t * inst, caddr_t * state);
 void query_frag_free (query_frag_t * qf);
@@ -1415,8 +1423,8 @@ int itc_vec_split_search (it_cursor_t * itc, buffer_desc_t ** buf_ret, int at_or
 void ssl_cast (data_source_t * qn, caddr_t * inst, state_slot_t * res, state_slot_ref_t * source, dc_cast_t cf, caddr_t * err_ret);
 int key_vec_insert (insert_node_t * ins, caddr_t * qst, it_cursor_t * itc, ins_key_t * ik);
 void itc_make_param_order (it_cursor_t * itc, query_instance_t * qi, int n_sets);
-void code_vec_run_v (code_vec_t code_vec, caddr_t * qst, int offset, int run_until, int n_sets, data_col_t * ret_dc, int *bool_ret,
-    ssl_index_t bool_ret_fill);
+void code_vec_run_v (code_vec_t code_vec, caddr_t * qst, int offset, int run_until, int64 n_sets, data_col_t * ret_dc,
+    int *bool_ret, ssl_index_t bool_ret_fill);
 void ssl_set_dc_type (state_slot_t * ssl);
 void qst_vec_set (caddr_t * inst, state_slot_t * ssl, caddr_t v);
 void qst_vec_set_copy (caddr_t * inst, state_slot_t * ssl, caddr_t v);
@@ -1500,6 +1508,7 @@ void cl_fref_resume (fun_ref_node_t * fref, caddr_t * inst);
 void chash_read_input (table_source_t * ts, caddr_t * inst, caddr_t * state);
 void memcache_read_input (table_source_t * ts, caddr_t * inst, caddr_t * state);
 void fun_ref_streaming_input (fun_ref_node_t * fref, caddr_t * inst, caddr_t * state);
+void fun_ref_reset_setps (fun_ref_node_t * fref, caddr_t * inst);
 void chash_merge (setp_node_t * setp, chash_t * cha, chash_t * delta, int n_to_go);
 dtp_t cha_dtp (dtp_t dtp, int is_key);
 caddr_t *chash_reader_current_branch (table_source_t * ts, hash_area_t * ha, caddr_t * inst, int is_next, index_tree_t ** tree_ret);
@@ -1708,11 +1717,15 @@ int cfg2_getstring (PCONFIG pconfig, PCONFIG pconfig_g, char *sect, char *item, 
 uint64 qi_total_mem (query_instance_t * qi);
 
 int tb_is_rdf_quad (dbe_table_t * tb);
+int tb_is_rdf_quad_or_cset (dbe_table_t * tb);
 void qn_vec_reuse (data_source_t * qn, caddr_t * inst);
 int64 sqlo_p_stat_query (dbe_table_t * tb, caddr_t p);
 
 
 extern int32 enable_vec_reuse;
+#ifdef USE_TLSF
+extern tlsf_t *sqlc_tlsf;
+#else
 #define thr_set_tlsf(x, y) ;
 #ifndef WITH_TLSF
 #define WITH_TLSF(x) {
@@ -1721,6 +1734,7 @@ extern int32 enable_vec_reuse;
 #define B_NEW_VARZ(t, v) NEW_VARZ(t, v)
 #define tlsf_base_alloc(s) dk_alloc(s)
 
+#endif
 #endif
 
 /*qrc */

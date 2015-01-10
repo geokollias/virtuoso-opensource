@@ -339,6 +339,19 @@ dk_set_union (dk_set_t s1, dk_set_t s2)
 }
 
 
+void
+sqlo_cset_partition (dbe_table_t * tb)
+{
+  /* the abstract table is partitioned pon s like rdf_quad */
+  cset_t *cset = tb->tb_closest_cset;
+  key_partition_def_t *kpd;
+  if (CL_RUN_LOCAL == cl_run_local_only)
+    return;
+  kpd = kpd_copy (cset->cset_rq_table->tb_primary_key->key_partition);
+  tb->tb_primary_key->key_partition = kpd;
+  kpd->kpd_cols[0]->cp_col_id = 1;
+}
+
 
 dk_set_t
 cset_temp_tables (sqlo_t * so, dk_set_t cset_tbs)
@@ -356,11 +369,14 @@ cset_temp_tables (sqlo_t * so, dk_set_t cset_tbs)
     dbe_key_t *key = (dbe_key_t *) dk_alloc (sizeof (dbe_key_t));
     NEW_VARZ (dbe_table_t, tb);
     memzero (key, sizeof (dbe_key_t));
+    key->key_id = KI_TEMP;
     key->key_table = tb;
     key->key_is_primary = 1;
     tb->tb_primary_key = key;
     dk_set_push (&tb->tb_keys, (void *) key);
     key->key_is_cset_temp = 1;
+    key->key_is_col = 1;
+    key->key_n_significant = 2;
     tb->tb_name_to_col = id_str_hash_create (11);
     snprintf (tmp, sizeof (tmp), "%s_cv_%d", best_cset->cset_table->tb_name, so->so_name_ctr++);
     tb->tb_name = box_dv_short_string (tmp);
@@ -368,10 +384,11 @@ cset_temp_tables (sqlo_t * so, dk_set_t cset_tbs)
     tb->tb_name_only = strrchr (tb->tb_name, '.') + 1;
     key->key_name = box_dv_short_string (tmp);
     dk_set_push (&top_sc->sc_temp_tables, (void *) tb);
+    tb->tb_temp_id = dk_set_length (top_sc->sc_temp_tables);
     top_sc->sc_cc->cc_query->qr_temp_tables = top_sc->sc_temp_tables;
-    dk_set_push (&top_sc->sc_temp_tables, (void *) tb);
     cset_new_col (tb, "S", DV_IRI_ID_8, 1, 0);
     cset_new_col (tb, "G", DV_IRI_ID_8, 1, 0);
+    sqlo_cset_partition (tb);
     snprintf (tmp, sizeof (tmp), "c%d", so->so_name_ctr++);
     key->key_cset_prefix = box_dv_short_string (tmp);
     t_set_push (&res, (void *) t_list (3, TABLE_REF, t_list (5, TABLE_DOTTED, tb->tb_name, key->key_cset_prefix, NULL, NULL, NULL),
@@ -402,6 +419,7 @@ cset_temp_tables (sqlo_t * so, dk_set_t cset_tbs)
       t_id_hash_set (sc->sc_cset_col_subst, (caddr_t) & prev_col_ref, (caddr_t) & new_col_ref);
     }
     END_DO_SET ();
+    key->key_options = (caddr_t *) list (1, box_dv_short_string ("column"));
     dbe_key_layout_1 (key);
   }
   END_DO_SET ();
@@ -966,7 +984,7 @@ sqlo_cset_choose_index (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * col_preds, dk
       if (!opt_inx_name && !best_ic.ic_is_unique && sqlo_is_text_order (so, tb_dfe))
 	{
 	  tb_dfe->_.table.is_text_order = 1;
-	  tb_dfe->_.table.key = tb_text_key (tb_dfe->_.table.ot->ot_table);
+	  tb_dfe->_.table.key = tb_dfe->_.table.ot->ot_table->tb_primary_key;
 	  tb_dfe->dfe_unit = 0;
 	  dfe_table_cost (tb_dfe, &tb_dfe->dfe_unit, &tb_dfe->dfe_arity, &ov, 0);
 	  return;

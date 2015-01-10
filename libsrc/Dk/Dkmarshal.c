@@ -344,7 +344,7 @@ static void *
 box_read_flags (dk_session_t * session, dtp_t dtp)
 {
   uint32 flags = (uint32) read_long (session);
-  if (flags & BF_UNAME_AS_STRING)
+  if (0 && (flags & BF_UNAME_AS_STRING))
     {
       dtp_t next_char = session_buffered_read_char (session);
       int length;

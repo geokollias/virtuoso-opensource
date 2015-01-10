@@ -40,6 +40,29 @@
 #include "replsr.h"
 
 
+void
+sel_top_sdfg (select_node_t * sel, caddr_t * inst)
+{
+  /* a sdfg branch without aggregation gets input.  The branch will not continue until sdfg threads stop and all non-empty branches are read. */
+  QNCAST (QI, qi, inst);
+  if (qi->qi_is_dfg_slice)
+    {
+      stage_node_t *stn;
+      data_source_t *qn;
+      for (qn = sel->src_gen.src_prev; qn; qn = qn->src_prev)
+	{
+	  if (IS_STN (qn))
+	    {
+	      stn = (stage_node_t *) qn;
+	      QST_INT (inst, stn->stn_out_bytes) = 0x7fffffff;
+	      longjmp_splice (qi->qi_thread->thr_reset_ctx, RST_ENOUGH);
+	    }
+	}
+      sqlr_new_error ("SDFGS", "SDFGS", "Top level sdfg with no stn");
+    }
+}
+
+
 db_buf_t
 sel_extend_bits (select_node_t * sel, caddr_t * inst, int row_no, int *bits_max)
 {
@@ -871,6 +894,35 @@ outer_seq_end_vec_input (outer_seq_end_node_t * ose, caddr_t * inst, caddr_t * s
   END_DO_BOX;
   if (n_sets)
     qn_send_output ((data_source_t *) ose, inst);
+}
+
+
+
+void
+tvf_node_input (tvf_node_t * tvf, caddr_t * inst, caddr_t * state)
+{
+  int n_sets = QST_INT (inst, tvf->src_gen.src_prev->src_out_fill), cinx;
+  int n_vals = tvf->tvf_values ? BOX_ELEMENTS (tvf->tvf_values) : NULL;
+  int set, nth_set;
+  int n_cols = BOX_ELEMENTS (tvf->tvf_out_slots);
+  int n_rows = tvf->tvf_values ? BOX_ELEMENTS (tvf->tvf_values) / n_cols : 0, inx;
+  if (state)
+    {
+      QST_INT (inst, tvf->tvf_ctr) = 0;
+      QST_INT (inst, tvf->tvf_nth_set) = 0;
+    }
+  set = QST_INT (inst, tvf->tvf_ctr);
+  for (inx = set; inx < n_rows; inx++)
+    {
+      DO_BOX (state_slot_t *, out, cinx, tvf->tvf_out_slots)
+      {
+	data_col_t *dc = QST_BOX (data_col_t *, inst, out->ssl_index);
+	dc_append_box (dc, qst_get (inst, tvf->tvf_values[n_cols * set + cinx]));
+      }
+      END_DO_BOX;
+      qn_result (tvf, inst, nth_set);
+    }
+  qn_send_output ((data_source_t *) tvf, inst);
 }
 
 

@@ -299,7 +299,8 @@ rl_query_init (dbe_table_t * quad_tb)
   DO_SET (dbe_key_t *, key, &quad_tb->tb_keys)
   {
     int first = 1;
-    sprintf (txt, "insert soft DB.DBA.RDF_QUAD index %s option (vectored) (", key->key_name);
+    sprintf (txt, "insert soft DB.DBA.RDF_QUAD index %s option (vectored%s) (", key->key_name,
+	!key->key_is_primary ? ", no trigger" : "");
     pars[0] = 0;
     DO_SET (dbe_column_t *, col, &key->key_parts)
     {
@@ -669,9 +670,9 @@ iri_from_ip (caddr_t * name_ret, caddr_t * box_to_delete, caddr_t * name_to_dele
   iri_pattern_t *ip = NULL;
   iri_id_t res = iri_from_string (*name_ret, box_length (*name_ret) - 1, &ip);
   name = *name_ret;
-  if (!res && ip && ip->ip_cset)
+  if (!res && ip && ip->ip_exc_range)
     {
-      box_flags (name) = 4 * ip->ip_cset | (box_flags (name) & 3);
+      box_flags (name) = ip->ip_exc_range->ir_id;
     }
   if (res && ip->ip_int_range)
     {
@@ -688,9 +689,12 @@ iri_from_ip (caddr_t * name_ret, caddr_t * box_to_delete, caddr_t * name_to_dele
 	}
       bin_name = dk_alloc_box (9, DV_STRING);
       INT64_SET_NA (bin_name, res);
+      bin_name[8] = 0;
       *name_to_delete = bin_name;
-      box_flags (bin_name) = ip->ip_exc_range->ir_id * 4;
+      box_flags (bin_name) = ip->ip_int_range->ir_id | BF_N_IRI;
+      box_flags (name) = ip->ip_int_range->ir_id | BF_N_IRI;
       *name_ret = bin_name;
+      return 0;
     }
   return res;
 }
@@ -777,6 +781,13 @@ l_iri_id_disp (cucurbit_t * cu, caddr_t name, value_state_t * vs)
       cu_set_value (cu, vs, box_iri_id (by_ip));
       return NULL;
     }
+  if ((BF_N_IRI & box_flags (name)))
+    {
+      AUTO_POOL (8);
+      cu_local_dispatch (cu, vs, cf, (caddr_t) ap_list (&ap, 2, name, ap_box_iri_id (&ap, 0)));
+      dk_free_box (name_to_delete);
+      return NULL;
+    }
   if (!iri_split (name, &prefix, &local))
     goto return_error;		/* see below */
   dk_free_box (box_to_delete);
@@ -819,7 +830,8 @@ rdf_g_sec_check (caddr_t * inst, iri_id_t * g, int n_g)
   QNCAST (QI, qi, inst);
   index_tree_t *tree;
   int inx;
-  if (!qi->qi_client->cli_sec)
+  cl_op_t *sec = qi->qi_client->cli_sec;
+  if (!qi->qi_client->cli_sec || sec->_.sec.g_sponge)
     return;
   tree = qi_g_tree (inst, NULL, 1);
   if (!tree || !tree->it_hi || !tree->it_hi->hi_chash)
@@ -901,6 +913,22 @@ bif_rl_dp_ids (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 }
 
 
+caddr_t
+bif_dp_local_flush (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  cl_req_group_t *clrg = bif_clrg_arg (qst, args, 0, "rl_ids");
+  cucurbit_t *cu = clrg->clrg_cu;
+  void *save;
+  if (!cu)
+    sqlr_new_error ("42000", "CL...", "Not a dpipe daq");
+  cu->cu_qst = qst;
+  save = cu->cu_ready_cb;
+  cu->cu_ready_cb = NULL;	/* local exec, CBs are for clustered operation */
+  cu_rl_local_exec (cu);
+  cu->cu_ready_cb = save;
+  return box_copy_tree (cu->cu_rows);
+}
+
 
 caddr_t
 bif_dc_batch_sz (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
@@ -914,6 +942,7 @@ bif_rld_init ()
 {
   bif_define_ex ("dc_batch_sz", bif_dc_batch_sz, BMD_RET_TYPE, &bt_integer, BMD_DONE);
   bif_define ("rl_dp_ids", bif_rl_dp_ids);
+  bif_define ("dpipe_local_flush", bif_dp_local_flush);
   bif_define ("__rl_set_pref_id", bif_rl_set_pref_id);
   bif_set_vectored (bif_rl_set_pref_id, (bif_vec_t) bif_rl_set_pref_id);
   dpipe_define ("L_IRI_TO_ID", NULL, "", (cu_op_func_t) l_iri_id_disp, CF_1_ARG);

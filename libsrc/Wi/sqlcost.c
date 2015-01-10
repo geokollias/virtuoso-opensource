@@ -3332,6 +3332,8 @@ sqlo_inx_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_elt_
   int64 c;
   caddr_t sc_key = NULL, free_sc_key = NULL;
   sample_opt_t sop;
+  if (tb_dfe->_.table.ot->ot_table->tb_is_temp)
+    return -1;
   memzero (&sop, sizeof (sop));
   ic->ic_inx_card = 0;
   if (tb_dfe->_.table.ot->ot_table->tb_ft || LOC_LOCAL != tb_dfe->dfe_locus)

@@ -284,7 +284,7 @@ ts_sliced_reader (table_source_t * ts, caddr_t * inst, hash_area_t * ha)
   cl_op_t *itcl_clo = (cl_op_t *) qst_get (inst, ts->clb.clb_itcl);
   if (!itcl_clo)
     return;
-  if (!tree || !tree->it_hi || !(slice_trees = tree->it_hi->hi_slice_trees))
+  if ((!tree || !tree->it_hi || !(slice_trees = tree->it_hi->hi_slice_trees)) && !ts->ts_is_bsp_reader)
     return;
   if (!qis && tree && tree->it_hi->hi_slice_trees)
     {
@@ -300,6 +300,8 @@ ts_sliced_reader (table_source_t * ts, caddr_t * inst, hash_area_t * ha)
 	  continue;
 	QST_INT (slice_inst, ts->ts_in_sdfg) = 1;
 	SRC_IN_STATE (ts, slice_inst) = slice_inst;
+	if (ts->ts_trans_read && ts->ts_trans_read->trr_is_step)
+	  cha_next_superstep (ts, slice_inst, unbox (qst_get (inst, ts->ts_trans_read->trr_superstep)));
 	n_branches++;
       }
     else if (inx < BOX_ELEMENTS (slice_trees) && slice_trees[inx] && slice_trees[inx] != tree)

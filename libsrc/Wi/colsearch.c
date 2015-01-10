@@ -489,6 +489,7 @@ ce_col_cmp (db_buf_t any, int64 offset, dtp_t ce_flags, dbe_col_loc_t * cl, cadd
 	{
 	  while (1)
 	    {
+	      wchar_t xlat1, xlat2;
 	      if (inx == l1)
 		{
 		  if (inx == l2)
@@ -498,9 +499,11 @@ ce_col_cmp (db_buf_t any, int64 offset, dtp_t ce_flags, dbe_col_loc_t * cl, cadd
 		}
 	      if (inx == l2)
 		return DVC_GREATER;
-	      if (collation->co_table[(unsigned char) dv1[inx]] < collation->co_table[(unsigned char) dv2[inx]])
+	      xlat1 = COLLATION_XLAT_NARROW (collation, (unsigned char) dv1[inx]);
+	      xlat2 = COLLATION_XLAT_NARROW (collation, (unsigned char) dv2[inx]);
+	      if (xlat1 < xlat2)
 		return DVC_LESS;
-	      if (collation->co_table[(unsigned char) dv1[inx]] > collation->co_table[(unsigned char) dv2[inx]])
+	      if (xlat1 > xlat2)
 		return DVC_GREATER;
 	      inx++;
 	    }
@@ -2703,7 +2706,7 @@ itc_sec_in (it_cursor_t * itc, buffer_desc_t * buf, hash_range_spec_t * hrng)
   if (!sec)
     itc_g_no_perm (itc, buf);
   tree = (HRNG_RD_SEC & hrng->hrng_flags) ? sec->_.sec.g_rd : sec->_.sec.g_wr;
-  if (!tree)
+  if (!tree || tree->it_invalidated)
     itc_g_no_perm (itc, buf);
   qst_set (itc->itc_out_state, hrng->hrng_ht, box_copy ((caddr_t) tree));
   return tree;

@@ -697,10 +697,29 @@ sqlc_while_stmt (sql_comp_t * sc, ST * stmt)
 
 
 void
+qr_strip_result (query_t * qr)
+{
+  /* a group by for effect will not run the returning part, */
+  data_source_t *qn;
+  for (qn = qr->qr_head_node; qn; qn = qn_next (qn))
+    {
+      if (IS_QN (qn, fun_ref_node_input))
+	{
+	  dk_set_free (qn->src_continuations);
+	  qn->src_continuations = NULL;
+	  return;
+	}
+    }
+}
+
+
+void
 sqlc_subq_stmt (sql_comp_t * sc, ST ** pstmt)
 {
   /* searched insert/delete/update */
   subq_compilation_t *sqc = sqlc_subquery (sc, NULL, pstmt);
+  if (ST_P (*pstmt, SELECT_STMT))
+    qr_strip_result (sqc->sqc_query);
   sqlc_set_ref_params (sqc->sqc_query);
   cv_subq (&sc->sc_routine_code, sqc, sc);
 }
@@ -726,12 +745,17 @@ sqlc_return_stmt (sql_comp_t * sc, ST * stmt)
   cv_vret (&sc->sc_routine_code, ret);
 }
 
+void sqlg_group_by_exec_asg (sql_comp_t * sc, ST * stmt, state_slot_t * lhs, dk_set_t * code);
+state_slot_t *sqlg_group_by_exec_special_asg (sql_comp_t * sc, ST * tree, dk_set_t * code);
+
 
 state_slot_t *
 sqlc_asg_stmt (sql_comp_t * sc, ST * stmt, dk_set_t * code)
 {
   ST *rtree = (ST *) stmt->_.op.arg_2;
   state_slot_t *left, *right;
+  if (sc->sc_in_group_by_exec && (right = sqlg_group_by_exec_special_asg (sc, stmt, code)))
+    return right;
   left = scalar_exp_generate (sc, (ST *) stmt->_.op.arg_1, code);
   if (ST_P (rtree, CALL_STMT))
     stmt->_.op.arg_2 = (caddr_t) (rtree = sqlo_udt_check_method_call (sc->sc_so, sc, rtree));
@@ -760,6 +784,8 @@ sqlc_asg_stmt (sql_comp_t * sc, ST * stmt, dk_set_t * code)
       right = scalar_exp_generate (sc, (ST *) stmt->_.op.arg_2, code);
       cv_artm (code, (ao_func_t) box_identity, left, right, NULL);
     }
+  if (sc->sc_in_group_by_exec)
+    sqlg_group_by_exec_asg (sc, stmt, left, code);
   return left;
 }
 
@@ -823,6 +849,210 @@ sqlc_proc_cost (sql_comp_t * sc, ST * stmt)
   END_DO_BOX;
   qr->qr_proc_cost = floats;
 }
+
+
+int n_low_zeros (int64 n);
+
+state_slot_t *
+sqlg_group_by_exec_col (sql_comp_t * sc, ST * tree)
+{
+  int nth;
+  gb_op_t *go = sc->sc_in_group_by_exec;
+  dbe_key_t *key = go->go_temp_table->tb_primary_key;
+  dbe_column_t *col = tb_name_to_column (go->go_temp_table, tree->_.col_ref.name);
+  state_slot_t *ssl;
+  if (!col)
+    return NULL;
+  nth = dk_set_position (key->key_parts, col);
+  if (go->go_exec_ssls[nth])
+    return go->go_exec_ssls[nth];
+  ssl = ssl_new_column (sc->sc_cc, "", col);
+  go->go_exec_ssls[nth] = ssl;
+  return ssl;
+}
+
+
+state_slot_t *
+sqlg_group_by_exec_special_asg (sql_comp_t * sc, ST * stmt, dk_set_t * code)
+{
+  int nth;
+  state_slot_t *rhs;
+  ST *lv = (ST *) stmt->_.op.arg_1;
+  gb_op_t *go = sc->sc_in_group_by_exec;
+  dbe_key_t *key = go->go_temp_table->tb_primary_key;
+  if (go->go_temp_table->tb_trans_border && ST_P (lv, COL_DOTTED) && !stricmp ("is_border", lv->_.col_ref.name))
+    nth = dk_set_length (key->key_parts);
+  else
+    return NULL;
+  rhs = scalar_exp_generate (sc, (ST *) stmt->_.op.arg_2, code);
+  cv_call (code, NULL, "__gby_set", NULL,
+      list (5, go->go_temp_table->tb_temp_ssl, go->go_exec_rows, go->go_exec_base_set, ssl_new_constant (sc->sc_cc,
+	      box_num (nth << 8)), rhs));
+  return rhs;
+}
+
+
+void
+sqlg_group_by_exec_asg (sql_comp_t * sc, ST * tree, state_slot_t * lhs, dk_set_t * code)
+{
+  ST *lv = (ST *) tree->_.op.arg_1;
+  int nth;
+  gb_op_t *go = sc->sc_in_group_by_exec;
+  dbe_key_t *key = go->go_temp_table->tb_primary_key;
+  dbe_column_t *col;
+  col = tb_name_to_column (go->go_temp_table, lv->_.col_ref.name);
+  if (!col)
+    return;
+  nth = dk_set_position (key->key_parts, col);
+  cv_call (code, NULL, "__gby_set", NULL,
+      list (5, go->go_temp_table->tb_temp_ssl, go->go_exec_rows, go->go_exec_base_set, ssl_new_constant (sc->sc_cc,
+	      box_num ((nth << 8) | (col ? col->col_sqt.sqt_dtp : 0))), lhs));
+}
+
+
+void
+sqlc_temp_table (sql_comp_t * sc, ST * tree)
+{
+  ST *pk_def = NULL;
+  int col_ctr = 1;
+  ST *part = (ST *) tree->_.table_def.flags;
+  char tmp[MAX_QUAL_NAME_LEN + 100];
+  dbe_key_t *key = (dbe_key_t *) dk_alloc (sizeof (dbe_key_t));
+  int n_cols = BOX_ELEMENTS (tree->_.table_def.cols), ctype, inx, cinx, pinx;
+  NEW_VARZ (dbe_table_t, tb);
+  memzero (key, sizeof (dbe_key_t));
+  key->key_table = tb;
+  key->key_is_primary = 1;
+  tb->tb_is_temp = 1;
+  tb->tb_primary_key = key;
+  dk_set_push (&tb->tb_keys, (void *) key);
+  tb->tb_name_to_col = id_str_hash_create (11);
+  tb->tb_name = box_dv_short_string (tree->_.table_def.name);
+  tb->tb_name_only = strrchr (tb->tb_name, '.') + 1;
+  key->key_name = box_dv_short_string (tree->_.table_def.name);
+  dk_set_push (&top_sc->sc_temp_tables, (void *) tb);
+  tb->tb_temp_id = dk_set_length (top_sc->sc_temp_tables);
+  top_sc->sc_cc->cc_query->qr_temp_tables = top_sc->sc_temp_tables;
+  for (inx = 0; inx < n_cols; inx += 2)
+    {
+      caddr_t name = tree->_.table_def.cols[inx];
+      ST *opt = tree->_.table_def.cols[inx + 1];
+      ctype = !name ? opt->type : 0;
+      switch (ctype)
+	{
+	case 0:
+	  {
+	    int is_bsp = 0;
+	    caddr_t *dtp = ((caddr_t **) opt)[0];
+	    NEW_VARZ (dbe_column_t, col);
+	    col->col_id = col_ctr++;
+	    col->col_name = box_copy (name);
+	    col->col_sqt.sqt_dtp = unbox (dtp[0]);
+	    id_hash_set (tb->tb_name_to_col, (caddr_t) & col->col_name, (caddr_t) & col);
+	    for (cinx = 1; cinx < BOX_ELEMENTS (opt); cinx++)
+	      {
+		ST *co = ((ST **) opt)[cinx];
+		if (COL_NOT_NULL == co)
+		  col->col_sqt.sqt_non_null = 1;
+		if (ST_P (co, COL_DEFAULT))
+		  col->col_default = box_copy_tree (((caddr_t *) co)[1]);
+		else if (ST_P (opt, TRANS_STMT))
+		  is_bsp = 1;
+		else if (ST_P (co, OPT_CARDINALITY))
+		  col->col_n_distinct = unbox (co->_.op.arg_1);
+	      }
+	    if (is_bsp)
+	      {
+		char temp[100];
+		NEW_VARZ (dbe_column_t, col2);
+		*col2 = *col;
+		snprintf (temp, sizeof (temp), "%s_bspf", col->col_name);
+		col2->col_id = col_ctr++;
+		col2->col_name = box_dv_short_string (temp);
+		id_hash_set (tb->tb_name_to_col, (caddr_t) & col2->col_name, (caddr_t) & col2);
+
+	      }
+
+
+	    break;
+	  }
+	case OPT_CARDINALITY:
+	  tb->tb_count_estimate = unbox (opt->_.op.arg_1);
+	  break;
+	case INDEX_DEF:
+	  pk_def = opt;
+	  break;
+	case OPT_BORDER:
+	  tb->tb_trans_border = 1;
+	  break;
+	}
+    }
+  if (!pk_def)
+    sqlc_new_error (sc->sc_cc, "42000", "TMPPK", "Temp table requires a primary key");
+  if (!tb->tb_count_estimate)
+    tb->tb_count_estimate = 10000;
+  DO_BOX (caddr_t, pk, pinx, pk_def->_.index.cols)
+  {
+    dbe_column_t *part = tb_name_to_column (tb, pk);
+    if (!part)
+      sqlc_new_error (sc->sc_cc, "42000", "TMPNC", "Key of temp table references non-existent column");
+    NCONCF1 (key->key_parts, part);
+    key->key_n_significant++;
+  }
+  END_DO_BOX;
+  DO_IDHASH (caddr_t, name, dbe_column_t *, c, tb->tb_name_to_col)
+  {
+    if (!dk_set_member (key->key_parts, c))
+      NCONCF1 (key->key_parts, c);
+  }
+  END_DO_IDHASH;
+  key->key_id = KI_TEMP;
+  dbe_key_layout_1 (key);
+  if (ST_P (part, PARTITION_DEF))
+    {
+      NEW_VARZ (key_partition_def_t, kpd);
+      key->key_partition = kpd;
+      kpd->kpd_map = clm_all;
+      if (!kpd->kpd_map)
+	sqlc_new_error (sc->sc_cc, "42000", "NOCLM", "No logical cluster in temp table partition def");
+      kpd->kpd_cols = dk_alloc_box (box_length (part->_.part_def.cols), DV_BIN);
+      DO_BOX (ST *, cp, inx, part->_.part_def.cols)
+      {
+	boxint arg;
+	dbe_column_t *col = tb_name_to_column (tb, cp->_.col_part.col);
+	NEW_VARZ (col_partition_t, cpart);
+	if (!col)
+	  sqlc_new_error (sc->sc_cc, "42000", "TMPNC", "Unknown column %s in temp table partition def", cp->_.col_part.col);
+	kpd->kpd_cols[inx] = cpart;
+	cpart->cp_col_id = col->col_id;
+	cpart->cp_sqt = col->col_sqt;
+	if (DV_TIMESTAMP == cpart->cp_sqt.sqt_dtp)
+	  cpart->cp_sqt.sqt_dtp = DV_DATETIME;
+	cpart->cp_type = cp->_.col_part.type;
+	arg = unbox (cp->_.col_part.arg);
+	if (cp->_.col_part.type == CP_INT)
+	  {
+	    cpart->cp_shift = n_low_zeros (arg);
+	    cpart->cp_mask = arg >> cpart->cp_shift;
+	  }
+	else
+	  {
+	    cpart->cp_n_first = arg;
+	    cpart->cp_mask = unbox (cp->_.col_part.arg2);
+	    if (cpart->cp_n_first < 0)
+	      cpart->cp_shift = 8 * -cpart->cp_n_first;
+	  }
+      }
+      END_DO_BOX;
+    }
+  tb->tb_temp_ssl = ssl_new_variable (sc->sc_cc, "tmp_tb", DV_INDEX_TREE);
+  if (CL_RUN_LOCAL != cl_run_local_only)
+    tb->tb_temp_id_ssl = ssl_new_variable (sc->sc_cc, "temp_tb_id", DV_LONG_INT);
+  cv_call (&sc->sc_routine_code, NULL, "__temp_table", NULL, list (3, tb->tb_temp_ssl, tb->tb_temp_id_ssl,
+	  ssl_new_constant (sc->sc_cc, box_num (tb))));
+
+}
+
 
 state_slot_t **
 sqlc_for_vectored_decl (sql_comp_t * sc, ST ** params, state_slot_t *** init_ret)
@@ -929,7 +1159,6 @@ sqlc_not_vectored_stmt (sql_comp_t * sc, ST * stmt)
   end_node_t en;
   data_source_t *save_qn;
   dk_set_t save;
-  int inx;
   NEW_INSTR (ins, INS_FOR_VECT, &sc->sc_routine_code);
   if (!sc->sc_cc->cc_query->qr_proc_vectored)
     sqlc_new_error (sc->sc_cc, "37000", ".....", "Not_vectored is not allowed outside vectored code");
@@ -948,18 +1177,45 @@ sqlc_not_vectored_stmt (sql_comp_t * sc, ST * stmt)
   sc->sc_cc->cc_query->qr_head_node = save_qn;
 }
 
-void
-sqlc_qr_compound_stmt (sql_comp_t * sc, ST * stmt)
+
+code_vec_t
+sqlc_qr_compound_stmt (sql_comp_t * sc, ST * stmt, dk_set_t scope_action)
 {
   data_source_t *save_qn;
   dk_set_t save;
+  code_vec_t cv;
   save = sc->sc_routine_code;
   sc->sc_routine_code = NULL;
   sc->sc_cc->cc_query->qr_proc_vectored = 0;
-  sqlc_compound_stmt (sc, stmt, SC_LEAVE_SCOPE);
+  sqlc_compound_stmt (sc, stmt, scope_action);
+  cv = code_to_cv (sc, sc->sc_routine_code);
   save_qn = sc->sc_cc->cc_query->qr_head_node;
   sc->sc_routine_code = save;
   sc->sc_cc->cc_query->qr_head_node = save_qn;
+  return cv;
+}
+
+
+void
+sqlg_trans_sdfg (sql_comp_t * sc, query_t * qr)
+{
+  GPF_T1 ("trans sdfg not impl");
+}
+
+
+query_t *
+sqlg_trans_scan (sql_comp_t * sc, ST * tc)
+{
+  ST *texp =
+      t_listst (9, TABLE_EXP, t_listst (1, t_list (3, TABLE_REF, t_listst (6, TABLE_DOTTED, tc->_.trans_clause.table,
+		  tc->_.trans_clause.prefix, NULL, NULL, t_listst (2, OPT_EXECUTE, tc->_.trans_clause.stmt)), NULL)), NULL, NULL,
+      NULL, NULL, NULL, NULL, NULL);
+  ST *sel = t_listst (5, SELECT_STMT, NULL, t_listst (0), NULL, texp);
+  subq_compilation_t *sqc;
+  sc->sc_check_view_sec = 1;	/* skip the vectoring */
+  sqc = sqlc_subquery (sc, NULL, &sel);
+  sqlg_trans_sdfg (sc, sqc->sqc_query);
+  return sqc->sqc_query;
 }
 
 
@@ -970,14 +1226,25 @@ sqlc_trans_stmt (sql_comp_t * sc, ST * stmt)
   data_source_t *save_qn;
   dk_set_t save;
   int inx, cinx;
+  int nc = BOX_ELEMENTS (stmt->_.trans_stmt.clauses);
+  query_t **qrs = dk_alloc_box_zero (sizeof (caddr_t) * nc, DV_BIN);
+  code_vec_t *cvs = dk_alloc_box_zero (sizeof (caddr_t) * nc, DV_BIN);
   NEW_INSTR (ins, INS_TRANS, &sc->sc_routine_code);
+  ins->_.trans.qrs = qrs;
+  ins->_.trans.conds = cvs;
+  ins->_.trans.init = sqlc_qr_compound_stmt (sc, stmt->_.trans_stmt.init, NULL);
   DO_BOX (ST *, clause, cinx, stmt->_.trans_stmt.clauses)
   {
+    /* make a dummy qf */
+    if (CL_RUN_LOCAL == cl_run_local_only)
+      sqlg_sdfg_empty_qf (sc, NULL);
 
+    qrs[inx] = sqlg_trans_scan (sc, clause);
+    if (clause->_.trans_clause.cond)
+      cvs[inx] = sqlc_qr_compound_stmt (sc, clause->_.trans_clause.cond, NULL);
   }
   END_DO_BOX;
 }
-
 
 
 void
@@ -1131,7 +1398,26 @@ sqlc_proc_stmt (sql_comp_t * sc, ST ** pstmt)
 	  sqlc_asg_stmt (sc, stmt, &sc->sc_routine_code);
       }
       break;
+    case TEMP_TABLE:
+      sqlc_temp_table (sc, stmt);
+      break;
+    case TRANS_STMT:
+      sqlc_trans_stmt (sc, stmt);
+      break;
+    case SELECT_STMT:
+      if (0 && !sc->sc_in_trans_clause)
+	sqlc_new_error (sc->sc_cc, "NTRNS", "NTRNS", "top level FROM only allowed inside a transitive clause");
+      if (sc->sc_in_group_by_exec)
+	{
+	  df_elt_t *dfe = sqlo_df_elt (sc->sc_so, stmt);
+	  sc->sc_delay_colocate = 1;
+	  sqlg_dfe_code (sc->sc_so, dfe, &sc->sc_routine_code, 0, 0, 0);
 
+
+	}
+      else
+	sqlc_subq_stmt (sc, pstmt);
+      break;
     case NULL_STMT:
       break;
 

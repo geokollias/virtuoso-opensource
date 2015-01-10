@@ -439,10 +439,10 @@ wideliteral (char *s)
 	      box = t_alloc_box (len + 1, DV_SHORT_STRING);
 	      start = s + 1;
 	      parse_string_literal ((unsigned char **) &start, (unsigned char *) box, 0);
-	      return t_box_utf8_as_wide_char (box, NULL, strlen (box), 0, DV_WIDE);
+	      return t_box_utf8_as_wide_char (box, NULL, strlen (box), 0);
 	    }
 	  else
-	    return t_box_utf8_as_wide_char (s + 2, NULL, strlen (s + 2) - 1, 0, DV_WIDE);
+	    return t_box_utf8_as_wide_char (s + 2, NULL, strlen (s + 2) - 1, 0);
 	}
       else
 	return NULL;
@@ -2748,4 +2748,18 @@ char *
 sqlp_inx_col_opt ()
 {
   return "column";
+}
+
+
+ST *
+sqlp_top_gby (ST * gb)
+{
+  ST *proct =
+      t_listst (4, DERIVED_TABLE, t_listst (5, PROC_TABLE, t_box_string ("proc"), list (0), t_listst (2, t_box_string ("__r"),
+	      list (1, list (2, 189, 0), t_list (0))), t_list (2, 964, t_list (1, t_list (1, 0)))), t_box_string ("dt1"));
+  ST *texp = t_listst (9, TABLE_EXP, t_list (1, proct), NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+  texp->_.table_exp.group_by = gb->_.gb_ext.cols;
+  texp->_.table_exp.group_by_full = t_listst (1, texp->_.table_exp.group_by);
+  texp->_.table_exp.opts = t_listst (2, GROUP_BY_EXEC, gb);
+  return t_listst (5, SELECT_STMT, 0, list (0), 0, texp);
 }

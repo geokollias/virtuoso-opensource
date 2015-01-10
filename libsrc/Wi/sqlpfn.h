@@ -249,5 +249,5 @@ dk_set_t cl_all_host_group_list ();
 dk_set_t sqlp_index_default_opts (dk_set_t opts);
 ST *sqlp_extract (char *name, ST * arg);
 char *sqlp_inx_col_opt ();
-
+ST *sqlp_top_gby (ST * gb);
 #endif /* _SQLPFN_H */

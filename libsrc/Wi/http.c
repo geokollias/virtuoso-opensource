@@ -1984,7 +1984,7 @@ static caddr_t *
 ws_header_line_to_array (caddr_t string)
 {
   int len;
-  char buf[1000];
+  char buf[10000];
   dk_set_t lines = NULL;
   caddr_t *headers = NULL;
   dk_session_t *ses = NULL;
@@ -3550,6 +3550,31 @@ error_end:
 
 int soap_get_opt_flag (caddr_t * opts, char *opt_name);
 
+extern int64 dk_n_max_allocs;
+extern int64 dk_n_allocs;
+extern int64 dk_n_bytes;
+extern int64 dk_n_total;
+
+void
+ws_mem_record (ws_connection_t * ws)
+{
+  char *h = ws_header_field (ws->ws_lines, "X-Recording:", NULL);
+  static FILE *fp;
+  char *endpos;
+  if (!h)
+    return;
+  while (isspace (*h))
+    h++;
+  mutex_enter (ws_http_log_mtx);
+  if (!fp)
+    fp = fopen ("virtuoso.mem.log", "a");
+  fprintf (fp, BOXINT_FMT "," BOXINT_FMT "," BOXINT_FMT "," BOXINT_FMT ",%s", dk_n_allocs, dk_n_bytes, dk_n_total, dk_n_max_allocs,
+      h);
+  dk_n_max_allocs = 0;
+  fflush (fp);
+  mutex_leave (ws_http_log_mtx);
+}
+
 void
 ws_request (ws_connection_t * ws)
 {
@@ -4199,6 +4224,7 @@ do_file:
   ws_connection_vars_clear (cli);
   cli_free_dae (cli);
 
+  ws_mem_record (ws);
   dk_free_tree ((caddr_t) err);
   dk_free_tree ((box_t) ws->ws_lines);
   ws->ws_lines = NULL;
@@ -4594,6 +4620,11 @@ ws_init_func (ws_connection_t * ws)
     sqlc_set_client (ws->ws_cli);
     ws->ws_cli->cli_trx->lt_thr = ws->ws_thread;
   } END_WITH_TLSF;
+#ifdef USE_TLSF
+  ws->ws_thread->thr_own_tlsf = ws->ws_thread->thr_tlsf = tlsf_get ();
+  ws->ws_cli->cli_tlsf = ws->ws_thread->thr_tlsf;
+  tlsf_set_comment (ws->ws_thread->thr_tlsf, "ws_tlsf");
+#endif
   for (;;)
     {
       dk_session_t *ses;
@@ -9586,6 +9617,7 @@ bif_https_renegotiate (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       SSL_set_verify (ssl, verify, (int (*)(int, X509_STORE_CTX *)) https_ssl_verify_callback);
       SSL_set_app_data (ssl, ap);
       SSL_set_session_id_context (ssl, (void *) &s_server_auth_session_id_context, sizeof (s_server_auth_session_id_context));
+      IO_SECT (qst);
       i = SSL_renegotiate (ssl);
       if (i <= 0)
 	sqlr_new_error ("42000", ".....", "SSL_renegotiate failed");
@@ -9594,6 +9626,7 @@ bif_https_renegotiate (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 	sqlr_new_error ("42000", ".....", "SSL_do_handshake failed");
       ssl->state = SSL_ST_ACCEPT;
       i = SSL_do_handshake (ssl);
+      END_IO_SECT (err_ret);
       if (i <= 0)
 	sqlr_new_error ("42000", ".....", "SSL_do_handshake failed");
       if (SSL_get_peer_certificate (ssl))

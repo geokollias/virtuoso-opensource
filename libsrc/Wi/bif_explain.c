@@ -993,6 +993,7 @@ fs_print (table_source_t * ts)
 {
   int inx;
   file_source_t *fs = ts->ts_fs;
+  key_source_t *ks = ts->ts_order_ks;
   stmt_printf (("From file %s %9.6g rows", fs->fs_table->tb_ft->ft_file, (double) ts->ts_cardinality));
   ssl_array_print (fs->fs_out_slots);
   stmt_printf (("\n"));
@@ -1002,6 +1003,11 @@ fs_print (table_source_t * ts)
   }
   END_DO_BOX;
   stmt_printf (("\n"));
+  if (ks->ks_vec_cast)
+    {
+      ks_print_vec_cast (ks->ks_vec_cast, ks->ks_vec_source);
+      stmt_printf (("\n"));
+    }
 }
 
 
@@ -1235,6 +1241,38 @@ csa_print (cset_align_node_t * csa)
     }
 }
 
+void
+setp_print_gb_ops (setp_node_t * setp)
+{
+  DO_SET (gb_op_t *, go, &setp->setp_gb_ops)
+  {
+    if (AMMSC_EXEC == go->go_op)
+      {
+	stmt_printf (("exec "));
+	ssl_array_print (go->go_exec_ssls);
+	stmt_printf (("\n"));
+	code_vec_print (go->go_ua_acc_setp_call);
+      }
+    else if (go->go_ua_init_setp_call)
+      {
+	stmt_printf (("\nuser aggr init\n"));
+	code_vec_print (go->go_ua_init_setp_call);
+	stmt_printf ((" user aggr acc\n"));
+	code_vec_print (go->go_ua_acc_setp_call);
+      }
+  }
+  END_DO_SET ();
+}
+
+
+void
+tvf_print (tvf_node_t * tvf)
+{
+  stmt_printf (("table valued function"));
+  ssl_array_print (tvf->tvf_out_slots);
+  stmt_printf (("\n"));
+}
+
 
 void
 node_print_0 (data_source_t * node)
@@ -1315,26 +1353,10 @@ node_print_0 (data_source_t * node)
 	stmt_printf (("%s ", FNR_STREAM_UNQ == setp->setp_is_streaming ? "streaming unique " : "streaming with duplicates"));
 
       ssl_list_print (setp->setp_keys);
-      if (setp->setp_dependent)
-	{
-	  stmt_printf ((" -> "));
-	  ssl_list_print (setp->setp_dependent);
-	  if (setp->setp_any_user_aggregate_gos)
-	    {
-	      DO_SET (gb_op_t *, go, &setp->setp_gb_ops)
-	      {
-		if (go->go_ua_init_setp_call)
-		  {
-		    stmt_printf (("\nuser aggr init\n"));
-		    code_vec_print (go->go_ua_init_setp_call);
-		    stmt_printf ((" user aggr acc\n"));
-		    code_vec_print (go->go_ua_acc_setp_call);
-		  }
-	      }
-	      END_DO_SET ();
-	    }
-	  stmt_printf (("\n"));
-	}
+      stmt_printf ((" -> "));
+      ssl_list_print (setp->setp_dependent);
+      setp_print_gb_ops (setp);
+      stmt_printf (("\n"));
       stmt_printf (("\n"));
     }
   else if (in == (qn_input_fn) fun_ref_node_input || in == (qn_input_fn) hash_fill_node_input)
@@ -1617,6 +1639,12 @@ node_print_0 (data_source_t * node)
 	      ssl_array_print (tn->tn_target);
 	      stmt_printf (("\n"));
 	    }
+	  if (tn->tn_init)
+	    {
+	      stmt_printf (("init {\n"));
+	      node_print (tn->tn_init);
+	      stmt_printf (("\n}\n"));
+	    }
 	  qr_print (tn->tn_inlined_step);
 	  if (tn->tn_complement)
 	    {
@@ -1650,6 +1678,8 @@ node_print_0 (data_source_t * node)
       ssl_array_print (ii->ii_values);
       stmt_printf (("\n"));
     }
+  else if (in == (qn_input_fn) tvf_node_input)
+    tvf_print ((tvf_node_t *) node);
   else if (in == (qn_input_fn) outer_seq_end_input)
     {
       outer_seq_end_node_t *ose = (outer_seq_end_node_t *) node;
@@ -1957,28 +1987,12 @@ node_print (data_source_t * node)
 	  stmt_printf ((" %s) ", setp->setp_sorted ? "" : "WITH TIES"));
 	}
       ssl_list_print (setp->setp_keys);
-      if (setp->setp_dependent)
-	{
-	  stmt_printf ((" -> "));
-	  ssl_list_print (setp->setp_dependent);
-	  if (setp->setp_card)
-	    stmt_printf ((" up to %9.2g distinct", setp->setp_card));
-	  if (setp->setp_any_user_aggregate_gos)
-	    {
-	      DO_SET (gb_op_t *, go, &setp->setp_gb_ops)
-	      {
-		if (go->go_ua_init_setp_call)
-		  {
-		    stmt_printf (("\nuser aggr init\n"));
-		    code_vec_print (go->go_ua_init_setp_call);
-		    stmt_printf ((" user aggr acc\n"));
-		    code_vec_print (go->go_ua_acc_setp_call);
-		  }
-	      }
-	      END_DO_SET ();
-	    }
-	  stmt_printf (("\n"));
-	}
+      stmt_printf ((" -> "));
+      ssl_list_print (setp->setp_dependent);
+      if (setp->setp_card)
+	stmt_printf ((" up to %9.2g distinct", setp->setp_card));
+      setp_print_gb_ops (setp);
+      stmt_printf (("\n"));
       stmt_printf (("\n"));
       if (setp->setp_loc_ts)
 	{
@@ -2334,6 +2348,12 @@ node_print (data_source_t * node)
 	      ssl_array_print (tn->tn_target);
 	      stmt_printf (("\n"));
 	    }
+	  if (tn->tn_init)
+	    {
+	      stmt_printf (("init {\n"));
+	      node_print (tn->tn_init);
+	      stmt_printf (("\n}\n"));
+	    }
 	  qr_print (tn->tn_inlined_step);
 	  if (tn->tn_complement)
 	    {
@@ -2370,6 +2390,8 @@ node_print (data_source_t * node)
       stmt_printf (("\n"));
 
     }
+  else if (in == (qn_input_fn) tvf_node_input)
+    tvf_print ((tvf_node_t *) node);
   else if (in == (qn_input_fn) outer_seq_end_input)
     {
       outer_seq_end_node_t *ose = (outer_seq_end_node_t *) node;
@@ -3553,7 +3575,8 @@ qr_print_top_xml (QI * qi, query_t * qr)
       ssl_list_print_xml (qr->qr_parms, s);
       SES_PRINT (s, "</params>");
     }
-  node_print_xml (qi, s, qr->qr_head_node);
+  if (qr->qr_head_node)
+    node_print_xml (qi, s, qr->qr_head_node);
   SES_PRINT (s, "</report>\n");
   return (caddr_t) s;
 }

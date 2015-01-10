@@ -163,6 +163,8 @@
 %type <box> function_name
 %type <tree> obe_literal
 %type <list> scalar_exp_commalist
+%type <box> scalar_exp_p_list
+%type <list> scalar_exp_2_commalist
 %type <list> select_scalar_exp_commalist
 %type <tree> string_concatenation_operator
 %type <list> opt_scalar_exp_commalist
@@ -525,8 +527,10 @@
 %type <tree> vectored_decl
 %type <tree> trans_statement
 %type <list> trans_clause_list
+%type <tree> opt_while
 %type <tree> trans_clause
 %type <tree> from_statement
+%type <tree> group_by_statement
 %type <list> cost_number_list
 %type <box> cost_number
 %type <tree> cluster_def
@@ -575,7 +579,7 @@
 /* literal keyword tokens */
 
 %token ALL ANY ATTACH ASC AUTHORIZATION BETWEEN BIGINT BREAKUP BY
-%token CASCADE CHARACTER CHECK CLOSE COMMIT CONSTRAINT CONTINUE CREATE CUBE CURRENT
+%token CARDINALITY CASCADE CHARACTER CHECK CLOSE COMMIT CONSTRAINT CONTINUE CREATE CUBE CURRENT
 %token CURSOR DECIMAL_L DECLARE DEFAULT DELETE_L DESC DISTINCT DOUBLE_L
 %token DROP ESCAPE EXISTS FETCH FLOAT_L FOREIGN FOUND FROM GOTO GO
 %token GRANT GROUP GROUPING HAVING IN_L INDEX INDEX_NO_FILL INDEX_ONLY INDICATOR INSERT INTEGER INTO
@@ -587,7 +591,7 @@
 %token ARRAY SETS
 
 /* Extensions */
-%token CONTIGUOUS OBJECT_ID BITMAPPED UNDER CLUSTER __ELASTIC CLUSTERED VARCHAR VARBINARY BINARY LONG_L REPLACING SOFT HASH LOOP IRI_ID IRI_ID_8 SAME_AS TRANSITIVE QUIETCAST_L SPARQL_L
+%token CONTIGUOUS OBJECT_ID BITMAPPED UNDER CLUSTER __ELASTIC CLUSTERED VARCHAR VARBINARY BINARY LONG_L REPLACING SOFT HASH LOOP IRI_ID IRI_ID_8 SAME_AS TRANSITIVE QUIETCAST_L SPARQL_L G_SECURITY
 
 /* Admin statements */
 %token SHUTDOWN CHECKPOINT BACKUP REPLICATION
@@ -645,7 +649,7 @@
 
  /* transitive subquery options */
 %token T_FINAL_AS T_MIN T_MAX T_IN T_OUT T_SHORTEST_ONLY T_DISTINCT T_EXISTS T_NO_ORDER T_NO_CYCLES T_CYCLES_ONLY T_END_FLAG T_DIRECTION
-
+%token T_BORDER
 
 
 
@@ -965,6 +969,7 @@ column_def_opt
 	| UNIQUE '(' index_option_list ')'		 {  dk_set_t opts = t_CONS (t_box_string ("unique"), $3);
 	   $$ = t_listst (5, UNIQUE_DEF, NULL, NULL, NULL,
 			  (ST *) t_list_to_array (opts)); }
+	| CARDINALITY INTNUM {$$ = t_listst (2, OPT_CARDINALITY, $2); }
 	|  FOR TRANSITIVE { $$ = t_listst (1, TRANS_STMT); }
 	;
 
@@ -982,6 +987,8 @@ table_constraint_def
 		    sqlp_string_col_list ((caddr_t *) t_list_to_array ($5)), $7); }
 	| opt_constraint_name FOREIGN KEY '(' column_commalist ')' references
 		{ $$ = $7; $7->_.fkey.fk_cols = (caddr_t*) t_list_to_array ($5); $7->_.fkey.fk_name = $1; }
+	| CARDINALITY INTNUM { $$ = t_listst (2, OPT_CARDINALITY, $2); }
+| T_BORDER { $$ = t_listst (1, OPT_BORDER); }
 	| opt_constraint_name CHECK '(' search_condition ')'
 		{ $$ = t_listst (3, CHECK_CONSTR, $4, $1); }
 	| opt_constraint_name UNIQUE '(' column_commalist ')'
@@ -1422,8 +1429,8 @@ cursor_def
 				{
 				  $$ = t_listst (5, CURSOR_DEF, $2, $6, (ptrlong) $3, NULL);
 				}
-	| DECLARE identifier TABLE '(' base_table_element_commalist ')'  { $$ = t_listst (5, TEMP_TABLE, $2, $5, NULL, 0); }
-	| DECLARE identifier TABLE '(' base_table_element_commalist ')' PARTITION opt_cluster col_part_list  { $$ = t_listst (5, TEMP_TABLE, $2, $5, t_listst (5, PARTITION_DEF, NULL, NULL, $8, $9), 0); }
+| DECLARE identifier TABLE '(' base_table_element_commalist ')'  { $$ = t_listst (5, TEMP_TABLE, $2, t_list_to_array ($5), NULL, 0); }
+| DECLARE identifier TABLE '(' base_table_element_commalist ')' PARTITION opt_cluster col_part_list  { $$ = t_listst (5, TEMP_TABLE, $2, t_list_to_array ($5), t_listst (5, PARTITION_DEF, NULL, NULL, $8, t_list_to_array ($9)), 0); }
 	;
 
 opt_order_by_clause
@@ -1720,6 +1727,8 @@ sql_option
 	| HASH UNIQUE { $$ = t_CONS (OPT_HASH_UNIQUE, t_CONS ((ptrlong)1, NULL)); }
 	| HASH NO_L DROP { $$ = t_CONS (OPT_HASH_NO_DROP, t_CONS ((ptrlong)1, NULL)); }
 	| FINAL_L { $$ = t_CONS (OPT_NO_DT_INLINE, t_CONS ((ptrlong)1, NULL)); }
+	| EXCEPT { $$ = t_CONS (OPT_SEC_EXCEPT, t_CONS ((ptrlong)1, NULL)); }
+	| G_SECURITY { $$ = t_CONS (OPT_G_SEC, t_CONS ((ptrlong)1, NULL)); }
 
 	| ISOLATION_L txn_isolation_level { $$ = t_CONS (OPT_ISOLATION, t_CONS ( $2, NULL)); }
 	| INTERSECT { $$ = t_CONS (OPT_JOIN, t_CONS (OPT_INTERSECT, NULL)); }
@@ -1750,6 +1759,9 @@ sql_option
 	| FROM scalar_exp { $$ = t_cons ((void*)OPT_FROM_FILE, t_cons ((void*)$2, NULL)); }
 	| START_L scalar_exp { $$ = t_cons ((void*)OPT_FILE_START, t_cons ((void*)$2, NULL)); }
 	| ENDX scalar_exp { $$ = t_cons ((void*)OPT_FILE_END, t_cons ((void*)$2, NULL)); }
+	| VALUES '(' scalar_exp_2_commalist ')' { $$ = t_CONS (OPT_VALUES, t_CONS (t_list_to_array ($3), NULL)); }
+
+	| EXECUTE compound_statement { $$ = t_CONS (OPT_EXECUTE, t_CONS ($2, NULL)); }
 	| NAME INTNUM {
 	  if (!stricmp ($1, "vacuum"))
 	    $$ = t_CONS (OPT_VACUUM, t_CONS ($2, NULL));
@@ -2297,8 +2309,7 @@ opt_group_by_clause
 			}
 		  $$ = (ST*) t_list_to_array (group_by_full);
 		}
-	| GROUP BY ordering_spec_commalist EXECUTE compound_statement { $$ = t_listst (1, t_listst (4, GROUP_BY_EXEC, $3, NAME, $5)); }
-	| GROUP BY ordering_spec_commalist INTO NAME EXECUTE compound_statement { $$ = t_listst (1, t_listst (4, GROUP_BY_EXEC, $3, $5, $7)); }
+| GROUP BY ordering_spec_commalist INTO NAME opt_as EXECUTE compound_statement { $$ = t_listst (1, t_listst (6, GROUP_BY_EXEC, t_list_to_array ($3), $5, $6, NULL, $8)); }
 	;
 
 /* pmn
@@ -2802,6 +2813,17 @@ obe_literal
 scalar_exp_commalist
 	: scalar_exp				{ $$ = t_CONS ($1, NULL); }
 	| scalar_exp_commalist ',' scalar_exp	{ t_NCONC ($1, t_CONS ($3, NULL)); }
+	;
+
+
+scalar_exp_p_list
+	: '(' scalar_exp_commalist ')' { $$ = t_list_to_array ($2); }
+	;
+
+
+scalar_exp_2_commalist
+	: scalar_exp_p_list  { $$ = t_CONS ($1, NULL); }
+	| scalar_exp_2_commalist ',' scalar_exp_p_list { t_NCONC ($1, t_CONS ($3, NULL)); }
 	;
 
 select_scalar_exp_commalist
@@ -3435,14 +3457,22 @@ trans_clause_list
 	| trans_clause_list trans_clause { $$ = t_NCONC ($1, t_CONS ($2, NULL)); }
 	;
 
+opt_while
+	: /* empty */ { $$ = NULL; }
+	| WHILE '('search_condition ')' {$$ = $3; }
+	;
+
 trans_clause
-	: FROM NAME compound_statement { $$ = t_listst (3, TRANS_CLAUSE, $2, $3); }
+: FROM NAME opt_as compound_statement opt_while { $$ = t_listst (5, TRANS_CLAUSE, $2, $3, $4, $5); }
 	;
 
 from_statement
-	: FROM table_exp { $$ = t_listst (5, SELECT_STMT, NULL, t_listst (0), NULL, $2); }
+	: table_exp { $$ = t_listst (5, SELECT_STMT, NULL, t_listst (0), NULL, $1); }
 	;
 
+group_by_statement
+: GROUP BY ordering_spec_commalist INTO NAME opt_as EXECUTE compound_statement { ST * gb = t_listst (6, GROUP_BY_EXEC, t_list_to_array ($3), $5, $6, NULL, $8); $$ = sqlp_top_gby (gb);}
+	;
 
 
 routine_statement
@@ -3461,6 +3491,7 @@ routine_statement
 	| vectored_decl
 	| trans_statement
 	| from_statement
+	| group_by_statement
 	| /* empty */				{ $$ = t_listst (1, NULL_STMT); }
 	;
 

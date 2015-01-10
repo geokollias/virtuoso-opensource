@@ -374,6 +374,7 @@ typedef struct cl_op_s
       index_tree_t *g_rd;
       char g_rd_empty;
       char g_all_allowed;	/* for example inside sec query itself */
+      char g_sponge;		/* sponge rules are separate, don't check for writing on non-existing g */
     } sec;
   } _;
 } cl_op_t;
@@ -566,9 +567,11 @@ typedef struct cl_req_group_s
   int clrg_nth_set;		/* no of sets received. One set per param row */
   int clrg_n_sets_requested;	/* clrg_nth_param_row at the time of last send.  Do not send  more until this many rec'd */
   int clrg_u_id;
+  int clrg_last_dc_inx;
   char clrg_error_end;		/* transaction error in txn daq.  No more results */
   caddr_t *clrg_param_rows;
   dk_set_t clrg_last;
+  cl_op_t *clrg_last_call_clo;	/* clo of last vectored call on this clrg */
   cucurbit_t *clrg_cu;
   dk_set_t clrg_vec_clos;
   float clrg_sample_pct;
@@ -638,7 +641,9 @@ typedef struct value_state_s
   dk_set_t vs_references;
   caddr_t vs_org_value;
   caddr_t vs_result;
+  cl_op_t *vs_call_clo;
   int vs_n_steps;
+  int vs_dc_inx;		/* if a daq call corresponds to vs, this is the place in param vectors dcs of the call for this vs */
   char vs_is_value;		/* is already translated? */
 } value_state_t;
 
@@ -686,6 +691,7 @@ struct cucurbit_s
   char cu_is_ordered;
   char cu_is_in_dp;		/* the cu_funcs are owned by a dpipe node */
   char cu_allow_redo;
+  char cu_cset_done;		/* ids/csets/quads done in cluster cset load */
   int cu_nth_set;		/* no of result row */
   dk_set_t cu_lines;
   int cu_n_cols;
@@ -708,6 +714,7 @@ struct cucurbit_s
   caddr_t *cu_cd;
   dk_hash_t *cu_csi;
   db_buf_t *cu_inx_bits;	/* bits marking which lines of the cu go to which indices in cset load */
+  caddr_t cu_batch_p;		/* in rdf ld, when this p comes back after enough rows,flush.  Assume as complete s's in between, so all ps of an s are in the batch, good for csets and clustering */
 };
 
 #if (SIZEOF_VOID_P == 4)
@@ -728,6 +735,7 @@ struct cucurbit_s
 #define RDF_LD_DEL_INS 4
 #define RDF_LD_DEL_GS 8
 #define RDF_LD_INS_GS 16
+#define RDF_LD_CSET 32		/* tripls into cset, one g */
 
 #define CU_ALLOW_REDO 4
 #define CU_NO_TXN 2
@@ -894,6 +902,9 @@ typedef struct cl_self_message_s
 #define CLO_DFG_AGG			31	/*!< request for simple aggregate result from dist frag */
 #define CLO_CONTROL			32
 #define CLO_TOP 33
+#ifdef RDF_SECURITY_CLO
+#define CLO_RDF_GRAPH_USER_PERMS	34	/*!< A hashtable of user permissions for graphs */
+#endif
 #define CLO_IEXT_CR 35		/* cursor on index extension */
 #define CLO_SEC_TOKEN 36
 
@@ -1104,6 +1115,13 @@ int itc_rd_cluster_blobs (it_cursor_t * itc, row_delta_t * rd, mem_pool_t * ins_
 
 /*analytics*/
 index_tree_t *cha_bloom_only (uint64 id, uint64 bloom_bytes);
+
+
+/**add cset*/
+uint32 dc_part_hash (col_partition_t * cp, data_col_t * dc, int set, int32 * rem_ret);
+cu_line_t *cu_line (cucurbit_t * cu, cu_func_t * func);
+int64 cl_new_range_for_sub_seq (query_instance_t * qi, caddr_t seq, boxint sz, caddr_t * err_ret, uint64 ir_id, uint32 mode);
+void seq_dbg_log (char *seq, int64 from, int64 to);
 
 
 /**add vec */
@@ -1795,6 +1813,7 @@ void dpipe_signature (caddr_t name, int n_args, ...);
 #define CU_CLI(cu) ((cu)->cu_clrg->clrg_lt ? (cu)->cu_clrg->clrg_lt->lt_client : NULL)
 void qi_free_dfg_queue_nodes (query_instance_t * qi, dk_set_t nodes);
 void qf_set_cost (query_frag_t * qf);
+void cu_cl_cset_cols (cucurbit_t * cu, caddr_t g_iid);
 
 
 #endif

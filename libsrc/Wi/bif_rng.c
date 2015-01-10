@@ -37,7 +37,8 @@
 
 
 
-
+dk_hash_t ir_dbg_ht;
+dk_mutex_t ir_dbg_mtx;
 dk_hash_t id_to_ir;
 
 
@@ -77,6 +78,33 @@ irng_hist_add (ir_range_t ** hist, ir_range_t * new_irng)
 }
 
 
+FILE *ir_dbg_file;
+
+void
+seq_dbg_log (char *seq, int64 from, int64 to)
+{
+  return;
+  mutex_enter (&ir_dbg_mtx);
+  if (!ir_dbg_file)
+    ir_dbg_file = fopen ("seq.out", "w");
+  fprintf (ir_dbg_file, "%d|%s|%ld|%ld|\n", local_cll.cll_this_host, seq, from, to);
+  mutex_leave (&ir_dbg_mtx);
+}
+
+
+void
+ir_check_res (id_range_t * ir, int64 res)
+{
+#if 0
+  mutex_enter (&ir_dbg_mtx);
+  if (gethash ((void *) res, &ir_dbg_ht))
+    log_error ("Dup id from seq %s %ld", ir->ir_name, res);
+  sethash ((void *) res, &ir_dbg_ht, (void *) 1);
+  mutex_leave (&ir_dbg_mtx);
+#endif
+}
+
+
 int64
 ir_new_id (caddr_t * inst, int64 ir_id, int64 * id_ret)
 {
@@ -110,6 +138,7 @@ ir_new_id (caddr_t * inst, int64 ir_id, int64 * id_ret)
       ir_range_t *irng = hist[i];
       if (!irng)
 	{
+	  int nth_irng;
 	get_new:
 	  mutex_leave (&ir->ir_mtx);
 	  if (CL_RUN_LOCAL == cl_run_local_only)
@@ -118,8 +147,12 @@ ir_new_id (caddr_t * inst, int64 ir_id, int64 * id_ret)
 	      log_sequence_sync (qi->qi_trx, ir->ir_seq, start + ir->ir_chunk);
 	    }
 	  mutex_enter (&ir->ir_mtx);
-	  irng = irng_alloc (ir, start);
-	  irng_hist_add (hist, irng);
+	  for (nth_irng = 0; nth_irng < ir->ir_n_in_chunk; nth_irng++)
+	    {
+	      irng = irng_alloc (ir, start);
+	      irng_hist_add (hist, irng);
+	      start += ir->ir_n_slices * (1L << ir->ir_slice_bits);
+	    }
 	}
       if (slice_given)
 	{
@@ -136,6 +169,7 @@ ir_new_id (caddr_t * inst, int64 ir_id, int64 * id_ret)
 	    BIT_SET (&irng->irng_seq, slid);
 	  res += irng->irng_start + (max_seq + 1) * slid;
 	  mutex_leave (&ir->ir_mtx);
+	  ir_check_res (ir, res);
 	  return res;
 	}
       else
@@ -154,6 +188,7 @@ ir_new_id (caddr_t * inst, int64 ir_id, int64 * id_ret)
 	    BIT_SET (&irng->irng_seq, slid);
 	  res += irng->irng_start + (slid * (1 + max_seq));
 	  mutex_leave (&ir->ir_mtx);
+	  ir_check_res (ir, res);
 	  return res;
 	}
     next_irng:;
@@ -236,6 +271,68 @@ ir_replay (int64 id, int64 n)
     }
 }
 
+id_range_t *
+ir_by_id (int ir_id)
+{
+  id_range_t *ir = (id_range_t *) gethash ((void *) (ptrlong) ir_id, &id_to_ir);
+  if (!ir)
+    {
+      NEW_VARZ (id_range_t, ir2);
+      sethash ((void *) (ptrlong) ir_id, &id_to_ir, (void *) ir2);
+      ir = ir2;
+      ir->ir_id = ir_id;
+      dk_mutex_init (&ir->ir_mtx, MUTEX_TYPE_SHORT);
+    }
+  return ir;
+}
+
+
+id_range_t *
+ir_sub_ir (id_range_t * super, int nth)
+{
+  if (!super->ir_n_subs)
+    return super;
+  nth = nth % super->ir_n_subs;
+  for (nth = nth; nth; nth--)
+    {
+      if (super->ir_subs[nth])
+	return super->ir_subs[nth];
+    }
+  return super;
+}
+
+
+void
+ir_add_sub (id_range_t * super, id_range_t * sub, int nth)
+{
+  nth = nth % (1L << 20);
+  if (!super->ir_subs || BOX_ELEMENTS (super->ir_subs) <= nth)
+    {
+      id_range_t **new_subs = (id_range_t **) dk_alloc_box_zero ((nth + 100) * 2 * sizeof (caddr_t), DV_BIN);
+      if (super->ir_subs)
+	{
+	  memcpy (new_subs, super->ir_subs, box_length (super->ir_subs));
+	  dk_free_box ((caddr_t) super->ir_subs);
+	}
+      super->ir_subs = new_subs;
+    }
+  super->ir_subs[nth] = sub;
+  if (super->ir_n_subs <= nth)
+    super->ir_n_subs = nth + 1;
+}
+
+id_range_t *
+ir_by_name (char *name)
+{
+  DO_HT (ptrlong, id, id_range_t *, ir, &id_to_ir)
+  {
+    if (!strcmp (name, ir->ir_name))
+      return ir;
+  }
+  END_DO_HT;
+  return NULL;
+}
+
 
 caddr_t
 bif_ir_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
@@ -254,25 +351,18 @@ bif_ir_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   int ir_n_slices = bif_long_arg (qst, args, 11, "ir_def");
   uint64 ir_start = bif_long_arg (qst, args, 12, "ir_def");
   caddr_t *ir_options = bif_array_of_pointer_arg (qst, args, 13, "ir_def");
-  id_range_t *ir = (id_range_t *) gethash ((void *) id, &id_to_ir);
-  if (!ir)
-    {
-      NEW_VARZ (id_range_t, ir2);
-      sethash ((void *) id, &id_to_ir, (void *) ir2);
-      ir = ir2;
-      dk_mutex_init (&ir->ir_mtx, MUTEX_TYPE_SHORT);
-    }
+  id_range_t *ir = ir_by_id (id);
   ir->ir_name = box_copy (ir_name);
-  ir->ir_id = id;
   ir->ir_clm = clm_all;
   ir->ir_mode = ir_mode;
   ir->ir_allocator_host = ir_allocator_host;
   ir->ir_slice_bits = ir_slice_bits <= 16 ? ir_slice_bits : 16;
-  ir->ir_chunk = ir_chunk;
+  ir->ir_n_in_chunk = ir_chunk;
+  ir->ir_chunk = ir_chunk * (1L << ir->ir_slice_bits) * ir_n_slices;
   ir->ir_start = ir_start;
   ir->ir_seq = box_copy (ir_main_seq);
   ir->ir_max = ir_max ? ir_max : 0xffffffffffffffff;
-  ir->ir_hist_depth = ir_hist_depth <= 10 ? ir_hist_depth : 10;
+  ir->ir_hist_depth = (ir_hist_depth <= 10 ? ir_hist_depth : 10) * ir_chunk;
   ir->ir_n_way_txn = ir_n_way_txn <= 19 ? ir_n_way_txn : 19;
   ir->ir_n_slices = ir_n_slices;
   if (!ir->ir_ranges || BOX_ELEMENTS (ir->ir_ranges) < ir->ir_n_way_txn)
@@ -282,6 +372,13 @@ bif_ir_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 	memcpy (rngs, ir->ir_ranges, MIN (box_length (ir->ir_ranges), box_length (rngs)));
       ir->ir_ranges = rngs;
     }
+  {
+    caddr_t s_id = cset_opt_value (ir_options, "super");
+    if (s_id)
+      {
+	ir_add_sub (ir_by_id (unbox (s_id)), ir, unbox (cset_opt_value (ir_options, "nth_sub")));
+      }
+  }
   return NULL;
 }
 
@@ -322,6 +419,19 @@ ip_multiply (iri_pattern_t * ip, int nth)
   return r;
 }
 
+
+void
+ip_set_cset (iri_pattern_t * ip)
+{
+  if (id_to_cset.ht_actual_size)
+    {
+      cset_t *pcset = (cset_t *) gethash ((void *) (ptrlong) ip->ip_cset, &id_to_cset);
+      if (pcset && ip->ip_int_range)
+	sethash ((void *) (ptrlong) ip->ip_int_range->ir_id, &int_seq_to_cset, (void *) pcset);
+      if (pcset && ip->ip_exc_range)
+	sethash ((void *) (ptrlong) ip->ip_exc_range->ir_id, &int_seq_to_cset, (void *) pcset);
+    }
+}
 
 
 caddr_t
@@ -401,8 +511,9 @@ bif_iri_pattern_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     MHASH_VAR (h, ip->ip_fields[0].irif_string, first_digit);
     ip->ip_pref_hash = h;
     ip->ip_end = ip->ip_start + ip_multiply (ip, -1);
-    return NULL;
+    ip_set_cset (ip);
   }
+  return NULL;
 }
 
 int
@@ -441,6 +552,19 @@ bif_str_bin_iri (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   caddr_t str = bif_string_arg (qst, args, 0, "str_bin_iri");
   return box_iri_id (INT64_REF_NA (str));
+}
+
+
+caddr_t
+bif_ro_seq (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  caddr_t str = bif_arg (qst, args, 0, "str_bin_iri");
+  uint32 f = IS_BOX_POINTER (str) ? box_flags (str) : 0;
+  if (DV_UNAME == DV_TYPE_OF (str))
+    bing ();
+  if (f > BF_UTF8)
+    return box_num (f);
+  return box_dv_short_string ("RDF_RO_ID");
 }
 
 
@@ -658,13 +782,17 @@ bif_rng_init ()
   bif_define ("iri_pattern_changed", bif_iri_pattern_changed);
   bif_define_typed ("str_num_fields", bif_str_num_fields, &bt_any_box);
   bif_define_typed ("str_bin_iri", bif_str_bin_iri, &bt_iri_id);
+  bif_define_typed ("__ro_seq", bif_ro_seq, &bt_any);
   bif_define_typed ("iri_ip_to_string", bif_iri_ip_to_string, &bt_any);
   ddl_ensure_table ("DB.DBA.SYS_ID_RANGE",
       "create table DB.DBA.SYS_ID_RANGE (ir_name varchar primary key, ir_id bigint, ir_cluster varchar, ir_mode int, ir_n_way_txn int, ir_allocator_host int, ir_main_seq varchar, ir_slice_bits int, ir_chunk bigint, ir_max bigint, ir_hist_depth int, ir_n_slices int, ir_start bigint, ir_options any)\n"
       " alter index sys_id_range on sys_id_range  partition cluster REPLICATED\n");
   ddl_ensure_table ("do this always",
-      "select ir_def (ir_name, ir_id, ir_cluster, ir_mode , ir_n_way_txn, ir_allocator_host, ir_main_seq, ir_slice_bits, ir_chunk, ir_max, "
-      "ir_hist_depth, ir_n_slices, ir_start, ir_options) from sys_id_range");
+      "select count (ir_def (ir_name, ir_id, ir_cluster, ir_mode , ir_n_way_txn, ir_allocator_host, ir_main_seq, ir_slice_bits, ir_chunk, ir_max, "
+      "ir_hist_depth, ir_n_slices, ir_start, ir_options)) from sys_id_range");
   iri_pattern_to_ip = id_str_hash_create (183);
   hash_table_init (&pref_hash_to_ip, 33);
+  hash_table_init (&ir_dbg_ht, 10011);
+  ir_dbg_ht.ht_rehash_threshold = 2;
+  dk_mutex_init (&ir_dbg_mtx, MUTEX_TYPE_SHORT);
 }

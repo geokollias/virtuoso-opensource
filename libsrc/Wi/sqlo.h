@@ -898,6 +898,7 @@ query_t *sqlg_dt_subquery (sqlo_t * so, df_elt_t * dt_dfe, query_t * fill_query,
 #define sqlg_dt_query(so, dt_dfe, fill_query, target_names) sqlg_dt_subquery (so, dt_dfe, fill_query, target_names, NULL)
 void sqlg_top (sqlo_t * so, df_elt_t * top_dfe);
 void sqlg_top_1 (sqlo_t * so, df_elt_t * dfe, state_slot_t *** sel_out_ret);
+void sqlg_sdfg_empty_qf (sql_comp_t * sc, data_source_t * first_qn);
 int sqlo_key_score (dbe_key_t * key, dk_set_t col_preds, int *is_unq);
 df_elt_t *dfe_col_def_dfe (sqlo_t * so, df_elt_t * col_dfe);
 void sqlo_table_locus (sqlo_t * so, df_elt_t * tb_dfe,
@@ -1245,8 +1246,11 @@ int sqlo_has_node (ST * tree, int type);
 
 
 /* bsp */
+dbe_table_t *so_name_to_temp_table (sqlo_t * so, char *name);
 void sqlg_bsp_trans (sql_comp_t * sc, df_elt_t * dt_dfe, trans_node_t * tn);
 void sdfg_setp_loc_ts (sql_comp_t * sc, setp_node_t * setp);
 int sqlg_union_all_list (subq_source_t * sqs, dk_set_t * res);
+void sqlg_parallel_ts_seq (sql_comp_t * sc, df_elt_t * dt_dfe, table_source_t * ts, fun_ref_node_t * fref, select_node_t * sel);
+void sqlo_place_proc_cols (sqlo_t * so, ST * tree, df_elt_t * super);
 
 #endif /* _SQLO_H */

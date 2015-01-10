@@ -85,15 +85,25 @@
 
 
 dbe_table_t *
-so_name_to_table (sqlo_t * so, caddr_t name)
+so_name_to_temp_table (sqlo_t * so, char *name)
 {
-  dbe_table_t *tb;
   DO_SET (dbe_table_t *, tb, &so->so_sc->sc_temp_tables)
   {
     if (!CASEMODESTRCMP (tb->tb_name, name))
       return tb;
   }
   END_DO_SET ();
+  return NULL;
+}
+
+
+dbe_table_t *
+so_name_to_table (sqlo_t * so, caddr_t name)
+{
+  dbe_table_t *tb;
+  tb = so_name_to_temp_table (so, name);
+  if (tb)
+    return tb;
   tb = sch_name_to_table (so->so_sc->sc_cc->cc_schema, name);
   if (tb && tb_is_rdf_quad (tb))
     so->so_any_rdf_quad = 1;
@@ -704,7 +714,7 @@ sqlo_proc_table_cols (sqlo_t * so, op_table_t * ot)
   int inx;
   ST *tree = ot->ot_dt;
   /*so->so_this_dt->ot_fixed_order = 1; */
-
+  ot->ot_opts = tree->_.proc_table.opts;
   DO_BOX (caddr_t, param, inx, tree->_.proc_table.params)
   {
     /*op_virt_col_t *vc = */ sqlo_virtual_col_crr (so, ot, param, DV_UNKNOWN, 2);
@@ -884,6 +894,7 @@ sqlo_add_table_ref (sqlo_t * so, ST ** tree_ret, dk_set_t * res)
 	  view = with_view;
 	if (!view || inside_view)
 	  {
+	    ST *exec;
 	    remote_table_t *rt = find_remote_table (tb->tb_name, 0);
 	    t_NEW_VARZ (op_table_t, ot);
 	    ot->ot_opts = ST_OPT (tree, caddr_t *, _.table.opts);
@@ -906,6 +917,9 @@ sqlo_add_table_ref (sqlo_t * so, ST ** tree_ret, dk_set_t * res)
 	    sqlo_rls_add_condition (so, ot, res, tb);
 	    t_set_push (&so->so_tables, (void *) ot);
 	    sco_add_table (so->so_scope, ot);
+	    exec = (ST *) sqlo_opt_value (ot->ot_opts, OPT_EXECUTE);
+	    if (exec)
+	      sqlo_scope (so, &exec);
 	  }
 	else
 	  {
@@ -1024,10 +1038,17 @@ sqlo_add_table_ref (sqlo_t * so, ST ** tree_ret, dk_set_t * res)
 	sqlo_scope (so, &(tree->_.table_ref.table));
 	if (ST_P (tree->_.table_ref.table, SELECT_STMT))
 	  {
+	    caddr_t *sel_opts = tree->_.table_ref.table->_.select_stmt.table_exp ?
+		tree->_.table_ref.table->_.select_stmt.table_exp->_.table_exp.opts : NULL, *opts = NULL;
 	    ot = (op_table_t *) so->so_tables->data;
 	    ot->ot_prefix = tree->_.table_ref.range;
 	    if (BOX_ELEMENTS (tree) > 3)
-	      ot->ot_opts = ot->ot_dt_opts = tree->_.dt_ref.opts;
+	      opts = tree->_.dt_ref.opts;
+	    if (opts && sel_opts)
+	      opts = (caddr_t *) t_box_conc ((caddr_t) opts, sel_opts);
+	    else if (sel_opts)
+	      opts = sel_opts;
+	    ot->ot_opts = ot->ot_dt_opts = opts;
 	    tree->_.table_ref.range = ot->ot_new_prefix;
 /*	    t_set_push (res, (void *) ot);*/
 	    sco_add_table (so->so_scope, ot);
@@ -1270,6 +1291,8 @@ sqlo_dt_inlineable (sqlo_t * so, ST * tree, ST * from, op_table_t * ot, int sing
     {
       int dt_inx;
       op_table_t *dot = sqlo_find_dt (so, dtexp);
+      if (sqlo_opt_value (dot->ot_opts, OPT_NO_DT_INLINE))
+	return 0;
       if (dot->ot_fun_refs)
 	return 0;
       if (sqlo_dt_has_vcol_tables (so, dot))
@@ -2641,6 +2664,22 @@ sqlo_is_const_subq (sqlo_t * so, ST * tree)
   return 0;
 }
 
+void
+sqlo_group_by_exec_scope (sqlo_t * so, ST * texp)
+{
+  ST *exec = (ST *) sqlo_opt_value (texp->_.table_exp.opts, GROUP_BY_EXEC);
+  if (exec)
+    {
+      caddr_t prefix = exec->_.gb_ext.prefix;
+      t_NEW_VARZ (op_table_t, ot);
+      ot->ot_table = so_name_to_temp_table (so, exec->_.gb_ext.table);
+      ot->ot_prefix = DV_DB_NULL == DV_TYPE_OF (prefix) ? NULL : prefix;
+      ot->ot_new_prefix = sqlo_new_prefix (so);
+      t_set_push (&so->so_scope->sco_tables, (void *) ot);
+      sqlo_scope (so, &exec->_.gb_ext.stmt);
+    }
+}
+
 
 void
 sqlo_select_scope (sqlo_t * so, ST ** ptree)
@@ -2782,6 +2821,7 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
 	      else
 		texp->_.table_exp.group_by_full = (ST ***) t_listst (1, texp->_.table_exp.group_by);
 	    }
+	  sqlo_group_by_exec_scope (so, texp);
 	  sqlo_check_group_by_cols (so, (ST *) texp->_.table_exp.order_by, &(texp->_.table_exp.group_by), ot, is_not_one_gb);
 	}
       sqlo_oby_remove_scalar_exps (so, &texp->_.table_exp.order_by);
@@ -3182,6 +3222,17 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
       }
 
 
+      void sqlo_scope_list (sqlo_t * so, ST ** list)
+      {
+	int inx, len = BOX_ELEMENTS (list);
+	int old_rescope = so->so_is_rescope;
+	so->so_is_rescope = 1;
+	for (inx = 0; inx < len; inx++)
+	  sqlo_scope (so, &list[inx]);
+	so->so_is_rescope = old_rescope;
+      }
+
+
       void sqlo_scope (sqlo_t * so, ST ** ptree)
       {
 	ST *tree;
@@ -3394,8 +3445,15 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
 		sqlo_subq_convert_to_exists (so, ptree);
 	      }
 	    break;
-	  case COMPOUND_STMT:
 	  case IF_STMT:
+	    sqlo_scope_list (so, tree->_.if_stmt.elif_list);
+	    sqlo_scope (so, tree->_.if_stmt.else_clause);
+	    break;
+	  case COMPOUND_STMT:
+	    sqlo_scope_list (so, tree->_.compound.body);
+	    break;
+
+	  case COND_CLAUSE:
 	  case WHILE_STMT:
 	    {
 	      int inx, len = BOX_ELEMENTS (tree);

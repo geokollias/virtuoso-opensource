@@ -186,6 +186,18 @@ bif_string_arg (caddr_t * qst, state_slot_t ** args, int nth, const char *func)
   return arg;
 }
 
+caddr_t
+bif_wide_arg (caddr_t * qst, state_slot_t ** args, int nth, const char *func)
+{
+  caddr_t arg = bif_arg_unrdf (qst, args, nth, func);
+  dtp_t dtp = DV_TYPE_OF (arg);
+  if (dtp != DV_WIDE)
+    sqlr_new_error ("22023", "SR014",
+	"Function %s needs a wide string (i.e., a NVARCHAR) as argument %d, not an arg of type %s (%d)",
+	func, nth + 1, dv_type_title (dtp), dtp);
+  return arg;
+}
+
 caddr_t *
 bif_strict_type_array_arg (dtp_t element_dtp, caddr_t * qst, state_slot_t ** args, int nth, const char *func)
 {
@@ -1545,7 +1557,7 @@ bif_define_int (caddr_t name, bif_t bif, bif_metadata_t * bmd)
       if (NULL != old_bmd)
 	{
 	  if ((old_bmd == bmd) && (NULL == old_meta_for_bif))	/* The call is redundand because, e.g., st_point and ST_Point both become ST_POINT after the case conversion */
-	    return;
+	    goto end;
 	}
       if (NULL != old_meta_for_bif)
 #if 1
@@ -1562,6 +1574,7 @@ bif_define_int (caddr_t name, bif_t bif, bif_metadata_t * bmd)
 	}
 #endif
     }
+end:
   id_hash_set (name_to_bif_metadata_idhash, (caddr_t) (&name), (caddr_t) (&bmd));
   sethash (bif, bif_to_bif_metadata_hash, bmd);
 }
@@ -2233,7 +2246,7 @@ again:
   switch (box_tag (arr))
     {
     case DV_STRING:
-      if (inx >= len)
+      if (inx >= len - 1)
 	goto bs;
       arr[inx] = (char) bif_long_arg (qst, args, idxcount + 1, "aset");
       break;
@@ -2253,7 +2266,6 @@ again:
       dk_free_tree (((caddr_t *) arr)[inx]);
       ((caddr_t *) arr)[inx] = box_copy_tree (it);
       break;
-
     case DV_ARRAY_OF_LONG:
       if (((size_t) inx) >= len / sizeof (caddr_t))
 	goto bs;
@@ -2271,7 +2283,7 @@ again:
       break;
     case DV_WIDE:
     case DV_LONG_WIDE:
-      if (((size_t) inx) >= len / sizeof (wchar_t))
+      if (((size_t) inx) >= (len / sizeof (wchar_t)) - 1)
 	goto bs;
       ((wchar_t *) arr)[inx] = (wchar_t) unbox (it);
       break;
@@ -2360,8 +2372,24 @@ caddr_t
 bif_make_string (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   ptrlong n = bif_long_range_arg (qst, args, 0, "make_string", 0, 10000000);
-  caddr_t str = dk_alloc_box_zero (n + 1, DV_LONG_STRING);
-  return str;
+  if (1 < BOX_ELEMENTS (args))
+    {
+      caddr_t pattern = bif_string_arg (qst, args, 1, "make_string");
+      caddr_t str;
+      char *tail, *end;
+      int pattern_len = box_length (pattern) - 1;
+      if (0 == pattern_len)
+	return dk_alloc_box_zero (n + 1, DV_STRING);
+      str = dk_alloc_box (n + 1, DV_STRING);
+      end = str + n;
+      for (tail = str; tail <= end - pattern_len; tail += pattern_len)
+	memcpy (tail, pattern, pattern_len);
+      if (tail < end)
+	memcpy (tail, pattern, end - tail);
+      str[n] = 0;
+      return str;
+    }
+  return dk_alloc_box_zero (n + 1, DV_STRING);
 }
 
 
@@ -2369,8 +2397,25 @@ caddr_t
 bif_make_wstring (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   ptrlong n = bif_long_range_arg (qst, args, 0, "make_wstring", 0, 10000000 / VIRT_MB_CUR_MAX);
-  caddr_t str = dk_alloc_box_zero ((n + 1) * sizeof (wchar_t), DV_LONG_WIDE);	/* was: n*sizeof (wchar_t)+1 */
-  return str;
+  int bytes = (n + 1) * sizeof (wchar_t);
+  if (1 < BOX_ELEMENTS (args))
+    {
+      caddr_t pattern = bif_wide_arg (qst, args, 1, "make_wstring");
+      caddr_t str;
+      char *tail, *end;
+      int pattern_len = box_length (pattern) - sizeof (wchar_t);
+      if (0 == pattern_len)
+	return dk_alloc_box_zero (bytes, DV_WIDE);
+      str = dk_alloc_box (bytes, DV_WIDE);
+      end = str + n * sizeof (wchar_t);
+      for (tail = str; tail <= end - pattern_len; tail += pattern_len)
+	memcpy (tail, pattern, pattern_len);
+      if (tail < end)
+	memcpy (tail, pattern, end - tail);
+      ((wchar_t *) str)[n] = 0;
+      return str;
+    }
+  return dk_alloc_box_zero (bytes, DV_WIDE);	/* was: n*sizeof (wchar_t)+1 */
 }
 
 
@@ -2378,8 +2423,23 @@ caddr_t
 bif_make_bin_string (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   ptrlong n = bif_long_range_arg (qst, args, 0, "make_bin_string", 0, 10000000);
-  caddr_t str = dk_alloc_box_zero (n * sizeof (wchar_t), DV_BIN);
-  return str;
+  if (1 < BOX_ELEMENTS (args))
+    {
+      caddr_t pattern = bif_string_arg (qst, args, 1, "make_bin_string");
+      caddr_t str;
+      char *tail, *end;
+      int pattern_len = box_length (pattern);
+      if (0 == pattern_len)
+	return dk_alloc_box_zero (n * sizeof (wchar_t), DV_BIN);
+      str = dk_alloc_box (n * sizeof (wchar_t), DV_BIN);
+      end = str + n * sizeof (wchar_t);
+      for (tail = str; tail <= end - pattern_len; tail += pattern_len)
+	memcpy (tail, pattern, pattern_len);
+      if (tail < end)
+	memcpy (tail, pattern, end - tail);
+      return str;
+    }
+  return dk_alloc_box_zero (n * sizeof (wchar_t), DV_BIN);
 }
 
 
@@ -4739,7 +4799,7 @@ retry_unrdf:
 	      int fmt_idx = dk_set_length (res);
 	      if ((fmt_idx < expected_dtp_len) && ((DV_WIDE & 0x7F) == (expected_dtp_strg[fmt_idx] & 0x7F)))
 		{
-		  val = box_utf8_as_wide_char (buf, NULL, out - buf, 0, DV_WIDE);
+		  val = box_utf8_as_wide_char (buf, NULL, out - buf, 0);
 		  if (NULL == val)
 		    {
 		      dk_free_box (buf);
@@ -4957,24 +5017,29 @@ bif_strstr_imp (caddr_t * qst, state_slot_t ** args, int opcode, const char *fun
 	sqlr_new_error ("22023", "SR039", "The first argument to %s() is not a wide string", func_name);
       if (!IS_WIDE_STRING_DTP (dtp2))
 	sqlr_new_error ("22023", "SR040", "The second argument to %s() is not a wide string", func_name);
+      len1 = box_length (str1);
+      len2 = box_length (str2);
+      if (len2 > len1)
+	{
+	  inx = 0;
+	  goto prepare_retval;	/* see below */
+	}
       switch (opcode)
 	{
 	case BIF_STRSTR_POS:
 	case BIF_STRSTR_BOOL_ANY:
-	  inx = (char *) virt_wcsstr ((wchar_t *) str1, (wchar_t *) str2);
+	  inx =
+	      (char *) virt_wmemmem ((const wchar_t *) str1, len1 / sizeof (wchar_t) - 1, (const wchar_t *) str2,
+	      len2 / sizeof (wchar_t) - 1);
 	  break;
 	case BIF_STRSTR_BOOL_START:
-	  len1 = box_length (str1);
-	  len2 = box_length (str2);
-	  if ((len2 > len1) || memcmp (str1, str2, len2 - sizeof (wchar_t)))
+	  if (memcmp (str1, str2, len2 - sizeof (wchar_t)))
 	    inx = 0;
 	  else
 	    inx = str1;
 	  break;
 	case BIF_STRSTR_BOOL_END:
-	  len1 = box_length (str1);
-	  len2 = box_length (str2);
-	  if ((len2 > len1) || memcmp (str1 + len1 - len2, str2, len2 - sizeof (wchar_t)))
+	  if (memcmp (str1 + len1 - len2, str2, len2 - sizeof (wchar_t)))
 	    inx = 0;
 	  else
 	    inx = str1 + (len1 - len2);
@@ -5007,6 +5072,7 @@ bif_strstr_imp (caddr_t * qst, state_slot_t ** args, int opcode, const char *fun
 	  break;
 	}
     }
+prepare_retval:
   if (BIF_STRSTR_POS == opcode)
     {
       if (!inx)
@@ -5400,21 +5466,28 @@ bif_chr (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       n >>= 8;			/* Next highest byte in the long arg. */
     }
   temp[i] = '\0';
-  str = dk_alloc_box ((i + 1), DV_LONG_STRING);
-  memcpy (str, temp, (i + 1));
-  return str;
+  return box_dv_short_nchars (temp, i);
 }
 
 caddr_t
 bif_chr1 (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   unsigned long n = (unsigned long) bif_long_arg (qst, args, 0, "chr1");
-  caddr_t str = dk_alloc_box (2, DV_LONG_STRING);
+  caddr_t str = dk_alloc_box (2, DV_STRING);
   str[0] = (n & 0xff);
   str[1] = '\0';
   return str;
 }
 
+caddr_t
+bif_wchr1 (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  unsigned long n = (unsigned long) bif_long_arg (qst, args, 0, "wchr1");
+  caddr_t str = dk_alloc_box (2 * sizeof (wchar_t), DV_WIDE);
+  ((wchar_t *) str)[0] = n;
+  ((wchar_t *) str)[1] = 0;
+  return str;
+}
 
 /* Let's use our own definitions in the following functions, so that we
    get also the ISO 8859/1 diacritic letters between 192 and 255
@@ -6611,6 +6684,54 @@ bif_min_64bit_named_bnode_iri_id (caddr_t * qst, caddr_t * err_ret, state_slot_t
 {
   return box_iri_id (MIN_64BIT_NAMED_BNODE_IRI_ID);
 }
+
+
+dtp_t
+dtp_preciser (dtp_t broader, dtp_t dtp)
+{
+  switch (broader)
+    {
+    case DV_ARRAY_OF_POINTER:
+      return dtp;
+    case DV_ANY:
+      if (DV_ARRAY_OF_POINTER != dtp)
+	return dtp;
+      break;
+    }
+  return broader;
+}
+
+
+void
+bif_all_eq_type (state_slot_t ** args, long *dtp, long *prec, long *scale, collation_t ** collation)
+{
+  int inx;
+  DO_BOX (state_slot_t *, arg, inx, args)
+  {
+    if (!inx)
+      {
+	*dtp = arg->ssl_sqt.sqt_dtp;
+	*prec = arg->ssl_sqt.sqt_precision;
+	*scale = arg->ssl_sqt.sqt_scale;
+      }
+    else
+      {
+	dtp_t ndtp = dtp_preciser (*dtp, arg->ssl_sqt.sqt_dtp);
+	if (ndtp != *dtp)
+	  {
+	    *dtp = ndtp;
+	    *prec = 0;
+	    *scale = 0;
+	  }
+      }
+  }
+  END_DO_BOX;
+  *collation = NULL;
+}
+
+
+bif_type_t bt_all_eq = { (bif_type_func_t) bif_all_eq_type, 0, 0, 0 };
+
 
 caddr_t
 bif_all_eq (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
@@ -8931,6 +9052,36 @@ bif_one_of_these (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       caddr_t values = qst_get (qst, args[inx]);
       switch (DV_TYPE_OF (values))
 	{
+#ifdef RDF_SECURITY_CLO
+	case DV_CLOP:
+	  {
+	    cl_op_t *clo = (cl_op_t *) values;
+	    if ((CLO_RDF_GRAPH_USER_PERMS == clo->clo_op) && (DV_IRI_ID == DV_TYPE_OF (item)))
+	      {
+		dk_hash_64_t *ht = clo->_.rdf_graph_user_perms.ht;
+		int req_perms = clo->_.rdf_graph_user_perms.req_perms;
+		int64 unboxed_item = unbox_iri_int64 (item), perms;
+#ifdef DBG_PRINTF
+		dk_hash_64_iterator_t iter;
+		int64 *g_iid_num_ptr, *g_perms_ptr;
+		rwlock_rdlock (ht->ht_rwlock);
+		dbg_printf (("\n\nCheck of %lld <%s> in %p, user %d, req perms %d", unboxed_item, key_id_to_iri (qst, unboxed_item),
+			clo, (int) (clo->_.rdf_graph_user_perms.u_id), req_perms));
+		dk_hash_64_iterator (&iter, ht);
+		while (dk_hash_64_hit_next (&iter, &g_iid_num_ptr, &g_perms_ptr))
+		  dbg_printf (("\n%lld <%s> has %d", g_iid_num_ptr[0], key_id_to_iri (qst, g_iid_num_ptr[0]),
+			  (int) (g_perms_ptr[0])));
+		rwlock_unlock (ht->ht_rwlock);
+#endif
+		rwlock_rdlock (ht->ht_rwlock);
+		gethash_64 (perms, unboxed_item, ht);
+		rwlock_unlock (ht->ht_rwlock);
+		if ((perms & req_perms) == req_perms)
+		  return (box_num (inx));
+	      }
+	    break;
+	  }
+#endif
 	case DV_ARRAY_OF_POINTER:
 	  {
 	    int nth, n_values = BOX_ELEMENTS (values);
@@ -9367,7 +9518,11 @@ bif_mem_all_in_use (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   char *dp = bif_string_or_null_arg (qst, args, 0, "mem_all_in_use");
   FILE *fd = dp ? fopen (dp, "at") : NULL;
   int nth = BOX_ELEMENTS (args) > 1 ? bif_long_arg (qst, args, 1, "mem_all_in_use") : 0;
+#ifdef USE_TLSF
+  tlsf_all_in_use (fd ? fd : stderr, 0, nth);
+#else
   dbg_malstats (fd ? fd : stderr, DBG_MALSTATS_ALL);
+#endif
   if (fd)
     fclose (fd);
   return NULL;
@@ -9380,7 +9535,11 @@ bif_mem_new_in_use (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   char *dp = bif_string_or_null_arg (qst, args, 0, "mem_new_in_use");
   FILE *fd = dp ? fopen (dp, "at") : NULL;
   int nth = BOX_ELEMENTS (args) > 1 ? bif_long_arg (qst, args, 1, "mem_all_in_use") : 0;
+#ifdef USE_TLSF
+  tlsf_all_in_use (fd ? fd : stderr, 1, nth);
+#else
   dbg_malstats (fd ? fd : stderr, DBG_MALSTATS_NEW);
+#endif
   if (fd)
     fclose (fd);
   return NULL;
@@ -9400,10 +9559,12 @@ caddr_t
 bif_mem_leaks (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   char *dp = bif_string_or_null_arg (qst, args, 0, "mem_leaks");
+#ifndef USE_TLSF
   FILE *fd = dp ? fopen (dp, "at") : NULL;
   dbg_malstats (fd ? fd : stderr, DBG_MALSTATS_LEAKS);
   if (fd)
     fclose (fd);
+#endif
   return NULL;
 }
 
@@ -9460,7 +9621,7 @@ tlsf_dump_1 (ptrlong tlp, char *fn, id_hash_t * ht, int ht_mode)
   if (fd)
     fclose (fd);
   tlsf_fp = stderr;
-  return NULL;
+  return;
 }
 
 
@@ -9488,10 +9649,14 @@ bif_tlsf_dump (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 caddr_t
 bif_mem_get_current_total (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
+#ifdef USE_TLSF
+  return box_num (tlsf_get_total (NULL));
+#else
 #ifdef MALLOC_DEBUG
   return box_num (dbg_malloc_get_current_total ());
 #else
   return NULL;
+#endif
 #endif
 }
 
@@ -10120,7 +10285,7 @@ do_bin:
       do_bin_again:
 	if (IS_WIDE_STRING_DTP (arg_dtp))
 	  {
-	    long utf8_len;
+	    long utf8_len, actual_utf8_len;
 	    virt_mbstate_t state;
 	    wchar_t *wide = (wchar_t *) data;
 	    wchar_t *wide_work;
@@ -10135,7 +10300,8 @@ do_bin:
 
 	    wide_work = wide;
 	    memset (&state, 0, sizeof (virt_mbstate_t));
-	    if (utf8_len != virt_wcsnrtombs ((unsigned char *) res, &wide_work, wide_len, utf8_len, &state))
+	    actual_utf8_len = virt_wcsnrtombs ((unsigned char *) res, &wide_work, wide_len, utf8_len, &state);
+	    if (utf8_len != actual_utf8_len)
 	      GPF_T1 ("non consistent wide char to multi-byte translation of a buffer");
 	    if (NULL != tmp_res)
 	      dk_free_box (tmp_res);
@@ -10216,7 +10382,7 @@ do_wide:
 	return (box_copy (data));
       case DV_BIN:
 	{
-	  caddr_t res = box_utf8_as_wide_char (data, NULL, box_length (data), 0, DV_WIDE);
+	  caddr_t res = box_utf8_as_wide_char (data, NULL, box_length (data), 0);
 	  if (res)
 	    return res;
 	  else
@@ -12818,7 +12984,7 @@ bif_set (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       if (NULL != charset && ssl_is_settable (args[1]))
 	{
 	  caddr_t ret_table = box_wide_char_string ((caddr_t) & charset->chrs_table[1],
-	      255 * sizeof (wchar_t), DV_WIDE);
+	      255 * sizeof (wchar_t));
 	  qst_set (qst, args[1], ret_table);
 	}
     }
@@ -13071,7 +13237,7 @@ bif_exec_start (client_connection_t * cli, caddr_t text)
   if (!bif_exec_pending)
     {
       dk_mutex_init (&bif_exec_pending_mtx, MUTEX_TYPE_SHORT);
-      bif_exec_pending = id_hash_allocate (201, sizeof (int64), sizeof (bif_exec_stat_t), boxint_hash, boxint_hashcmp);
+      bif_exec_pending = id_hash_allocate (201, sizeof (int64 *), sizeof (bif_exec_stat_t *), boxint_hash, boxint_hashcmp);
     }
   stat = (bif_exec_stat_t *) dk_alloc (sizeof (bif_exec_stat_t));
   stat->exs_text = box_copy (text);
@@ -15447,7 +15613,7 @@ bif_rdf_substr_impl (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 	memset (&mbstate, 0, sizeof (virt_mbstate_t));
 	for (i = 0; i < start && *pstart; ++i)
 	  {
-	    pstart += virt_mbrlen (pstart, VIRT_MB_CUR_MAX, &mbstate);
+	    pstart += virt_mbrlen_z (pstart, VIRT_MB_CUR_MAX, &mbstate);
 	  }
 	str_n_chars = wide_char_length_of_utf8_string ((const unsigned char *) pstart, strlen (pstart));
 
@@ -15525,7 +15691,7 @@ bif_rdf_ucase_lcase_impl (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args
     case DV_STRING:		/* utf-8 */
     case DV_UNAME:
       {
-	wide_box = (wchar_t *) box_utf8_as_wide_char (str, NULL, strlen (str), 0, DV_WIDE);
+	wide_box = (wchar_t *) box_utf8_as_wide_char (str, NULL, strlen (str), 0);
 	str_n_chars = virt_wcslen (wide_box);
       }
       break;
@@ -16185,6 +16351,7 @@ sql_bif_init (void)
   bif_define_ex ("ascii", bif_ascii, BMD_RET_TYPE, &bt_integer, BMD_DONE);
   bif_define_ex ("chr", bif_chr, BMD_RET_TYPE, &bt_varchar, BMD_DONE);
   bif_define_ex ("chr1", bif_chr1, BMD_RET_TYPE, &bt_varchar, BMD_DONE);
+  bif_define_ex ("wchr1", bif_wchr1, BMD_RET_TYPE, &bt_wvarchar, BMD_DONE);
 
 /* Substring extraction: */
   bif_define_ex ("subseq", bif_subseq, BMD_RET_TYPE, &bt_string, BMD_MIN_ARGCOUNT, 2, BMD_MAX_ARGCOUNT, 3, BMD_IS_PURE, BMD_DONE);
@@ -16199,11 +16366,11 @@ sql_bif_init (void)
 /* Producing new strings by repetition: */
   bif_define_ex ("repeat", bif_repeat, BMD_RET_TYPE, &bt_string, BMD_MIN_ARGCOUNT, 2, BMD_MAX_ARGCOUNT, 2, BMD_IS_PURE, BMD_DONE);
   bif_define_ex ("space", bif_space, BMD_RET_TYPE, &bt_varchar, BMD_MIN_ARGCOUNT, 1, BMD_MAX_ARGCOUNT, 1, BMD_IS_PURE, BMD_DONE);
-  bif_define_ex ("make_string", bif_make_string, BMD_RET_TYPE, &bt_varchar, BMD_MIN_ARGCOUNT, 1, BMD_MAX_ARGCOUNT, 1, BMD_IS_PURE,
+  bif_define_ex ("make_string", bif_make_string, BMD_RET_TYPE, &bt_varchar, BMD_MIN_ARGCOUNT, 1, BMD_MAX_ARGCOUNT, 2, BMD_IS_PURE,
       BMD_DONE);
-  bif_define_ex ("make_wstring", bif_make_wstring, BMD_RET_TYPE, &bt_wvarchar, BMD_MIN_ARGCOUNT, 1, BMD_MAX_ARGCOUNT, 1,
+  bif_define_ex ("make_wstring", bif_make_wstring, BMD_RET_TYPE, &bt_wvarchar, BMD_MIN_ARGCOUNT, 1, BMD_MAX_ARGCOUNT, 2,
       BMD_IS_PURE, BMD_DONE);
-  bif_define_ex ("make_bin_string", bif_make_bin_string, BMD_RET_TYPE, &bt_varbinary, BMD_MIN_ARGCOUNT, 1, BMD_MAX_ARGCOUNT, 1,
+  bif_define_ex ("make_bin_string", bif_make_bin_string, BMD_RET_TYPE, &bt_varbinary, BMD_MIN_ARGCOUNT, 1, BMD_MAX_ARGCOUNT, 2,
       BMD_IS_PURE, BMD_DONE);
   bif_define_ex ("concat", bif_concat, BMD_ALIAS, "concatenate", BMD_RET_TYPE, &bt_string, BMD_MIN_ARGCOUNT, 0, BMD_IS_PURE,
       BMD_DONE);
@@ -16328,7 +16495,7 @@ sql_bif_init (void)
   bif_define_ex ("iri_id_bnode32_to_bnode64", bif_iri_id_bnode32_to_bnode64, BMD_RET_TYPE, &bt_iri, BMD_MIN_ARGCOUNT, 1,
       BMD_MAX_ARGCOUNT, 1, BMD_IS_PURE, BMD_DONE);
 
-  bif_define_ex ("__all_eq", bif_all_eq, BMD_RET_TYPE, &bt_any_box, BMD_MIN_ARGCOUNT, 0, BMD_IS_PURE, BMD_DONE);
+  bif_define_ex ("__all_eq", bif_all_eq, BMD_RET_TYPE, &bt_all_eq, BMD_MIN_ARGCOUNT, 0, BMD_IS_PURE, BMD_DONE);
   bif_define_ex ("__max", bif_max, BMD_RET_TYPE, &bt_any_box, BMD_MIN_ARGCOUNT, 0, BMD_IS_PURE, BMD_DONE);
   bif_define_ex ("__min", bif_min, BMD_RET_TYPE, &bt_any_box, BMD_MIN_ARGCOUNT, 0, BMD_IS_PURE, BMD_DONE);
   bif_define_ex ("__max_notnull", bif_max_notnull, BMD_RET_TYPE, &bt_any_box, BMD_MIN_ARGCOUNT, 0, BMD_IS_PURE, BMD_DONE);
@@ -16459,7 +16626,7 @@ sql_bif_init (void)
   bif_define ("xcontains", bif_stub_xcontains);
   bif_define_ex ("exists", bif_stub_exists, BMD_RET_TYPE, &bt_integer, BMD_DONE);
   st_varchar = (sql_tree_tmp *) list (3, DV_LONG_STRING, 0, 0);
-  st_nvarchar = (sql_tree_tmp *) list (3, DV_LONG_WIDE, 0, 0);
+  st_nvarchar = (sql_tree_tmp *) list (3, DV_WIDE, 0, 0);
 
 
   bif_define_ex ("sequence_next", bif_sequence_next, BMD_RET_TYPE, &bt_integer, BMD_DONE);

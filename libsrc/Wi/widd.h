@@ -144,8 +144,11 @@ struct dbe_table_s
   struct cset_s *tb_cset;
   struct cset_s *tb_closest_cset;	/* if this is a stand-in for a cset, physical cset here */
   oid_t tb_owner_col_id;
+  int tb_temp_id;		/* unique within defining top level qr */
   char tb_any_blobs;
   char tb_is_rdf_quad;
+  char tb_is_temp;
+  char tb_set_no_in_key;	/* if multistate temp table in vectored block */
   char tb_is_counted;
   struct remote_ds_s *tb_remote_ds;
   caddr_t tb_remote_name;
@@ -155,7 +158,8 @@ struct dbe_table_s
   dk_hash_t *tb_col_id_to_misc_id;
   struct xml_table_ins_s *tb_xml_ins;
   dbe_key_t *tb__text_key;
-
+  struct state_slot_s *tb_temp_ssl;	/* for temp the ssl of the tree */
+  struct state_slot_s *tb_temp_id_ssl;	/* for cluster partitioned temp, the id of the tree with the chash */
   /* SQL statistics members */
   int64 tb_count;
   int64 tb_count_estimate;
@@ -165,14 +169,31 @@ struct dbe_table_s
   /* row level security functions */
   caddr_t tb_rls_procs[TB_RLS_LAST + 1];
   file_table_t *tb_ft;
+  /* trans temp */
+  char tb_trans_border;
+  char tb_extra_bits;
 };
 
 typedef struct collation_s
 {
-  caddr_t co_name;
-  caddr_t co_table;
-  char co_is_wide;
+  caddr_t co_name;		/*!< Identifier of the collation, also a key in global_collations */
+  wchar_t *co_xlat_table;	/*!< Translation table. Values are wchar_t even for 'narrow' collations */
+  int co_xlat_table_len;	/*!< Length of translation table. It's always longer than 0xff so narrow xlat is possible w/o extra checks */
+  char co_xlats_narrow_to_narrow;	/*!< Flags that all first 0x100 values in \c co_xlat_table are less than 0x100 so the collation order string for any narrow string can be returned as narrow */
 } collation_t;
+
+#if (0 <= WCHAR_MIN)
+#define COLLATION_XLAT_SAFE_FOR_WCHAR_T(co) ((co)->co_xlat_table_len > WCHAR_MAX)
+#else
+#define COLLATION_XLAT_SAFE_FOR_WCHAR_T(co) 0
+#endif
+
+#define COLLATION_XLAT_NARROW(co,src) ((co)->co_xlat_table[((unsigned char)(src))])
+#define COLLATION_XLAT_WIDE_NOCHECK(co,src) ((co)->co_xlat_table[((unsigned int)(src))])
+#define COLLATION_XLAT_WIDE(co,src) ((((unsigned int)(src)) >= (co)->co_xlat_table_len) ? ((unsigned int)(src)) : COLLATION_XLAT_WIDE_NOCHECK(co,src))
+
+extern int collation_define_memonly (caddr_t name, caddr_t xlat_table, int is_utf8_if_narrow);
+
 
 struct sql_class_s;
 struct sql_domain_s;
@@ -638,6 +659,7 @@ typedef struct _id_range_s
   int ir_allocator_host;
   int ir_hist_depth;		/* n range sets to remember */
   int ir_n_slices;
+  int ir_n_in_chunk;		/* a single alloc from the bnase seq wraps around the slices this many times */
   char ir_n_way_txn;
   char ir_slice_bits;
   int64 ir_chunk;
@@ -647,6 +669,8 @@ typedef struct _id_range_s
   dk_mutex_t ir_mtx;
   ir_range_t ***ir_ranges;	/*[txn][nth_historical] */
   dk_set_t ir_waiting;
+  int ir_n_subs;
+  struct id_range_s **ir_subs;
 } id_range_t;
 /* ir_mode */
 #define IRM_ALL_ALL 1		/* all hosts have their own ranges from which they may allocate any slice */
@@ -658,9 +682,10 @@ extern dk_hash_t id_to_ir;
 
 
 /* the range id givenn to ir_ functions gives the desired slice in the high 16 and the range id in the low 32 bits */
-#define IR_ID_SLICE(id) ((uint64)(id) >> 48)
-#define IR_ID_HAS_SLICE(id) (((uint64)(id)) & (1L << 47))
-#define IR_ID_ID(id) (((uint64)(id)) & 0xffffffff)
+#define IR_SLICE_SHIFT 21
+#define IR_ID_SLICE(id) ((uint64)(id) >> IR_SLICE_SHIFT)
+#define IR_ID_HAS_SLICE(id) (((uint64)(id)) & (1L << (IR_SLICE_SHIFT - 1)))
+#define IR_ID_ID(id) (((uint64)(id)) & 0xfffff)
 #define IR_ID_WAY(id) ((((uint64)(id)) >> 32) & 31)
 
 

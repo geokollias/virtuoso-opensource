@@ -792,6 +792,7 @@ csg_top (sql_comp_t * sc, cset_t * cset, table_source_t * ts, int mode)
   so->so_dfe = top_ot->ot_work_dfe;
   so->so_top_ot = top_ot;
   best = csg_dfe (so, top_ot, cset, ts, mode);
+  so->so_sc->sc_delay_colocate = 1;	/* in cluster, the cset expansion is all colocated with the cset model ts */
   sqlg_top (so, best);
   csg_extra_specs (so, cset, so->so_sc->sc_cc->cc_query, ts);
   return sc->sc_cc->cc_query;

@@ -299,6 +299,21 @@ clm_id_to_slice (cluster_map_t * clm, slice_id_t slid)
   return (cl_slice_t *) gethash ((void *) (ptrlong) slid, clm->clm_id_to_slice);
 }
 
+
+int
+n_low_zeros (int64 n)
+{
+  /* how many low end zero bits before the first one from the right */
+  int nth;
+  for (nth = 0; nth < 64; nth++)
+    {
+      if (n & 1)
+	return nth;
+      n = n >> 1;
+    }
+  return 64;
+}
+
 void
 cluster_dummy_host ()
 {

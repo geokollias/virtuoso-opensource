@@ -2801,6 +2801,27 @@ ssg_print_literal_as_sql_atom (spar_sqlgen_t * ssg, ccaddr_t type, SPART * lit)
   ssg_print_box_as_sql_atom (ssg, value, SQL_ATOM_NARROW_OR_WIDE);
 }
 
+int
+ssg_xsd_type_is_numeric (ccaddr_t type)
+{
+  return (
+      (uname_xmlschema_ns_uri_hash_byte == type) ||
+      (uname_xmlschema_ns_uri_hash_decimal == type) ||
+      (uname_xmlschema_ns_uri_hash_double == type) ||
+      (uname_xmlschema_ns_uri_hash_float == type) ||
+      (uname_xmlschema_ns_uri_hash_int == type) ||
+      (uname_xmlschema_ns_uri_hash_integer == type) ||
+      (uname_xmlschema_ns_uri_hash_long == type) ||
+      (uname_xmlschema_ns_uri_hash_negativeInteger == type) ||
+      (uname_xmlschema_ns_uri_hash_nonNegativeInteger == type) ||
+      (uname_xmlschema_ns_uri_hash_nonPositiveInteger == type) ||
+      (uname_xmlschema_ns_uri_hash_positiveInteger == type) ||
+      (uname_xmlschema_ns_uri_hash_short == type) ||
+      (uname_xmlschema_ns_uri_hash_unsignedByte == type) ||
+      (uname_xmlschema_ns_uri_hash_unsignedInt == type) ||
+      (uname_xmlschema_ns_uri_hash_unsignedLong == type) || (uname_xmlschema_ns_uri_hash_unsignedShort == type));
+}
+
 void
 ssg_print_literal_as_sqlval (spar_sqlgen_t * ssg, ccaddr_t type, SPART * lit)
 {
@@ -2867,7 +2888,7 @@ ssg_print_literal_as_sqlval (spar_sqlgen_t * ssg, ccaddr_t type, SPART * lit)
       int box_is_plain_num = ((type == dflt_xsd_type_of_box)
 	  || ((uname_xmlschema_ns_uri_hash_decimal == type) && (uname_xmlschema_ns_uri_hash_double == dflt_xsd_type_of_box))
 	  || ((uname_xmlschema_ns_uri_hash_boolean == type) && (DV_LONG_INT == DV_TYPE_OF (value)) && ((0 == unbox (value))
-		  || (1 == unbox (value)))));
+		  || (1 == unbox (value)))) || (simple_rdf_numbers && ssg_xsd_type_is_numeric (type)));
       dk_free_box (dflt_xsd_type_of_box);
       if (box_is_plain_num)
 	{
@@ -2930,7 +2951,7 @@ ssg_print_literal_as_long (spar_sqlgen_t * ssg, SPART * lit)
   value_dtp = DV_TYPE_OF (value);
   if ((NULL != datatype) || (NULL != language))
     {
-      if ((NULL == language) && (datatype == xsd_type_of_box (value)))
+      if ((NULL == language) && (datatype == xsd_type_of_box (value)) || (simple_rdf_numbers && ssg_xsd_type_is_numeric (datatype)))
 	{
 	  ssg_print_box_as_sql_atom (ssg, value, SQL_ATOM_ABORT_ON_CAST);
 	  return;
@@ -5594,6 +5615,37 @@ ssg_print_scalar_expn (spar_sqlgen_t * ssg, SPART * tree, ssg_valmode_t needed, 
 	    ssg_putchar (')');
 	    goto print_asname;
 	  }
+#ifdef RDF_SECURITY_CLO
+	if (!strcmp (tree->_.funcall.qname, "SPECIAL::bif:__rgs_ack_as_IN_clo"))
+	  {
+	    SPART *g_arg = tree->_.funcall.argtrees[0];
+	    SPART *uid_arg = tree->_.funcall.argtrees[1];
+	    SPART *req_perms_arg = tree->_.funcall.argtrees[2];
+	    ssg_puts (" (");
+	    ssg->ssg_indent++;
+	    ssg_print_scalar_expn (ssg, g_arg, SSG_VALMODE_SHORT_OR_LONG, NULL_ASNAME);
+	    ssg_puts (" in (");
+	    ssg->ssg_indent++;
+	    if (unbox ((caddr_t) uid_arg) != U_ID_NOBODY)
+	      {
+		ssg_puts (" __rgs_user_perms_clo (");
+		ssg->ssg_indent++;
+		ssg_print_scalar_expn (ssg, uid_arg, SSG_VALMODE_NUM, NULL_ASNAME);
+		ssg_putchar (',');
+		ssg_print_scalar_expn (ssg, req_perms_arg, SSG_VALMODE_NUM, NULL_ASNAME);
+		ssg->ssg_indent--;
+		ssg_puts ("), ");
+	      }
+	    ssg_puts (" __rgs_user_perms_clo (");
+	    ssg->ssg_indent++;
+	    ssg_print_scalar_expn (ssg, (SPART *) ((ptrlong) (U_ID_NOBODY)), SSG_VALMODE_NUM, NULL_ASNAME);
+	    ssg_putchar (',');
+	    ssg_print_scalar_expn (ssg, req_perms_arg, SSG_VALMODE_NUM, NULL_ASNAME);
+	    ssg_puts (")))");
+	    ssg->ssg_indent -= 3;
+	    goto print_asname;
+	  }
+#endif
 	ssg_putchar (' ');
 	ssg_prin_function_name (ssg, tree->_.funcall.qname);
 	ssg_puts (" (");

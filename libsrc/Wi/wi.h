@@ -542,6 +542,7 @@ struct hash_index_s
   int hi_size;
   char hi_is_cl_cache;		/* set if replicas or partitions exist in other cluster nodes and the ht is cached, i.e. survives the creating qi, broadcast a free when freeing this */
   char hi_is_rdf_ctx;
+  char hi_is_reverse;
   char hi_is_unique;
   int64 hi_count;
 #ifdef OLD_HASH
@@ -560,6 +561,7 @@ struct hash_index_s
   char hi_lock_mode;
   char hi_isolation;
   char hi_memcache_from_mp;
+  char hi_any_trans_border;
 };
 
 
@@ -613,6 +615,7 @@ struct index_tree_s
   extent_map_t *it_extent_map;
   it_map_t *it_maps;
   dk_hash_t *it_col_extent_maps;
+  char it_invalidated;
 };
 
 

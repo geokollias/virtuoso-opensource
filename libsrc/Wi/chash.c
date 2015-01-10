@@ -2022,6 +2022,8 @@ cha_allocate (setp_node_t * setp, caddr_t * inst, int64 card)
 	    cha->cha_sqt[inx].sqt_dtp = dtp;
 	  }
 	cha->cha_sqt[inx].sqt_non_null = ssl->ssl_sqt.sqt_non_null;
+	if (ha->ha_non_null)
+	  cha->cha_sqt[inx].sqt_non_null = ha->ha_non_null[inx];
       }
     memcpy (&(cha->cha_new_sqt[inx]), &(cha->cha_sqt[inx]), sizeof (sql_type_t));
   }
@@ -2641,37 +2643,48 @@ chash_to_memcache (caddr_t * inst, index_tree_t * tree, hash_area_t * ha)
     }
   if (!hi->hi_memcache_from_mp)
     GPF_T1 ("writing mp boxes in non-mp memcache");
-  for (part = 0; part < MAX (cha->cha_n_partitions, 1); part++)
-    {
-      chash_t *cha_p = CHA_PARTITION (cha, part);
-      for (chp = cha_p->cha_init_page; chp; chp = chp->h.h.chp_next)
-	{
-	  int pos;
-	  for (pos = 0; pos < chp->h.h.chp_fill; pos += cha->cha_first_len)
-	    {
-	      caddr_t *key = (caddr_t *) mp_alloc_box_ni (cha->cha_pool, sizeof (caddr_t) * ha->ha_n_keys, DV_ARRAY_OF_POINTER);
-	      caddr_t *data;
-	      uint32 h = HC_INIT;
-	      int var_len = 0, inx;
-	      CKE ((&chp->chp_data[pos]));
-	      for (inx = 0; inx < ha->ha_n_keys; inx++)
-		{
-		  key[inx] = cha_box_col (cha, ha, &chp->chp_data[pos], inx);
-		  h = key_hash_box (key[inx], DV_TYPE_OF (key[inx]), h, &var_len, NULL, ha->ha_key_cols[inx].cl_sqt.sqt_dtp, 1);
-		  HASH_NUM_SAFE (h);
-		}
-	      hmk.hmk_data = key;
-	      hmk.hmk_var_len = var_len;
-	      hmk.hmk_hash = h & ID_HASHED_KEY_MASK;
-	      hmk.hmk_ha = ha;
-	      data = (caddr_t *) mp_alloc_box_ni (cha->cha_pool, sizeof (caddr_t) * (n_slots - ha->ha_n_keys), DV_ARRAY_OF_POINTER);
-	      for (inx = ha->ha_n_keys; inx < n_slots; inx++)
-		data[inx - ha->ha_n_keys] = cha_box_col (cha, ha, &chp->chp_data[pos], inx);
-	      mc_sets++;
-	      t_id_hash_set (hi->hi_memcache, (caddr_t) & hmk, (caddr_t) & data);
-	    }
-	}
-    }
+  QR_RESET_CTX
+  {
+    for (part = 0; part < MAX (cha->cha_n_partitions, 1); part++)
+      {
+	chash_t *cha_p = CHA_PARTITION (cha, part);
+	for (chp = cha_p->cha_init_page; chp; chp = chp->h.h.chp_next)
+	  {
+	    int pos;
+	    for (pos = 0; pos < chp->h.h.chp_fill; pos += cha->cha_first_len)
+	      {
+		caddr_t *key = (caddr_t *) mp_alloc_box_ni (cha->cha_pool, sizeof (caddr_t) * ha->ha_n_keys, DV_ARRAY_OF_POINTER);
+		caddr_t *data;
+		uint32 h = HC_INIT;
+		int var_len = 0, inx;
+		CKE ((&chp->chp_data[pos]));
+		for (inx = 0; inx < ha->ha_n_keys; inx++)
+		  {
+		    key[inx] = cha_box_col (cha, ha, &chp->chp_data[pos], inx);
+		    h = key_hash_box (key[inx], DV_TYPE_OF (key[inx]), h, &var_len, NULL, ha->ha_key_cols[inx].cl_sqt.sqt_dtp, 1);
+		    HASH_NUM_SAFE (h);
+		  }
+		hmk.hmk_data = key;
+		hmk.hmk_var_len = var_len;
+		hmk.hmk_hash = h & ID_HASHED_KEY_MASK;
+		hmk.hmk_ha = ha;
+		data =
+		    (caddr_t *) mp_alloc_box_ni (cha->cha_pool, sizeof (caddr_t) * (n_slots - ha->ha_n_keys), DV_ARRAY_OF_POINTER);
+		for (inx = ha->ha_n_keys; inx < n_slots; inx++)
+		  data[inx - ha->ha_n_keys] = cha_box_col (cha, ha, &chp->chp_data[pos], inx);
+		mc_sets++;
+		t_id_hash_set (hi->hi_memcache, (caddr_t) & hmk, (caddr_t) & data);
+	      }
+	  }
+      }
+  }
+  QR_RESET_CODE
+  {
+    POP_QR_RESET;
+    SET_THR_TMP_POOL (NULL);
+    longjmp_splice (THREAD_CURRENT_THREAD->thr_reset_ctx, reset_code);
+  }
+  END_QR_RESET;
   SET_THR_TMP_POOL (NULL);
   hi->hi_chash = NULL;
 }
@@ -7319,6 +7332,48 @@ bif_chash_in_init (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       int inx2;
       switch (DV_TYPE_OF (vals))
 	{
+#ifdef RDF_SECURITY_CLO
+	case DV_CLOP:
+	  {
+	    cl_op_t *clo = (cl_op_t *) vals;
+	    if (CLO_RDF_GRAPH_USER_PERMS == clo->clo_op)
+	      {
+		dk_hash_64_t *ht = clo->_.rdf_graph_user_perms.ht;
+		int req_perms = clo->_.rdf_graph_user_perms.req_perms;
+		dk_hash_64_iterator_t iter;
+		int64 *g_iid_num_ptr, *g_perms_ptr;
+		int need_dupe_check = (0 != dc->dc_n_values);
+		rwlock_rdlock (ht->ht_rwlock);
+		dbg_printf (("Chash from user %d, req perms %d\n\n", (int) (clo->_.rdf_graph_user_perms.u_id), req_perms));
+		dk_hash_64_iterator (&iter, ht);
+		while (dk_hash_64_hit_next (&iter, &g_iid_num_ptr, &g_perms_ptr))
+		  {
+		    dbg_printf ((BOXINT_FMT " <%s> has %d\n", (boxint) (g_iid_num_ptr[0]), key_id_to_iri (qst, g_iid_num_ptr[0]),
+			    (int) (g_perms_ptr[0])));
+		    if ((g_perms_ptr[0] & req_perms) == req_perms)
+		      {
+			char val_buf[sizeof (int64) + BOX_AUTO_OVERHEAD];
+			caddr_t val;
+			BOX_AUTO (val, val_buf, sizeof (int64), DV_IRI_ID);
+			((int64 *) val)[0] = g_iid_num_ptr[0];
+			if (need_dupe_check)
+			  {
+			    for (inx2 = 0; inx2 < dc->dc_n_values; inx2++)
+			      {
+				qi->qi_set = inx2;
+				if (DVC_MATCH == cmp_boxes (val, qst_get ((caddr_t *) qi, hfq->hfq_fill_dc), NULL, NULL))
+				  goto next_in_rgu_clo;
+			      }
+			  }
+			dc_append_box (dc, val);
+		      }
+		  next_in_rgu_clo:;
+		  }
+		rwlock_unlock (ht->ht_rwlock);
+	      }
+	    break;
+	  }
+#endif
 	case DV_ARRAY_OF_POINTER:
 	  {
 	    int nth, n_vals = BOX_ELEMENTS (vals);
