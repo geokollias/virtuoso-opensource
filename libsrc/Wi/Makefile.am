@@ -472,6 +472,7 @@ libwi_la_SOURCES += \
 	bif_soap.c \
 	bif_text.c \
 	bif_tidy.c \
+	bsp.c \
 	file.c \
 	geo.c \
 	geo_de9im.c \
