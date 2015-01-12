@@ -201,6 +201,14 @@ cha_bsp_result (table_source_t * ts, hash_area_t * ha, caddr_t * inst, chash_t *
 }
 
 
+int
+qn_is_trans_init (table_source_t * ts)
+{
+  if (IS_QN (ts, chash_read_input))
+    return 1;
+  return 0;
+}
+
 void
 tn_init (trans_node_t * tn, caddr_t * inst)
 {

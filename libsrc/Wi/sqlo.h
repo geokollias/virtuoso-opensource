@@ -1145,6 +1145,7 @@ caddr_t sqlo_rdf_lit_const (ST * tree);
 caddr_t sqlo_rdf_obj_const_value (ST * tree, caddr_t * val_ret, caddr_t * lang_ret);
 
 /* cset */
+int qn_is_trans_init (table_source_t * ts);
 void dfe_list_cost (df_elt_t * dfe, float *unit_ret, float *arity_ret, float *overhead_ret, locus_t * loc);
 dbe_column_t *dfe_cset_equiv_col (df_elt_t * dfe, df_elt_t * left_col);
 void sqlo_cset_choose_index (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * col_preds, dk_set_t * after_preds);

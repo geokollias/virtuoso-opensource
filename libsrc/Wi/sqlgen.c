@@ -5361,7 +5361,7 @@ sqlg_fref_qp (sql_comp_t * sc, fun_ref_node_t * fref, df_elt_t * dt_dfe)
 	continue;
       if (IS_TS (ts) || (IS_QN (ts, setp_node_input) && ((setp_node_t *) ts)->setp_partitioned))
 	{
-	  if (!IS_TS (first_ts) && !sc->sc_qf)
+	  if (qn_is_trans_init (first_ts) && !sc->sc_qf)
 	    sqlg_sdfg_empty_qf (sc, fref->fnr_select);
 	  sqlg_parallel_ts_seq (sc, dt_dfe, first_ts, fref, NULL);
 	  return;
