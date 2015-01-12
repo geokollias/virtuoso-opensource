@@ -24,6 +24,65 @@
 #include <stdio.h>
 #include "import_gate_virtuoso.h"
 #include "sqlver.h"
+#include "sqlnode.h"
+#include "sqlfn.h"
+#include "sqltype.h"
+
+static const char *proc0 = 
+"#line 1 \"[executable]/iext.sql\"\n"
+"create procedure DB.DBA.DP_INS_OBJ (in strs any)\n"
+"{\n"
+"declare dp any array;\n"
+"declare i int;\n"
+"declare r, ret any;\n"
+"declare is_local int;\n"
+"is_local := sys_stat (\'cl_run_local_only\');\n"
+"ret := null;\n"
+"dp := dpipe (1, \'L_MAKE_RO\');\n"
+"for (i := 0; i < length (strs); i := i + 1)\n"
+"dpipe_input (dp, strs[i]);\n"
+"if (is_local)\n"
+"r := dpipe_local_flush (dp);\n"
+"else\n"
+"{\n"
+"dpipe_next (dp, 0);\n"
+"dpipe_next (dp, 1);\n"
+"}\n"
+"if (isvector (r))\n"
+"{\n"
+"ret := make_array (length (strs), \'any\'); \n"
+"for (i := 0; i < length (r) and isvector (r[i]); i := i + 1)\n"
+"{\n"
+"ret[i] := rdf_box_ro_id (r[i][2]); \n"
+"}\n"
+"}\n"
+"return ret;\n"
+"}\n"
+;
+
+static int
+sch_proc_def_exists (client_connection_t *cli, const char *proc_name, const int report)
+{
+  query_t *proc = NULL;
+  char *full_name = sch_full_proc_name (isp_schema(NULL), proc_name,
+	cli->cli_qualifier, CLI_OWNER (cli));
+  if (full_name)
+    proc = sch_proc_def (isp_schema(NULL), full_name);
+  if (report && proc != NULL)
+     log_debug ("built-in procedure \"%s\" overruled by the RDBMS", proc_name);
+  return (proc != NULL);
+}
+
+#define DEFINE_PROC(name, proc) \
+   if (!sch_proc_def_exists (bootstrap_cli, (name), log_proc_overwrite)) \
+     ddl_std_proc_1 (proc, 0x0, 1)
+
+
+void
+sqls_define_iext (void)
+{
+  DEFINE_PROC ("DB.DBA.DP_INS_OBJ", proc0);
+}
 
 #undef NEW_VARZ
 #define NEW_VARZ(t, p) t * p = (t*)dk_alloc (sizeof (t)); memset (p, 0, sizeof (t))
@@ -299,7 +358,7 @@ bits_checkpoint (bits_inst_t * bi, int is_shutdown, caddr_t * err_ret)
   int fd;
   *err_ret = NULL;
   rwlock_rdlock (bi->bi_rw);
-  fd = open (bi->bi_file, O_RDWR | O_CREAT);
+  fd = open (bi->bi_file, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
   ftruncate (fd, 0);
   DO_HT (ptrlong, id, ptrlong, int_id, bi->bi_id_to_int)
     {
@@ -507,7 +566,7 @@ bits_is_match (bits_inst_t * bi, iext_txn_t * txn, char ** query, void * params,
 	  bits = bits_parse (query[inx], err_ret);
 	}
       if (*err_ret)
-	return -1;
+	return;
       int_id = (int64)gethash ((void*)ids[inx], bi->bi_id_to_int);
       n_bits = box_length (bits) / sizeof (int);
       for (b = 0; b < n_bits; b++)
@@ -597,6 +656,43 @@ bits_cost (bits_inst_t * bi, float * usec_per_hit, float * matches_est, float * 
     *matches_est = 1000;
 }
 
+caddr_t
+strs_to_id (caddr_t * strs, int64 * ret, int max, int * fill)
+{
+  caddr_t qst = THR_ATTR (THREAD_CURRENT_THREAD, 3000);
+  query_instance_t * qi = (query_instance_t *) qst;
+  static query_t * qr;
+  local_cursor_t * lc = NULL;
+  caddr_t *params;
+  caddr_t err = NULL;
+
+  *fill = 0;
+  if (!qr)
+    qr = sql_compile ("call ('DB.DBA.DP_INS_OBJ') (?)", qi->qi_client, &err, 0);
+  if (err) 
+    return err;
+  params = dk_alloc_list (2);
+  params[0] = box_dv_uname_string (":0");
+  params[1] = box_copy_tree (strs);
+  err = qr_exec (qi->qi_client, qr, CALLER_LOCAL, NULL, NULL, &lc, params, NULL, 1);
+  dk_free_box (params);
+  if (lc && lc->lc_proc_ret && DV_TYPE_OF (lc->lc_proc_ret) == DV_ARRAY_OF_POINTER && BOX_ELEMENTS_0 (lc->lc_proc_ret) > 2)
+    {
+      caddr_t * ids;
+      int inx;
+      ids = ((caddr_t*)(lc->lc_proc_ret))[1];
+      DO_BOX (caddr_t, v, inx, ids)
+	{
+	  if (inx >= max)
+	    break;
+	  ret[*fill] = unbox(ids[inx]);
+	  (*fill) ++;
+	}
+      END_DO_BOX;
+    }
+  if (lc) lc_free (lc);
+  return NULL;
+}
 
 void
 bits_register ()
@@ -621,10 +717,24 @@ bits_register ()
 
 }
 
+caddr_t 
+bif_bits_str_test (caddr_t * qst, caddr_t * err, state_slot_t ** args)
+{
+  caddr_t * v = bif_array_of_pointer_arg (qst, args, 0, "bits_str_test");
+  int64 ids[1024];
+  int fill;
+  SET_THR_ATTR (THREAD_CURRENT_THREAD, 3000, (void*)qst);
+  strs_to_id (v, &ids, sizeof (ids), &fill);
+  SET_THR_ATTR (THREAD_CURRENT_THREAD, 3000, (void*)NULL);
+  return NULL;
+}
+
 static void
 idxext_sample_connect ()
 {
   bits_register ();
+  bif_define ("bits_str_test", bif_bits_str_test);
+  dk_set_push (get_srv_global_init_postponed_actions_ptr(), sqls_define_iext);
 }
 
 
