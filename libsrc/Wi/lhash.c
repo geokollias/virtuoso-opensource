@@ -7841,9 +7841,6 @@ ks_add_hash_spec (key_source_t * ks, caddr_t * inst, it_cursor_t * itc)
 		{
 		  /* join with empty chash is like null in search params, always empty. Empty chash can have replicated bloom though  which still makes it valid  */
 		  key_free_trail_specs (sp_copy_1);
-		  if ((HRNG_SEC & hrng->hrng_flags))
-		    sqlr_trx_error (((QI *) inst)->qi_trx, LT_BLOWN_OFF, LTE_NO_PERM, "42000", "RGSEC",
-			"Writable graphs set is empty");
 		  return 1;
 		}
 	      break;
