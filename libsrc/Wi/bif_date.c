@@ -619,6 +619,9 @@ bif_forget_timezone (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   int ignore_timezone = ((1 < BOX_ELEMENTS (args)) && bif_long_arg (qst, args, 1, "forget_timezone"));
   int tzmin = DT_TZ (arg);
   GMTIMESTAMP_STRUCT ts;
+  if ((DT_TZL_NEVER_COMPAT == timezoneless_datetimes) && !DT_TZL (arg))
+    sqlr_new_error ("22023", "SR636",
+	"BIF forget_timezone() is disabled if TimezonelessDatetimes parameter of virtuoso.ini is set to 0 or the database is old and the parameter is 0 by default");
   arg = box_copy (arg);
   if (tzmin && !ignore_timezone)
     {

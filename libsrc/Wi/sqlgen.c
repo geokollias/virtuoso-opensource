@@ -528,8 +528,13 @@ int
 sqlg_any_oby_order (df_elt_t * dfe)
 {
   for (dfe = dfe; dfe; dfe = dfe->dfe_prev)
-    if (DFE_TABLE == dfe->dfe_type && dfe->_.table.is_oby_order)
-      return 1;
+    if (DFE_TABLE == dfe->dfe_type)
+      {
+	if (dfe->_.table.is_oby_order)
+	  return 1;
+	if (sqlo_opt_value (dfe->_.table.ot->ot_opts, OPT_INDEX_ORDER))
+	  return 1;
+      }
   return 0;
 }
 
@@ -7102,11 +7107,6 @@ sqlg_top_1 (sqlo_t * so, df_elt_t * dfe, state_slot_t *** sel_out_ret)
   if (so->so_sc->sc_parallel_dml)
     sqlg_parallel_ts_seq (so->so_sc, dfe, (table_source_t *) so->so_sc->sc_cc->cc_query->qr_head_node, NULL, NULL);
   sqlg_set_no_if_needed (so->so_sc, &so->so_sc->sc_cc->cc_query->qr_head_node);
-  if (so->so_sc->sc_gen_rdf_rd_sec)
-    {
-      so->so_sc->sc_cc->cc_query->qr_need_cli_sec = 1;
-      top_sc->sc_cc->cc_query->qr_need_cli_sec = 1;
-    }
   if (so->so_sc->sc_any_clb)
     {
       so->so_sc->sc_sel_out = sel_out_ret ? *sel_out_ret : NULL;

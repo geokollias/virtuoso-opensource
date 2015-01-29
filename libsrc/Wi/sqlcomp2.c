@@ -950,7 +950,7 @@ sql_stmt_comp (sql_comp_t * sc, ST ** ptree)
 
 dk_mutex_t *parse_mtx;
 du_thread_t *parse_mtx_owner;
-int enable_parse_mtx = 1;
+int enable_parse_mtx = 0;
 
 void
 parse_enter ()

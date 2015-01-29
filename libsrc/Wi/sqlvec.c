@@ -57,6 +57,7 @@ void sqlg_vec_cast (sql_comp_t * sc, state_slot_ref_t ** refs, state_slot_t ** c
     state_slot_t ** ssl_ret, int fill, state_slot_t ** card_ssl, sql_type_t * target_sqt, int copy_always);
 int ssl_is_const_card (sql_comp_t * sc, state_slot_t * ssl, sql_type_t * sqt);
 void sqlg_ts_add_copy (sql_comp_t * sc, table_source_t * ts, state_slot_t ** ssls);
+caddr_t box_concat (caddr_t b1, caddr_t b2);
 
 
 
@@ -1664,6 +1665,8 @@ sqlg_vec_setp (sql_comp_t * sc, setp_node_t * setp, dk_hash_t * res)
       dk_free_box ((caddr_t) setp->setp_ahash_kr);
       setp->setp_ahash_kr = NULL;
     }
+  if (setp->setp_ha && HA_ORDER == setp->setp_ha->ha_op)
+    setp->setp_org_slots = (state_slot_t **) box_concat (setp->setp_keys_box, setp->setp_dependent_box);
   if (setp->setp_loc_ts)
     sqlg_vec_setp_loc (sc, setp);
   if (setp->setp_ha && HA_GROUP == setp->setp_ha->ha_op && setp->setp_is_streaming)
@@ -2063,50 +2066,6 @@ tb_is_g_sec (dbe_table_t * tb)
 int
 sqlg_rdf_ck (sql_comp_t * sc, table_source_t * ts, int is_wr)
 {
-  dbe_column_t *g_col = NULL;
-  key_source_t *ks = ts->ts_order_ks;
-  dbe_key_t *key = ks->ks_key;
-  if (!tb_is_g_sec (ks->ks_key->key_table))
-    return 0;
-  if (is_wr && !ks->ks_is_deleting)
-    return 0;
-  if (!is_wr && !enable_g_in_sec)
-    return 0;
-  DO_SET (dbe_column_t *, col, &key->key_parts)
-  {
-    if ('G' == toupper (col->col_name[0]))
-      {
-	g_col = col;
-	break;
-      }
-  }
-  END_DO_SET ();
-  if (!is_wr && g_col && sqlg_g_sec_checked (sc, ks, g_col))
-    return 0;
-  if (g_col)
-    {
-      dtp_t dtp;
-      hash_range_spec_t *hrng = (hash_range_spec_t *) dk_alloc (sizeof (hash_range_spec_t));
-      NEW_VARZ (search_spec_t, sp);
-      memset (hrng, 0, sizeof (hash_range_spec_t));
-      sp->sp_min_op = CMP_HASH_RANGE;
-      sp->sp_col_filter = ce_op_hash;
-      sp->sp_min_ssl = (state_slot_t *) hrng;
-      hrng->hrng_ht = ssl_new_variable (sc->sc_cc, "rdf_perm", DV_INDEX_TREE);
-      hrng->hrng_ht->ssl_qr_global = 1;
-      hrng->hrng_ht_id = ssl_new_variable (sc->sc_cc, "rdf_perm_id", DV_LONG_INT);
-      hrng->hrng_ht_id->ssl_qr_global = 1;
-      sp->sp_col = g_col;
-      if (ks->ks_key->key_is_col)
-	sp->sp_cl = *cl_list_find (ks->ks_key->key_row_var, g_col->col_id);
-      else
-	sp->sp_cl = *key_find_cl (ks->ks_key, g_col->col_id);
-      dtp = g_col->col_sqt.sqt_col_dtp;
-      hrng->hrng_flags = HRNG_IN | (is_wr ? HRNG_SEC : HRNG_RD_SEC);
-      hrng->hrng_dc = ssl_new_vec (sc->sc_cc, "hrng_tmp", dtp);
-      dk_set_push (&ks->ks_hash_spec, (void *) sp);
-      return 1;
-    }
   return 0;
 }
 
@@ -4497,24 +4456,25 @@ ssl_list_member (dk_set_t s, int inx)
 
 
 caddr_t
-sqlg_ts_sort_read_mask (table_source_t * ts)
+sqlg_ts_sort_read_mask (sql_comp_t * sc, table_source_t * ts)
 {
   int k_inx = 0, inx;
   key_source_t *ks = ts->ts_order_ks;
   setp_node_t *setp = ks->ks_from_setp;
-  int n_cols = BOX_ELEMENTS (setp->setp_keys_box) + BOX_ELEMENTS (setp->setp_dependent_box);
+  int n_keys = BOX_ELEMENTS (setp->setp_keys_box);
+  int n_cols = n_keys + BOX_ELEMENTS (setp->setp_dependent_box);
   caddr_t mask = dk_alloc_box_zero (n_cols, DV_BIN);
-  DO_BOX (state_slot_t *, ssl, inx, setp->setp_keys_box)
+  DO_BOX (state_slot_t *, ssl, inx, setp->setp_org_slots)
   {
-    if (ssl_list_member (ks->ks_out_slots, ssl->ssl_index))
-      mask[k_inx] = 1;
-    k_inx++;
-  }
-  END_DO_BOX;
-  DO_BOX (state_slot_t *, ssl, inx, setp->setp_dependent_box)
-  {
-    if (ssl_list_member (ks->ks_out_slots, ssl->ssl_index))
-      mask[k_inx] = 1;
+    state_slot_t *shadow = SSL_SHADOW (ssl);
+    if (ssl_list_member (ks->ks_out_slots, ssl->ssl_index)
+	|| ssl_list_member (ks->ks_out_slots,
+	    k_inx < n_keys ? setp->setp_keys_box[k_inx]->ssl_index : setp->setp_dependent_box[k_inx - n_keys]->ssl_index))
+      {
+	if (shadow)
+	  setp->setp_org_slots[inx] = shadow;
+	mask[k_inx] = 1;
+      }
     k_inx++;
   }
   END_DO_BOX;
@@ -4556,7 +4516,7 @@ sqlg_ts_qp_copy (sql_comp_t * sc, table_source_t * ts)
 caddr_t
 box_concat (caddr_t b1, caddr_t b2)
 {
-  int l1 = box_length (b1), l2 = box_length (b2);
+  int l1 = b1 ? box_length (b1) : NULL, l2 = b2 ? box_length (b2) : 0;
   int l = l1 + l2;
   caddr_t b = dk_alloc_box (l, box_tag (b1));
   memcpy (b, b1, l1);
@@ -4921,10 +4881,7 @@ sqlg_vec_ts (sql_comp_t * sc, table_source_t * ts)
   DO_SET (search_spec_t *, sp, &ks->ks_hash_spec)
   {
     hash_range_spec_t *hrng = (hash_range_spec_t *) sp->sp_min_ssl;
-    if ((HRNG_RD_SEC & hrng->hrng_flags))
-      ASG_SSL (NULL, NULL, hrng->hrng_ht);
-    else
-      REF_SSL (res, hrng->hrng_ht);
+    REF_SSL (res, hrng->hrng_ht);
   }
   END_DO_SET ();
   cv_vec_slots (sc, ks->ks_local_test, NULL, NULL, &ign);
@@ -4951,7 +4908,7 @@ sqlg_vec_ts (sql_comp_t * sc, table_source_t * ts)
   if (IS_QN (ts, sort_read_input))
     {
       ts->clb.clb_nth_set = cc_new_instance_slot (sc->sc_cc);
-      ts->ts_sort_read_mask = sqlg_ts_sort_read_mask (ts);
+      ts->ts_sort_read_mask = sqlg_ts_sort_read_mask (sc, ts);
     }
   if (ts->ts_in_sdfg)
     {

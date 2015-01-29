@@ -583,7 +583,7 @@
 %token ARRAY SETS
 
 /* Extensions */
-%token CONTIGUOUS OBJECT_ID BITMAPPED UNDER CLUSTER __ELASTIC CLUSTERED VARCHAR VARBINARY BINARY LONG_L REPLACING SOFT HASH LOOP IRI_ID IRI_ID_8 SAME_AS TRANSITIVE QUIETCAST_L SPARQL_L G_SECURITY
+%token CONTIGUOUS OBJECT_ID BITMAPPED UNDER CLUSTER __ELASTIC CLUSTERED VARCHAR VARBINARY BINARY LONG_L REPLACING SOFT HASH LOOP IRI_ID IRI_ID_8 SAME_AS TRANSITIVE QUIETCAST_L SPARQL_L G_SECURITY UNAME_L
 
 /* Admin statements */
 %token SHUTDOWN CHECKPOINT BACKUP REPLICATION
@@ -811,6 +811,7 @@ identifier
 	| __TAG_L		{ $$ = t_sqlp_box_id_upcase_nchars (global_scs->scs_scn3c.last_keyword_yytext, global_scs->scs_scn3c.last_keyword_yyleng); }
 	| RDF_BOX_L		{ $$ = t_sqlp_box_id_upcase_nchars (global_scs->scs_scn3c.last_keyword_yytext, global_scs->scs_scn3c.last_keyword_yyleng); }
 	| VECTOR_L		{ $$ = t_sqlp_box_id_upcase_nchars (global_scs->scs_scn3c.last_keyword_yytext, global_scs->scs_scn3c.last_keyword_yyleng); }
+	| UNAME_L		{ $$ = t_sqlp_box_id_upcase_nchars (global_scs->scs_scn3c.last_keyword_yytext, global_scs->scs_scn3c.last_keyword_yyleng); }
 	;
 
 opt_with_data
@@ -829,7 +830,7 @@ base_table_opt
 base_table_def
 	: CREATE TABLE new_table_name '(' base_table_element_commalist ')' base_table_opt
 		{ $$ = t_listst (4, TABLE_DEF, $3,
-				 t_list_to_array (sqlc_ensure_primary_key (sqlp_process_col_options ($3, $5))), $7); }
+				 t_list_to_array (sqlc_ensure_primary_key (sqlp_process_col_options ($3, $5))), (ptrlong) $7); }
         | CREATE TABLE new_table_name AS query_exp opt_with_data
 		{ $$ = t_listst (4, CREATE_TABLE_AS, $3, $5, t_box_num ((ptrlong) $6)); }
 	;
@@ -1735,6 +1736,7 @@ sql_option
 	| NO_L TRIGGER { $$ = t_CONS (OPT_NO_TRIGGER, t_CONS (1, NULL)); }
 	| INTO scalar_exp { $$ = t_CONS (OPT_INTO, t_CONS ($2, NULL)); }
 	| FETCH column_ref BY scalar_exp SET column_ref { $$ = t_cons ((void*)OPT_INS_FETCH, t_cons (t_list (4, OPT_INS_FETCH, $2, $4, $6), NULL)); }
+| INDEX ORDER { $$ = t_cons ((void*)OPT_INDEX_ORDER, t_cons ((void*)1, NULL)); }
 	| VECTORED { $$ = t_cons ((void*)OPT_VECTORED, t_cons ((void*)1, NULL)); }
 	| VECTORED INTNUM { $$ = t_cons ((void*)OPT_VECTORED, t_cons ((void*)$2, NULL)); }
 	| PARTITION GROUP BY { $$ = t_cons ((void*)OPT_PART_GBY, t_cons ((void*)1, NULL)); }
@@ -2896,6 +2898,7 @@ literal
 	| __TAG_L OF XML { $$ = (caddr_t) DV_XML_ENTITY; }
 	| __TAG_L OF RDF_BOX_L { $$ = (caddr_t) DV_RDF; }
 	| __TAG_L OF VECTOR_L { $$ = (caddr_t) DV_ARRAY_OF_POINTER; }
+	| __TAG_L OF UNAME_L { $$ = (caddr_t) DV_UNAME; }
 	;
 
 signed_literal
@@ -3021,7 +3024,7 @@ base_data_type
 		{ $$ = t_listst (2, (long) DV_SHORT_INT, (long) 0);
 		}
 	| BIGINT
-{ $$ = t_listst (3, (ptrlong) DV_INT64, t_box_num (19), t_box_num (0));
+		{ $$ = t_listst (3, (ptrlong) DV_INT64, t_box_num (19), t_box_num (0));
 		}
 	| FLOAT_L
 		{ $$ = t_listst (2, (long) DV_DOUBLE_FLOAT, (long) 0);
@@ -3103,12 +3106,15 @@ data_type
 	| VARCHAR
 		{ $$ = t_listst (2, (long) DV_LONG_STRING, (long) 0);
 		}
-	| VARCHAR '(' INTNUM ')'
-		{ $$ = t_listst (2, (long) DV_LONG_STRING, $3);
-		}
 	| CHARACTER '(' INTNUM ')'
 		{ $$ = t_listst (2, (long) DV_LONG_STRING, $3);
 		}
+	| VARCHAR '(' INTNUM ')'
+		{ $$ = t_listst (2, (long) DV_LONG_STRING, $3);
+		}
+/*	| UNAME_L
+		{ $$ = t_listst (2, (long) DV_UNAME, (long) 0);
+		}*/
 	;
 
 array_modifier
@@ -4259,7 +4265,7 @@ method_characteristic
 	| PARAMETER STYLE GENERAL      { $$ = NULL; /* no action for now */ }
 	| DETERMINISTIC                { $$ = NULL; /* no action for now */ }
 	| NOT DETERMINISTIC            { $$ = NULL; /* no action for now */ }
-	| NO_L SQL_L                     { $$ = NULL; /* no action for now */ }
+	| NO_L SQL_L                   { $$ = NULL; /* no action for now */ }
 	| CONTAINS SQL_L               { $$ = NULL; /* no action for now */ }
 	| READS SQL_L DATA             { $$ = NULL; /* no action for now */ }
 	| MODIFIES SQL_L DATA          { $$ = NULL; /* no action for now */ }

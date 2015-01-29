@@ -341,5 +341,7 @@ index_tree_t *rdf_ctx_hash (query_instance_t * qi, caddr_t str, caddr_t params);
 void rdf_sec_init ();
 void rdf_g_sec_check (caddr_t * inst, iri_id_t * g, int n_g);
 
+#define SPLIT_MODE_TTL 0
+#define SPLIT_MODE_XML 1
 
 #endif

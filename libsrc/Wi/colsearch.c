@@ -2696,22 +2696,6 @@ itc_g_no_perm (it_cursor_t * itc, buffer_desc_t * buf)
 }
 
 
-index_tree_t *
-itc_sec_in (it_cursor_t * itc, buffer_desc_t * buf, hash_range_spec_t * hrng)
-{
-  /*  get  the sec token's hash table for rd/wr perms */
-  index_tree_t *tree;
-  QNCAST (QI, qi, itc->itc_out_state);
-  cl_op_t *sec = qi->qi_client->cli_sec;
-  if (!sec)
-    itc_g_no_perm (itc, buf);
-  tree = (HRNG_RD_SEC & hrng->hrng_flags) ? sec->_.sec.g_rd : sec->_.sec.g_wr;
-  if (!tree || tree->it_invalidated)
-    itc_g_no_perm (itc, buf);
-  qst_set (itc->itc_out_state, hrng->hrng_ht, box_copy ((caddr_t) tree));
-  return tree;
-}
-
 
 extern int dbf_ignore_uneven_col;
 
@@ -2825,8 +2809,6 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
 	      if (hrng->hrng_ht_id)
 		{
 		  index_tree_t *it = qst_get_chash (inst, hrng->hrng_ht, hrng->hrng_ht_id, NULL);
-		  if (!it && ((HRNG_SEC | HRNG_RD_SEC) & hrng->hrng_flags))
-		    it = itc_sec_in (itc, buf, hrng);
 		  if (!it)
 		    itc_no_hi (itc, buf);
 		  cpo.cpo_chash = it->it_hi->hi_chash;
@@ -2934,10 +2916,6 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
 	next_page:;
 	}
     next_spec:
-      if (CMP_HASH_RANGE == sp->sp_min_op && (HRNG_SEC & ((hash_range_spec_t *) sp->sp_min_ssl)->hrng_flags)
-	  && (itc->itc_n_matches ? itc->itc_match_out != itc->itc_n_matches : itc->itc_match_out !=
-	      cpo.cpo_range->r_end - cpo.cpo_range->r_first))
-	itc_g_no_perm (itc, buf);
       if (sp->sp_is_reverse && CMP_LIKE != sp->sp_min_op)
 	itc_cp_negate (itc, nth_sp, rows_in_seg, prev_matches, &cpo);
       if (do_sp_stat)

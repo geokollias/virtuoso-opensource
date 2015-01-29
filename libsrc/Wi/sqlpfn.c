@@ -1380,7 +1380,6 @@ sqlp_stars (ST ** selection, ST ** from)
   return ((ST **) t_list_to_array (exp_list));
 }
 
-
 dk_set_t
 sqlp_process_col_options (caddr_t table_name, dk_set_t table_opts)
 {

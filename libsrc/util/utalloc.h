@@ -29,8 +29,16 @@
 
 #define salloc(x,y) (y *)s_alloc(x, sizeof(y))
 
-BEGIN_CPLUSPLUS
 
+#define NEED_S_STRDUP
+/*
+#ifdef MALLOC_DEBUG
+#define strdup(s) s_strdup(s)
+#endif
+*/
+
+BEGIN_CPLUSPLUS
+ 
 /* utalloc.c */
 void *s_alloc (size_t s, size_t n);
 void *s_realloc (void *s, size_t n);

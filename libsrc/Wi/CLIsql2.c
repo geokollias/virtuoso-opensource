@@ -1886,7 +1886,7 @@ virtodbc__SQLGetInfo (SQLHDBC hdbc,
 
     case SQL_DRIVER_NAME:
 #ifdef WIN32
-      strres = "virtodbc40.dll";
+      strres = "virtodbc.dll";
 #else
       strres = "virtodbc.so";
 #endif

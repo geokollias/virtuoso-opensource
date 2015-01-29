@@ -7654,9 +7654,7 @@ itc_hash_spec_order (search_spec_t ** sp_ret)
       if (CMP_HASH_RANGE == sp->sp_min_op)
 	{
 	  QNCAST (hash_range_spec_t, hrng, sp->sp_min_ssl);
-	  if ((HRNG_SEC & hrng->hrng_flags))
-	    sec = prev;
-	  else if (hrng->hrng_hs && hrng->hrng_hs->hs_ha->ha_n_deps)
+	  if (hrng->hrng_hs && hrng->hrng_hs->hs_ha->ha_n_deps)
 	    val = prev;
 	}
     }
@@ -7665,7 +7663,6 @@ itc_hash_spec_order (search_spec_t ** sp_ret)
   if (sec)
     sp_set_last (sp_ret, sec);
 }
-
 
 int
 ks_add_hash_spec (key_source_t * ks, caddr_t * inst, it_cursor_t * itc)
@@ -7686,26 +7683,6 @@ ks_add_hash_spec (key_source_t * ks, caddr_t * inst, it_cursor_t * itc)
     if (((HR_RANGE_ONLY | HR_NO_BLOOM) & hrng->hrng_flags)
 	&& 0 == QST_INT (inst, hrng->hrng_min) && 0xffffffff == (uint32) QST_INT (inst, hrng->hrng_max))
       continue;			/* no partition, no merged hash join */
-    if ((HRNG_SEC & hrng->hrng_flags))
-      {
-	if (!qi->qi_client->cli_sec)
-	  continue;
-	itc->itc_sec_hash_spec = 1;
-      }
-    if ((HRNG_RD_SEC & hrng->hrng_flags))
-      {
-	cl_op_t *sec = qi->qi_client->cli_sec;
-	index_tree_t *it;
-	if (!sec || sec->_.sec.g_all_allowed)
-	  continue;
-	if (sec->_.sec.g_rd_empty)
-	  return 1;		/* no g read perms at all */
-	if (!sec->_.sec.g_rd_id && !sec->_.sec.g_rd)
-	  continue;		/* no read restrictions */
-	if (sec->_.sec.g_rd)
-	  it = sec->_.sec.g_rd;
-	sp->sp_is_reverse = it ? it->it_hi->hi_is_reverse : 0;
-      }
     sps[fill++] = sp;
     if (fill > 255)
       sqlr_new_error ("420000", "CHA..", "Not more than 255 hash joins allowed per fact table");
@@ -7741,20 +7718,12 @@ ks_add_hash_spec (key_source_t * ks, caddr_t * inst, it_cursor_t * itc)
 	  if (!hs)
 	    {
 	      best = inx;
-	      if ((HRNG_SEC & hrng->hrng_flags))
-		tree = qi_g_tree (inst, hrng->hrng_ht, 1);
-	      else if ((HRNG_RD_SEC & hrng->hrng_flags))
-		tree = qi_g_tree (inst, hrng->hrng_ht, 0);
-	      else
-		tree = qst_get_chash (inst, hrng->hrng_ht, hrng->hrng_ht_id, NULL);
+	      tree = qst_get_chash (inst, hrng->hrng_ht, hrng->hrng_ht_id, NULL);
 	      cha = tree && !tree->it_invalidated ? tree->it_hi->hi_chash : NULL;
 	      if (!cha || (!cha->cha_distinct_count && !cha->cha_n_bloom))
 		{
 		  /* join with empty chash is like null in search params, always empty. Empty chash can have replicated bloom though  which still makes it valid  */
 		  key_free_trail_specs (sp_copy_1);
-		  if ((HRNG_SEC & hrng->hrng_flags))
-		    sqlr_trx_error (((QI *) inst)->qi_trx, LT_BLOWN_OFF, LTE_NO_PERM, "42000", "RGSEC",
-			"Writable graphs set is empty");
 		  return 1;
 		}
 	      break;

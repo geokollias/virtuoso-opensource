@@ -623,6 +623,7 @@ typedef struct spar_tree_s
       caddr_t val;
       caddr_t datatype;
       caddr_t language;
+      caddr_t original_text;
     } lit;
     struct
     {				/* Note that all first members of \c qname case should match to \c lit case */
@@ -767,7 +768,7 @@ typedef struct spar_tree_s
       ptrlong own_idx;		/*!< Serial of the bindings invocation in the parser */
       SPART **vars;		/*!< Names of variables that are passed as parameters */
       SPART ***data_rows;	/*!< Rows of data. Note that they're not copied from spare_bindings_rowset and not duplicated if enclosing GP is duplicated. */
-      char *data_rows_mask;	/*!< Characters, one per data row, indicating whether the row is in use (char '/') or not in use due to ban by some cell (char '0' + column index or '\x7f', whatever is less, for debugging) */
+      char *data_rows_mask;	/*!< Characters, one per data row, indicating whether the row is in use (char '/') or not in use due to ban by some cell (char '0' + column index or '\x7f', whatever is less, for debugging) or not in use due to LIMIT (char '.') */
       ptrlong *counters_of_unbound;	/*!< Counters of unbound values in columns (rows not in use are excluded from counting). Cheating: This array is allocated as DV_STRING, not DV_ARRAY_OF_POINTER */
       ptrlong rows_in_use;	/*!< Count of rows still in use */
       ptrlong rows_last_rvr;	/*!< Count of rows in use when rvrs were refreshed last time */
@@ -1039,7 +1040,7 @@ extern SPART *spar_make_fake_blank_node (sparp_t * sparp);	/*!< Not for use in r
 extern SPART *spar_make_literal_from_sql_box (sparp_t * sparp, caddr_t box, int mode);
 extern SPART *spar_make_qname_or_literal_from_rvr (sparp_t * sparp, rdf_val_range_t * rvr, int make_naked_box_if_possible);
 
-#define SPAR_MAKE_BOOL_LITERAL(sparp,v) (spartlist ((sparp), 4, SPAR_LIT, (SPART *)t_box_num_nonull((v)?1:0), uname_xmlschema_ns_uri_hash_boolean, NULL))
+#define SPAR_MAKE_BOOL_LITERAL(sparp,v) (spartlist ((sparp), 5, SPAR_LIT, (SPART *)t_box_num_nonull((v)?1:0), uname_xmlschema_ns_uri_hash_boolean, NULL, t_box_string((v)?"true":"false")))
 
 extern SPART *spar_make_typed_literal (sparp_t * sparp, caddr_t strg, caddr_t type, caddr_t lang);
 /*! Creates a new FROM / FROM NAMED / NOT FROM / NOT FROM NAMED source description and pushes it into context for future storing in req_top.sources.
