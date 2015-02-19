@@ -1490,6 +1490,7 @@ ssg_sdprint_tree (spar_sqlgen_t * ssg, SPART * tree)
 	SPART *expn = tree->_.oby.expn;
 	switch (tree->_.oby.direction)
 	  {
+	  case 0:
 	  case ASC_L:
 	    ssg_puts (" ASC (");
 	    break;

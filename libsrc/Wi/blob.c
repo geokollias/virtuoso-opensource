@@ -2988,6 +2988,30 @@ bh_fetch_dir (lock_trx_t * lt, blob_handle_t * bh)
   return blob_read_dir (itc, &bh->bh_pages, &bh->bh_page_dir_complete, bh->bh_dir_page, NULL);
 }
 
+void
+blob_dump (blob_handle_t * bh)
+{
+  log_debug (" Blob dump %p", bh);
+  log_debug ("\t bh_page %d", bh->bh_page);
+  log_debug ("\t bh_dir_page %d", bh->bh_dir_page);
+  log_debug ("\t bh_position %d", bh->bh_position);
+  log_debug ("\t bh_frag_no %d", bh->bh_frag_no);
+  log_debug ("\t bh_slice %d", bh->bh_slice);
+  log_debug ("\t bh_length %Ld", bh->bh_length);
+  log_debug ("\t bh_diskbytes %Ld", bh->bh_diskbytes);
+  log_debug ("\t bh_page_dir_complete %d", (int) bh->bh_page_dir_complete);
+  log_debug ("\t bh_all_received %d", (int) bh->bh_all_received);
+  log_debug ("\t bh_send_as_bh %d", (int) bh->bh_send_as_bh);
+  log_debug ("\t bh_pages %p", bh->bh_pages);
+  if (bh->bh_pages)
+    {
+      int inx, n = box_length ((caddr_t) bh->bh_pages) / sizeof (dp_addr_t);
+      for (inx = 0; inx < n; inx++)
+	log_debug ("\t\t %d:%d", inx, bh->bh_pages[inx]);
+    }
+  log_debug ("\t bh_key_id %d", bh->bh_key_id);
+  log_debug ("\t bh_timestamp %d", bh->bh_timestamp);
+}
 
 int
 blob_check (blob_handle_t * bh)
@@ -3025,12 +3049,24 @@ blob_check (blob_handle_t * bh)
 
       for (inx = 0; inx < n; inx++)
 	{
+	  int type;
+	  extent_map_t *em;
+	  extent_t *ext;
 	  dp = bh->bh_pages[inx];
+	  em = DBS_DP_TO_EM (it->it_storage, dp);
+	  mutex_enter (em->em_mtx);
+	  ext = EM_DP_TO_EXT (em, EXT_ROUND (dp));
+	  type = EXT_TYPE (ext);
+	  mutex_leave (em->em_mtx);
+	  if (type != EXT_BLOB)
+	    {
+	      log_info ("extent map not a BLOB extent dp=%d tp=%d", dp, type);
+	      error = 1;
+	    }
 	  if (dp < 3 || dp > it->it_storage->dbs_n_pages)
 	    {
 	      error = 1;
-	      GPF_T1 ("blob out of range");
-	      log_info ("Out of range  blob page refd start = %d L=%d ", bh->bh_page, dp);
+	      log_info ("Out of range  blob page refd start = %d L=%d max dp=%d", bh->bh_page, dp, it->it_storage->dbs_n_pages);
 	    }
 	  else if (dp && dbs_is_free_page (it->it_storage, dp))
 	    {
@@ -3040,7 +3076,10 @@ blob_check (blob_handle_t * bh)
 	}
     }
   if (error)
-    return BLOB_FREE;
+    {
+      blob_dump (bh);
+      return BLOB_FREE;
+    }
   return BLOB_OK;
 }
 

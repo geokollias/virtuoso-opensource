@@ -150,7 +150,12 @@ extern void sparp_debug_weird (struct sparp_s *sparp, const char *file, int line
 #define SPAR_BIF_UUID			(ptrlong)1152
 #define SPAR_BIF_VALID			(ptrlong)1153
 #define SPAR_BIF_YEAR			(ptrlong)1154
-#define SPAR_BIF__ITEM_IN_VECTOR	(ptrlong)1155
+#define SPAR_BIF__CUBE			(ptrlong)1155
+#define SPAR_BIF__ITEM_IN_VECTOR	(ptrlong)1156
+#define SPAR_BIF__GROUPING_LIST		(ptrlong)1157
+#define SPAR_BIF__GROUPING_SET		(ptrlong)1158
+#define SPAR_BIF__GROUPING_SETS		(ptrlong)1159
+#define SPAR_BIF__ROLLUP		(ptrlong)1160
 
 #define SPAR_SML_CREATE			(ptrlong)1201
 #define SPAR_SML_DROP			(ptrlong)1202
@@ -452,14 +457,23 @@ typedef struct sparp_s
 
 /*extern void sparqr_free (spar_query_t *sparqr);*/
 
-extern void spar_error (sparp_t * sparp, const char *format, ...);
-extern void spar_internal_error (sparp_t * sparp, const char *strg);
-extern int spar_audit_error (sparp_t * sparp, const char *format, ...);	/* returns fake 1 as a value for return */
-extern caddr_t spar_source_place (sparp_t * sparp, char *raw_text);
-extern caddr_t spar_dbg_string_of_triple_field (sparp_t * sparp, SPART * fld);
-extern void sparyyerror_impl (sparp_t * xpp, char *raw_text, const char *strg);
-extern void sparyyerror_impl_1 (sparp_t * xpp, char *raw_text, int yystate, short *yyssa, short *yyssp, const char *strg);
-extern void spar_error_if_unsupported_syntax_imp (sparp_t * sparp, int feature_in_use, const char *feature_name);
+extern void
+spar_error (sparp_t * sparp, const char *format, ...)
+#ifdef __GNUC__
+    __attribute__ ((format (printf, 2, 3)))
+#endif
+    ;
+     extern void spar_internal_error (sparp_t * sparp, const char *strg);
+     extern int spar_audit_error (sparp_t * sparp, const char *format, ...)	/* returns fake 1 as a value for return */
+#ifdef __GNUC__
+    __attribute__ ((format (printf, 2, 3)))
+#endif
+    ;
+     extern caddr_t spar_source_place (sparp_t * sparp, char *raw_text);
+     extern caddr_t spar_dbg_string_of_triple_field (sparp_t * sparp, SPART * fld);
+     extern void sparyyerror_impl (sparp_t * xpp, char *raw_text, const char *strg);
+     extern void sparyyerror_impl_1 (sparp_t * xpp, char *raw_text, int yystate, short *yyssa, short *yyssp, const char *strg);
+     extern void spar_error_if_unsupported_syntax_imp (sparp_t * sparp, int feature_in_use, const char *feature_name);
 #define SPAR_ERROR_IF_UNSUPPORTED_SYNTAX(feat,name) do { \
   if (!((feat) & sparp_arg->sparp_permitted_syntax)) \
     spar_error_if_unsupported_syntax_imp (sparp_arg, (feat), (name)); \
@@ -479,7 +493,7 @@ extern void spar_error_if_unsupported_syntax_imp (sparp_t * sparp, int feature_i
 #define SPART_TRIPLE_FIELDS_COUNT	4
 #define SPART_VAR_OUTSIDE_TRIPLE	5	/*!< This is a value set to var.tr_idx of variables and bnodes in FILTERs, return expressions and other const reads */
 
-extern ptrlong sparp_tr_usage_natural_restrictions[SPART_TRIPLE_FIELDS_COUNT];
+     extern ptrlong sparp_tr_usage_natural_restrictions[SPART_TRIPLE_FIELDS_COUNT];
 
 /* These values should be greater than any SQL opcode AND greater than 0x7F to not conflict with codepoints of "syntactically important" chars and, moreover, greater than 0x1000 to not conflict with YACC IDs for keywords. */
 #define SPART_GRAPH_FROM		0x1000
@@ -528,292 +542,292 @@ extern ptrlong sparp_tr_usage_natural_restrictions[SPART_TRIPLE_FIELDS_COUNT];
 #define END_SPARP_REVFOREACH_GP_EQUIV \
 	  }} while (0)
 
-typedef struct qm_format_s *ssg_valmode_t;
+     typedef struct qm_format_s *ssg_valmode_t;
 
 /*! Type of callback that can generate an unusual SQL text from a tree of SPAR_CODEGEN type */
-typedef void ssg_codegen_callback_t (struct spar_sqlgen_s *ssg, struct spar_tree_s *spart, ...);
+     typedef void ssg_codegen_callback_t (struct spar_sqlgen_s *ssg, struct spar_tree_s *spart, ...);
 /*! Callback to generate the top of an SPARQL query with 'graph-grab' feature */
-void ssg_grabber_codegen (struct spar_sqlgen_s *ssg, struct spar_tree_s *spart, ...);
+     void ssg_grabber_codegen (struct spar_sqlgen_s *ssg, struct spar_tree_s *spart, ...);
 /*! Callback to generate the query that quickly enumerates all known graphs */
-void ssg_select_known_graphs_codegen (struct spar_sqlgen_s *ssg, struct spar_tree_s *spart, ...);
+     void ssg_select_known_graphs_codegen (struct spar_sqlgen_s *ssg, struct spar_tree_s *spart, ...);
 
 /*! A possible use of quad map as data source for a given triple */
-typedef struct qm_atable_use_s
-{
-  const char *qmatu_alias;
-  const char *qmatu_tablename;
-  void *qmatu_more;
-} qm_atable_use_t;
+     typedef struct qm_atable_use_s
+     {
+       const char *qmatu_alias;
+       const char *qmatu_tablename;
+       void *qmatu_more;
+     } qm_atable_use_t;
 
 /*! A possible use of quad map as data source for a given triple */
-typedef struct triple_case_s
-{
-  struct quad_map_s *tc_qm;	/*!< Quad map that can generate data that match the triple */
-  ccaddr_t *tc_red_cuts[SPART_TRIPLE_FIELDS_COUNT];	/*!< Red cuts for values bound by the triple when they are generated by \c tc_qm */
-} triple_case_t;
+     typedef struct triple_case_s
+     {
+       struct quad_map_s *tc_qm;	/*!< Quad map that can generate data that match the triple */
+       ccaddr_t *tc_red_cuts[SPART_TRIPLE_FIELDS_COUNT];	/*!< Red cuts for values bound by the triple when they are generated by \c tc_qm */
+     } triple_case_t;
 
 #define SPAR_MAX_BINDINGS_VIEW_CN 4	/*!< There are two representations of a binding: DB.DBA.SPARQL_BINDINGS_VIEW_C_1 to DB.DBA.SPARQL_BINDINGS_VIEW_C_4 make result sets of widths 1 to 4, DB.DBA.SPARQL_BINDINGS_VIEW makes result set of vectors of values */
 
 /*! A node of tree representation of a SPARQL query. Tree format is common for both syntax parser and optimizer. */
-typedef struct spar_tree_s
-{
-  ptrlong type;
-  caddr_t srcline;
-  union
-  {
-    struct
-    {
-      /* #define SPAR_ALIAS           (ptrlong)1001 */
-      SPART *arg;
-      caddr_t aname;
-      ssg_valmode_t native;	/*!< temporary use in SQL printer */
-      ptrlong reruns_may_vary;	/*!< nonzero for BIND aliases that have scalar subqueries in \c arg so there is no warranty that \c arg will repeatedly return same value */
-      ptrlong was_expanded;	/*!< There was a variable originally, but it's declared before in BIND..AS or other aliasing so it's expanded */
-    } alias;			/*!< only for use in top-level result-set list */
-    struct
-    {
-      SPART *left;
-      SPART *right;
-    } bin_exp;
-    struct
-    {
-      /* #define SPAR_BUILT_IN_CALL   (ptrlong)1003 */
-      ptrlong btype;		/*!< Type of particular BIF, as lexem (for lexems other than SPARQL_BIF) or SPAR_BIF_xxx */
-      ptrlong desc_ofs;		/*!< The offset of BIF description in \c sparp_bif_descs array */
-      SPART **args;
-    } builtin;
-    struct
-    {
-      SPART *arg;
-      ssg_valmode_t native;
-      ssg_valmode_t needed;
-    } conv;			/*!< temporary use in SQL printer */
-    struct
-    {
-      /* #define SPAR_FUNCALL         (ptrlong)1005 */
-      caddr_t qname;
-      SPART **argtrees;
-      ptrlong agg_mode;		/*!< Zero for non-aggreagetes */
-      ptrlong disabled_optimizations;	/*!< So far only bit 1 is used, meaning that the run of a function in the sandbox will never be possible */
-    } funcall;
-    struct
-    {
-      /* #define SPAR_GP                      (ptrlong)1006 */
-      ptrlong subtype;
-      SPART **members;
-      SPART **filters;
-      SPART *subquery;
-      caddr_t selid;
-      ptrlong *equiv_indexes;	/*!< Array of indexes of equivs used in triples and filters of this GP, some items at the tail of the array may be spare and temporarily not in use */
-      ptrlong equiv_count;	/*!< Number of items in \c equiv_indexes array that contains valid data. */
-      ptrlong glued_filters_count;	/*!< Last \c glued_filters_count members of \c filters are expressions for ON statement of LEFT OUTER JOIN. They can not be moved to some other GP because they were moved already and next move will break semantics. */
-      SPART **options;
-    } gp;
-    struct
-    {
-      /* #define SPAR_GRAPH           (ptrlong)1018 */
-      ptrlong subtype;		/*!< One of SPART_GRAPH_FROM, SPART_GRAPH_GROUP, SPART_GRAPH_NAMED, SPART_GRAPH_NOT_FROM, SPART_GRAPH_NOT_GROUP, SPART_GRAPH_NOT_NAMED */
-      caddr_t iri;		/*!< Constant IRI of a source */
-      SPART *expn;		/*!< A QNAME with IRI of "plain" source or an expression that returns an IRI (or NULL) and makes some side effects such as sponging */
-      ptrlong use_expn_in_gs_checks;	/*!< Nonzero if \c _.graph.expn acts in such a way that it can change graph-level permissions, so it should be used instead of \c _.graph.iri in run-time security checks */
-    } graph;
-    struct
-    {				/* Note that all first members of \c lit case should match to \c qname case */
-      /* #define SPAR_LIT             (ptrlong)1009 */
-      caddr_t val;
-      caddr_t datatype;
-      caddr_t language;
-      caddr_t original_text;
-    } lit;
-    struct
-    {				/* Note that all first members of \c qname case should match to \c lit case */
-      /* #define SPAR_QNAME           (ptrlong)1011 */
-      caddr_t val;
-    } qname;
-    struct
-    {
-      /* #define SPAR_REQ_TOP         (ptrlong)1007 */
-      ptrlong subtype;
-      caddr_t retvalmode_name;
-      caddr_t formatmode_name;
-      caddr_t storage_name;
-      SPART **retvals;
+     typedef struct spar_tree_s
+     {
+       ptrlong type;
+       caddr_t srcline;
+       union
+       {
+	 struct
+	 {
+	   /* #define SPAR_ALIAS           (ptrlong)1001 */
+	   SPART *arg;
+	   caddr_t aname;
+	   ssg_valmode_t native;	/*!< temporary use in SQL printer */
+	   ptrlong reruns_may_vary;	/*!< nonzero for BIND aliases that have scalar subqueries in \c arg so there is no warranty that \c arg will repeatedly return same value */
+	   ptrlong was_expanded;	/*!< There was a variable originally, but it's declared before in BIND..AS or other aliasing so it's expanded */
+	 } alias;		/*!< only for use in top-level result-set list */
+	 struct
+	 {
+	   SPART *left;
+	   SPART *right;
+	 } bin_exp;
+	 struct
+	 {
+	   /* #define SPAR_BUILT_IN_CALL   (ptrlong)1003 */
+	   ptrlong btype;	/*!< Type of particular BIF, as lexem (for lexems other than SPARQL_BIF) or SPAR_BIF_xxx */
+	   ptrlong desc_ofs;	/*!< The offset of BIF description in \c sparp_bif_descs array */
+	   SPART **args;
+	 } builtin;
+	 struct
+	 {
+	   SPART *arg;
+	   ssg_valmode_t native;
+	   ssg_valmode_t needed;
+	 } conv;		/*!< temporary use in SQL printer */
+	 struct
+	 {
+	   /* #define SPAR_FUNCALL         (ptrlong)1005 */
+	   caddr_t qname;
+	   SPART **argtrees;
+	   ptrlong agg_mode;	/*!< Zero for non-aggreagetes */
+	   ptrlong disabled_optimizations;	/*!< So far only bit 1 is used, meaning that the run of a function in the sandbox will never be possible */
+	 } funcall;
+	 struct
+	 {
+	   /* #define SPAR_GP                      (ptrlong)1006 */
+	   ptrlong subtype;
+	   SPART **members;
+	   SPART **filters;
+	   SPART *subquery;
+	   caddr_t selid;
+	   ptrlong *equiv_indexes;	/*!< Array of indexes of equivs used in triples and filters of this GP, some items at the tail of the array may be spare and temporarily not in use */
+	   ptrlong equiv_count;	/*!< Number of items in \c equiv_indexes array that contains valid data. */
+	   ptrlong glued_filters_count;	/*!< Last \c glued_filters_count members of \c filters are expressions for ON statement of LEFT OUTER JOIN. They can not be moved to some other GP because they were moved already and next move will break semantics. */
+	   SPART **options;
+	 } gp;
+	 struct
+	 {
+	   /* #define SPAR_GRAPH           (ptrlong)1018 */
+	   ptrlong subtype;	/*!< One of SPART_GRAPH_FROM, SPART_GRAPH_GROUP, SPART_GRAPH_NAMED, SPART_GRAPH_NOT_FROM, SPART_GRAPH_NOT_GROUP, SPART_GRAPH_NOT_NAMED */
+	   caddr_t iri;		/*!< Constant IRI of a source */
+	   SPART *expn;		/*!< A QNAME with IRI of "plain" source or an expression that returns an IRI (or NULL) and makes some side effects such as sponging */
+	   ptrlong use_expn_in_gs_checks;	/*!< Nonzero if \c _.graph.expn acts in such a way that it can change graph-level permissions, so it should be used instead of \c _.graph.iri in run-time security checks */
+	 } graph;
+	 struct
+	 {			/* Note that all first members of \c lit case should match to \c qname case */
+	   /* #define SPAR_LIT             (ptrlong)1009 */
+	   caddr_t val;
+	   caddr_t datatype;
+	   caddr_t language;
+	   caddr_t original_text;
+	 } lit;
+	 struct
+	 {			/* Note that all first members of \c qname case should match to \c lit case */
+	   /* #define SPAR_QNAME           (ptrlong)1011 */
+	   caddr_t val;
+	 } qname;
+	 struct
+	 {
+	   /* #define SPAR_REQ_TOP         (ptrlong)1007 */
+	   ptrlong subtype;
+	   caddr_t retvalmode_name;
+	   caddr_t formatmode_name;
+	   caddr_t storage_name;
+	   SPART **retvals;
 #if 0
-      SPART **orig_retvals;	/*!< Retvals as they were after expanding '*' and wrapping in MAX() */
+	   SPART **orig_retvals;	/*!< Retvals as they were after expanding '*' and wrapping in MAX() */
 #endif
-      SPART **expanded_orig_retvals;	/*!< Retvals as they were after expanding '*' and wrapping in MAX() and adding vars to grab */
-      caddr_t retselid;
-      SPART **sources;		/*!< Ordered list of FROM, FROM NAMED, NOT FROM and NOT FROM NAMED clauses */
-      SPART *pattern;		/*!< Top-level group pattern that comes from WHERE {...} clause */
-      SPART **groupings;	/*!< NULL or array of grouping expressions */
-      SPART *having;		/*!< NULL or HAVING expression */
-      SPART **order;		/*!< NULL or array of column numbers or oby expressions */
-      SPART *limit;		/*!< NULL or limit expression (boxed integer or a precode) */
-      SPART *offset;		/*!< NULL or offset expression (boxed integer or a precode) */
-      SPART *binv;		/*!< NULL or SPAR_BINDINGS_INV */
-      caddr_t shared_spare_box;	/*!< An environment that is shared among all clones of the tree, the pointer to it is wrapped into DV_LONG_INT */
-    } req_top;
-    struct
-    {
-      /* #define SPAR_TRIPLE          (ptrlong)1014 */
-      ptrlong subtype;
-      SPART *tr_fields[SPART_TRIPLE_FIELDS_COUNT];
-      SPART **sinv_idx_and_qms;	/* Right now this is a list of a serial of a service invocation in first item and either _STAR as second item for no restriction or DEFAULT_L for built-in mapping or an UNAME of top quad map in every item of the list after the first one */
-      caddr_t selid;
-      caddr_t tabid;
-      triple_case_t **tc_list;
-      struct qm_format_s *native_formats[SPART_TRIPLE_FIELDS_COUNT];
-      SPART **options;
-      caddr_t ft_type;
-      ptrlong src_serial;	/*!< Assigned once at parser and preserved in all clone operations */
-    } triple;
-    struct
-    {				/* Note that all first members of \c retval and bnode cases should match to \c var case */
-      /* #define SPAR_BLANK_NODE_LABEL        (ptrlong)1002 */
-      /* #define SPAR_VARIABLE                (ptrlong)1013 */
-      caddr_t vname;
-      caddr_t selid;
-      caddr_t tabid;
-      ptrlong tr_idx;		/*!< Index in quad (0 = graph ... 3 = obj) */
-      ptrlong equiv_idx;
-      rdf_val_range_t rvr;
-      ptrlong restr_of_col;	/*!< Bitmask that indicate which bits of rvr.rvrRestrictions are set by used qmv(s) or actual values of BINDINGS/VALUES */
-    } var;
-    struct
-    {				/* Note that all first members of \c retval and bnode cases should match to \c var case */
-      /* #define SPAR_BLANK_NODE_LABEL        (ptrlong)1002 */
-      /* #define SPAR_VARIABLE                (ptrlong)1013 */
-      caddr_t vname;
-      caddr_t selid;
-      caddr_t tabid;
-      ptrlong tr_idx;		/*!< Index in quad (0 = graph ... 3 = obj) */
-      ptrlong equiv_idx;
-      rdf_val_range_t rvr;
-      ptrlong restr_of_col;	/*!< Bitmask that indicate which bits of rvr.rvrRestrictions are set by used qmv(s) or actual values of BINDINGS/VALUES */
-      ptrlong bracketed;	/*!< 0 for plain, 1 for [...], 2 for fake and bnodes made for default graphs */
-    } bnode;
-    struct
-    {				/* Note that all first members of \c retval and bnode cases should match to \c var case */
-      /* #define SPAR_RETVAL          (ptrlong)1008 */
-      caddr_t vname;
-      caddr_t selid;
-      caddr_t tabid;
-      ptrlong tr_idx;		/*!< Index in quad (0 = graph ... 3 = obj) */
-      ptrlong equiv_idx;
-      rdf_val_range_t rvr;
-      ptrlong restr_of_col;	/*!< Bitmask that indicate which bits of rvr.rvrRestrictions are set by used qmv(s) or actual values of BINDINGS/VALUES */
-      SPART *gp;
-      SPART *triple;
-      ptrlong optional_makes_nullable;
-    } retval;
-    struct
-    {
-      ptrlong direction;
-      SPART *expn;
-    } oby;
-    struct
-    {
-      /* #define SPAR_QM_SQL_FUNCALL  (ptrlong)1015 */
-      caddr_t fname;		/*!< Function to call (bif or Virtuoso/PL) */
-      SPART **fixed;		/*!< Array of 'positional' arguments */
-      SPART **named;		/*!< Array of 'named' arguments that are passed as get-keyword style vector as a last arg */
-    } qm_sql_funcall;
-    struct
-    {
-      /* #define SPAR_SQLCOL          (ptrlong)1012 */
-      caddr_t qtable;		/*!< Qualified table name */
-      caddr_t alias;		/*!< Table alias */
-      caddr_t col;		/*!< Column name */
-    } qm_sqlcol;
-    struct
-    {
-      /* #define SPAR_CODEGEN         (ptrlong)1016 */
-      ssg_codegen_callback_t **cgen_cbk;	/*!< Pointer to the code generation function as a boxed number */
-      SPART *args[1];		/*!< Data for the callback, maybe more then one SPART *, depending on structure size */
-    } codegen;
-    struct
-    {
-      /* #define SPAR_LIST            (ptrlong)1017 */
-      SPART **items;		/*!< Some trees, say, items of T_IN_L list of variables */
-    } list;
-    struct
-    {
-      /* #define SPAR_WHERE_MODIFS    (ptrlong)1019 */
-      SPART *where_gp;		/*!< Group pattern of WHERE clause, or NULL */
-      SPART **groupings;	/*!< Array of groupings */
-      SPART *having;		/*!< Expression of HAVING clause, or NULL */
-      SPART **obys;		/*!< Array of ORDER BY criteria */
-      SPART *lim;		/*!< Boxed LIMIT value or an expression tree */
-      SPART *ofs;		/*!< Boxed OFFSET value or an expression tree */
-      SPART *binv;		/*!< NULL or SPAR_BINDINGS_INV */
-    } wm;
-    struct
-    {
-      /* define SPAR_SERVICE_INV      (ptrlong)1020 */
-      ptrlong own_idx;		/*!< Serial of the sinv in the parser */
-      SPART *endpoint;		/*!< An IRI of web service endpoint without static parameters */
-      SPART **iri_params;	/*!< A get_keyword style array of parameters to pass in the IRI, like maxrows */
-      caddr_t syntax;		/*!< Boxed bitmask of SSG_SD_xxx flags of allowed query serialization features */
-      caddr_t *param_varnames;	/*!< Names of variables that are passed as parameters */
-      ptrlong in_list_implicit;	/*!< Flags if IN variables were specified using '*' or not specified at all */
-      caddr_t *rset_varnames;	/*!< Names of variables that are returned in the result set from the endpoint, in the order in the rset */
-      SPART **defines;		/*!< List of defines to pass, as a get_keyword style list of qnames and values or arrays of values */
-      SPART **sources;		/*!< List of sources, similar to one in req_top. If NULL then sources of parent req_top are used */
-      caddr_t storage_uri;	/*!< Storage to use: JSO UNAME if specified explicitly for a service IRI, uname_virtrdf_ns_uri_DefaultServiceStorage if unknown service */
-      ptrlong silent;		/*!< nonzero if SERVICE SILENT syntax is used */
-    } sinv;
-    struct
-    {
-      /* define SPAR_BINDINGS_INV             (ptrlong)1021 */
-      ptrlong own_idx;		/*!< Serial of the bindings invocation in the parser */
-      SPART **vars;		/*!< Names of variables that are passed as parameters */
-      SPART ***data_rows;	/*!< Rows of data. Note that they're not copied from spare_bindings_rowset and not duplicated if enclosing GP is duplicated. */
-      char *data_rows_mask;	/*!< Characters, one per data row, indicating whether the row is in use (char '/') or not in use due to ban by some cell (char '0' + column index or '\x7f', whatever is less, for debugging) or not in use due to LIMIT (char '.') */
-      ptrlong *counters_of_unbound;	/*!< Counters of unbound values in columns (rows not in use are excluded from counting). Cheating: This array is allocated as DV_STRING, not DV_ARRAY_OF_POINTER */
-      ptrlong rows_in_use;	/*!< Count of rows still in use */
-      ptrlong rows_last_rvr;	/*!< Count of rows in use when rvrs were refreshed last time */
-    } binv;
-    struct
-    {
-      /* define SPAR_DEFMACRO                 (ptrlong)1022 */
-      ptrlong subtype;
-      caddr_t mname;		/*!< IRI of the macro */
-      caddr_t sml_iri;		/*!< IRI UNAME of SPARQL macro library where the macro comes from (as a result of define input:macro-lib... ) */
-      caddr_t *paramnames;	/*!< Names of parameters */
-      caddr_t *localnames;	/*!< Names of variables listed in LOCAL (...) clause */
-      SPART **quad_pattern;	/*!< The template of triple (or quad) patterns */
-      SPART *body;		/*!< The body of the macro, as group graph pattern or scalar expression */
-      caddr_t selid;		/*!< Outermost selid of the \c defmacro.body */
-      ptrlong aggregate_count;	/*!< Count of aggregate functions used inside the \c defmacro.body */
-    } defmacro;
-    struct
-    {
-      /* #define SPAR_MACROCALL               (ptrlong)1023 */
-      caddr_t mname;
-      SPART **argtrees;
-      SPART *context_graph;
-      caddr_t mid;
-    } macrocall;
-    struct
-    {
-      /* #define SPAR_MACROPU         (ptrlong)1024 */
-      caddr_t pname;
-      ptrlong pindex;
-      ptrlong pumode;
-    } macropu;
-    struct
-    {
-      /* #define SPAR_PPATH           (ptrlong)1025 */
-      ptrlong subtype;		/*!< Node subtype: '/', '|', 'D' or '*' for non-leafs ('D' is union of path with T_DISTINCT), 0 or '!' for plain or negative leafs. Leafs are '|' of iris and ^iris */
-      SPART **parts;		/*!< Descendants of type SPAR_PPATH for non-leafs, QNames for leafs. For '|' subtype, the (only) 0 or '!' part is always first */
-      caddr_t minrepeat;	/*!< Minimal number of repetitions for '*' non-leaf node: 0 for '?' and '*' operators, 1 for '+', an M integer for {M,N} modifier */
-      caddr_t maxrepeat;	/*!< Maximal number of repetitions for '*' non-leaf node: 1 for '?', an N integer for {M,N} modifier however it is NEGATIVE for infinity */
-      ptrlong num_of_invs;	/*!< Number of inverted predicates in a leaf. All inverted predicates are always after all forward predicates */
-    } ppath;
-  } _;
-} sparp_tree_t;
+	   SPART **expanded_orig_retvals;	/*!< Retvals as they were after expanding '*' and wrapping in MAX() and adding vars to grab */
+	   caddr_t retselid;
+	   SPART **sources;	/*!< Ordered list of FROM, FROM NAMED, NOT FROM and NOT FROM NAMED clauses */
+	   SPART *pattern;	/*!< Top-level group pattern that comes from WHERE {...} clause */
+	   SPART **groupings;	/*!< NULL or array of grouping expressions */
+	   SPART *having;	/*!< NULL or HAVING expression */
+	   SPART **order;	/*!< NULL or array of column numbers or oby expressions */
+	   SPART *limit;	/*!< NULL or limit expression (boxed integer or a precode) */
+	   SPART *offset;	/*!< NULL or offset expression (boxed integer or a precode) */
+	   SPART *binv;		/*!< NULL or SPAR_BINDINGS_INV */
+	   caddr_t shared_spare_box;	/*!< An environment that is shared among all clones of the tree, the pointer to it is wrapped into DV_LONG_INT */
+	 } req_top;
+	 struct
+	 {
+	   /* #define SPAR_TRIPLE          (ptrlong)1014 */
+	   ptrlong subtype;
+	   SPART *tr_fields[SPART_TRIPLE_FIELDS_COUNT];
+	   SPART **sinv_idx_and_qms;	/* Right now this is a list of a serial of a service invocation in first item and either _STAR as second item for no restriction or DEFAULT_L for built-in mapping or an UNAME of top quad map in every item of the list after the first one */
+	   caddr_t selid;
+	   caddr_t tabid;
+	   triple_case_t **tc_list;
+	   struct qm_format_s *native_formats[SPART_TRIPLE_FIELDS_COUNT];
+	   SPART **options;
+	   caddr_t ft_type;
+	   ptrlong src_serial;	/*!< Assigned once at parser and preserved in all clone operations */
+	 } triple;
+	 struct
+	 {			/* Note that all first members of \c retval and bnode cases should match to \c var case */
+	   /* #define SPAR_BLANK_NODE_LABEL        (ptrlong)1002 */
+	   /* #define SPAR_VARIABLE                (ptrlong)1013 */
+	   caddr_t vname;
+	   caddr_t selid;
+	   caddr_t tabid;
+	   ptrlong tr_idx;	/*!< Index in quad (0 = graph ... 3 = obj) */
+	   ptrlong equiv_idx;
+	   rdf_val_range_t rvr;
+	   ptrlong restr_of_col;	/*!< Bitmask that indicate which bits of rvr.rvrRestrictions are set by used qmv(s) or actual values of BINDINGS/VALUES */
+	 } var;
+	 struct
+	 {			/* Note that all first members of \c retval and bnode cases should match to \c var case */
+	   /* #define SPAR_BLANK_NODE_LABEL        (ptrlong)1002 */
+	   /* #define SPAR_VARIABLE                (ptrlong)1013 */
+	   caddr_t vname;
+	   caddr_t selid;
+	   caddr_t tabid;
+	   ptrlong tr_idx;	/*!< Index in quad (0 = graph ... 3 = obj) */
+	   ptrlong equiv_idx;
+	   rdf_val_range_t rvr;
+	   ptrlong restr_of_col;	/*!< Bitmask that indicate which bits of rvr.rvrRestrictions are set by used qmv(s) or actual values of BINDINGS/VALUES */
+	   ptrlong bracketed;	/*!< 0 for plain, 1 for [...], 2 for fake and bnodes made for default graphs */
+	 } bnode;
+	 struct
+	 {			/* Note that all first members of \c retval and bnode cases should match to \c var case */
+	   /* #define SPAR_RETVAL          (ptrlong)1008 */
+	   caddr_t vname;
+	   caddr_t selid;
+	   caddr_t tabid;
+	   ptrlong tr_idx;	/*!< Index in quad (0 = graph ... 3 = obj) */
+	   ptrlong equiv_idx;
+	   rdf_val_range_t rvr;
+	   ptrlong restr_of_col;	/*!< Bitmask that indicate which bits of rvr.rvrRestrictions are set by used qmv(s) or actual values of BINDINGS/VALUES */
+	   SPART *gp;
+	   SPART *triple;
+	   ptrlong optional_makes_nullable;
+	 } retval;
+	 struct
+	 {
+	   ptrlong direction;
+	   SPART *expn;
+	 } oby;
+	 struct
+	 {
+	   /* #define SPAR_QM_SQL_FUNCALL  (ptrlong)1015 */
+	   caddr_t fname;	/*!< Function to call (bif or Virtuoso/PL) */
+	   SPART **fixed;	/*!< Array of 'positional' arguments */
+	   SPART **named;	/*!< Array of 'named' arguments that are passed as get-keyword style vector as a last arg */
+	 } qm_sql_funcall;
+	 struct
+	 {
+	   /* #define SPAR_SQLCOL          (ptrlong)1012 */
+	   caddr_t qtable;	/*!< Qualified table name */
+	   caddr_t alias;	/*!< Table alias */
+	   caddr_t col;		/*!< Column name */
+	 } qm_sqlcol;
+	 struct
+	 {
+	   /* #define SPAR_CODEGEN         (ptrlong)1016 */
+	   ssg_codegen_callback_t **cgen_cbk;	/*!< Pointer to the code generation function as a boxed number */
+	   SPART *args[1];	/*!< Data for the callback, maybe more then one SPART *, depending on structure size */
+	 } codegen;
+	 struct
+	 {
+	   /* #define SPAR_LIST            (ptrlong)1017 */
+	   SPART **items;	/*!< Some trees, say, items of T_IN_L list of variables */
+	 } list;
+	 struct
+	 {
+	   /* #define SPAR_WHERE_MODIFS    (ptrlong)1019 */
+	   SPART *where_gp;	/*!< Group pattern of WHERE clause, or NULL */
+	   SPART **groupings;	/*!< Array of groupings */
+	   SPART *having;	/*!< Expression of HAVING clause, or NULL */
+	   SPART **obys;	/*!< Array of ORDER BY criteria */
+	   SPART *lim;		/*!< Boxed LIMIT value or an expression tree */
+	   SPART *ofs;		/*!< Boxed OFFSET value or an expression tree */
+	   SPART *binv;		/*!< NULL or SPAR_BINDINGS_INV */
+	 } wm;
+	 struct
+	 {
+	   /* define SPAR_SERVICE_INV      (ptrlong)1020 */
+	   ptrlong own_idx;	/*!< Serial of the sinv in the parser */
+	   SPART *endpoint;	/*!< An IRI of web service endpoint without static parameters */
+	   SPART **iri_params;	/*!< A get_keyword style array of parameters to pass in the IRI, like maxrows */
+	   caddr_t syntax;	/*!< Boxed bitmask of SSG_SD_xxx flags of allowed query serialization features */
+	   caddr_t *param_varnames;	/*!< Names of variables that are passed as parameters */
+	   ptrlong in_list_implicit;	/*!< Flags if IN variables were specified using '*' or not specified at all */
+	   caddr_t *rset_varnames;	/*!< Names of variables that are returned in the result set from the endpoint, in the order in the rset */
+	   SPART **defines;	/*!< List of defines to pass, as a get_keyword style list of qnames and values or arrays of values */
+	   SPART **sources;	/*!< List of sources, similar to one in req_top. If NULL then sources of parent req_top are used */
+	   caddr_t storage_uri;	/*!< Storage to use: JSO UNAME if specified explicitly for a service IRI, uname_virtrdf_ns_uri_DefaultServiceStorage if unknown service */
+	   ptrlong silent;	/*!< nonzero if SERVICE SILENT syntax is used */
+	 } sinv;
+	 struct
+	 {
+	   /* define SPAR_BINDINGS_INV             (ptrlong)1021 */
+	   ptrlong own_idx;	/*!< Serial of the bindings invocation in the parser */
+	   SPART **vars;	/*!< Names of variables that are passed as parameters */
+	   SPART ***data_rows;	/*!< Rows of data. Note that they're not copied from spare_bindings_rowset and not duplicated if enclosing GP is duplicated. */
+	   char *data_rows_mask;	/*!< Characters, one per data row, indicating whether the row is in use (char '/') or not in use due to ban by some cell (char '0' + column index or '\x7f', whatever is less, for debugging) or not in use due to LIMIT (char '.') */
+	   ptrlong *counters_of_unbound;	/*!< Counters of unbound values in columns (rows not in use are excluded from counting). Cheating: This array is allocated as DV_STRING, not DV_ARRAY_OF_POINTER */
+	   ptrlong rows_in_use;	/*!< Count of rows still in use */
+	   ptrlong rows_last_rvr;	/*!< Count of rows in use when rvrs were refreshed last time */
+	 } binv;
+	 struct
+	 {
+	   /* define SPAR_DEFMACRO                 (ptrlong)1022 */
+	   ptrlong subtype;
+	   caddr_t mname;	/*!< IRI of the macro */
+	   caddr_t sml_iri;	/*!< IRI UNAME of SPARQL macro library where the macro comes from (as a result of define input:macro-lib... ) */
+	   caddr_t *paramnames;	/*!< Names of parameters */
+	   caddr_t *localnames;	/*!< Names of variables listed in LOCAL (...) clause */
+	   SPART **quad_pattern;	/*!< The template of triple (or quad) patterns */
+	   SPART *body;		/*!< The body of the macro, as group graph pattern or scalar expression */
+	   caddr_t selid;	/*!< Outermost selid of the \c defmacro.body */
+	   ptrlong aggregate_count;	/*!< Count of aggregate functions used inside the \c defmacro.body */
+	 } defmacro;
+	 struct
+	 {
+	   /* #define SPAR_MACROCALL               (ptrlong)1023 */
+	   caddr_t mname;
+	   SPART **argtrees;
+	   SPART *context_graph;
+	   caddr_t mid;
+	 } macrocall;
+	 struct
+	 {
+	   /* #define SPAR_MACROPU         (ptrlong)1024 */
+	   caddr_t pname;
+	   ptrlong pindex;
+	   ptrlong pumode;
+	 } macropu;
+	 struct
+	 {
+	   /* #define SPAR_PPATH           (ptrlong)1025 */
+	   ptrlong subtype;	/*!< Node subtype: '/', '|', 'D' or '*' for non-leafs ('D' is union of path with T_DISTINCT), 0 or '!' for plain or negative leafs. Leafs are '|' of iris and ^iris */
+	   SPART **parts;	/*!< Descendants of type SPAR_PPATH for non-leafs, QNames for leafs. For '|' subtype, the (only) 0 or '!' part is always first */
+	   caddr_t minrepeat;	/*!< Minimal number of repetitions for '*' non-leaf node: 0 for '?' and '*' operators, 1 for '+', an M integer for {M,N} modifier */
+	   caddr_t maxrepeat;	/*!< Maximal number of repetitions for '*' non-leaf node: 1 for '?', an N integer for {M,N} modifier however it is NEGATIVE for infinity */
+	   ptrlong num_of_invs;	/*!< Number of inverted predicates in a leaf. All inverted predicates are always after all forward predicates */
+	 } ppath;
+       } _;
+     } sparp_tree_t;
 
-typedef unsigned char SPART_buf[sizeof (sparp_tree_t) + BOX_AUTO_OVERHEAD];
+     typedef unsigned char SPART_buf[sizeof (sparp_tree_t) + BOX_AUTO_OVERHEAD];
 #define SPART_AUTO(ptr,buf,t) \
   do { \
     BOX_AUTO_TYPED(SPART *,ptr,buf,sizeof(SPART),DV_ARRAY_OF_POINTER); \
@@ -822,23 +836,23 @@ typedef unsigned char SPART_buf[sizeof (sparp_tree_t) + BOX_AUTO_OVERHEAD];
     } while (0)
 
 #ifndef NDEBUG
-extern SPART **t_spartlist_concat (SPART ** list1, SPART ** list2);
+     extern SPART **t_spartlist_concat (SPART ** list1, SPART ** list2);
 #else
 #define t_spartlist_concat(list1,list2) ((SPART **)(t_list_concat((caddr_t)((SPART **)(list1)), (caddr_t)((SPART **)(list2)))))
 #endif
 
-extern sparp_t *sparp_query_parse (const char *str, spar_query_env_t * sparqre, int rewrite_all);
-extern int sparyyparse (sparp_t * sparp_arg);
+     extern sparp_t *sparp_query_parse (const char *str, spar_query_env_t * sparqre, int rewrite_all);
+     extern int sparyyparse (sparp_t * sparp_arg);
 /*! Finds storage by name and sets it, it also finds associated macro library (it it is set of the storage) and copies macro defs from the library
 The search for associated macro lib is disabled if the statement contains CREATE MACRO LIBRARY clause */
-extern void sparp_configure_storage_and_macro_libs (sparp_t * sparp);
-extern void sparp_compile_smllist (sparp_t * sparp, caddr_t sml_iri_uname,
+     extern void sparp_configure_storage_and_macro_libs (sparp_t * sparp);
+     extern void sparp_compile_smllist (sparp_t * sparp, caddr_t sml_iri_uname,
     void /* actually struct sparql_macro_library_t */ *smlib);
-extern int sparp_table_name_is_unsafe (const char *buf);
-extern int sparp_sql_function_name_is_unsafe (const char *buf);
+     extern int sparp_table_name_is_unsafe (const char *buf);
+     extern int sparp_sql_function_name_is_unsafe (const char *buf);
 
-extern const char *spart_dump_opname (ptrlong opname, int is_op);
-extern void spart_dump (void *tree_arg, dk_session_t * ses, int indent, const char *title, int hint);
+     extern const char *spart_dump_opname (ptrlong opname, int is_op);
+     extern void spart_dump (void *tree_arg, dk_session_t * ses, int indent, const char *title, int hint);
 
 #define SPAR_IS_BLANK_OR_VAR(tree) \
   ((DV_ARRAY_OF_POINTER == DV_TYPE_OF (tree)) && \
@@ -876,97 +890,97 @@ extern void spart_dump (void *tree_arg, dk_session_t * ses, int indent, const ch
 #define SPART_BAD_GP_SUBTYPE (ptrlong)(SMALLEST_POSSIBLE_POINTER-2)
 
 /*! The context of the macro processor */
-typedef struct spar_mproc_ctx_s
-{
-  SPART *smpc_context_gp;	/*!< A gp where the macroexpansion takes place, if notnull. */
-  caddr_t smpc_context_selid;	/*!< Selid of gp where the macroexpansion takes place. If notnull. */
-  caddr_t smpc_defbody_topselid;	/*!< The topmost selid of a defbody. it is replaced with smpc_context_selid when the body is instantiated. */
-  caddr_t smpc_defbody_currselid;	/*!< The current selid inside a defbody. It is replaced with concatenation of smpc_context_selid and itself when the body is instantiated. */
-  caddr_t smpc_defbody_currtabid;	/*!< The current tabid inside a defbody, it can be NULL. It is used for variables that would get tabid later but needs it right now. */
-  SPART *smpc_defm;		/*!< The defmacro that is being instantiated ATM */
-  SPART *smpc_mcall;		/*!< The macro call that should be replaced with the instantiated \c smpc_defm */
-  SPART **smpc_ins_membs;	/*!< Members made by the instantiation of gp macro that should be placed to the end of list of members of the context */
-  SPART **smpc_ins_filts;	/*!< Filters made by the instantiation of gp macro that should be placed to the end of list of filters of the context */
-  int smpc_unictr;		/*!< An unique serial number of the processor invocation. */
-} spar_mproc_ctx_t;
+     typedef struct spar_mproc_ctx_s
+     {
+       SPART *smpc_context_gp;	/*!< A gp where the macroexpansion takes place, if notnull. */
+       caddr_t smpc_context_selid;	/*!< Selid of gp where the macroexpansion takes place. If notnull. */
+       caddr_t smpc_defbody_topselid;	/*!< The topmost selid of a defbody. it is replaced with smpc_context_selid when the body is instantiated. */
+       caddr_t smpc_defbody_currselid;	/*!< The current selid inside a defbody. It is replaced with concatenation of smpc_context_selid and itself when the body is instantiated. */
+       caddr_t smpc_defbody_currtabid;	/*!< The current tabid inside a defbody, it can be NULL. It is used for variables that would get tabid later but needs it right now. */
+       SPART *smpc_defm;	/*!< The defmacro that is being instantiated ATM */
+       SPART *smpc_mcall;	/*!< The macro call that should be replaced with the instantiated \c smpc_defm */
+       SPART **smpc_ins_membs;	/*!< Members made by the instantiation of gp macro that should be placed to the end of list of members of the context */
+       SPART **smpc_ins_filts;	/*!< Filters made by the instantiation of gp macro that should be placed to the end of list of filters of the context */
+       int smpc_unictr;		/*!< An unique serial number of the processor invocation. */
+     } spar_mproc_ctx_t;
 
-extern caddr_t spar_var_name_of_ret_column (SPART * tree);
-extern caddr_t spar_alias_name_of_ret_column (SPART * tree);
+     extern caddr_t spar_var_name_of_ret_column (SPART * tree);
+     extern caddr_t spar_alias_name_of_ret_column (SPART * tree);
 /*! If the tree has a fixed value that is either plain SQL value or a QName (but not a typed literal or a literal with language)
 then the functions returns SPAR_LIT or SPAR_QNAME and sets \c cval_ret[0] to that value. */
-extern int spar_plain_const_value_of_tree (SPART * tree, ccaddr_t * cval_ret);
-extern caddr_t spar_boxed_exec_uid (sparp_t * sparp);
-extern caddr_t spar_immortal_exec_uname (sparp_t * sparp);
-extern SPART *spar_exec_uid_and_gs_cbk (sparp_t * sparp);
+     extern int spar_plain_const_value_of_tree (SPART * tree, ccaddr_t * cval_ret);
+     extern caddr_t spar_boxed_exec_uid (sparp_t * sparp);
+     extern caddr_t spar_immortal_exec_uname (sparp_t * sparp);
+     extern SPART *spar_exec_uid_and_gs_cbk (sparp_t * sparp);
 
 /*!< Returns whether default user perms on world graphs differ from default user perms on private graphs if only \req_perms matter and the rest is fully ignored.
 If they are the same then either there is no need in security checks or the check can be made by FILTER (g IN (__rgs_user_perms_clo (...), __rgs_user_perms_clo (...))) */
-extern int spar_world_and_private_perms_differ (sparp_t * sparp, int req_perms);
+     extern int spar_world_and_private_perms_differ (sparp_t * sparp, int req_perms);
 /*!< Returns statically known permissions on \c graph_iri.
 We assume that if permissions on the graph are "interesting" for some reason then the change in these permission may require query re-compilation.
 So if some factor may change some bits set in \c req_perms bitmask then a dependency from the factor is established for
 sparp->sparp_sparqre->sparqre_super_sc->sc_cc->cc_super_cc->cc_query
 If sparp->sparp_gs_app_callback is set then the "nobody" user is used, because the callback may cut permissions down to that level but we don't know that statically */
-extern int spar_graph_static_perms (sparp_t * sparp, caddr_t graph_iri, int req_perms);
+     extern int spar_graph_static_perms (sparp_t * sparp, caddr_t graph_iri, int req_perms);
 /*!< Returns if security testing is needed */
-extern int spar_graph_needs_security_testing (sparp_t * sparp, SPART * g_expn, int req_perms);
+     extern int spar_graph_needs_security_testing (sparp_t * sparp, SPART * g_expn, int req_perms);
 
 
 #ifdef MALLOC_DEBUG
-typedef SPART *spartlist_impl_t (sparp_t * sparp, ptrlong length, ptrlong type, ...);
-typedef SPART *spartlist_with_tail_impl_t (sparp_t * sparp, ptrlong length, caddr_t tail, ptrlong type, ...);
-typedef struct spartlist_track_s
-{
-  spartlist_impl_t *spartlist_ptr;
-  spartlist_with_tail_impl_t *spartlist_with_tail_ptr;
-} spartlist_track_t;
+     typedef SPART *spartlist_impl_t (sparp_t * sparp, ptrlong length, ptrlong type, ...);
+     typedef SPART *spartlist_with_tail_impl_t (sparp_t * sparp, ptrlong length, caddr_t tail, ptrlong type, ...);
+     typedef struct spartlist_track_s
+     {
+       spartlist_impl_t *spartlist_ptr;
+       spartlist_with_tail_impl_t *spartlist_with_tail_ptr;
+     } spartlist_track_t;
 
-spartlist_track_t *spartlist_track (const char *file, int line);
+     spartlist_track_t *spartlist_track (const char *file, int line);
 #define spartlist spartlist_track (__FILE__, __LINE__)->spartlist_ptr
 #define spartlist_with_tail spartlist_track (__FILE__, __LINE__)->spartlist_with_tail_ptr
 #else
-extern SPART *spartlist (sparp_t * sparp, ptrlong length, ptrlong type, ...);
-extern SPART *spartlist_with_tail (sparp_t * sparp, ptrlong length, caddr_t tail, ptrlong type, ...);
+     extern SPART *spartlist (sparp_t * sparp, ptrlong length, ptrlong type, ...);
+     extern SPART *spartlist_with_tail (sparp_t * sparp, ptrlong length, caddr_t tail, ptrlong type, ...);
 #define spartlist_impl spartlist
 #define spartlist_with_tail_impl spartlist_with_tail
 #endif
 
-extern caddr_t sparp_expand_qname_prefix (sparp_t * sparp, caddr_t qname);
-extern caddr_t sparp_expand_q_iri_ref (sparp_t * sparp, caddr_t ref);
+     extern caddr_t sparp_expand_qname_prefix (sparp_t * sparp, caddr_t qname);
+     extern caddr_t sparp_expand_q_iri_ref (sparp_t * sparp, caddr_t ref);
 
-extern caddr_t sparp_graph_sec_iri_to_id_nosignal (sparp_t * sparp, ccaddr_t qname);
-extern caddr_t sparp_graph_sec_id_to_iri_nosignal (sparp_t * sparp, iri_id_t iid);
-extern caddr_t sparp_iri_to_id_nosignal (sparp_t * sparp, ccaddr_t qname);	/*!< returns t_boxed IRI_ID or plain NULL pointer */
-extern ccaddr_t sparp_id_to_iri (sparp_t * sparp, iri_id_t iid);	/*!< returns t_boxed string or plain NULL pointer */
+     extern caddr_t sparp_graph_sec_iri_to_id_nosignal (sparp_t * sparp, ccaddr_t qname);
+     extern caddr_t sparp_graph_sec_id_to_iri_nosignal (sparp_t * sparp, iri_id_t iid);
+     extern caddr_t sparp_iri_to_id_nosignal (sparp_t * sparp, ccaddr_t qname);	/*!< returns t_boxed IRI_ID or plain NULL pointer */
+     extern ccaddr_t sparp_id_to_iri (sparp_t * sparp, iri_id_t iid);	/*!< returns t_boxed string or plain NULL pointer */
 
-extern caddr_t spar_strliteral (sparp_t * sparp, const char *sparyytext, int strg_is_long, int is_json);
-extern caddr_t spar_mkid (sparp_t * sparp, const char *prefix);
-extern void spar_change_sign (caddr_t * lit_ptr);
+     extern caddr_t spar_strliteral (sparp_t * sparp, const char *sparyytext, int strg_is_long, int is_json);
+     extern caddr_t spar_mkid (sparp_t * sparp, const char *prefix);
+     extern void spar_change_sign (caddr_t * lit_ptr);
 
-extern void sparp_define (sparp_t * sparp, caddr_t param, ptrlong value_lexem_type, caddr_t value);
+     extern void sparp_define (sparp_t * sparp, caddr_t param, ptrlong value_lexem_type, caddr_t value);
 
-extern SPART *spar_find_defmacro_by_iri_or_fields (sparp_t * sparp, const char *mname, SPART ** fields);
-extern void sparp_defmacro_store (sparp_t * sparp, SPART * defm);
-extern SPART *sparp_defmacro_init (sparp_t * sparp, caddr_t mname);
-extern void sparp_make_defmacro_paramnames_from_template (sparp_t * sparp, SPART * defm);
-extern void sparp_defmacro_finalize (sparp_t * sparp, SPART * body);
-extern void sparp_check_dm_arg_for_redecl (sparp_t * sparp, dk_set_t recent, caddr_t dm_arg_vname);
-extern void spar_gp_init (sparp_t * sparp, ptrlong subtype);
+     extern SPART *spar_find_defmacro_by_iri_or_fields (sparp_t * sparp, const char *mname, SPART ** fields);
+     extern void sparp_defmacro_store (sparp_t * sparp, SPART * defm);
+     extern SPART *sparp_defmacro_init (sparp_t * sparp, caddr_t mname);
+     extern void sparp_make_defmacro_paramnames_from_template (sparp_t * sparp, SPART * defm);
+     extern void sparp_defmacro_finalize (sparp_t * sparp, SPART * body);
+     extern void sparp_check_dm_arg_for_redecl (sparp_t * sparp, dk_set_t recent, caddr_t dm_arg_vname);
+     extern void spar_gp_init (sparp_t * sparp, ptrlong subtype);
 #define SPARP_ENV_CONTEXT_GP_SUBTYPE(sparp) ((ptrlong)((sparp)->sparp_env->spare_context_gp_subtypes->data))
-extern SPART *spar_gp_finalize (sparp_t * sparp, SPART ** options);
-extern SPART *spar_gp_finalize_with_subquery (sparp_t * sparp, SPART ** options, SPART * subquery);
-extern SPART *spar_gp_finalize_with_inline_data (sparp_t * sparp, SPART ** vars, SPART *** rows);
-extern void spar_gp_add_member (sparp_t * sparp, SPART * memb);
+     extern SPART *spar_gp_finalize (sparp_t * sparp, SPART ** options);
+     extern SPART *spar_gp_finalize_with_subquery (sparp_t * sparp, SPART ** options, SPART * subquery);
+     extern SPART *spar_gp_finalize_with_inline_data (sparp_t * sparp, SPART ** vars, SPART *** rows);
+     extern void spar_gp_add_member (sparp_t * sparp, SPART * memb);
 #define SPAR_TRIPLE_TRICK_TRANSITIVE	0x1	/*!< Make transitive subquery or a repeating property path, due to transitivity in inference rules or options */
 #define SPAR_TRIPLE_TRICK_INV_UNION	0x2	/*!< Make union gp or property path leaf with '^', due to inverse properties in inference rules */
 #define SPAR_TRIPLE_TRICK_MACRO		0x4	/*!< Check triple pattern for matchong to macro signatures and make macro invocation instead of a triple */
 /*! Makes and adds a triple or a macro call or a filter like CONTAINS or a SELECT group for transitive prop or a UNION prop with inverse props or combination of few, with optional filter on graph.
 \c banned tricks is a bitmask that is 0 by default, SPAR_ADD_TRIPLELIKE_NO_xxx */
-extern SPART *spar_gp_add_triplelike (sparp_t * sparp, SPART * graph, SPART * subject, SPART * predicate, SPART * object,
+     extern SPART *spar_gp_add_triplelike (sparp_t * sparp, SPART * graph, SPART * subject, SPART * predicate, SPART * object,
     SPART ** sinv_idx_and_qms, SPART ** options, int banned_tricks);
 /*! Checks if the given \c filt is a freetext filter. If it is so and \c base_triple is not NULL then it additionally checks if var name matches
 \returns NULL if filter is not free-text, UNAME like "bif:contains" if it is a free-text predicate */
-extern caddr_t spar_filter_is_freetext_or_rtree (sparp_t * sparp, SPART * filt, SPART * base_triple);
+     extern caddr_t spar_filter_is_freetext_or_rtree (sparp_t * sparp, SPART * filt, SPART * base_triple);
 #define SPAR_FT_TYPE_IS_GEO(ft_type) ( \
   (uname_bif_c_spatial_contains		== (ft_type)) \
   || (uname_bif_c_spatial_intersects	== (ft_type)) \
@@ -977,160 +991,163 @@ extern caddr_t spar_filter_is_freetext_or_rtree (sparp_t * sparp, SPART * filt, 
 #define SPAR_TRIPLE_SHOULD_HAVE_FT_TYPE		0x01
 #define SPAR_TRIPLE_SHOULD_HAVE_NO_FT_TYPE	0x02
 #define SPAR_TRIPLE_FOR_FT_SHOULD_EXIST		0x04
-extern SPART *sparp_find_triple_with_var_obj_of_freetext (sparp_t * sparp, SPART * gp, SPART * filt, int make_ft_type_check);
-extern void spar_gp_finalize_binds (sparp_t * sparp, dk_set_t bind_revlist);
-extern void spar_gp_add_filter (sparp_t * sparp, SPART * filt, int filt_is_movable);
-extern void spar_gp_add_filters_for_graph (sparp_t * sparp, SPART * graph_expn, int graph_is_named,
+     extern SPART *sparp_find_triple_with_var_obj_of_freetext (sparp_t * sparp, SPART * gp, SPART * filt, int make_ft_type_check);
+     extern void spar_gp_finalize_binds (sparp_t * sparp, dk_set_t bind_revlist);
+     extern void spar_gp_add_filter (sparp_t * sparp, SPART * filt, int filt_is_movable);
+     extern void spar_gp_add_filters_for_graph (sparp_t * sparp, SPART * graph_expn, int graph_is_named,
     int suppress_filters_for_good_names);
-extern void spar_gp_add_filters_for_named_graph (sparp_t * sparp);
+     extern void spar_gp_add_filters_for_named_graph (sparp_t * sparp);
 /*! Makes an expression for list of possible source graphs (IRI or sponge enxpns), with possible security filtering via \c SPECIAL::sql:RDF_GRAPH_GROUP_LIST_GET().
 \c from_type, from_group_type and from2_subtype are zeroes to ignore or SPART_GRAPH_xxx to indicate the needed names of sources.
 \c req_perms is bitmask of required permissions (usually 0x0 for SPART_GRAPH_NOT_xxx lists and at least RDF_GRAPH_PERM_READ for "positive" lists).
 \returns a bif:vector or something like if \c needle_in is NULL, otherwise it returns a boolean filter "needle_in IN list" */
-extern SPART *spar_make_list_of_sources_expn (sparp_t * sparp, ptrlong from_subtype, ptrlong from_group_subtype,
+     extern SPART *spar_make_list_of_sources_expn (sparp_t * sparp, ptrlong from_subtype, ptrlong from_group_subtype,
     ptrlong from2_subtype, ptrlong req_perms, SPART * needle_in);
-extern SPART *spar_add_propvariable (sparp_t * sparp, SPART * lvar, int opcode, SPART * verb_qname, int verb_lexem_type,
+     extern SPART *spar_add_propvariable (sparp_t * sparp, SPART * lvar, int opcode, SPART * verb_qname, int verb_lexem_type,
     caddr_t verb_lexem_text);
 /*! Creates a tree for service invocation but does not add it to the array of all invocations.
 Use spar_add_service_inv_to_sg() to assign sinv.own_idx and store it in sparp->sparp_sg->sg_sinvs .
 Also make sure that sparp->sparp_query_uses_sinvs++ is made somewhere before the creation for the current sparp. */
-extern SPART *spar_make_service_inv (sparp_t * sparp, SPART * endpoint, dk_set_t all_options, ptrlong permitted_syntax,
+     extern SPART *spar_make_service_inv (sparp_t * sparp, SPART * endpoint, dk_set_t all_options, ptrlong permitted_syntax,
     SPART ** sources, caddr_t sinv_storage_uri, int silent);
 /*! Returns string like "SERVICE <iri> at line NNN" or "SERVICE ?var at line NNN" (for error reporting) */
-extern caddr_t spar_sinv_naming (sparp_t * sparp, SPART * sinv);
+     extern caddr_t spar_sinv_naming (sparp_t * sparp, SPART * sinv);
 /*! Assigns sinv->_.sinv.own_idx and store the pointer to invocation in sparp->sparp_sg->sg_sinvs. After that it is legal to refer to quad maps inside the sinv and to try optimizations */
-extern void spar_add_service_inv_to_sg (sparp_t * sparp, SPART * sinv);
-extern caddr_t spar_compose_report_flag (sparp_t * sparp);
-extern SPART *spar_simplify_graph_to_patch (sparp_t * sparp, SPART * g);
-extern void spar_compose_retvals_of_construct (sparp_t * sparp, SPART * top, SPART * ctor_gp, const char *formatter,
+     extern void spar_add_service_inv_to_sg (sparp_t * sparp, SPART * sinv);
+     extern caddr_t spar_compose_report_flag (sparp_t * sparp);
+     extern SPART *spar_simplify_graph_to_patch (sparp_t * sparp, SPART * g);
+     extern void spar_compose_retvals_of_construct (sparp_t * sparp, SPART * top, SPART * ctor_gp, const char *formatter,
     const char *agg_formatter, const char *agg_mdata);
-extern void spar_compose_retvals_of_insert_or_delete (sparp_t * sparp, SPART * top, SPART * graph_to_patch, SPART * ctor_gp);
-extern void spar_compose_retvals_of_modify (sparp_t * sparp, SPART * top, SPART * graph_to_patch, SPART * del_ctor_gp,
+     extern void spar_compose_retvals_of_insert_or_delete (sparp_t * sparp, SPART * top, SPART * graph_to_patch, SPART * ctor_gp);
+     extern void spar_compose_retvals_of_modify (sparp_t * sparp, SPART * top, SPART * graph_to_patch, SPART * del_ctor_gp,
     SPART * ins_ctor_gp);
-extern void spar_compose_ctor_triples_from_where_gp (sparp_t * sparp, int subtype, SPART * gp, SPART * g, dk_set_t * ret_tmpls);
-extern SPART *spar_compose_ctor_gp_from_where_gp (sparp_t * sparp, int subtype, SPART * where_gp, SPART * gtp);
-extern void spar_compose_retvals_of_delete_from_wm (sparp_t * sparp, SPART * tree, SPART * graph_to_patch);
-extern int spar_optimize_delete_of_single_triple_pattern (sparp_t * sparp, SPART * top);
-extern void spar_optimize_retvals_of_insert_or_delete (sparp_t * sparp, SPART * top);
-extern void spar_optimize_retvals_of_modify (sparp_t * sparp, SPART * top);
-extern SPART **spar_retvals_of_describe (sparp_t * sparp, SPART * req_top, SPART ** retvals, SPART * limit, SPART * offset);
-extern void spar_add_rgc_vars_and_consts_from_retvals (sparp_t * sparp, SPART ** retvals);
-extern SPART *spar_make_wm (sparp_t * sparp, SPART * pattern, SPART ** groupings, SPART * having, SPART ** order, SPART * limit,
-    SPART * offset, SPART * binv);
+     extern void spar_compose_ctor_triples_from_where_gp (sparp_t * sparp, int subtype, SPART * gp, SPART * g,
+    dk_set_t * ret_tmpls);
+     extern SPART *spar_compose_ctor_gp_from_where_gp (sparp_t * sparp, int subtype, SPART * where_gp, SPART * gtp);
+     extern void spar_compose_retvals_of_delete_from_wm (sparp_t * sparp, SPART * tree, SPART * graph_to_patch);
+     extern int spar_optimize_delete_of_single_triple_pattern (sparp_t * sparp, SPART * top);
+     extern void spar_optimize_retvals_of_insert_or_delete (sparp_t * sparp, SPART * top);
+     extern void spar_optimize_retvals_of_modify (sparp_t * sparp, SPART * top);
+     extern SPART **spar_retvals_of_describe (sparp_t * sparp, SPART * req_top, SPART ** retvals, SPART * limit, SPART * offset);
+     extern void spar_add_rgc_vars_and_consts_from_retvals (sparp_t * sparp, SPART ** retvals);
+     extern SPART *spar_make_wm (sparp_t * sparp, SPART * pattern, SPART ** groupings, SPART * having, SPART ** order,
+    SPART * limit, SPART * offset, SPART * binv);
 /*! Creates SPAR_REQ_TOP tree or a codegen for some special case. A macroexpansion is made before recognizing special cases. */
-extern SPART *spar_make_top_or_special_case_from_wm (sparp_t * sparp, ptrlong subtype, SPART ** retvals, SPART * wm);
-extern SPART *spar_make_bindings_inv_with_fake_equivs (sparp_t * sparp, SPART ** vars, SPART *** data_rows, SPART * wrapper_gp);
-extern SPART **spar_make_sources_like_top (sparp_t * sparp, ptrlong top_subtype);
-extern SPART *spar_make_top (sparp_t * sparp, ptrlong subtype, SPART ** retvals,
+     extern SPART *spar_make_top_or_special_case_from_wm (sparp_t * sparp, ptrlong subtype, SPART ** retvals, SPART * wm);
+     extern SPART *spar_make_bindings_inv_with_fake_equivs (sparp_t * sparp, SPART ** vars, SPART *** data_rows,
+    SPART * wrapper_gp);
+     extern SPART **spar_make_sources_like_top (sparp_t * sparp, ptrlong top_subtype);
+     extern SPART *spar_make_top (sparp_t * sparp, ptrlong subtype, SPART ** retvals,
     SPART * pattern, SPART ** groupings, SPART * having, SPART ** order, SPART * limit, SPART * offset, SPART * binv);
-extern SPART *spar_make_plain_triple (sparp_t * sparp, SPART * graph, SPART * subject, SPART * predicate, SPART * object,
+     extern SPART *spar_make_plain_triple (sparp_t * sparp, SPART * graph, SPART * subject, SPART * predicate, SPART * object,
     SPART ** sinv_idx_and_qms, SPART ** options);
-extern SPART *spar_make_ppath (sparp_t * sparp, char subtype, SPART * part1, SPART * part2, ptrlong mincount, ptrlong maxcount);
-extern SPART *spar_bind_prepare (sparp_t * sparp, SPART * expn, int bind_has_scalar_subqs);
-extern SPART *spar_make_param_or_variable (sparp_t * sparp, caddr_t name);
-extern SPART *spar_make_variable (sparp_t * sparp, caddr_t name);
-extern SPART *spar_make_macropu (sparp_t * sparp, caddr_t name, ptrlong pos);
-extern SPART *spar_make_blank_node (sparp_t * sparp, caddr_t name, int bracketed);
-extern SPART *spar_make_fake_blank_node (sparp_t * sparp);	/*!< Not for use in real parse trees! */
+     extern SPART *spar_make_ppath (sparp_t * sparp, char subtype, SPART * part1, SPART * part2, ptrlong mincount,
+    ptrlong maxcount);
+     extern SPART *spar_bind_prepare (sparp_t * sparp, SPART * expn, int bind_has_scalar_subqs);
+     extern SPART *spar_make_param_or_variable (sparp_t * sparp, caddr_t name);
+     extern SPART *spar_make_variable (sparp_t * sparp, caddr_t name);
+     extern SPART *spar_make_macropu (sparp_t * sparp, caddr_t name, ptrlong pos);
+     extern SPART *spar_make_blank_node (sparp_t * sparp, caddr_t name, int bracketed);
+     extern SPART *spar_make_fake_blank_node (sparp_t * sparp);	/*!< Not for use in real parse trees! */
 
 #define SPAR_ML_SAFEST			0
 #define SPAR_ML_MAKE_BNODE_IF_NULL	1
 #define SPAR_ML_MAKE_VAR_IF_NULL	2
 #define SPAR_ML_RESULT_FROM_SANDBOX	3
-extern SPART *spar_make_literal_from_sql_box (sparp_t * sparp, caddr_t box, int mode);
-extern SPART *spar_make_qname_or_literal_from_rvr (sparp_t * sparp, rdf_val_range_t * rvr, int make_naked_box_if_possible);
+     extern SPART *spar_make_literal_from_sql_box (sparp_t * sparp, caddr_t box, int mode);
+     extern SPART *spar_make_qname_or_literal_from_rvr (sparp_t * sparp, rdf_val_range_t * rvr, int make_naked_box_if_possible);
 
 #define SPAR_MAKE_BOOL_LITERAL(sparp,v) (spartlist ((sparp), 5, SPAR_LIT, (SPART *)t_box_num_nonull((v)?1:0), uname_xmlschema_ns_uri_hash_boolean, NULL, t_box_string((v)?"true":"false")))
 
-extern SPART *spar_make_typed_literal (sparp_t * sparp, caddr_t strg, caddr_t type, caddr_t lang);
+     extern SPART *spar_make_typed_literal (sparp_t * sparp, caddr_t strg, caddr_t type, caddr_t lang);
 /*! Creates a new FROM / FROM NAMED / NOT FROM / NOT FROM NAMED source description and pushes it into context for future storing in req_top.sources.
 The freeze_ignore_mask lists SPARP_SSRC_FROZEN_xxx bits that can be ignored, it is zero during processing of the query text but may be nonzero before that. */
-extern void sparp_make_and_push_new_graph_source (sparp_t * sparp, ptrlong subtype, SPART * iri_expn, SPART ** options,
+     extern void sparp_make_and_push_new_graph_source (sparp_t * sparp, ptrlong subtype, SPART * iri_expn, SPART ** options,
     int freeze_ignore_mask);
-extern SPART *sparp_make_graph_precode (sparp_t * sparp, ptrlong subtype, SPART * iriref, SPART ** options);
+     extern SPART *sparp_make_graph_precode (sparp_t * sparp, ptrlong subtype, SPART * iriref, SPART ** options);
 /*! Returns whether \c ctor_gp contains at least one use of default graph, so it depends on WITH <graph_iri> or the like */
-extern int spar_ctor_uses_default_graph (SPART * ctor_gp);
-extern SPART *spar_default_sparul_target (sparp_t * sparp, const char *reason_to_use);
-extern SPART *spar_make_regex_or_like_or_eq (sparp_t * sparp, SPART * strg, SPART * regexpn);
-extern void spar_verify_funcall_security (sparp_t * sparp, int *is_agg_ret, const char **fname_ptr, SPART ** args);
+     extern int spar_ctor_uses_default_graph (SPART * ctor_gp);
+     extern SPART *spar_default_sparul_target (sparp_t * sparp, const char *reason_to_use);
+     extern SPART *spar_make_regex_or_like_or_eq (sparp_t * sparp, SPART * strg, SPART * regexpn);
+     extern void spar_verify_funcall_security (sparp_t * sparp, int *is_agg_ret, const char **fname_ptr, SPART ** args);
 
 /*! Tries to run a BIF \c funname in a sandbox with \c argcount number of arguments from \c args.
 The function should be pure, at least for the given arguments (but there is no check for bmd->bmd_is_pure inside it)
 \c trouble_ret is to return the sort of the problem: 0 means that a result literal (or bif:signal call) is calculated and returned;
 1 means non-literal argument, that may change after future optimizations;
 2 means weird litaral argument or weird type of the result, that will not be changed by any optimization, no need to re-try. */
-extern SPART *spar_run_pure_bif_in_sandbox (sparp_t * sparp, const char *funname, SPART ** args, int argcount,
+     extern SPART *spar_run_pure_bif_in_sandbox (sparp_t * sparp, const char *funname, SPART ** args, int argcount,
     bif_metadata_ptr_t bmd, int *trouble_ret);
-extern SPART *spar_make_funcall (sparp_t * sparp, int aggregate_mode, const char *funname, SPART ** arguments);
-extern SPART *sparp_make_builtin_call (sparp_t * sparp, ptrlong bif_id, SPART ** arguments);
-extern SPART *sparp_make_macro_call (sparp_t * sparp, const char *funname, int call_is_explicit, SPART ** arguments);
-extern int sparp_namesake_macro_param (sparp_t * sparp, SPART * dm, caddr_t param_name);
-extern SPART *spar_make_sparul_clear (sparp_t * sparp, SPART * graph_precode, int silent);
-extern SPART *spar_make_sparul_load (sparp_t * sparp, SPART * graph_precode, SPART * src_precode, int silent);
-extern SPART *spar_make_sparul_load_service_data (sparp_t * sparp, SPART * proxy_iri_precode, SPART * service_iri_precode,
+     extern SPART *spar_make_funcall (sparp_t * sparp, int aggregate_mode, const char *funname, SPART ** arguments);
+     extern SPART *sparp_make_builtin_call (sparp_t * sparp, ptrlong bif_id, SPART ** arguments);
+     extern SPART *sparp_make_macro_call (sparp_t * sparp, const char *funname, int call_is_explicit, SPART ** arguments);
+     extern int sparp_namesake_macro_param (sparp_t * sparp, SPART * dm, caddr_t param_name);
+     extern SPART *spar_make_sparul_clear (sparp_t * sparp, SPART * graph_precode, int silent);
+     extern SPART *spar_make_sparul_load (sparp_t * sparp, SPART * graph_precode, SPART * src_precode, int silent);
+     extern SPART *spar_make_sparul_load_service_data (sparp_t * sparp, SPART * proxy_iri_precode, SPART * service_iri_precode,
     int silent);
-extern SPART *spar_make_sparul_create (sparp_t * sparp, SPART * graph_precode, int silent);
-extern SPART *spar_make_sparul_drop (sparp_t * sparp, SPART * graph_precode, int silent);
-extern SPART *spar_make_sparul_copymoveadd (sparp_t * sparp, ptrlong opcode, SPART * from_graph_precode, SPART * to_graph_precode,
-    int silent);
+     extern SPART *spar_make_sparul_create (sparp_t * sparp, SPART * graph_precode, int silent);
+     extern SPART *spar_make_sparul_drop (sparp_t * sparp, SPART * graph_precode, int silent);
+     extern SPART *spar_make_sparul_copymoveadd (sparp_t * sparp, ptrlong opcode, SPART * from_graph_precode,
+    SPART * to_graph_precode, int silent);
 
-extern SPART *spar_make_topmost_sparul_sql (sparp_t * sparp, SPART ** actions);
-extern SPART *spar_make_fake_action_solution (sparp_t * sparp);
-extern SPART *spar_make_drop_macro_lib (sparp_t * sparp, SPART * sml_precode, int silent);
+     extern SPART *spar_make_topmost_sparul_sql (sparp_t * sparp, SPART ** actions);
+     extern SPART *spar_make_fake_action_solution (sparp_t * sparp);
+     extern SPART *spar_make_drop_macro_lib (sparp_t * sparp, SPART * sml_precode, int silent);
 
 /*! Do nothing or macroexpand something locally or alters values by spar_macroprocess_treelist. Returns new version of \c trees, destroying and/or reusing the original */
-extern SPART **spar_macroprocess_define_list (sparp_t * sparp, SPART ** trees, spar_mproc_ctx_t * ctx);
+     extern SPART **spar_macroprocess_define_list (sparp_t * sparp, SPART ** trees, spar_mproc_ctx_t * ctx);
 /*! Do nothing or macroexpand something locally or alters the whole list by inserting new items (if an item is expanded into list). Returns new version of \c trees, destroying and/or reusing the original */
-extern SPART **spar_macroprocess_treelist (sparp_t * sparp, SPART ** trees, int begin_with, spar_mproc_ctx_t * ctx);
-extern SPART *spar_macroprocess_tree (sparp_t * sparp, SPART * tree, spar_mproc_ctx_t * ctx);
+     extern SPART **spar_macroprocess_treelist (sparp_t * sparp, SPART ** trees, int begin_with, spar_mproc_ctx_t * ctx);
+     extern SPART *spar_macroprocess_tree (sparp_t * sparp, SPART * tree, spar_mproc_ctx_t * ctx);
 
-extern void spar_fill_lexem_bufs (sparp_t * sparp);
-extern void spar_copy_lexem_bufs (sparp_t * tgt_sparp, spar_lexbmk_t * begin, spar_lexbmk_t * end, int skip_last_n);
+     extern void spar_fill_lexem_bufs (sparp_t * sparp);
+     extern void spar_copy_lexem_bufs (sparp_t * tgt_sparp, spar_lexbmk_t * begin, spar_lexbmk_t * end, int skip_last_n);
 
-extern id_hashed_key_t spar_var_hash (caddr_t p_data);
-extern int spar_var_cmp (caddr_t p_data1, caddr_t p_data2);
+     extern id_hashed_key_t spar_var_hash (caddr_t p_data);
+     extern int spar_var_cmp (caddr_t p_data1, caddr_t p_data2);
 
-extern sparp_t *sparp_clone_for_variant (sparp_t * sparp);
-extern void spar_env_push (sparp_t * sparp);
-extern void spar_env_pop (sparp_t * sparp);
+     extern sparp_t *sparp_clone_for_variant (sparp_t * sparp);
+     extern void spar_env_push (sparp_t * sparp);
+     extern void spar_env_pop (sparp_t * sparp);
 
 /*extern shuric_vtable_t shuric_vtable__sparqr;*/
 
-extern void sparp_jso_push_affected (sparp_t * sparp, ccaddr_t inst_iri);
-extern void sparp_jso_push_deleted (sparp_t * sparp, ccaddr_t class_iri, ccaddr_t inst_iri);
+     extern void sparp_jso_push_affected (sparp_t * sparp, ccaddr_t inst_iri);
+     extern void sparp_jso_push_deleted (sparp_t * sparp, ccaddr_t class_iri, ccaddr_t inst_iri);
 
 /* Functions for Quad Map definition statements */
-extern void spar_qm_clean_locals (sparp_t * sparp);
-extern void spar_qm_push_bookmark (sparp_t * sparp);
-extern void spar_qm_pop_bookmark (sparp_t * sparp);
-extern void spar_qm_push_local (sparp_t * sparp, int key, SPART * value, int can_overwrite);
-extern SPART *spar_qm_get_local (sparp_t * sparp, int key, int error_if_missing);
-extern void spar_qm_pop_key (sparp_t * sparp, int key_to_pop);
+     extern void spar_qm_clean_locals (sparp_t * sparp);
+     extern void spar_qm_push_bookmark (sparp_t * sparp);
+     extern void spar_qm_pop_bookmark (sparp_t * sparp);
+     extern void spar_qm_push_local (sparp_t * sparp, int key, SPART * value, int can_overwrite);
+     extern SPART *spar_qm_get_local (sparp_t * sparp, int key, int error_if_missing);
+     extern void spar_qm_pop_key (sparp_t * sparp, int key_to_pop);
 
-extern caddr_t spar_make_iri_from_template (sparp_t * sparp, caddr_t tmpl);
+     extern caddr_t spar_make_iri_from_template (sparp_t * sparp, caddr_t tmpl);
 
 #define SPAR_TABLE_IS_SQLQUERY(strg) (('/' == strg[0]) && ('*' == strg[1]))
 #define SPAR_SQLQUERY_PLACE(strg) t_box_dv_short_nchars (strg + 2, strstr (strg, "*/") - (strg+2))
 
-extern caddr_t spar_qm_table_or_sqlquery_report_name (caddr_t atbl);
-extern caddr_t spar_qm_find_base_alias (sparp_t * sparp, caddr_t descendant_alias);
-extern caddr_t spar_qm_find_base_table_or_sqlquery (sparp_t * sparp, caddr_t descendant_alias);
-extern dk_set_t spar_qm_find_descendants_of_alias (sparp_t * sparp, caddr_t base_alias);
-extern void spar_qm_add_aliased_table_or_sqlquery (sparp_t * sparp, caddr_t parent_qtable, caddr_t new_alias);
-extern void spar_qm_add_aliased_alias (sparp_t * sparp, caddr_t parent_alias, caddr_t new_alias);
-extern void spar_qm_add_table_filter (sparp_t * sparp, caddr_t tmpl);
-extern void spar_qm_add_text_literal (sparp_t * sparp, caddr_t ft_type, caddr_t ft_table_alias, SPART * ft_col, SPART ** qmv_cols,
-    SPART ** options);
-extern void spar_qm_check_filter_aliases (sparp_t * sparp, dk_set_t used_aliases);
-extern SPART *sparp_make_qm_sqlcol (sparp_t * sparp, ptrlong type, caddr_t name);
-extern caddr_t spar_qm_collist_crc (SPART ** cols, const char *prefix, int ignore_order);
-extern SPART *spar_make_qm_col_desc (sparp_t * sparp, SPART * col);
-extern SPART *spar_make_qm_value (sparp_t * sparp, caddr_t format_name, SPART ** cols);
-extern void spar_qm_find_all_conditions (sparp_t * sparp, dk_set_t map_aliases, dk_set_t * cond_tmpls_ptr);
-extern SPART *spar_make_qm_sql (sparp_t * sparp, const char *fname, SPART ** fixed, SPART ** named);
-extern SPART *spar_make_vector_qm_sql (sparp_t * sparp, SPART ** fixed);
-extern SPART *spar_make_topmost_qm_sql (sparp_t * sparp);
-extern SPART *spar_qm_make_empty_mapping (sparp_t * sparp, caddr_t qm_id, SPART ** options);
-extern SPART *spar_qm_make_real_mapping (sparp_t * sparp, caddr_t qm_id, SPART ** options);
+     extern caddr_t spar_qm_table_or_sqlquery_report_name (caddr_t atbl);
+     extern caddr_t spar_qm_find_base_alias (sparp_t * sparp, caddr_t descendant_alias);
+     extern caddr_t spar_qm_find_base_table_or_sqlquery (sparp_t * sparp, caddr_t descendant_alias);
+     extern dk_set_t spar_qm_find_descendants_of_alias (sparp_t * sparp, caddr_t base_alias);
+     extern void spar_qm_add_aliased_table_or_sqlquery (sparp_t * sparp, caddr_t parent_qtable, caddr_t new_alias);
+     extern void spar_qm_add_aliased_alias (sparp_t * sparp, caddr_t parent_alias, caddr_t new_alias);
+     extern void spar_qm_add_table_filter (sparp_t * sparp, caddr_t tmpl);
+     extern void spar_qm_add_text_literal (sparp_t * sparp, caddr_t ft_type, caddr_t ft_table_alias, SPART * ft_col,
+    SPART ** qmv_cols, SPART ** options);
+     extern void spar_qm_check_filter_aliases (sparp_t * sparp, dk_set_t used_aliases);
+     extern SPART *sparp_make_qm_sqlcol (sparp_t * sparp, ptrlong type, caddr_t name);
+     extern caddr_t spar_qm_collist_crc (SPART ** cols, const char *prefix, int ignore_order);
+     extern SPART *spar_make_qm_col_desc (sparp_t * sparp, SPART * col);
+     extern SPART *spar_make_qm_value (sparp_t * sparp, caddr_t format_name, SPART ** cols);
+     extern void spar_qm_find_all_conditions (sparp_t * sparp, dk_set_t map_aliases, dk_set_t * cond_tmpls_ptr);
+     extern SPART *spar_make_qm_sql (sparp_t * sparp, const char *fname, SPART ** fixed, SPART ** named);
+     extern SPART *spar_make_vector_qm_sql (sparp_t * sparp, SPART ** fixed);
+     extern SPART *spar_make_topmost_qm_sql (sparp_t * sparp);
+     extern SPART *spar_qm_make_empty_mapping (sparp_t * sparp, caddr_t qm_id, SPART ** options);
+     extern SPART *spar_qm_make_real_mapping (sparp_t * sparp, caddr_t qm_id, SPART ** options);
 
 #endif

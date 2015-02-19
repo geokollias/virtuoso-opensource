@@ -4478,6 +4478,23 @@ sqlg_ts_sort_read_mask (sql_comp_t * sc, table_source_t * ts)
     k_inx++;
   }
   END_DO_BOX;
+  if (!setp->setp_org_slots)
+    {
+      DO_BOX (state_slot_t *, ssl, inx, setp->setp_keys_box)
+      {
+	if (ssl_list_member (ks->ks_out_slots, ssl->ssl_index))
+	  mask[k_inx] = 1;
+	k_inx++;
+      }
+      END_DO_BOX;
+      DO_BOX (state_slot_t *, ssl, inx, setp->setp_dependent_box)
+      {
+	if (ssl_list_member (ks->ks_out_slots, ssl->ssl_index))
+	  mask[k_inx] = 1;
+	k_inx++;
+      }
+      END_DO_BOX;
+    }
   return mask;
 }
 

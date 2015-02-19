@@ -105,17 +105,17 @@ extern void iso8601_or_odbc_string_to_dt_1 (const char *str, char *dt, int dtfla
 
 #define odbc_string_to_any_dt(str,dt,err_msg_ret) \
   iso8601_or_odbc_string_to_dt ((str), (dt), \
-    (DTFLAG_DATE | DTFLAG_TIME | DTFLAG_TIMEZONE | DTFLAG_ALLOW_ODBC_SYNTAX | DTFLAG_T_FORMAT_SETS_TZL | DTFLAG_FORMAT_SETS_FLAGS | \
+    (DTFLAG_DATE | DTFLAG_TIME | DTFLAG_TIMEZONE | DTFLAG_ALLOW_ODBC_SYNTAX | DTFLAG_ALLOW_JAVA_SYNTAX | DTFLAG_T_FORMAT_SETS_TZL | DTFLAG_FORMAT_SETS_FLAGS | \
       ((DT_TZL_PREFER == timezoneless_datetimes) ? DTFLAG_DATES_AND_TIMES_ARE_ISO : 0)), \
     DT_TYPE_DATETIME, err_msg_ret )
 #define odbc_string_to_time_dt(str,dt,err_msg_ret) \
   iso8601_or_odbc_string_to_dt ((str), (dt), \
-    (DTFLAG_TIME | DTFLAG_TIMEZONE | DTFLAG_ALLOW_ODBC_SYNTAX | DTFLAG_T_FORMAT_SETS_TZL | DTFLAG_FORMAT_SETS_FLAGS | DTFLAG_FORCE_DAY_ZERO | \
+    (DTFLAG_TIME | DTFLAG_TIMEZONE | DTFLAG_ALLOW_ODBC_SYNTAX | DTFLAG_ALLOW_JAVA_SYNTAX | DTFLAG_T_FORMAT_SETS_TZL | DTFLAG_FORMAT_SETS_FLAGS | DTFLAG_FORCE_DAY_ZERO | \
       ((DT_TZL_PREFER == timezoneless_datetimes) ? DTFLAG_DATES_AND_TIMES_ARE_ISO : 0)), \
     DT_TYPE_TIME, err_msg_ret )
 #define iso8601_string_to_datetime_dt(str,dt,err_msg_ret) \
   iso8601_or_odbc_string_to_dt ((str), (dt), \
-    (DTFLAG_DATE | DTFLAG_TIME | DTFLAG_TIMEZONE | DTFLAG_T_FORMAT_SETS_TZL | DTFLAG_DATES_AND_TIMES_ARE_ISO), \
+    (DTFLAG_DATE | DTFLAG_TIME | DTFLAG_TIMEZONE | DTFLAG_ALLOW_JAVA_SYNTAX | DTFLAG_T_FORMAT_SETS_TZL | DTFLAG_DATES_AND_TIMES_ARE_ISO), \
     DT_TYPE_DATETIME, err_msg_ret )
 
 void dt_to_tv (char *dt, char *dv);

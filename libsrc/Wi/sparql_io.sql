@@ -3851,7 +3851,10 @@ create procedure WS.WS."/!sparql-graph-crud/" (inout path varchar, inout params 
   declare user_id varchar;
   declare reqbegin varchar;
   declare graph_uri varchar;
+  declare colonspace_pos integer;
   declare graph_uri_is_relative integer;
+  {
+  whenever sqlstate '*' goto err; /* see below */
   -- dbg_obj_princ ('===============');
   -- dbg_obj_princ ('===============');
   -- dbg_obj_princ ('===============');
@@ -4013,7 +4016,7 @@ graph_processing:
         http_request_status ('HTTP/1.1 204 No Content');
       return;
     }
-  else if (reqbegin like 'DELETE%')
+  if (reqbegin like 'DELETE%')
     {
       set_user_id (user_id, 1);
       if (not (exists (sparql define input:storage "" select (1) where { graph `iri(?:graph_uri)` { ?s ?p ?o }})))
@@ -4025,7 +4028,7 @@ graph_processing:
       commit work;
       return;
     }
-  else if (reqbegin like 'GET%')
+  if (reqbegin like 'GET%')
     {
       if (not (exists (sparql define input:storage "" select (1) where { graph `iri(?:graph_uri)` { ?s ?p ?o }})))
         {
@@ -4039,11 +4042,23 @@ graph_processing:
           params ), lines);
       return;
     }
-  else
+  http_request_status ('HTTP/1.1 501 Method Not Implemented');
+  return;
+  }
+err:
+  colonspace_pos := strstr (__SQL_MESSAGE, ': ');
+  if (colonspace_pos is not null and colonspace_pos < 50)
     {
-      http_request_status ('HTTP/1.1 501 Method Not Implemented');
-      return;
+      declare msg_begin varchar;
+      msg_begin := "LEFT" (__SQL_MESSAGE, colonspace_pos+1);
+      if (strstr (msg_begin, ':SECURITY:') is not null)
+        {
+          DB.DBA.HTTP_DEFAULT_ERROR_PAGE ('HTTP/1.1 403 Forbidden', 'SPARQL Graph Protocol request failed', null, __SQL_STATE, __SQL_MESSAGE);
+          return;
+        }
     }
+  DB.DBA.HTTP_DEFAULT_ERROR_PAGE ('HTTP/1.1 500 Request Failed', 'SPARQL Graph Protocol request failed', null, __SQL_STATE, __SQL_MESSAGE);
+  return;
 }
 ;
 

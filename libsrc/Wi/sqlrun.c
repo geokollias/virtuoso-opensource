@@ -1895,10 +1895,15 @@ ts_top_oby_limit (table_source_t * ts, caddr_t * inst, it_cursor_t * itc)
     return;
   if (tb_is_rdf_quad (ks->ks_key->key_table))
     {
-      if (DV_STRINGP (val))
+      /* string cases, i.e. rdf box or iri cannot be pushed as a selection on the table, need the conversion function */
+      dtp_t dtp = DV_TYPE_OF (val);
+      if (DV_STRING == dtp)
+	return;
+      if (DV_RDF == dtp)
 	{
-	  /* string cases, i.e. rdf box or iri cannot be pushed as a selection on the table, need the conversion function */
-	  return;
+	  dtp = DV_TYPE_OF (((rdf_box_t *) val)->rb_box);
+	  if (DV_STRING == dtp)
+	    return;
 	}
     }
   if (!itc->itc_top_row_spec)
@@ -3526,7 +3531,8 @@ fref_setp_flush (fun_ref_node_t * fref, caddr_t * state)
     hash_area_t *ha = setp->setp_ha;
     if (setp == fref->fnr_setp)
       continue;
-    itc_ha_flush_memcache (ha, state, 0);
+    if (!setp->setp_any_user_aggregate_gos && !setp->setp_any_distinct_gos)
+      itc_ha_flush_memcache (ha, state, SETP_NO_CHASH_FLUSH);
     setp_filled (setp, state);
     setp_mem_sort_flush (setp, state);
     if (setp->setp_ordered_gb_fref)

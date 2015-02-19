@@ -842,7 +842,9 @@ spar_strliteral (sparp_t * sparp, const char *strg, int strg_is_long, int is_jso
 	      (tgt_tail++)[0] = bs_tran;
 	    else
 	      {
+		unichar first_surro_u = 0;
 		unichar acc = 0;
+	      next_u:
 		for (src_tail += 2; src_tail < nextchr; src_tail++)
 		  {
 		    int dgt = src_tail[0];
@@ -864,7 +866,42 @@ spar_strliteral (sparp_t * sparp, const char *strg, int strg_is_long, int is_jso
 		    err_msg = "The \\U escape sequence represents invalid Unicode char";
 		    goto err;
 		  }
-		tgt_tail = eh_encode_char__UTF8 (acc, tgt_tail, tgt_tail + MAX_UTF8_CHAR);
+		if (0 != first_surro_u)
+		  {
+		    if ((acc >= 0xDC00) && (acc <= 0xDFFF))
+		      {
+			unichar utf16pair = (first_surro_u << 10) + acc - 0x35FDC00;
+			tgt_tail = eh_encode_char__UTF8 (utf16pair, tgt_tail, tgt_tail + MAX_UTF8_CHAR);
+			first_surro_u = 0;
+		      }
+		    else
+		      {
+			err_msg = "The \\u....\\u.... UTF-16 escape sequence has low surrogate part out of \\uDC00--\\uDFFF range";
+			goto err;
+		      }
+		  }
+		else if (is_json && (6 == bs_len) && (acc >= 0xD800) && (acc <= 0xDFFF))
+		  {
+		    if (acc >= 0xDC00)
+		      {
+			err_msg =
+			    "The \\u.... low surrogate UTF-16 part from \\uDC00--\\uDFFF range is not prepended by a high surrogate part";
+			goto err;
+		      }
+		    first_surro_u = acc;
+		    acc = 0;
+		    if (('\\' != src_tail[0]) || ('u' != src_tail[1]))
+		      {
+			err_msg =
+			    "Missing second \\u part in the \\u....\\u.... UTF-16 escape sequence after high surrogate part from \\uD800--\\uDBFF range";
+			goto err;
+		      }
+		    nextchr += 6;
+		    /* src_tail is not incremented by 2 here because it is the init operator of for() after goto */
+		    goto next_u;	/* see above */
+		  }
+		else
+		  tgt_tail = eh_encode_char__UTF8 (acc, tgt_tail, tgt_tail + MAX_UTF8_CHAR);
 	      }
 	    src_tail = nextchr;
 	    continue;
@@ -1982,7 +2019,7 @@ spar_gp_add_filter (sparp_t * sparp, SPART * filt, int filt_is_movable)
 		if (SPAR_VARIABLE != SPART_TYPE (arg_value))
 		  continue;
 		if (DV_LONG_INT != DV_TYPE_OF (args[argctr]))
-		  spar_error (sparp, "Invalid argument #%d for %s() special predicate", argctr + 1);
+		  spar_error (sparp, "Invalid argument #%d for %s() special predicate", argctr + 1, ft_pred_name);
 		spar_tree_is_var_with_forbidden_ft_name (sparp, arg_value, 1);
 		opt_value = (SPART *) t_box_copy_tree ((caddr_t) arg_value);
 		opt_value->_.var.tabid = triple_with_var_obj->_.triple.tabid;
@@ -2395,7 +2432,7 @@ spar_sinv_naming (sparp_t * sparp, SPART * sinv)
       return t_box_sprintf (300, "SERVICE <%.200s> at line %ld", sinv->_.sinv.endpoint->_.qname.val,
 	  (long) (unbox (sinv->_.sinv.endpoint->srcline)));
     default:
-      return t_box_sprintf (300, "SERVICE at line %d", (long) (unbox (sinv /*->_.sinv.endpoint*/ ->srcline)));
+      return t_box_sprintf (300, "SERVICE at line %ld", (long) (unbox (sinv /*->_.sinv.endpoint*/ ->srcline)));
     }
 }
 
@@ -4763,12 +4800,20 @@ const sparp_bif_desc_t sparp_bif_descs[] = {
       SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL},
   {"contains", SPAR_BIF_CONTAINS, 'B', SSG_SD_SPARQL11_DRAFT, 2, 2, SSG_VALMODE_BOOL, {SSG_VALMODE_LONG, SSG_VALMODE_LONG, NULL},
       SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL},
+  {"cube", SPAR_BIF__CUBE, '-', SSG_SD_VIRTSPECIFIC, 2, 0xFFF, SSG_VALMODE_SQLVAL, {NULL, NULL, NULL},
+      SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL},
   {"datatype", DATATYPE_L, '-', 0, 1, 1, SSG_VALMODE_SQLVAL, {SSG_VALMODE_LONG, NULL, NULL}, SPART_VARR_IS_IRI | SPART_VARR_IS_REF},
   {"day", SPAR_BIF_DAY, 'B', SSG_SD_SPARQL11_DRAFT, 1, 1, SSG_VALMODE_NUM, {SSG_VALMODE_NUM, NULL, NULL},
       SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL},
   {"encode_for_uri", SPAR_BIF_ENCODE_FOR_URI, 'B', SSG_SD_SPARQL11_DRAFT, 1, 1, SSG_VALMODE_SQLVAL, {SSG_VALMODE_SQLVAL, NULL,
 	      NULL}, SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL},
   {"floor", SPAR_BIF_FLOOR, 'B', SSG_SD_SPARQL11_DRAFT, 1, 1, SSG_VALMODE_NUM, {SSG_VALMODE_NUM, NULL, NULL},
+      SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL},
+  {"grouping list", SPAR_BIF__GROUPING_LIST, '-', SSG_SD_VIRTSPECIFIC, 0, 0xFFF, SSG_VALMODE_SQLVAL, {NULL, NULL, NULL},
+      SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL},
+  {"grouping set", SPAR_BIF__GROUPING_SET, '-', SSG_SD_VIRTSPECIFIC, 2, 2, SSG_VALMODE_SQLVAL, {NULL, NULL, NULL},
+      SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL},
+  {"grouping sets", SPAR_BIF__GROUPING_SETS, '-', SSG_SD_VIRTSPECIFIC, 1, 0xFFF, SSG_VALMODE_SQLVAL, {NULL, NULL, NULL},
       SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL},
   {"hours", SPAR_BIF_HOURS, 'B', SSG_SD_SPARQL11_DRAFT, 1, 1, SSG_VALMODE_NUM, {SSG_VALMODE_NUM, NULL, NULL},
       SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL},
@@ -4815,6 +4860,8 @@ const sparp_bif_desc_t sparp_bif_descs[] = {
 	      NULL}, SPART_VARR_IS_LIT},
   {"round", SPAR_BIF_ROUND, 'B', SSG_SD_SPARQL11_DRAFT, 1, 1, SSG_VALMODE_NUM, {SSG_VALMODE_NUM, NULL, NULL},
       SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL},
+  {"rollup", SPAR_BIF__ROLLUP, '-', SSG_SD_VIRTSPECIFIC, 2, 0xFFF, SSG_VALMODE_SQLVAL, {NULL, NULL, NULL},
+      SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL},
   {"sameterm", SPAR_BIF_SAMETERM, '-', 0, 2, 2, SSG_VALMODE_BOOL, {SSG_VALMODE_LONG, SSG_VALMODE_LONG, NULL},
       SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL},
   {"seconds", SPAR_BIF_SECONDS, 'B', SSG_SD_SPARQL11_DRAFT, 1, 1, SSG_VALMODE_NUM, {SSG_VALMODE_NUM, NULL, NULL},
@@ -4849,6 +4896,8 @@ const sparp_bif_desc_t sparp_bif_descs[] = {
   {"substr", SPAR_BIF_SUBSTR, 'B', SSG_SD_SPARQL11_DRAFT, 2, 3, SSG_VALMODE_SQLVAL, {SSG_VALMODE_LONG, SSG_VALMODE_NUM,
 	      SSG_VALMODE_NUM}, SPART_VARR_IS_LIT},
   {"timezone", SPAR_BIF_TIMEZONE, 'S', SSG_SD_SPARQL11_DRAFT, 1, 1, SSG_VALMODE_NUM, {SSG_VALMODE_NUM, NULL, NULL},
+      SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL},
+  {"top", TOP_L, '-', SSG_SD_VIRTSPECIFIC, 4, 4, SSG_VALMODE_SQLVAL, {NULL, NULL, NULL},
       SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL},
   {"tz", SPAR_BIF_TZ, 'S', SSG_SD_SPARQL11_DRAFT, 1, 1, SSG_VALMODE_SQLVAL, {SSG_VALMODE_NUM, NULL, NULL},
       SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL},
@@ -6414,7 +6463,7 @@ bif_sparql_lex_test (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 	continue;
       dk_set_push (&report, box_dv_short_string (""));
       dk_set_push (&report,
-	  box_sprintf (0x100, "#define % 25s %d /* '%s' (%c) */", ld->ld_yname, ld->ld_val, ld->ld_fmt, ld->ld_fmttype));
+	  box_sprintf (0x100, "#define %25s %d /* '%s' (%c) */", ld->ld_yname, ld->ld_val, ld->ld_fmt, ld->ld_fmttype));
       for (cmd_idx = 0; cmd_idx < BOX_ELEMENTS (ld->ld_tests); cmd_idx++)
 	{
 	  cmd = ld->ld_tests[cmd_idx][0];

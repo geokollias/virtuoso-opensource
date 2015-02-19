@@ -3310,7 +3310,7 @@ bifsparqlopt_special_bif_agg (sparp_t * sparp, int bif_opt_opcode, SPART * tree,
 	  sparp_get_expn_rvr (sparp, tree->_.funcall.argtrees[0], rvr_ret, 1 /*return_independent_copy */ );
 	else
 	  memset (rvr_ret, 0, sizeof (rdf_val_range_t));
-	if (uname_SPECIAL_cc_bif_c_MAX == qname || uname_SPECIAL_cc_bif_c_MIN == qname)
+	if (uname_SPECIAL_cc_bif_c_MAX == qname || uname_SPECIAL_cc_bif_c_MIN == qname || uname_SPECIAL_cc_bif_c_GROUPING == qname)
 	  {
 	    rvr_ret->rvrRestrictions &= ~SPART_VARR_NOT_NULL;
 	    break;
@@ -3775,11 +3775,17 @@ sparp_simplify_builtin (sparp_t * sparp, SPART * tree, int *trouble_ret)
       break;
     case SPAR_BIF_CONTAINS:
       break;
+    case SPAR_BIF__CUBE:
+      break;
     case SPAR_BIF_DAY:
       break;
     case SPAR_BIF_ENCODE_FOR_URI:
       break;
     case SPAR_BIF_FLOOR:
+      break;
+    case SPAR_BIF__GROUPING_SET:
+      break;
+    case SPAR_BIF__GROUPING_SETS:
       break;
     case SPAR_BIF_HOURS:
       break;
@@ -3871,6 +3877,8 @@ sparp_simplify_builtin (sparp_t * sparp, SPART * tree, int *trouble_ret)
     case SPAR_BIF_REPLACE:
       break;
     case SPAR_BIF_ROUND:
+      break;
+    case SPAR_BIF__ROLLUP:
       break;
     case SPAR_BIF_SAMETERM:
       break;
