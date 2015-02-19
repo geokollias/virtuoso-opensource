@@ -7763,9 +7763,7 @@ itc_hash_spec_order (search_spec_t ** sp_ret)
       if (CMP_HASH_RANGE == sp->sp_min_op)
 	{
 	  QNCAST (hash_range_spec_t, hrng, sp->sp_min_ssl);
-	  if ((HRNG_SEC & hrng->hrng_flags))
-	    sec = prev;
-	  else if (hrng->hrng_hs && hrng->hrng_hs->hs_ha->ha_n_deps)
+	  if (hrng->hrng_hs && hrng->hrng_hs->hs_ha->ha_n_deps)
 	    val = prev;
 	}
     }
@@ -7774,7 +7772,6 @@ itc_hash_spec_order (search_spec_t ** sp_ret)
   if (sec)
     sp_set_last (sp_ret, sec);
 }
-
 
 int
 ks_add_hash_spec (key_source_t * ks, caddr_t * inst, it_cursor_t * itc)
@@ -7830,20 +7827,12 @@ ks_add_hash_spec (key_source_t * ks, caddr_t * inst, it_cursor_t * itc)
 	  if (!hs)
 	    {
 	      best = inx;
-	      if ((HRNG_SEC & hrng->hrng_flags))
-		tree = qi_g_tree (inst, hrng->hrng_ht, 1);
-	      else if ((HRNG_RD_SEC & hrng->hrng_flags))
-		tree = qi_g_tree (inst, hrng->hrng_ht, 0);
-	      else
-		tree = qst_get_chash (inst, hrng->hrng_ht, hrng->hrng_ht_id, NULL);
+	      tree = qst_get_chash (inst, hrng->hrng_ht, hrng->hrng_ht_id, NULL);
 	      cha = tree && !tree->it_invalidated ? tree->it_hi->hi_chash : NULL;
 	      if (!cha || (!cha->cha_distinct_count && !cha->cha_n_bloom))
 		{
 		  /* join with empty chash is like null in search params, always empty. Empty chash can have replicated bloom though  which still makes it valid  */
 		  key_free_trail_specs (sp_copy_1);
-		  if ((HRNG_SEC & hrng->hrng_flags))
-		    sqlr_trx_error (((QI *) inst)->qi_trx, LT_BLOWN_OFF, LTE_NO_PERM, "42000", "RGSEC",
-			"Writable graphs set is empty");
 		  return 1;
 		}
 	      break;

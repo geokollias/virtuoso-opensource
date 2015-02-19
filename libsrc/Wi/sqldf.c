@@ -633,6 +633,17 @@ sqlo_wrap_dfe_true_or_false (sqlo_t * so, df_elt_t * const_dfe)
 /*#define IS_ONE_OF_THESE(name)  (0 == stricmp (name, "one_of_these")) */
 #define IS_ONE_OF_THESE(n) (n == uname_one_of_these)
 
+
+int
+sqlo_same_pred (df_elt_t * dfe1, df_elt_t * dfe2)
+{
+  if (DFE_BOP_PRED == dfe1->dfe_type && DFE_BOP_PRED == dfe2->dfe_type
+      && dfe1->_.bin.op == dfe2->_.bin.op && dfe1->_.bin.left == dfe2->_.bin.left && dfe1->_.bin.right == dfe2->_.bin.right)
+    return 1;
+  return 0;
+}
+
+
 void
 sqlo_push_pred (sqlo_t * so, df_elt_t * dfe)
 {
@@ -666,6 +677,12 @@ sqlo_push_pred (sqlo_t * so, df_elt_t * dfe)
       if (in_list && st_is_call (in_list[1]->dfe_tree, "__rgs_user_perms_clo", 2))
 	return;
     }
+  DO_SET (df_elt_t *, prev, &so->so_this_dt->ot_preds)
+  {
+    if (sqlo_same_pred (dfe, prev))
+      return;
+  }
+  END_DO_SET ();
   t_set_push (&so->so_this_dt->ot_preds, (void *) dfe);
 }
 
@@ -3883,6 +3900,11 @@ sqlo_choose_index (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * col_preds, dk_set_
       sqlo_cset_choose_index (so, tb_dfe, col_preds, after_preds);
       return;
     }
+  if (enable_cset && tb_is_rdf_quad (tb_dfe->_.table.ot->ot_table))
+    {
+      if (sqlo_cset_quad_choose_index (so, tb_dfe, col_preds, after_preds))
+	return;
+    }
   tb_dfe->_.table.is_unique = 0;
 
   if (opt_inx_name && !strcmp (opt_inx_name, "PRIMARY KEY"))
@@ -5265,7 +5287,7 @@ sqlo_has_no_subq (df_elt_t * dfe)
   if (!is_pred)
     return sqlo_parse_tree_has_node (dfe->dfe_tree, SELECT_STMT);
   if (!dfe->_.bin.no_subq)
-    dfe->_.bin.no_subq = 1 + sqlo_parse_tree_has_node (dfe->dfe_tree, SELECT_STMT);
+    dfe->_.bin.no_subq = 1 + !sqlo_parse_tree_has_node (dfe->dfe_tree, SELECT_STMT);
   return dfe->_.bin.no_subq - 1;
 }
 

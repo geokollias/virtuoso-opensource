@@ -53,6 +53,9 @@ void
 itc_null_row (it_cursor_t * itc)
 {
   int inx;
+  table_source_t *ts = itc->itc_ks->ks_ts;
+  cset_mode_t *csm;
+  int nth_bit = csm->csm_bit;
   caddr_t *inst = itc->itc_out_state;
   v_out_map_t *om = itc->itc_v_out_map;
   int n_out = om ? box_length (om) / sizeof (v_out_map_t) : 0;
@@ -93,8 +96,10 @@ itc_cset_unmatched_by_s (it_cursor_t * itc)
 	  mask = BF_MASK (h);
 	  for (nth_p = 0; nth_p < n_reqd; nth_p++)
 	    {
-	      uint32 sz = csp[inx]->csetp_n_bloom;
-	      uint64 w = csp[inx]->csetp_bloom[BF_WORD (h, sz)];
+	      uint64 *bf;
+	      uint32 n_bf;
+	      csetp_bloom (csp[inx], inst, &bf, &n_bf);
+	      uint64 w = bf[BF_WORD (h, n_bf)];
 	      if (mask != (mask & w))
 		goto next_s;
 	    }
@@ -336,33 +341,78 @@ itc_seg_row_s (it_cursor_t * itc, buffer_desc_t * buf, row_no_t row, int prev_n_
 }
 
 void
-itc_cset_except (it_cursor_t * itc, buffer_desc_t * buf, int prev_matches, int rows_in_seg)
+itc_cset_except (it_cursor_t * itc, buffer_desc_t * buf, int prev_matches, int rows_in_seg, col_pos_t * cpo)
 {
   /* itc_matches has the pre-filter matches starting at itc_n_matches.  If prev_matches is 0, then the prev is the itc_ranges for the set. *
    * matches is after filtering on col.  If a row was in prev and not in matches, put it back in matches if s can have exception. */
+  caddr_t *inst = itc->itc_out_state;
   table_source_t *ts = itc->itc_ks->ks_ts;
   cset_mode_t *csm = ts->ts_csm;
   search_spec_t *sp = itc->itc_col_spec;
+  row_no_t prev_row;
   int nth_bit = sp->sp_ordinal;
   cset_p_t *csetp = sp->sp_col->col_csetp;
   row_no_t *pre, *post;
+  uint64 *bf;
+  uint32 n_bf;
   int inx, n_post, fill = 0, nth_match = 0, point = 0;
   int n_matches = itc->itc_match_out;
-  if (!csetp || !csetp->csetp_n_bloom)
+  if (!csetp)
     return;
+  csetp_bloom (csetp, inst, &bf, &n_bf);
+  if (!bf)
+    return;
+  rows_in_seg = itc->itc_rows_in_seg;
+  if (!itc->itc_n_matches)
+    {
+      int end = MIN (rows_in_seg, cpo->cpo_range->r_end);
+      if (fill == end - cpo->cpo_range->r_first)
+	return;
+      post = itc->itc_matches;
+      n_post = itc->itc_match_out;
+      pre = &itc->itc_matches[n_post];
+      for (prev_row = cpo->cpo_range->r_first; prev_row < end; prev_row++)
+	{
+	  if (nth_match >= n_matches || post[nth_match] != prev_row)
+	    {
+	      iri_id_t s = itc_seg_row_s (itc, buf, prev_row, prev_matches, &point);
+	      uint64 mask, w, h = 1;
+	      MHASH_STEP_1 (h, s);
+	      mask = BF_MASK (h);
+	      w = bf[BF_WORD (h, n_bf)];
+	      if (mask == (w & mask))
+		post[fill++] = prev_row;
+	      else
+		{
+		  int off = prev_row * csm->csm_cset_bit_bytes;
+		  BIT_CLR (itc->itc_cset_bits + off, nth_bit);
+		  if (sp->sp_is_cset_opt)
+		    pre[fill++] = prev_row;
+		}
+	    }
+	  else
+	    {
+	      pre[fill++] = prev_row;
+	      nth_match++;
+	    }
+	}
+      memmove_16 (&itc->itc_matches, &itc->itc_matches[n_matches], fill * sizeof (row_no_t));
+      itc->itc_match_out = fill;
+      return;
+    }
   pre = &itc->itc_matches[itc->itc_n_matches];
   post = itc->itc_matches;
   n_post = itc->itc_match_out;
   for (inx = 0; inx < prev_matches; inx++)
     {
-      row_no_t prev_row = pre[inx];
+      prev_row = pre[inx];
       if (nth_match >= n_matches || post[nth_match] != prev_row)
 	{
 	  iri_id_t s = itc_seg_row_s (itc, buf, prev_row, prev_matches, &point);
 	  uint64 mask, w, h = 1;
 	  MHASH_STEP_1 (h, s);
 	  mask = BF_MASK (h);
-	  w = csetp->csetp_bloom[BF_WORD (h, csetp->csetp_n_bloom)];
+	  w = bf[BF_WORD (h, n_bf)];
 	  if (mask == (w & mask))
 	    post[fill++] = prev_row;
 	  else
@@ -407,6 +457,8 @@ itc_cset_opt_nulls (it_cursor_t * itc)
 	  if (col_id == sp_id)
 	    goto next_out;
 	}
+      if (OM_NO_CSET == om[out_inx].om_cset_bit)
+	continue;
       this_bit = om[out_inx].om_cset_bit % 64;
       clr_mask = ~(1L << this_bit);
       bits_ssl = ts->ts_csm->csm_exc_bits_out[om[out_inx].om_cset_bit / 64];
@@ -535,7 +587,6 @@ qr_cset_adjust_dcs (query_t * qr, caddr_t * inst)
       if (IS_TS (qn))
 	{
 	  QNCAST (table_source_t, ts, qn);
-	  key_source_t *ks = ts->ts_order_ks;
 	  it_cursor_t *itc = TS_ORDER_ITC (ts, inst);
 	  if (itc && DV_ITC == DV_TYPE_OF (itc))
 	    itc_col_free (itc);
@@ -571,7 +622,7 @@ ts_cset_query (table_source_t * ts, caddr_t * inst, cset_t * cset, int mode, cad
       w = CONS (self, NULL);
       sethash ((void *) key, &csts->csts_cset_plan, (void *) ((ptrlong) w | CSQ_MAKER));
       mutex_leave (&csts->csts_mtx);
-      qr = csg_query (cset, ts, mode, &err);
+      qr = csg_query (cset, ts, mode, o_mode, &err);
       mutex_enter (&csts->csts_mtx);
       w = (dk_set_t) LOW_48 (gethash ((void *) key, &csts->csts_cset_plan));
       if (!err)
@@ -648,6 +699,7 @@ table_source_cset_scan_input (table_source_t * ts, caddr_t * inst, caddr_t * sta
   int mode = QST_INT (inst, csts->csts_cset_mode);
   if (state)
     {
+      SRC_IN_STATE (ts, inst) = inst;
       start_cset = 1;
       nth_cset = QST_INT (inst, csts->csts_nth_cset) = 0;
       mode = QST_INT (inst, csts->csts_cset_mode) = 0;
@@ -704,14 +756,42 @@ cset_align_input (cset_align_node_t * csa, caddr_t * inst, caddr_t * state)
   qi->qi_set_mask = NULL;
   if (csa->csa_ssls)
     {
-      int n = box_length (csa->csa_ssls) / sizeof (cset_align_t), inx;
+      int n = box_length (csa->csa_ssls) / sizeof (cset_align_t), inx, bit;
       for (inx = 0; inx < n; inx++)
 	{
 	  cset_align_t *csal = &csa->csa_ssls[inx];
-	  state_slot_t *val = csal->csa_second ? csal->csa_second : csal->csa_first;
+	  state_slot_t *val;
 	  if (!csal->csa_res)
 	    continue;
-	  vec_ssl_assign (inst, csal->csa_res, val);
+	  if ((CSA_S == csal->csa_flag || CSA_G == csal->csa_flag)
+	      && csal->csa_first && csal->csa_second && -1 != (bit = csa->csa_no_cset_bit))
+	    {
+	      int set;
+	      state_slot_t *bits_ssl = csa->csa_exc_bits[bit / 64];
+	      uint64 *bits = (uint64 *) QST_BOX (data_col_t *, inst, bits_ssl->ssl_index)->dc_values;
+	      uint64 mask = 1L << (bit % 64);
+	      data_col_t *res_dc = QST_BOX (data_col_t *, inst, csal->csa_res->ssl_index);
+	      data_col_t *cset_s = QST_BOX (data_col_t *, inst, csal->csa_first->ssl_index);
+	      data_col_t *rq_s = QST_BOX (data_col_t *, inst, csal->csa_second->ssl_index);
+	      for (set = 0; set < n_sets; set++)
+		{
+		  int set_no = SSL_VEC == bits_ssl->ssl_type ? set : sslr_set_no (inst, bits_ssl, set);
+		  if ((bits[set_no] & mask))
+		    {
+		      dc_assign (inst, csal->csa_res, set, csal->csa_first, set);
+		    }
+		  else
+		    {
+		      /* there is no cset match, s from 1st rq */
+		      dc_assign (inst, csal->csa_res, set, csal->csa_second, set);
+		    }
+		}
+	    }
+	  else
+	    {
+	      val = csal->csa_second ? csal->csa_second : csal->csa_first;
+	      vec_ssl_assign (inst, csal->csa_res, val);
+	    }
 	}
     }
   qn_send_output ((data_source_t *) model_ts, inst);
@@ -878,6 +958,8 @@ itc_cset_exc_param_nos (it_cursor_t * itc)
 {
   int *nos = itc->itc_param_order;
   int inx, fill = 0;
+  uint64 *bf;
+  uint32 n_bf;
   table_source_t *ts = itc->itc_ks->ks_ts;
   iri_id_t p = unbox_iri_id (itc->itc_search_params[0]);
   cset_t *cset = ts->ts_csm->csm_cset;
@@ -888,8 +970,9 @@ itc_cset_exc_param_nos (it_cursor_t * itc)
   int n_from_cset = QST_INT (inst, ts->src_gen.src_out_fill);
   itc->itc_n_results = n_from_cset;	/*if bindings from cset table, do make a full batch, these are in the same batch with the exceptions, so this many are already in results */
   if (!csetp)
-    return 1;
-  if (!csetp->csetp_n_bloom)
+    return 0;
+  csetp_bloom (csetp, inst, &bf, &n_bf);
+  if (!bf)
     {
       itc->itc_n_sets = 0;
       return 1;
@@ -901,7 +984,7 @@ itc_cset_exc_param_nos (it_cursor_t * itc)
       iri_id_t s = s_arr[inx];
       MHASH_STEP_1 (h, s);
       mask = BF_MASK (h);
-      w = csetp->csetp_bloom[BF_WORD (h, csetp->csetp_n_bloom)];
+      w = bf[BF_WORD (h, n_bf)];
       if (mask == (w & mask))
 	nos[fill++] = inx;
     }
@@ -947,6 +1030,57 @@ itc_cset_s_param_nos (it_cursor_t * itc, int n_values)
 #define PSOG_OUTER_NULLS 3
 
 
+void
+cset_psog_bits (table_source_t * ts, caddr_t * inst)
+{
+  /* for results from rq or nulls for oj misses, fill in the out bits by the out sets */
+  cset_mode_t *csm = ts->ts_csm;
+  if (csm->csm_exc_bits_in)
+    {
+      int n_res = QST_INT (inst, ts->src_gen.src_out_fill);
+      int *out_sets = QST_BOX (int *, inst, ts->src_gen.src_sets);
+      int nth_bit = csm->csm_bit % 64, set;
+      int nth_ssl = csm->csm_bit / 64;
+      state_slot_t *ssl1 = csm->csm_exc_bits_in[nth_ssl];
+      int n_dcs = BOX_ELEMENTS (csm->csm_exc_bits_out);
+      data_col_t *bit_dc = QST_BOX (data_col_t *, inst, csm->csm_exc_bits_in[nth_ssl]->ssl_index);
+      data_col_t *out_dc = QST_BOX (data_col_t *, inst, csm->csm_exc_bits_out[0]->ssl_index);
+      uint64 *bits = (uint64 *) bit_dc->dc_values;
+      uint64 *out;
+      int first_rq_set = QST_INT (inst, csm->csm_n_from_cset);
+      int fill = first_rq_set;
+      DC_CHECK_LEN (out_dc, n_res - 1);
+      out = (uint64 *) out_dc->dc_values;
+      if (SSL_VEC == ssl1->ssl_type)
+	{
+	  for (set = first_rq_set; set < n_res; set++)
+	    {
+	      out[fill++] = bits[out_sets[set]];
+	    }
+	}
+      else
+	{
+	  for (set = first_rq_set; set < n_res; set++)
+	    {
+	      int out_set = out_sets[set];
+	      int in_set = sslr_set_no (inst, csm->csm_exc_bits_in[0], out_set);
+	      out[fill++] = bits[in_set];
+	    }
+	}
+    }
+}
+
+
+
+void
+sslr_n_consec_ref_2 (caddr_t * inst, state_slot_ref_t * sslr, int *sets, int set, int n_sets)
+{
+  if (SSL_VEC == sslr->ssl_type)
+    int_asc_fill (sets, n_sets, set);
+  else
+    sslr_n_consec_ref (inst, sslr, sets, set, n_sets);
+}
+
 
 void
 cset_psog_cset_values (table_source_t * ts, caddr_t * inst)
@@ -964,10 +1098,12 @@ cset_psog_cset_values (table_source_t * ts, caddr_t * inst)
   int64 this_mask = 1L << nth_bit;
   data_col_t *out_dc = QST_BOX (data_col_t *, inst, csm->csm_exc_bits_out[0]->ssl_index);
   uint64 *bits = (uint64 *) bit_dc->dc_values;
-  uint64 *out = (uint64 *) out_dc->dc_values;
+  uint64 *out;
   key_source_t *ks;
+  int cset_sets[ARTM_VEC_LEN];
   QST_INT (inst, ts->src_gen.src_out_fill) = 0;
   DC_CHECK_LEN (out_dc, n_sets - 1);
+  out = (uint64 *) out_dc->dc_values;
   if (o_dc)
     {
       DC_CHECK_LEN (o_dc, n_sets - 1);
@@ -983,14 +1119,16 @@ cset_psog_cset_values (table_source_t * ts, caddr_t * inst)
       for (set = 0; set < n_sets; set += ARTM_VEC_LEN)
 	{
 	  int last = MIN (n_sets, set + ARTM_VEC_LEN), r;
-	  sslr_n_consec_ref (inst, (state_slot_ref_t *) csm->csm_exc_bits_in, sets, set, last);
+	  sslr_n_consec_ref (inst, (state_slot_ref_t *) csm->csm_exc_bits_in[0], sets, set, last);
+	  if (o_dc)
+	    sslr_n_consec_ref_2 (inst, (state_slot_ref_t *) csm->csm_cset_o, cset_sets, set, last);
 	  for (r = 0; r < last - set; r++)
 	    {
 	      if (this_mask & bits[sets[r]])
 		{
 		  out[out_fill++] = bits[sets[r]] & ~this_mask;
 		  if (o_dc)
-		    ssl_mv_nn (o_dc, cset_dc, sets[r]);
+		    ssl_mv_nn (o_dc, cset_dc, sets[cset_sets[r]]);
 		  qn_result ((data_source_t *) ts, inst, set + r);
 		}
 	    }
@@ -998,20 +1136,27 @@ cset_psog_cset_values (table_source_t * ts, caddr_t * inst)
     }
   else
     {
-      for (r = 0; r < n_sets; r++)
+      for (set = 0; set < n_sets; set += ARTM_VEC_LEN)
 	{
-	  if (this_mask & bits[r])
+	  int last = MIN (n_sets, set + ARTM_VEC_LEN), r;
+	  if (o_dc)
+	    sslr_n_consec_ref_2 (inst, (state_slot_ref_t *) csm->csm_cset_o, cset_sets, set, last);
+	  for (r = 0; r < last - set; r++)
 	    {
-	      out[out_fill++] = bits[r] & ~this_mask;
-	      if (o_dc)
-		ssl_mv_nn (o_dc, cset_dc, r);
-	      qn_result ((data_source_t *) ts, inst, r);
+	      if (this_mask & bits[set + r])
+		{
+		  out[out_fill++] = bits[set + r] & ~this_mask;
+		  if (o_dc)
+		    ssl_mv_nn (o_dc, cset_dc, cset_sets[r]);
+		  qn_result ((data_source_t *) ts, inst, set + r);
+		}
 	    }
 	}
     }
   ks = ts->ts_order_ks;
   if (ks->ks_last_vec_param)
     ssl_consec_results (ks->ks_last_vec_param, inst, n_sets);
+  QST_INT (inst, csm->csm_n_from_cset) = QST_INT (inst, ts->src_gen.src_out_fill);
 }
 
 
@@ -1038,12 +1183,13 @@ psog_outer_nulls (table_source_t * ts, caddr_t * inst, it_cursor_t * itc)
     }
   if (csm->csm_rq_o)
     o_dc = QST_BOX (data_col_t *, inst, csm->csm_rq_o->ssl_index);
-  for (set = 0; set < last_outer; set++)
+  for (set = last_outer; set < n_sets; set++)
     {
       if (batch_size == QST_INT (inst, ts->src_gen.src_out_fill))
 	{
 	  QST_INT (inst, csm->csm_last_outer) = set;
 	  SRC_IN_STATE (ts, inst) = inst;
+	  cset_psog_bits (ts, inst);
 	  qn_ts_send_output ((data_source_t *) ts, inst, NULL);
 	  itc_vec_new_results (itc);
 	  batch_size = QST_INT (inst, ts->src_gen.src_batch_size);
@@ -1063,10 +1209,11 @@ psog_outer_nulls (table_source_t * ts, caddr_t * inst, it_cursor_t * itc)
       if (o_dc)
 	dc_append_null (o_dc);
       qn_result ((data_source_t *) ts, inst, set);
-      if (batch_size == QST_INT (inst, ts->src_gen.src_batch_size))
+      if (batch_size == QST_INT (inst, ts->src_gen.src_out_fill))
 	{
 	  QST_INT (inst, csm->csm_last_outer) = set;
 	  SRC_IN_STATE (ts, inst) = inst;
+	  cset_psog_bits (ts, inst);
 	  qn_ts_send_output ((data_source_t *) ts, inst, NULL);
 	  itc_vec_new_results (itc);
 	  batch_size = QST_INT (inst, ts->src_gen.src_batch_size);
@@ -1075,21 +1222,29 @@ psog_outer_nulls (table_source_t * ts, caddr_t * inst, it_cursor_t * itc)
   SRC_IN_STATE (ts, inst) = NULL;
   QST_INT (inst, csm->csm_mode) = 0;
   if (QST_INT (inst, ts->src_gen.src_out_fill))
-    qn_ts_send_output ((data_source_t *) ts, inst, NULL);
+    {
+      cset_psog_bits (ts, inst);
+      itc->itc_n_results = 0;
+      qn_ts_send_output ((data_source_t *) ts, inst, NULL);
+    }
 }
 
 
 void
 cset_psog_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
 {
-  int n_sets = QST_INT (inst, ts->src_gen.src_prev->src_out_fill), r;
+  int n_sets = QST_INT (inst, ts->src_gen.src_prev->src_out_fill);
   cset_mode_t *csm = ts->ts_csm;
   int order_buf_preset = 0;
   query_instance_t *qi = (query_instance_t *) inst;
   int rc, start;
   int batch_size = QST_INT (inst, ts->src_gen.src_batch_size);
   if (state)
-    QST_INT (inst, csm->csm_mode) = PSOG_CSET_INIT;
+    {
+      QST_INT (inst, csm->csm_mode) = PSOG_CSET_INIT;
+      if (csm->csm_last_outer)
+	QST_INT (inst, ts->ts_csm->csm_last_outer) = 0;
+    }
   if (state && -1 != csm->csm_bit)
     {
       /* first pass through values for this col where filled in from cset */
@@ -1157,7 +1312,6 @@ cset_psog_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
 	    {
 	      SRC_IN_STATE (ts, inst) = NULL;
 	      return;		/* was a sdfg and ks start search did the work to completion */
-
 	    }
 	  if (!rc)
 	    {
@@ -1167,6 +1321,8 @@ cset_psog_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
 	      ts_check_batch_sz (ts, inst, order_itc);
 	      if (ts->ts_is_outer)
 		psog_outer_nulls (ts, inst, order_itc);
+	      else if (order_itc->itc_n_results)
+		cset_psog_bits (ts, inst);
 	      if (order_itc->itc_batch_size && order_itc->itc_n_results)
 		{
 		  qn_ts_send_output ((data_source_t *) ts, inst, ts->ts_after_join_test);
@@ -1229,6 +1385,8 @@ cset_psog_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
 		ts_check_batch_sz (ts, inst, order_itc);
 		if (ts->ts_is_outer)
 		  psog_outer_nulls (ts, inst, order_itc);
+		else if (order_itc->itc_n_results)
+		  cset_psog_bits (ts, inst);
 		if (order_itc->itc_n_results)
 		  {
 		    qn_ts_send_output ((data_source_t *) ts, inst, ts->ts_after_join_test);
@@ -1248,6 +1406,7 @@ cset_psog_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
       if (SRC_IN_STATE (ts, inst) != NULL && !order_itc->itc_is_registered)
 	GPF_T;
 #endif
+      cset_psog_bits (ts, inst);
       qn_ts_send_output ((data_source_t *) ts, state, ts->ts_after_join_test);
       if (ts->ts_order_ks->ks_top_oby_col)
 	ts_top_oby_limit (ts, inst, order_itc);
@@ -1269,9 +1428,9 @@ cset_scan_mode (cset_p_t * csetp, caddr_t * inst, search_spec_t * sp, int set)
   mode[0] = box_num (csetp->csetp_cset->cset_id);
   mode[1] = box_iri_id (csetp->csetp_iri);
   mode[2] = box_num (sp->sp_min_op);
-  mode[3] = CMP_NONE == sp->sp_min_op ? NULL : qst_get (inst, sp->sp_min_ssl);
+  mode[3] = CMP_NONE == sp->sp_min_op ? NULL : box_copy_tree (qst_get (inst, sp->sp_min_ssl));
   mode[4] = box_num (sp->sp_max_op);
-  mode[5] = CMP_NONE == sp->sp_max_op ? NULL : qst_get (inst, sp->sp_max_ssl);
+  mode[5] = CMP_NONE == sp->sp_max_op ? NULL : box_copy_tree (qst_get (inst, sp->sp_max_ssl));
   return (caddr_t) mode;
 }
 
@@ -1283,50 +1442,64 @@ posg_special_o (table_source_t * ts, caddr_t * inst)
 {
   QNCAST (QI, qi, inst);
   key_source_t *ks = ts->ts_order_ks;
+
   iri_id_t p = unbox_iri_id (qst_get (inst, ks->ks_spec.ksp_spec_array->sp_min_ssl));
-  int set, n_sets, last_set;
-  it_cursor_t *itc;
+  int n_sets;
+  it_cursor_t *itc = TS_ORDER_ITC (ts, inst);
+  data_col_t *p_dc = ITC_P_VEC (itc, 0);
   dk_set_t csps;
   search_spec_t *o_spec = ks->ks_spec.ksp_spec_array->sp_next;
   cset_mode_t *csm = ts->ts_csm;
-  csps = QST_BOX (dk_set_t, inst, csm->csm_posg_cset_pos);
-  if (-1 == (ptrlong) csps)
-    {
-      csps = (dk_set_t) gethash ((void *) p, &p_to_csetp_list);
-      QST_BOX (dk_set_t, inst, csm->csm_posg_cset_pos) = csps;
-      last_set = QST_INT (inst, csm->csm_posg_last_set) = 0;
-    }
-  else
-    last_set = QST_INT (inst, csm->csm_posg_last_set);
-  itc = TS_ORDER_ITC (ts, inst);
+  int set = QST_INT (inst, csm->csm_posg_last_set);
+  cset_p_t *csetp;
   if (itc)
     n_sets = itc->itc_n_sets;
   else
     n_sets = ts->src_gen.src_prev ? QST_INT (inst, ts->src_gen.src_prev->src_out_fill) : qi->qi_n_sets;
 
-  while (csps)
+  if (-1 == set)
+    set = QST_INT (inst, csm->csm_posg_last_set) = 0;
+  for (;;)
     {
-      cset_p_t *csp = (cset_p_t *) csps->data;
-      if (!csp->csetp_index_o || csp->csetp_non_index_o)
+      ks_vec_new_results (ks, inst, NULL);
+      csps = QST_BOX (dk_set_t, inst, csm->csm_posg_cset_pos);
+      if ((dk_set_t) - 1 == csps)
+	csps = QST_BOX (dk_set_t, inst, csm->csm_posg_cset_pos) = NULL;
+      if (!csps)
 	{
-	  for (set = last_set; set < n_sets; set++)
-	    {
-	      caddr_t min_o, max_o;
-	      qi->qi_set = set;
-	      min_o = o_spec->sp_min_ssl ? qst_get (inst, o_spec->sp_min_ssl) : NO_COND;
-	      max_o = o_spec->sp_max_ssl ? qst_get (inst, o_spec->sp_max_ssl) : NO_COND;
-	      if (CMP_EQ == o_spec->sp_min_op && csp->csetp_non_index_o && !id_hash_get (csp->csetp_non_index_o, (caddr_t) & min_o))
-		continue;
-	      QST_INT (inst, csm->csm_posg_last_set) = set + 1;
-	      qst_set (inst, csm->csm_o_scan_mode, cset_scan_mode (csp, inst, o_spec, set));
-	      qn_result ((data_source_t *) ts, inst, set);
-	      SRC_IN_STATE (ts, inst) = csps->next ? inst : NULL;
-	      qn_ts_send_output ((data_source_t *) ts, inst, NULL);
-	      ks_vec_new_results (ks, inst, NULL);
-	    }
+	  p = p_dc ? ((iri_id_t *) p_dc->dc_values)[set] : unbox_iri_id (itc->itc_search_params[0]);
+	  csps = (dk_set_t) gethash ((void *) p, &p_to_csetp_list);
+	  if (!csps)
+	    goto next_set;
+	  QST_BOX (dk_set_t, inst, csm->csm_posg_cset_pos) = csps->next;
+	  csetp = (cset_p_t *) csps->data;
 	}
-      csps = csps->next;
-      QST_BOX (dk_set_t, inst, csm->csm_posg_cset_pos) = csps;
+      else
+	{
+	  csetp = (cset_p_t *) csps->data;
+	  QST_BOX (dk_set_t, inst, csm->csm_posg_cset_pos) = csps->next;
+	}
+      if (!csetp->csetp_index_o || csetp->csetp_non_index_o)
+	{
+	  caddr_t min_o, max_o;
+	  qi->qi_set = set;
+	  min_o = o_spec->sp_min_ssl ? qst_get (inst, o_spec->sp_min_ssl) : NO_COND;
+	  max_o = o_spec->sp_max_ssl ? qst_get (inst, o_spec->sp_max_ssl) : NO_COND;
+	  if (CMP_EQ == o_spec->sp_min_op && csetp->csetp_non_index_o && !id_hash_get (csetp->csetp_non_index_o, (caddr_t) & min_o))
+	    continue;
+	  qst_set (inst, csm->csm_o_scan_mode, cset_scan_mode (csetp, inst, o_spec, set));
+	  qn_result ((data_source_t *) ts, inst, set);
+	  SRC_IN_STATE (ts, inst) = (QST_BOX (dk_set_t, inst, csm->csm_posg_cset_pos) || set < n_sets - 1) ? inst : NULL;
+	  qn_ts_send_output ((data_source_t *) ts, inst, NULL);
+	}
+      if (QST_BOX (dk_set_t, inst, ts->ts_csm->csm_posg_cset_pos))
+	continue;
+    next_set:
+      set = ++QST_INT (inst, csm->csm_posg_last_set);
+      if (set >= n_sets)
+	{
+	  SRC_IN_STATE (ts, inst) = NULL;
+	  return;
+	}
     }
-  SRC_IN_STATE (ts, inst) = NULL;
 }

@@ -2696,22 +2696,6 @@ itc_g_no_perm (it_cursor_t * itc, buffer_desc_t * buf)
 }
 
 
-index_tree_t *
-itc_sec_in (it_cursor_t * itc, buffer_desc_t * buf, hash_range_spec_t * hrng)
-{
-  /*  get  the sec token's hash table for rd/wr perms */
-  index_tree_t *tree;
-  QNCAST (QI, qi, itc->itc_out_state);
-  cl_op_t *sec = qi->qi_client->cli_sec;
-  if (!sec)
-    itc_g_no_perm (itc, buf);
-  tree = (HRNG_RD_SEC & hrng->hrng_flags) ? sec->_.sec.g_rd : sec->_.sec.g_wr;
-  if (!tree || tree->it_invalidated)
-    itc_g_no_perm (itc, buf);
-  qst_set (itc->itc_out_state, hrng->hrng_ht, box_copy ((caddr_t) tree));
-  return tree;
-}
-
 
 extern int dbf_ignore_uneven_col;
 
@@ -2722,6 +2706,17 @@ itc_no_hi (it_cursor_t * itc, buffer_desc_t * buf)
   itc->itc_ltrx->lt_status = LT_BLOWN_OFF;
   itc_bust_this_trx (itc, &buf, ITC_BUST_THROW);
 }
+
+
+void
+itc_const_col (it_cursor_t * itc, v_out_map_t * om, int n_used)
+{
+  int ctr;
+  data_col_t *dc = QST_BOX (data_col_t *, itc->itc_out_state, om->om_ssl->ssl_index);
+  for (ctr = 0; ctr < n_used; ctr++)
+    dc_append_box (dc, om->om_row_ssl->ssl_constant);
+}
+
 
 int
 itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_in_singles)
@@ -2828,8 +2823,6 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
 	      if (hrng->hrng_ht_id)
 		{
 		  index_tree_t *it = qst_get_chash (inst, hrng->hrng_ht, hrng->hrng_ht_id, NULL);
-		  if (!it && ((HRNG_SEC | HRNG_RD_SEC) & hrng->hrng_flags))
-		    it = itc_sec_in (itc, buf, hrng);
 		  if (!it)
 		    itc_no_hi (itc, buf);
 		  cpo.cpo_chash = it->it_hi->hi_chash;
@@ -2939,10 +2932,6 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
 	next_page:;
 	}
     next_spec:
-      if (CMP_HASH_RANGE == sp->sp_min_op && (HRNG_SEC & ((hash_range_spec_t *) sp->sp_min_ssl)->hrng_flags)
-	  && (itc->itc_n_matches ? itc->itc_match_out != itc->itc_n_matches : itc->itc_match_out !=
-	      cpo.cpo_range->r_end - cpo.cpo_range->r_first))
-	itc_g_no_perm (itc, buf);
       if (sp->sp_is_reverse && CMP_LIKE != sp->sp_min_op)
 	itc_cp_negate (itc, nth_sp, rows_in_seg, prev_matches, &cpo);
       if (do_sp_stat)
@@ -2951,7 +2940,7 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
 	  itc->itc_sp_stat[nth_sp].spst_time += rdtsc () - check_start_ts;
 	}
       if (itc->itc_is_cset)
-	itc_cset_except (itc, buf, prev_matches, rows_in_seg);
+	itc_cset_except (itc, buf, prev_matches, rows_in_seg, &cpo);
       if (itc->itc_match_out <= 0)
 	{
 	  ITC_COL_ZERO (itc);
@@ -3066,7 +3055,13 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
   for (col_inx = 0; col_inx < n_out; col_inx++)
     {
       v_out_map_t *om = &itc->itc_ks->ks_v_out_map[col_inx];
-      col_data_ref_t *cr = itc->itc_col_refs[om->om_cl.cl_nth - n_keys];
+      col_data_ref_t *cr;
+      if (OM_CONST == om->om_is_null)
+	{
+	  itc_const_col (itc, om, n_used);
+	  continue;
+	}
+      cr = itc->itc_col_refs[om->om_cl.cl_nth - n_keys];
       if (!cr->cr_is_valid)
 	itc_fetch_col (itc, buf, &om->om_cl, 0, COL_NO_ROW);
       cpo.cpo_clk_inx = 0;

@@ -138,6 +138,7 @@ typedef struct op_table_s
   df_elt_t *ot_cset_inx_dfe;	/* if this ot stands for a cset and cset accessed by posg of indexed o, this is rdf quad posg tb dfe */
   df_elt_t *ot_cset_inx_s_eq;	/* if ot of a posg for a cset by indexed o, this is the eq between the cset s and the s from posg */
   df_elt_t *ot_cset_inx_p_eq;
+  df_elt_t *ot_cset_inx_o_out;
   dk_set_t ot_s_eqs;		/* all preds where some s of a table in this dt is eq something else */
   struct csg_col_s *ot_csgc;
 } op_table_t;
@@ -312,6 +313,7 @@ struct df_elt_s
       bitf_t no_in_on_index:1;
       bitf_t joins_pk:2;
       bitf_t cset_role:2;
+      bitf_t add_cset_psog:1;
       /* XPATH & FT members */
       df_elt_t *text_pred;
       df_elt_t *xpath_pred;
@@ -725,6 +727,37 @@ typedef struct ts_action_s
   df_elt_t *tsa_extract_col;
 } ts_action_t;
 
+
+
+
+#define RQ_UNBOUND 0
+#define RQ_CONST_EQ 1
+#define RQ_CONST_RANGE 2
+#define RQ_BOUND_EQ 3
+#define RQ_BOUND_RANGE 4
+
+typedef struct rq_pred_s
+{
+  df_elt_t *rqp_lower;
+  df_elt_t *rqp_upper;
+  int rqp_op;
+} rq_pred_t;
+
+typedef struct rq_cols_s
+{
+  dbe_table_t *rq_table;
+  dbe_column_t *rq_p_col;
+  dbe_column_t *rq_s_col;
+  dbe_column_t *rq_o_col;
+  dbe_column_t *rq_g_col;
+  rq_pred_t rq_p;
+  rq_pred_t rq_s;
+  rq_pred_t rq_o;
+  rq_pred_t rq_g;
+} rq_cols_t;
+
+
+
 /* for index choice being considered, for each index the below is filled in.
  * if looping over in or rdf subclass/subpred is involved, this is mentioned as ic_n_lookups
  * if checking indexable in or rdf subc/subp as after test is preferred, this is indicated by putting the removed col pred in ic_rm_col_preds and adding the corresponding after test in ic_after_test */
@@ -772,6 +805,8 @@ typedef struct index_choice_s
   dk_set_t ic_inx_sample_cols;
   dk_set_t ic_pk_fk_refs;	/* in dfe table cost, list of preds that make up each multipart pk to fk ref for costed table */
   dk_set_t ic_lit_param_nos;
+  uint64 ic_n_rows_sampled;
+  uint64 ic_n_row_spec_matches;
 } index_choice_t;
 
 typedef struct pred_score_s
@@ -1145,14 +1180,21 @@ caddr_t sqlo_rdf_lit_const (ST * tree);
 caddr_t sqlo_rdf_obj_const_value (ST * tree, caddr_t * val_ret, caddr_t * lang_ret);
 
 /* cset */
+df_elt_t *dfe_right (df_elt_t * tb_dfe, df_elt_t * pred);
+state_slot_t **sqlc_compound_stmt (sql_comp_t * sc, ST * tree, dk_set_t ret_exps);
+void dfe_table_set_by_best (df_elt_t * tb_dfe, index_choice_t * ic, float true_arity, dk_set_t * col_preds, dk_set_t * after_preds);
+void ts_set_csq (sql_comp_t * sc, df_elt_t * tb_dfe, table_source_t * ts);
 int qn_is_trans_init (table_source_t * ts);
 void dfe_list_cost (df_elt_t * dfe, float *unit_ret, float *arity_ret, float *overhead_ret, locus_t * loc);
 dbe_column_t *dfe_cset_equiv_col (df_elt_t * dfe, df_elt_t * left_col);
 void sqlo_cset_choose_index (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * col_preds, dk_set_t * after_preds);
+int sqlo_cset_quad_choose_index (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * col_preds, dk_set_t * after_preds);
 id_hash_t *sqlo_allocate_df_elts (int size);
 df_elt_t *dfe_left_col (df_elt_t * tb_dfe, df_elt_t * pred);
 float dfe_join_score (sqlo_t * so, op_table_t * ot, df_elt_t * tb_dfe, dk_set_t * res);
 df_elt_t *sqlo_add_csets (sqlo_t * so, ST ** ptree);
+void rq_cols_init (df_elt_t * dfe, rq_cols_t * rq);
+
 
 
 /* qrc */
@@ -1253,5 +1295,7 @@ void sdfg_setp_loc_ts (sql_comp_t * sc, setp_node_t * setp);
 int sqlg_union_all_list (subq_source_t * sqs, dk_set_t * res);
 void sqlg_parallel_ts_seq (sql_comp_t * sc, df_elt_t * dt_dfe, table_source_t * ts, fun_ref_node_t * fref, select_node_t * sel);
 void sqlo_place_proc_cols (sqlo_t * so, ST * tree, df_elt_t * super);
+
+
 
 #endif /* _SQLO_H */

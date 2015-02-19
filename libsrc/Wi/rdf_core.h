@@ -368,5 +368,7 @@ caddr_t iri_to_string (iri_id_t iri, iri_pattern_t ** ip_ret);
 iri_id_t iri_from_ip (caddr_t * name_ret, caddr_t * box_to_delete, caddr_t * name_to_delete);
 caddr_t bif_rdf_iri_always_cached_init (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args);
 
+#define SPLIT_MODE_TTL 0
+#define SPLIT_MODE_XML 1
 
 #endif

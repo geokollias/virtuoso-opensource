@@ -567,6 +567,8 @@ dbe_key_t *
 tb_text_key (dbe_table_t * tb)
 {
   dbe_key_t *text_key = tb->tb__text_key;
+  if (tb->tb_closest_cset)
+    return tb->tb_closest_cset->cset_table->tb_primary_key;
   if (!text_key && recursive_ft_usage)
     {
       DO_SET (dbe_key_t *, key, &tb->tb_primary_key->key_supers)

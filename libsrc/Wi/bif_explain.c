@@ -653,6 +653,25 @@ code_vec_print (code_vec_t cv)
 	code_vec_print (in->_.for_vect.code);
 	stmt_printf (("\n}\n"));
 	break;
+      case INS_TRANS:
+	{
+	  int inx;
+	  stmt_printf (("bsp block {\n"));
+	  code_vec_print (in->_.trans.init);
+	  DO_BOX (query_t *, qr, inx, in->_.trans.qrs)
+	  {
+	    qr_print (qr);
+	    if (in->_.trans.conds[inx])
+	      {
+		stmt_printf (("end test:\n"));
+		code_vec_print (in->_.trans.conds[inx]);
+		stmt_printf (("\n"));
+	      }
+	  }
+	  END_DO_BOX;
+	  stmt_printf (("}\n"));
+	  break;
+	}
       default:;
       }
     stmt_printf (("\n"));
@@ -1012,6 +1031,17 @@ fs_print (table_source_t * ts)
 
 
 void
+ts_cset_print (table_source_t * ts)
+{
+  if (ts->ts_csq)
+    {
+      stmt_printf (("%s",
+	      CSQ_QUAD == ts->ts_csq->csq_mode ? "quad + cset" : CSQ_CSET_SCAN == ts->ts_csq->csq_mode ? "cset o scan" : "cset"));
+    }
+}
+
+
+void
 ts_print_0 (table_source_t * ts)
 {
   char card[50];
@@ -1038,6 +1068,7 @@ ts_print_0 (table_source_t * ts)
       stmt_printf (("Alternate ts {\n"));
       node_print ((data_source_t *) ts->ts_alternate);
       stmt_printf (("\n}\n"));
+      ts_cset_print (ts);
     }
   {
     /* milos: clear the 'first' flag */
@@ -1121,6 +1152,7 @@ ts_print (table_source_t * ts)
 	  ssl_array_print (ts->clb.clb_save);
 	  stmt_printf (("\n"));
 	}
+      ts_cset_print (ts);
       if (ts->ts_branch_ssls && dbf_explain_level > 2)
 	{
 	  int inx;
@@ -2422,6 +2454,8 @@ node_print (data_source_t * node)
 	}
       stmt_printf (("\n"));
     }
+  else if (IS_QN (node, cset_align_input))
+    csa_print ((cset_align_node_t *) node);
 #ifdef BIF_XML
   else if (in == (qn_input_fn) txs_input)
     {

@@ -95,9 +95,9 @@ typedef long jmp_label_t;
 #define IN_BRET 		27
 #define IN_AGG 		28
 #define INS_FOR_VECT	29
+#define INS_TRANS 30
 #define INS_MAX			31
 #define INS_MIN			IN_ARTM_FPTR
-#define INS_TRANS 31
 
 #if 0
 #define IS_INS_ARTM(x)	(((x) >= IN_ARTM_PLUS && (x) <= IN_ARTM_DIV) || (x) == IN_ARTM_COMON)

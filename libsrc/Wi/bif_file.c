@@ -2070,7 +2070,7 @@ bif_cfg_write (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   PCONFIG pcfgFile = NULL;
   char *pszPath, *pszSection, *pszItemName, *pszItemValue;
 
-  sec_check_dba ((query_instance_t *) qst, "cfg_write");	/* allowed only for dba group */
+  sec_check_dba ((query_instance_t *) qst, "cfg_write");	/* allowed only for DBA group */
 
   pszPath = bif_string_arg (qst, args, 0, "cfg_write");
   pszSection = bif_string_arg (qst, args, 1, "cfg_write");
@@ -2801,7 +2801,7 @@ bif_run_executable (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       if (0 == safety)
 	sqlr_new_error ("42000", "SR406", "Running of file '%s' is not allowed in run_executable().", full_exe_name);
       if ((1 == safety) && (NULL != cli->cli_user) && (0 == sec_user_has_group (0, cli->cli_user->usr_g_id)))
-	sqlr_new_error ("42000", "SR407", "Running of file '%s' is restricted to dba group.", full_exe_name);
+	sqlr_new_error ("42000", "SR407:SECURITY", "Running of file '%s' is restricted to DBA group.", full_exe_name);
     }
 #ifdef WIN32
   strcat_ck (full_exe_name, ".exe");
@@ -4047,6 +4047,10 @@ zlib_box_uncompress (caddr_t src, dk_session_t * out, caddr_t * err_ret)
   while (rc != Z_STREAM_END);
   inflateEnd (&zs);
 }
+
+#ifdef DBG_BLOB_PAGES_ACCOUNT
+extern int is_reg;
+#endif
 
 void
 zlib_blob_uncompress (lock_trx_t * lt, blob_handle_t * bh, dk_session_t * out, caddr_t * err_ret)
@@ -6453,12 +6457,15 @@ err_end:
 /* CSV mode */
 #define CSV_STRICT	1
 #define CSV_LAX		2
+#define CSV_LAX_STR	3
 
 static caddr_t
 csv_field (dk_session_t * ses, int mode)
 {
   static void *r1, *r2, *r3;
   caddr_t regex, ret = NULL, str = strses_string (ses);
+  if (mode == CSV_LAX_STR)
+    goto string_val;
   if (mode == CSV_LAX && !strcmp (str, "NULL"))
     {
       ret = NEW_DB_NULL;
@@ -6487,6 +6494,7 @@ csv_field (dk_session_t * ses, int mode)
     }
   else
     {
+    string_val:
       if (0 != str[0])
 	ret = str;
       else
@@ -6556,7 +6564,7 @@ bif_get_csv_row (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       long f = bif_long_or_null_arg (qst, args, 4, "get_csv_row", &is_null_f);
       signal_error = f & 0x04;
       f &= 0x03;
-      if (!is_null_f && f != CSV_LAX && f != CSV_STRICT)
+      if (!is_null_f && f != CSV_LAX && f != CSV_STRICT && f != CSV_LAX_STR)
 	sqlr_new_error ("22023", "CSV03", "CSV parsing mode flag must be strict:1 or relaxing:2");
       mode = f;
     }

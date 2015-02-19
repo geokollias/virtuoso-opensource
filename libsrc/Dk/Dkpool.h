@@ -370,7 +370,11 @@ void mp_check_tree (mem_pool_t * mp, box_t box);
 
 #ifdef _DKSYSTEM_H
 caddr_t t_box_vsprintf (size_t buflen_eval, const char *format, va_list tail);
-caddr_t t_box_sprintf (size_t buflen_eval, const char *format, ...);
+caddr_t t_box_sprintf (size_t buflen_eval, const char *format, ...)
+#ifdef __GNUC__
+                __attribute__ ((format (printf, 2, 3)))
+#endif
+;
 #endif
 
 void mp_trash (mem_pool_t * mp, caddr_t box);
@@ -458,6 +462,17 @@ extern caddr_t *t_list_nc (long n, ...);
 
 #define NO_TMP_POOL \
   if (THR_TMP_POOL) GPF_T1 ("not supposed to have a tmp pool in effect here");
+
+#define WITH_TMP_POOL(mp)			\
+  { \
+    mem_pool_t * __mp = THR_TMP_POOL; \
+    SET_THR_TMP_POOL (mp);
+
+#define END_WITH_TMP_POOL \
+    SET_THR_TMP_POOL (__mp); \
+  }
+
+
 
 #ifdef linux
 #define  HAVE_SYS_MMAN_H 1

@@ -1187,7 +1187,18 @@ sqlc_qr_compound_stmt (sql_comp_t * sc, ST * stmt, dk_set_t scope_action)
   save = sc->sc_routine_code;
   sc->sc_routine_code = NULL;
   sc->sc_cc->cc_query->qr_proc_vectored = 0;
-  sqlc_compound_stmt (sc, stmt, scope_action);
+  if (ST_P (stmt, COMPOUND_STMT))
+    sqlc_compound_stmt (sc, stmt, scope_action);
+  else
+    {
+      jmp_label_t succ = sqlc_new_label (sc);
+      jmp_label_t fail = sqlc_new_label (sc);
+      pred_gen_1 (sc, stmt, &sc->sc_routine_code, succ, fail, fail);
+      cv_label (&sc->sc_routine_code, succ);
+      cv_bret (&sc->sc_routine_code, 1);
+      cv_label (&sc->sc_routine_code, fail);
+      cv_bret (&sc->sc_routine_code, 0);
+    }
   cv = code_to_cv (sc, sc->sc_routine_code);
   save_qn = sc->sc_cc->cc_query->qr_head_node;
   sc->sc_routine_code = save;
@@ -1200,6 +1211,17 @@ void
 sqlg_trans_sdfg (sql_comp_t * sc, query_t * qr)
 {
   GPF_T1 ("trans sdfg not impl");
+}
+
+
+void
+sqlg_pop_gby_exec (sql_comp_t * sc)
+{
+  /* a from with gby exec in a trans gets a fref and set ctr and gby reader. Just keep the fnr_select of the fref, the rest is extra */
+  QNCAST (instruction_t, ins, sc->sc_routine_code->data);
+  query_t *qr = ins->_.subq.query;
+  QNCAST (fun_ref_node_t, fref, qn_next_qn (qr->qr_head_node, (qn_input_fn) fun_ref_node_input));
+  qr->qr_head_node = fref->fnr_select;
 }
 
 
@@ -1409,11 +1431,12 @@ sqlc_proc_stmt (sql_comp_t * sc, ST ** pstmt)
 	sqlc_new_error (sc->sc_cc, "NTRNS", "NTRNS", "top level FROM only allowed inside a transitive clause");
       if (sc->sc_in_group_by_exec)
 	{
+	  gb_op_t *save_go = sc->sc_in_group_by_exec;
 	  df_elt_t *dfe = sqlo_df_elt (sc->sc_so, stmt);
 	  sc->sc_delay_colocate = 1;
 	  sqlg_dfe_code (sc->sc_so, dfe, &sc->sc_routine_code, 0, 0, 0);
-
-
+	  sqlg_pop_gby_exec (sc);
+	  sc->sc_in_group_by_exec = save_go;
 	}
       else
 	sqlc_subq_stmt (sc, pstmt);

@@ -1651,7 +1651,7 @@ clrg_dfg_send (cl_req_group_t * clrg, int coord_host, int64 * bytes_ret, int is_
   return n_sent;
 }
 
-extern int enable_vec_reuse;
+extern int32 enable_vec_reuse;
 
 int
 stn_start (stage_node_t * stn, caddr_t * inst)

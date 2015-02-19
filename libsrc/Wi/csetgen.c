@@ -149,6 +149,17 @@ csg_s_cond (sqlo_t * so, df_elt_t * tb_dfe, df_elt_t ** first_dfe, df_elt_t ** f
 	{
 	  csg_dfe_add_spec (so, tb_dfe, s_spec, s_col->dfe_tree);
 	}
+      else
+	{
+	  /* if rq as first tb of a cset, the s is bounded to cset */
+	  caddr_t cset_low = t_box_iri_id (((int64) so->so_sc->sc_csg_cset->cset_id) << CSET_RNG_SHIFT);
+	  caddr_t cset_high = t_box_iri_id (((int64) so->so_sc->sc_csg_cset->cset_id + 1) << CSET_RNG_SHIFT);
+	  ST *s_low_st, *s_high_st;
+	  BIN_OP (s_low_st, BOP_GTE, s_col->dfe_tree, cset_low);
+	  BIN_OP (s_high_st, BOP_LT, s_col->dfe_tree, cset_high);
+	  t_set_push (&tb_dfe->_.table.col_preds, sqlo_df (so, s_low_st));
+	  t_set_push (&tb_dfe->_.table.col_preds, sqlo_df (so, s_high_st));
+	}
       *first_s_col_dfe = s_col_dfe;
       *first_dfe = tb_dfe;
     }
@@ -200,6 +211,26 @@ csg_o_cond (sqlo_t * so, df_elt_t * tb_dfe, dbe_column_t * col, table_source_t *
 	}
     }
   return any;
+}
+
+
+int
+csg_o_scan_cond (sqlo_t * so, df_elt_t * cset_dfe, dbe_column_t * col, table_source_t * ts, ST * col_tree)
+{
+  caddr_t *o_mode = so->so_sc->sc_csg_o_mode;
+  ST *tree;
+  int min_op = unbox (o_mode[2]);
+  int max_op = unbox (o_mode[4]);
+  if (CMP_NONE != min_op)
+    {
+      BIN_OP (tree, dvc_to_bop (min_op), col_tree, o_mode[3]);
+      t_set_push (&cset_dfe->_.table.col_preds, sqlo_df (so, tree));
+    }
+  if (CMP_NONE != max_op)
+    {
+      BIN_OP (tree, dvc_to_bop (max_op), col_tree, o_mode[5]);
+      t_set_push (&cset_dfe->_.table.col_preds, sqlo_df (so, tree));
+    }
 }
 
 
@@ -265,9 +296,25 @@ csgc_selectivity (cset_t * cset, table_source_t * ts, dbe_column_t * ref_col, db
 }
 
 
+int
+csg_col_is_o_by_index (sql_comp_t * sc, table_source_t * ts, dbe_column_t * col)
+{
+  if (CSQ_LOOKUP == sc->sc_csg_mode)
+    {
+      cset_ts_t *csts = ts->ts_csts;
+      if (csts->csts_o_index_p && col->col_cset_iri == csts->csts_o_index_p)
+	return 1;
+    }
+  return 0;
+}
+
+
 void
 csg_ts_frame (sqlo_t * so, op_table_t * top_ot, cset_t * cset, table_source_t * ts)
 {
+  cset_ts_t *csts = ts->ts_csts;
+  sql_comp_t *sc = so->so_sc;
+  caddr_t *o_mode = sc->sc_csg_o_mode;
   csg_col_t *csgc_arr;
   op_table_t *cset_ot = NULL;
   df_elt_t *cset_dfe = NULL, *rq_dfe = NULL, *first_dfe = NULL, *first_s_col_dfe = NULL;
@@ -277,16 +324,30 @@ csg_ts_frame (sqlo_t * so, op_table_t * top_ot, cset_t * cset, table_source_t * 
   search_spec_t *s_spec = NULL, *g_spec = NULL, *g_inx_spec = NULL, *sp;
   key_source_t *ks = ts->ts_order_ks;
   oid_t g_col_id = ((dbe_column_t *) ks->ks_key->key_parts->next->data)->col_id;
+  if (CSQ_LOOKUP == sc->sc_csg_mode && csts->csts_o_from_posg)
+    {
+      sc->sc_cset_param = hash_table_allocate (11);
+      sethash ((void *) (ptrlong) csts->csts_o_from_posg->ssl_index, sc->sc_cset_param, (void *) 1);
+    }
   if (ks->ks_spec.ksp_spec_array)
     {
       s_spec = ks->ks_spec.ksp_spec_array;
       g_inx_spec = ks->ks_spec.ksp_spec_array->sp_next;
+    }
+  if (CSQ_TABLE == sc->sc_csg_mode && s_spec)
+    {
+      /* if making a scan for a non indexed o value, there is no s spec */
+      s_spec = NULL;
+      if (g_inx_spec)
+	g_spec = g_inx_spec;
     }
   for (sp = ks->ks_row_spec; sp; sp = sp->sp_next)
     {
       if (sp->sp_col == (dbe_column_t *) ks->ks_key->key_parts->data
 	  || sp->sp_col == (dbe_column_t *) ks->ks_key->key_parts->next->data)
 	continue;		/* s or g specs do not make rq access */
+      if (csg_col_is_o_by_index (sc, ts, sp->sp_col))
+	continue;
       sethash ((void *) sp->sp_col, ht, (void *) 1);
       if (sp->sp_cl.cl_col_id == g_col_id)
 	{
@@ -298,10 +359,17 @@ csg_ts_frame (sqlo_t * so, op_table_t * top_ot, cset_t * cset, table_source_t * 
       else if (sp->sp_col == (dbe_column_t *) ks->ks_key->key_parts->data
 	  || sp->sp_col == (dbe_column_t *) ks->ks_key->key_parts->next->data)
 	continue;		/* s or g specs do not make rq access */
+      if (csts->csts_o_index_p && sp->sp_col->col_cset_iri == csts->csts_o_index_p)
+	continue;
       sethash ((void *) sp->sp_col, ht, (void *) 1);
     }
-  DO_SET (dbe_column_t *, col, &ks->ks_key->key_parts) if (col->col_cset_iri)	/*not s or g */
+  DO_SET (dbe_column_t *, col, &ks->ks_key->key_parts)
+  {
+    if (!col->col_cset_iri	/*not s or g */
+	|| csg_col_is_o_by_index (sc, ts, col))
+      continue;
     sethash ((void *) col, ht, (void *) 2);
+  }
   END_DO_SET ();
   n_cols = ht->ht_count;
   csgc_arr = (csg_col_t *) t_alloc_box (sizeof (csg_col_t) * n_cols, DV_BIN);
@@ -339,7 +407,11 @@ csg_ts_frame (sqlo_t * so, op_table_t * top_ot, cset_t * cset, table_source_t * 
 	    {
 	      t_set_push (&cset_dfe->_.table.out_cols, cset_col);
 	    }
-	  any_cond =
+	  if (o_mode && unbox_iri_id (o_mode[1]) == cset_col->_.col.col->col_csetp->csetp_iri)
+	    any_cond =
+		csg_o_scan_cond (so, cset_dfe, csgc->csgc_ref_col, ts, t_listst (3, COL_DOTTED, cset_dfe->_.table.ot->ot_new_prefix,
+		    csgc->csgc_col->col_name));
+	  any_cond |=
 	      csg_o_cond (so, cset_dfe, csgc->csgc_ref_col, ts, t_listst (3, COL_DOTTED, cset_dfe->_.table.ot->ot_new_prefix,
 		  csgc->csgc_col->col_name));
 	  if (any_cond)
@@ -354,6 +426,24 @@ csg_ts_frame (sqlo_t * so, op_table_t * top_ot, cset_t * cset, table_source_t * 
 
 	      t_set_push (&cset_dfe->_.table.col_preds, cp);
 	    }
+	  rq_dfe = csg_add_tb (so, cset->cset_rq_table->tb_primary_key);
+	  csg_p_cond (so, rq_dfe, ref_col->col_cset_iri);
+	  csg_s_cond (so, rq_dfe, &first_dfe, &first_s_col_dfe, s_spec);
+	  csg_g_cond (so, rq_dfe, g_spec);
+	  csg_o_cond (so, rq_dfe, ref_col, ts, t_listst (3, COL_DOTTED, rq_dfe->_.table.ot->ot_new_prefix, O_NAME));
+	  if (o_mode && unbox_iri_id (o_mode[1]) == ref_col->col_cset_iri)
+	    csg_o_scan_cond (so, rq_dfe, csgc->csgc_ref_col, ts, t_listst (3, COL_DOTTED, rq_dfe->_.table.ot->ot_new_prefix,
+		    t_box_string ("O")));
+	  if (dk_set_member (ks->ks_out_cols, csgc->csgc_ref_col))
+	    {
+	      ST *tree = t_listst (3, COL_DOTTED, rq_dfe->_.table.ot->ot_new_prefix, O_NAME);
+	      df_elt_t *rq_col = sqlo_df (so, tree);
+	      t_set_push (&rq_dfe->_.table.out_cols, rq_col);
+	    }
+	}
+      else
+	{
+	  int any_cond = 0;
 	  rq_dfe = csg_add_tb (so, cset->cset_rq_table->tb_primary_key);
 	  csg_p_cond (so, rq_dfe, ref_col->col_cset_iri);
 	  csg_s_cond (so, rq_dfe, &first_dfe, &first_s_col_dfe, s_spec);
@@ -492,7 +582,7 @@ csg_cset_extra (sqlo_t * so, table_source_t * ts, table_source_t * model_ts)
 }
 
 void
-csa_add_ssl (cset_align_node_t * csa, state_slot_t * res_ssl, state_slot_t * first, state_slot_t * second, int n_out)
+csa_add_ssl (cset_align_node_t * csa, state_slot_t * res_ssl, state_slot_t * first, state_slot_t * second, int n_out, int flag)
 {
   int nth;
   if (!csa->csa_ssls)
@@ -508,6 +598,7 @@ csa_add_ssl (cset_align_node_t * csa, state_slot_t * res_ssl, state_slot_t * fir
 	  csa->csa_ssls[nth].csa_res = res_ssl;
 	  csa->csa_ssls[nth].csa_first = first;
 	  csa->csa_ssls[nth].csa_second = second;
+	  csa->csa_ssls[nth].csa_flag = flag;
 	  break;
 	}
     }
@@ -515,15 +606,16 @@ csa_add_ssl (cset_align_node_t * csa, state_slot_t * res_ssl, state_slot_t * fir
 
 
 void
-csg_rq_o_cols (table_source_t * model_ts, table_source_t * ts, table_source_t * cset_ts)
+csg_rq_o_cols (sqlo_t * so, table_source_t * model_ts, table_source_t * ts, table_source_t * cset_ts)
 {
+  sql_comp_t *sc = so->so_sc;
   oid_t cset_col_id = 0;
-  v_out_map_t *om;
   int n_out;
   cset_align_node_t *csa;
   key_source_t *rq_ks = ts->ts_order_ks;
   iri_id_t iri = unbox_iri_id (rq_ks->ks_spec.ksp_spec_array->sp_min_ssl->ssl_constant);
   cset_mode_t *csm = ts->ts_csm;
+  cset_mode_t *cset_csm = cset_ts ? cset_ts->ts_csm : NULL;
   int inx;
   dk_set_t s_iter = rq_ks->ks_out_slots;
   DO_SET (dbe_column_t *, col, &ts->ts_order_ks->ks_out_cols)
@@ -538,43 +630,50 @@ csg_rq_o_cols (table_source_t * model_ts, table_source_t * ts, table_source_t * 
   END_DO_SET ();
   return;
 found:
-  s_iter = cset_ts->ts_order_ks->ks_out_slots;
-  DO_SET (dbe_column_t *, col, &cset_ts->ts_order_ks->ks_out_cols)
-  {
-    if (col->col_csetp && iri == col->col_csetp->csetp_iri)
+  if (cset_ts)
+    {
+      s_iter = cset_ts->ts_order_ks->ks_out_slots;
+      DO_SET (dbe_column_t *, col, &cset_ts->ts_order_ks->ks_out_cols)
       {
-	cset_col_id = col->col_id;
-	ts->ts_csm->csm_cset_o = (state_slot_t *) s_iter->data;
-	goto found2;
+	if (col->col_csetp && iri == col->col_csetp->csetp_iri)
+	  {
+	    cset_col_id = col->col_id;
+	    ts->ts_csm->csm_cset_o = (state_slot_t *) s_iter->data;
+	    goto found2;
+	  }
+	s_iter = s_iter->next;
       }
-    s_iter = s_iter->next;
-  }
-  END_DO_SET ();
-found2:;
-  n_out = dk_set_length (cset_ts->ts_order_ks->ks_out_slots);
-  if (!csm->csm_cset_col_bits)
-    csm->csm_cset_col_bits = (short *) dk_alloc_box_zero (sizeof (short) * n_out, DV_BIN);
-  inx = 0;
-  DO_SET (dbe_column_t *, col, &cset_ts->ts_order_ks->ks_out_cols)
-  {
-    if (cset_col_id == col->col_id)
+      END_DO_SET ();
+    found2:;
+      n_out = dk_set_length (cset_ts->ts_order_ks->ks_out_slots);
+      if (!cset_csm->csm_cset_col_bits)
+	{
+	  cset_csm->csm_cset_col_bits = (short *) dk_alloc_box_zero (sizeof (short) * n_out, DV_BIN);
+	  memset (cset_csm->csm_cset_col_bits, OM_NO_CSET, box_length (cset_csm->csm_cset_col_bits));
+	}
+      inx = 0;
+      DO_SET (dbe_column_t *, col, &cset_ts->ts_order_ks->ks_out_cols)
       {
-	csm->csm_cset_col_bits[inx] = ts->ts_csm->csm_bit;
-	break;
+	if (cset_col_id == col->col_id)
+	  {
+	    cset_csm->csm_cset_col_bits[inx] = ts->ts_csm->csm_bit;
+	    break;
+	  }
+	inx++;
       }
-    inx++;
-  }
-  END_DO_SET ();
+      END_DO_SET ();
+    }
   csa = (cset_align_node_t *) qn_next_qn ((data_source_t *) ts, (qn_input_fn) cset_align_input);
+  n_out = dk_set_length (model_ts->ts_order_ks->ks_out_slots);
+  if (CSQ_LOOKUP == sc->sc_csg_mode && model_ts->ts_csts->csts_posg_o_out)
+    csa_add_ssl (csa, model_ts->ts_csts->csts_posg_o_out, model_ts->ts_csts->csts_o_from_posg, NULL, n_out, 0);
   s_iter = model_ts->ts_order_ks->ks_out_slots;
   DO_SET (dbe_column_t *, col, &model_ts->ts_order_ks->ks_out_cols)
   {
     if (iri == col->col_cset_iri)
       {
 	state_slot_t *res_ssl = (state_slot_t *) s_iter->data;
-	int n_out = dk_set_length (model_ts->ts_order_ks->ks_out_slots), nth;
-	csa_add_ssl (csa, res_ssl, csm->csm_cset_o, csm->csm_rq_o, n_out);
-
+	csa_add_ssl (csa, res_ssl, csm->csm_cset_o, csm->csm_rq_o, n_out, 0);
       }
     s_iter = s_iter->next;
   }
@@ -611,28 +710,96 @@ csg_ts_sg_out_ssl (sqlo_t * so, table_source_t * ts, char *col_name, int add)
 
 
 void
-csg_sg_out (sqlo_t * so, cset_align_node_t * csa, table_source_t * cset_ts, table_source_t * model_ts)
+csg_sg_out (sqlo_t * so, cset_align_node_t * csa, table_source_t * model_ts)
 {
-  /* if the model ts returns s or g add these to the cset ts  The 2nd is in principle the s from the first exception ts in a scan */
-  state_slot_t *first, *second;
-  int n_out = dk_set_length (model_ts->ts_order_ks->ks_out_slots), nth;
-  table_source_t *rq_ts = (table_source_t *) qn_next ((data_source_t *) cset_ts);
+  /* if the model ts returns s or g add these to the cset ts.  The 2nd is in principle the s from the first exception ts in a scan */
+  state_slot_t *first = NULL, *second = NULL;
+  int n_out = dk_set_length (model_ts->ts_order_ks->ks_out_slots);
+  table_source_t *rq_ts = NULL;
+  table_source_t *cset_ts = NULL;
   state_slot_t *s_out = csg_ts_sg_out_ssl (so, model_ts, "S", 0);
-  state_slot_t *g_out = csg_ts_sg_out_ssl (so, model_ts, "S", 0);
-  if (!IS_TS (rq_ts))
-    rq_ts = NULL;
+  state_slot_t *g_out = csg_ts_sg_out_ssl (so, model_ts, "G", 0);
+  table_source_t *ts;
+  query_t *qr = so->so_sc->sc_cc->cc_query;
+  for (ts = (table_source_t *) qr->qr_head_node; ts; ts = (table_source_t *) qn_next ((data_source_t *) ts))
+    {
+      if (IS_TS (ts))
+	{
+	  if (tb_is_rdf_quad (ts->ts_order_ks->ks_key->key_table))
+	    {
+	      rq_ts = ts;
+	      break;
+	    }
+	  else
+	    cset_ts = ts;
+	}
+    }
   if (s_out)
     {
-      first = csg_ts_sg_out_ssl (so, cset_ts, "S", 1);
-      second = csg_ts_sg_out_ssl (so, rq_ts, "S", 1);
-      csa_add_ssl (csa, s_out, first, NULL, n_out);
+      if (cset_ts)
+	first = csg_ts_sg_out_ssl (so, cset_ts, "S", 1);
+      if (rq_ts)
+	second = csg_ts_sg_out_ssl (so, rq_ts, "S", 1);
+      if (first || second)
+	csa_add_ssl (csa, s_out, first, second, n_out, CSA_S);
     }
+  first = second = NULL;
   if (g_out)
     {
-      first = csg_ts_sg_out_ssl (so, cset_ts, "G", 1);
-      second = csg_ts_sg_out_ssl (so, rq_ts, "G", 1);
-      csa_add_ssl (csa, g_out, first, second, n_out);
+      if (cset_ts)
+	first = csg_ts_sg_out_ssl (so, cset_ts, "G", 1);
+      if (rq_ts)
+	second = csg_ts_sg_out_ssl (so, rq_ts, "G", 1);
+      if (first || second)
+	csa_add_ssl (csa, g_out, first, second, n_out, CSA_G);
     }
+}
+
+
+void
+csg_rq_top_oby (sqlo_t * so, table_source_t * ts, table_source_t * model_ts)
+{
+  key_source_t *ks = ts->ts_order_ks;
+  key_source_t *model_ks = model_ts->ts_order_ks;
+  ks->ks_top_oby_spec = sp_copy (model_ks->ks_top_oby_spec);
+  ks->ks_top_oby_col = tb_name_to_column (ks->ks_key->key_table, "O");
+  ks->ks_top_oby_spec->sp_col = ks->ks_top_oby_col;
+  ks->ks_top_oby_spec->sp_cl = *cl_list_find (ks->ks_key->key_row_var, ks->ks_top_oby_col->col_id);
+  ks->ks_top_oby_setp = model_ks->ks_top_oby_setp;
+  ks->ks_top_oby_top_setp = model_ks->ks_top_oby_top_setp;
+  ks->ks_top_oby_cnt = model_ks->ks_top_oby_cnt;
+  ks->ks_top_oby_skip = model_ks->ks_top_oby_skip;
+  ks->ks_top_oby_nth = model_ks->ks_top_oby_nth;
+}
+
+
+void
+csg_cset_top_oby (sqlo_t * so, table_source_t * ts, table_source_t * model_ts)
+{
+  key_source_t *ks = ts->ts_order_ks;
+  key_source_t *model_ks = model_ts->ts_order_ks;
+  dbe_column_t *col = NULL;
+  csg_col_t *csgc_arr = so->so_top_ot->ot_csgc;
+  int n_cols = box_length (csgc_arr) / sizeof (csg_col_t), inx;
+  for (inx = 0; inx < n_cols; inx++)
+    {
+      if (csgc_arr[inx].csgc_ref_col->col_cset_iri == model_ks->ks_top_oby_col->col_cset_iri)
+	{
+	  if (!(col = csgc_arr[inx].csgc_col))
+	    return;
+	  break;
+	}
+    }
+  ks->ks_top_oby_spec = sp_copy (model_ks->ks_top_oby_spec);
+  ks->ks_top_oby_col = col;
+  ks->ks_top_oby_spec->sp_col = ks->ks_top_oby_col;
+  ks->ks_top_oby_spec->sp_cl = *cl_list_find (ks->ks_key->key_row_var, ks->ks_top_oby_col->col_id);
+  ks->ks_top_oby_setp = model_ks->ks_top_oby_setp;
+  ks->ks_top_oby_top_setp = model_ks->ks_top_oby_top_setp;
+  ks->ks_top_oby_cnt = model_ks->ks_top_oby_cnt;
+  ks->ks_top_oby_skip = model_ks->ks_top_oby_skip;
+  ks->ks_top_oby_nth = model_ks->ks_top_oby_nth;
+
 }
 
 
@@ -671,7 +838,7 @@ csg_extra_specs (sqlo_t * so, cset_t * cset, query_t * qr, table_source_t * mode
 	  csgc = is_rq ? &csgc_arr[nth_rq] : NULL;
 	  NEW_VARZ (cset_mode_t, csm2);
 	  csm = csm2;
-	  csm->csm_cset_bit_bytes = ALIGN_8 (n_in_cset) / 8;
+	  csm->csm_cset_bit_bytes = ALIGN_8 (n_in_cset + 1) / 8;
 	  csm->csm_reqd_ps = (iri_id_t *) box_copy ((caddr_t) csts->csts_reqd_ps);
 	  csm->csm_mode = cc_new_instance_slot (sc->sc_cc);
 	  if (is_first)
@@ -705,6 +872,10 @@ csg_extra_specs (sqlo_t * so, cset_t * cset, query_t * qr, table_source_t * mode
 	      exc_bits = csm->csm_exc_bits_out = csg_exc_bits (sc, csgc, n_in_cset);
 	      csm->csm_n_bits = 64 * BOX_ELEMENTS (exc_bits);
 	    }
+	  if (is_rq && model_ks->ks_top_oby_col && model_ks->ks_top_oby_col->col_cset_iri == csgc->csgc_ref_col->col_cset_iri)
+	    csg_rq_top_oby (so, ts, model_ts);
+	  if (!is_rq && model_ks->ks_top_oby_col)
+	    csg_cset_top_oby (so, ts, model_ts);
 	  if (is_rq && !rq_in_cset)
 	    csm->csm_bit = -1;
 	  if (!is_rq)
@@ -723,9 +894,10 @@ csg_extra_specs (sqlo_t * so, cset_t * cset, query_t * qr, table_source_t * mode
 	      if (rq_in_cset)
 		{
 		  csm->csm_bit = n_bits;
+		  csm->csm_n_from_cset = cc_new_instance_slot (sc->sc_cc);
 		  n_bits++;
 		}
-	      csg_rq_o_cols (model_ts, ts, cset_ts);
+	      csg_rq_o_cols (so, model_ts, ts, cset_ts);
 	      if (csgc->csgc_ref_col->col_is_cset_opt)
 		{
 		  ts->ts_set_card_bits = cc_new_instance_slot (sc->sc_cc);
@@ -744,12 +916,16 @@ csg_extra_specs (sqlo_t * so, cset_t * cset, query_t * qr, table_source_t * mode
 	      END_DO_SET ();
 	      nth_rq++;
 	    }
+	  ks_set_search_params (NULL, NULL, ts->ts_order_ks);
 	}
     }
+  if (cset_ts)
+    cset_ts->ts_csm->csm_bit = n_bits;
   csa = (cset_align_node_t *) qn_next_qn (qr->qr_head_node, (qn_input_fn) cset_align_input);
-  csg_sg_out (so, csa, cset_ts, model_ts);
+  csg_sg_out (so, csa, model_ts);
   csa->csa_model_ts = model_ts;
   csa->csa_exc_bits = exc_bits;
+  csa->csa_no_cset_bit = cset_ts ? cset_ts->ts_csm->csm_bit : -1;
 }
 
 
@@ -800,7 +976,7 @@ csg_top (sql_comp_t * sc, cset_t * cset, table_source_t * ts, int mode)
 
 
 query_t *
-csg_query (cset_t * cset, table_source_t * ts, int mode, caddr_t * err)
+csg_query (cset_t * cset, table_source_t * ts, int mode, caddr_t * o_mode, caddr_t * err)
 {
   client_connection_t *cli = sqlc_client ();
   caddr_t cc_error;
@@ -818,6 +994,9 @@ csg_query (cset_t * cset, table_source_t * ts, int mode, caddr_t * err)
   sc.sc_cc = &cc;
   sc.sc_client = cli;
   cc.cc_query = qr;
+  sc.sc_csg_mode = mode;
+  sc.sc_csg_o_mode = o_mode;
+  sc.sc_csg_cset = cset;
   sql_warnings_clear ();
   MP_START ();
   mp_comment (THR_TMP_POOL, "cset_compile ", "");

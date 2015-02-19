@@ -34,11 +34,23 @@
 #define GMTIMESTAMP_STRUCT TIMESTAMP_STRUCT
 
 /* datesupp.c */
-typedef int32 jday_t;
-jday_t date2num (int year, int month, int day);
-void num2date (jday_t julian_days, int *year, int *month, int *day);
-int ymd_valid_p (int year, int month, int day);
-int date2weekday (int year, int month, int day);
+
+/* The Gregorian Reformation date. First day of Gregorian calendar is 1582-10-15 and that is the day after the 1582-10-04 that is the last Julian day. */
+#define GREG_YEAR				1582
+#define GREG_MONTH				10
+#define GREG_LAST_JULIAN_DAY			4
+#define GREG_LAST_JULIAN_DAY_AS_PROLEPTIC_GREG	14
+#define GREG_JDAYS	577737L	/* date2num (GREG_YEAR, GREG_MONTH, GREG_LAST_JULIAN_DAY) */
+
+#define GREG_YMD_IS_PROLEPTIC_GREG(year,month,day) \
+  ((year) < GREG_YEAR || (((year) == GREG_YEAR) && ((month) < GREG_MONTH || (((month) == GREG_MONTH) && ((day) <= GREG_LAST_JULIAN_DAY_AS_PROLEPTIC_GREG)))))
+#define GREG_YMD_IS_POST_JULIAN_PROLEPTIC_GREG(year,month,day) \
+  ((year == GREG_YEAR) && ((month == GREG_MONTH) && (day <= GREG_LAST_JULIAN_DAY_AS_PROLEPTIC_GREG) &&  (day > GREG_LAST_JULIAN_DAY)))
+
+int32 date2num (const int year, const int month, const int day);
+void num2date (int32 julian_days, int *year, int *month, int *day);
+int ymd_valid_p (const int year, const int month, const int day);
+int date2weekday (const int year, const int month, const int day);
 void dt_now (caddr_t dt);
 void dt_now_tz (caddr_t dt);
 void time_t_to_dt (time_t tim, long fraction, char *dt);
@@ -93,17 +105,17 @@ extern void iso8601_or_odbc_string_to_dt_1 (const char *str, char *dt, int dtfla
 
 #define odbc_string_to_any_dt(str,dt,err_msg_ret) \
   iso8601_or_odbc_string_to_dt ((str), (dt), \
-    (DTFLAG_DATE | DTFLAG_TIME | DTFLAG_TIMEZONE | DTFLAG_ALLOW_ODBC_SYNTAX | DTFLAG_T_FORMAT_SETS_TZL | DTFLAG_FORMAT_SETS_FLAGS | \
+    (DTFLAG_DATE | DTFLAG_TIME | DTFLAG_TIMEZONE | DTFLAG_ALLOW_ODBC_SYNTAX | DTFLAG_ALLOW_JAVA_SYNTAX | DTFLAG_T_FORMAT_SETS_TZL | DTFLAG_FORMAT_SETS_FLAGS | \
       ((DT_TZL_PREFER == timezoneless_datetimes) ? DTFLAG_DATES_AND_TIMES_ARE_ISO : 0)), \
     DT_TYPE_DATETIME, err_msg_ret )
 #define odbc_string_to_time_dt(str,dt,err_msg_ret) \
   iso8601_or_odbc_string_to_dt ((str), (dt), \
-    (DTFLAG_TIME | DTFLAG_TIMEZONE | DTFLAG_ALLOW_ODBC_SYNTAX | DTFLAG_T_FORMAT_SETS_TZL | DTFLAG_FORMAT_SETS_FLAGS | DTFLAG_FORCE_DAY_ZERO | \
+    (DTFLAG_TIME | DTFLAG_TIMEZONE | DTFLAG_ALLOW_ODBC_SYNTAX | DTFLAG_ALLOW_JAVA_SYNTAX | DTFLAG_T_FORMAT_SETS_TZL | DTFLAG_FORMAT_SETS_FLAGS | DTFLAG_FORCE_DAY_ZERO | \
       ((DT_TZL_PREFER == timezoneless_datetimes) ? DTFLAG_DATES_AND_TIMES_ARE_ISO : 0)), \
     DT_TYPE_TIME, err_msg_ret )
 #define iso8601_string_to_datetime_dt(str,dt,err_msg_ret) \
   iso8601_or_odbc_string_to_dt ((str), (dt), \
-    (DTFLAG_DATE | DTFLAG_TIME | DTFLAG_TIMEZONE | DTFLAG_T_FORMAT_SETS_TZL | DTFLAG_DATES_AND_TIMES_ARE_ISO), \
+    (DTFLAG_DATE | DTFLAG_TIME | DTFLAG_TIMEZONE | DTFLAG_ALLOW_JAVA_SYNTAX | DTFLAG_T_FORMAT_SETS_TZL | DTFLAG_DATES_AND_TIMES_ARE_ISO), \
     DT_TYPE_DATETIME, err_msg_ret )
 
 void dt_to_tv (char *dt, char *dv);
@@ -121,9 +133,12 @@ int days_in_february (const int year);
 extern int dt_print_to_buffer (char *buf, caddr_t arg, int mode);
 extern int dt_scan_from_buffer (const char *buf, int mode, caddr_t * dt_ret, const char **err_msg_ret);
 
-#define DT_TZL_NEVER		0	/*!< Never use timezoneless, always set local timezone on parsing strings, setting tzl by BIF will signal error, but TZL values still may come from outside as dezerializations of DV_DATETIME boxes. Should be 0 because this is the default for older versions and thus 0 filler past the end of old wi_database_t serializations */
+#define DT_TZL_NEVER_COMPAT	0	/*!< Never use timezoneless, always set local timezone on parsing strings if not timezone specified, setting tzl by BIF will signal error, but TZL values still may come from outside as dezerializations of DV_DATETIME boxes. Should be 0 because this is the default for older versions and thus 0 filler past the end of old wi_database_t serializations */
 #define DT_TZL_BY_ISO		1	/*!< Set timezoneless if ISO format tells so */
 #define DT_TZL_PREFER		2	/*!< Set timezoneless always, exception is when the parsed string contains explicit timezone or RFC requires GMT or timezone is set by bif. Should be greater than \c DT_TZL_BY_ISO */
+#define DT_TZL_NEVER_VERBOSE	3	/*!< Never use timezoneless, always set local timezone on parsing strings if not timezone specified, setting tzl by BIF will signal error, but TZL values still may come from outside as dezerializations of DV_DATETIME boxes. The difference with \c DT_TZL_NEVER_COMPAT is that timezones are always printed on cast datetimes to strings etc. */
+#define DT_TZL_AS_GMT		4	/*!< On parsing string, set timezone to GMT if no timezone specified. An explicit setting tzl by BIF will not signal error, TZL values may also come from outside as dezerializations of DV_DATETIME boxes. */
+#define DT_TZL_BY_DEFAULT	DT_TZL_PREFER
 
 extern int timezoneless_datetimes;	/*!< One of DT_TZL_XXX values. The default for newly created databases is DT_TZL_BY_DEFAULT, */
 extern int dt_local_tz_for_logs;	/* minutes from GMT */

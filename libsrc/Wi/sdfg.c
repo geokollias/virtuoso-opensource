@@ -269,6 +269,17 @@ ts_sdfg_init (table_source_t * ts, caddr_t * inst)
   rcv_clib->clib_local_pool = mem_pool_alloc ();
 }
 
+
+void
+ha_filled (hash_area_t * ha, caddr_t * inst)
+{
+  setp_node_t setp;
+  memzero (&setp, sizeof (setp));
+  setp.setp_ha = ha;
+  setp_filled (&setp, inst);
+}
+
+
 void
 ts_sliced_reader (table_source_t * ts, caddr_t * inst, hash_area_t * ha)
 {
@@ -298,6 +309,8 @@ ts_sliced_reader (table_source_t * ts, caddr_t * inst, hash_area_t * ha)
 	QNCAST (QI, slice_qi, slice_inst);
 	if (slice_qi->qi_slice >= clm_all->clm_distinct_slices)
 	  continue;
+	if (ha)
+	  ha_filled (ha, slice_inst);
 	QST_INT (slice_inst, ts->ts_in_sdfg) = 1;
 	SRC_IN_STATE (ts, slice_inst) = slice_inst;
 	if (ts->ts_trans_read && ts->ts_trans_read->trr_is_step)

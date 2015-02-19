@@ -32,6 +32,8 @@
 #include "Dk.h"
 #include "Dk/Dksystem.h"
 #include "util/logmsg.h"
+#include "util/strfuns.h"
+
 
 #define BASKET_PEEK(b) basket_peek(b)
 
@@ -53,6 +55,10 @@
 int LEVEL_VAR = 4;
 #endif
 
+#ifdef WIN32
+#define strcasecmp _stricmp
+#endif
+
 
 #ifdef _SSL
 #include <openssl/rsa.h>
@@ -68,6 +74,9 @@ int LEVEL_VAR = 4;
 
 static void ssl_server_init ();
 
+int ssl_ctx_set_cipher_list(SSL_CTX *ctx, char *cipher_list);
+int ssl_ctx_set_protocol_options(SSL_CTX *ctx, char *protocol);
+
 #ifndef NO_THREAD
 static int ssl_server_accept (dk_session_t * listen, dk_session_t * ses);
 static unsigned int ssl_server_port = 0;
@@ -76,6 +85,8 @@ static SSL_CTX *ssl_server_ctx = NULL;
 int32 ssl_server_verify = 0;
 int32 ssl_server_verify_depth = 0;
 char *ssl_server_verify_file = NULL;
+char *ssl_server_cipher_list = NULL;
+char *ssl_server_protocols = NULL;
 #endif
 
 #ifndef NO_THREAD
@@ -1509,12 +1520,18 @@ frq_create (dk_session_t * ses, caddr_t * request)
       future_request->rq_to_close = 1;
       return future_request;
     }
-  if (BOX_ELEMENTS (request) != DA_FRQ_LENGTH)
+  if (!IS_BOX_POINTER (request) || BOX_ELEMENTS (request) != DA_FRQ_LENGTH)
     {
       sr_report_future_error (ses, "", "invalid future request length");
-      dk_free_tree (request);
-      PrpcDisconnect (ses);
-      PrpcSessionFree (ses);
+      if (IS_BOX_POINTER (request))
+	dk_free_tree (request);
+      mutex_enter (thread_mtx);
+      if (ses->dks_thread_state == DKST_IDLE)
+	{
+	  PrpcDisconnect (ses);
+	  PrpcSessionFree (ses);
+	}
+      mutex_leave (thread_mtx);
       dk_free (future_request, sizeof (future_request_t));
       return NULL;
     }
@@ -4984,6 +5001,7 @@ ssl_server_key_setup ()
 #error Must have openssl configures with threads support
 #endif
 
+#ifndef NO_THREAD
 static dk_mutex_t ** lock_cs;
 
 void
@@ -5004,7 +5022,6 @@ ssl_thread_id (void)
 void
 ssl_thread_setup ()
 {
-#ifndef NO_THREAD
   int i;
   lock_cs = dk_alloc (CRYPTO_num_locks() * sizeof (dk_mutex_t *));
   for (i = 0; i < CRYPTO_num_locks (); i ++)
@@ -5013,8 +5030,179 @@ ssl_thread_setup ()
     }
   CRYPTO_set_locking_callback ((void (*) (int, int, char *, int)) ssl_locking_callback);
   CRYPTO_set_id_callback ((unsigned long (*)()) ssl_thread_id);
-#endif
 }
+#endif
+
+
+/*
+ *  Define the SSL Protocol bits
+ */
+#define SSL_PROTOCOL_NONE  (0)
+#define SSL_PROTOCOL_SSLV2 (1<<0)
+#define SSL_PROTOCOL_SSLV3 (1<<1)
+#define SSL_PROTOCOL_TLSV1 (1<<2)
+#define SSL_PROTOCOL_TLSV1_1 (1<<3)
+#define SSL_PROTOCOL_TLSV1_2 (1<<4)
+
+#if OPENSSL_VERSION_NUMBER >= 0x1000100FL
+#define SSL_PROTOCOL_ALL   (SSL_PROTOCOL_TLSV1|SSL_PROTOCOL_TLSV1_1|SSL_PROTOCOL_TLSV1_2)
+#else
+#define SSL_PROTOCOL_ALL   (SSL_PROTOCOL_TLSV1)
+#endif
+
+#define	VIRTUOSO_DEFAULT_CIPHER_LIST "HIGH:!aNULL:!eNULL:!RC4:!DES:!MD5:!PSK:!SRP:!KRB5:!SSLv2:!EXP:!MEDIUM:!LOW:!DES-CBC-SHA:@STRENGTH"
+
+int
+ssl_ctx_set_cipher_list (SSL_CTX * ctx, char *cipher_list)
+{
+  /*
+   *  Default cipher lists excludes all the weak export ciphers
+   */
+  if (!cipher_list || !*cipher_list || !strcasecmp(cipher_list, "default"))
+    cipher_list = VIRTUOSO_DEFAULT_CIPHER_LIST;
+
+  if (!SSL_CTX_set_cipher_list (ssl_server_ctx, cipher_list))
+    {
+      log_error ("SSL: Failed setting cipher list [%s]", cipher_list);
+      return 0;
+    }
+
+  return 1;
+}
+
+
+int
+ssl_ctx_set_protocol_options(SSL_CTX *ctx, char *protocol)
+{
+  int proto = SSL_PROTOCOL_NONE;
+  long ctx_options;
+  int i;
+
+  /*
+   *  Parse protocol list
+   */
+  if (!protocol || !*protocol || !strcasecmp(protocol, "default"))
+    protocol = "ALL";
+
+  for (i = 1; i <= cslnumentries (protocol); i++)
+    {
+      char *ent, *name;
+      char disable = 0;
+      int opt = 0;
+
+      name = ent = cslentry (protocol, i);
+      if (!ent)
+	continue;
+
+      /*
+       *  Check if we explicity want to enable (+) or disable (-!) a particular protocol
+       */
+      if (*ent == '-' || *ent == '!' || *ent == '+')
+	{
+	  name++;
+
+	  if (*ent == '-' || *ent == '!')
+	    disable = 1;
+	}
+
+      if (!strcasecmp (name, "SSLv3"))
+	opt = SSL_PROTOCOL_SSLV3;
+      else if (!strcasecmp (name, "TLSv1"))
+	opt = SSL_PROTOCOL_TLSV1;
+#if defined (SSL_OP_NO_TLSv1_1)
+      else if (!strcasecmp (name, "TLSv1_1") || !strcasecmp (name, "TLSv1.1"))
+	opt = SSL_PROTOCOL_TLSV1_1;
+#endif
+#if defined (SSL_OP_NO_TLSv1_2)
+      else if (!strcasecmp (name, "TLSv1_2") || !strcasecmp (name, "TLSv1.2"))
+	opt = SSL_PROTOCOL_TLSV1_2;
+#endif
+      else if (!strcasecmp (name, "ALL"))
+	opt = SSL_PROTOCOL_ALL;
+      else
+	{
+	  log_error ("SSL: Unsupported protocol [%s]", name);
+	  goto skip;
+	}
+
+      if (disable)
+	proto &= ~opt;
+      else
+	proto |= opt;
+
+    skip:
+      free (ent);
+    }
+
+  /*
+   *   Start by enabling all options
+   */
+  ctx_options = SSL_OP_ALL;
+
+  /*
+   *  Always disable SSLv2, as per RFC 6176
+   */
+  ctx_options |= SSL_OP_NO_SSLv2;
+
+  /*
+   *  Warn when user enables SSLv3 protocol
+   */
+  if (!(proto & SSL_PROTOCOL_SSLV3))
+    ctx_options |= SSL_OP_NO_SSLv3;
+  else
+    log_warning ("SSL: Enabling legacy protocol SSLv3 which may be vunerable");
+
+  /*
+   *  Check rest of protocols
+   */
+  if (!(proto & SSL_PROTOCOL_TLSV1))
+    ctx_options |= SSL_OP_NO_TLSv1;
+
+#if defined (SSL_OP_NO_TLSv1_1)
+  if (!(proto & SSL_PROTOCOL_TLSV1_1))
+    ctx_options |= SSL_OP_NO_TLSv1_1;
+#endif
+
+#if defined (SSL_OP_NO_TLSv1_2)
+  if (!(proto & SSL_PROTOCOL_TLSV1_2))
+    ctx_options |= SSL_OP_NO_TLSv1_2;
+#endif
+
+  /*
+   *  Disable compression on OpenSSL >= 1.0 to fix "CRIME" attack
+   */
+#ifdef SSL_OP_NO_COMPRESSION
+  ctx_options |= SSL_OP_NO_COMPRESSION;
+#endif
+
+  /*
+   *  Server prefers cipher in order it listed
+   */
+#ifdef SSL_OP_CIPHER_SERVER_PREFERENCE
+  ctx_options |= SSL_OP_CIPHER_SERVER_PREFERENCE;
+#endif
+
+  /*
+   *  Configure additional options
+   */
+  ctx_options |= SSL_OP_SINGLE_DH_USE;
+
+#ifdef SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION
+  ctx_options |= SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION;
+#endif
+
+  /*
+   *  Set options
+   */
+  if (!SSL_CTX_set_options (ctx, ctx_options))
+    {
+      log_error ("SSL: Failed setting protocol options [%s] [%lx]", protocol, ctx_options);
+      return 0;
+    }
+
+  return 1;
+}
+
 
 static void
 ssl_server_init ()
@@ -5025,17 +5213,21 @@ ssl_server_init ()
   CRYPTO_set_mem_functions (dk_ssl_alloc, dk_ssl_realloc, dk_ssl_free);
   CRYPTO_set_locked_mem_functions (dk_ssl_alloc, dk_ssl_free);
 #endif
+
+#if (OPENSSL_VERSION_NUMBER >= 0x00908000L)
+  SSL_library_init ();
+#endif
+
   SSL_load_error_strings ();
   ERR_load_crypto_strings ();
+
 #ifndef WIN32
 { unsigned char tmp[1024];
   RAND_bytes (tmp, sizeof (tmp));
   RAND_add (tmp, sizeof (tmp), (double) (sizeof (tmp)));
 }
 #endif
-# if (OPENSSL_VERSION_NUMBER >= 0x00908000L)
-  SSL_library_init ();
-# endif
+
   SSLeay_add_all_algorithms ();
   PKCS12_PBE_add (); /* stub */
 
@@ -5050,7 +5242,26 @@ ssl_server_init ()
       ERR_print_errors_fp (stderr);
       call_exit (-1);
     }
+
+#ifndef NO_THREAD
+  /*
+   *  Set Protocols & Ciphers
+   */
+  if (!ssl_ctx_set_protocol_options (ssl_server_ctx, ssl_server_protocols))
+    {
+      ERR_print_errors_fp (stderr);
+      call_exit (-1);
+    }
+  if (!ssl_ctx_set_cipher_list (ssl_server_ctx, ssl_server_cipher_list))
+    {
+      ERR_print_errors_fp (stderr);
+      call_exit (-1);
+    }
+#endif
+
+#ifndef NO_THREAD
   ssl_thread_setup ();
+#endif
 }
 
 

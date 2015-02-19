@@ -99,7 +99,7 @@ caddr_t f##_w p \
   dk_session_t * ses = IMMEDIATE_CLIENT; \
   client_connection_t * cli; \
   cli = DKS_DB_DATA (ses); \
-  if (!cli) \
+  if (!cli || !cli->cli_logged_in) \
     { \
       log_error ("SQL client operation on a connection which was not logged in.\n"); \
       ses->dks_to_close = 1; \
@@ -1146,7 +1146,7 @@ sf_sql_connect (char *username, char *password, char *cli_ver, caddr_t * info)
 	  if (!user)
 	    err = srv_make_new_error ("28000", "SR311", "Bad login");
 	  else
-	    err = srv_make_new_error ("08004", "SR311", "Shutting down the server permitted only to DBA group");
+	    err = srv_make_new_error ("08004", "SR311:SECURITY", "Shutting down the server permitted only to DBA group");
 	  DKST_RPC_DONE (client);
 	  PrpcAddAnswer (err, DV_ARRAY_OF_POINTER, FINAL, 1);
 	  dk_free_tree (err);
@@ -1244,6 +1244,7 @@ sf_sql_connect (char *username, char *password, char *cli_ver, caddr_t * info)
 
   dk_free_tree ((caddr_t) info);
   srv_add_login (cli);
+  cli->cli_logged_in = 1;
 #ifdef USE_TLSF
   cli->cli_tlsf = tlsf_get ();
   tlsf_set_comment (cli->cli_tlsf, client->dks_peer_name);

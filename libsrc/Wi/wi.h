@@ -35,7 +35,9 @@
 //#define VOS
 #define NO_CL GPF_T1 ("not available without cluster support")
 
+#if defined(linux)
 #define PM_TLSF 1
+#endif
 #define CSET 1
 #ifdef MALLOC_DEBUG
 //#define DC_BOXES_DBG
@@ -769,6 +771,11 @@ typedef struct out_map_s
 #define OM_NULL 1
 #define OM_ROW 2
 #define OM_BM_COL 3
+#define OM_CONST 4
+
+/* om cset bit */
+#define OM_NO_CSET 255
+
     /* flags for page_wait_access, itc_dive_mode  */
 #define PA_READ 0		/* code relies on 0 being PA_READ, as per result of memset 0 */
 #define PA_WRITE 1
@@ -2024,6 +2031,9 @@ extern int64 bdf_is_avail_mask;	/* all bits on except read aside flag which does
    DV_DOUBLE_FLOAT == dtp || \
    DV_NUMERIC == dtp \
   || DV_INT64 == dtp)
+
+#define IS_DATE_DTP(dtp) \
+  (DV_TIMESTAMP == (dtp) || DV_DATE == (dtp) || DV_DATETIME == (dtp))
 
 #ifndef dbg_printf
 # ifdef DEBUG

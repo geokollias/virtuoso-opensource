@@ -2469,8 +2469,8 @@ typedef struct nq_iriref_items_s
 } nq_iriref_items_t;
 
 int
-iri_cast_and_split_ttl_qname (query_instance_t * qi, caddr_t iri, caddr_t * ns_prefix_ret, caddr_t * local_ret,
-    ptrlong * is_bnode_ret)
+iri_cast_and_split_ttl_qname_impl (query_instance_t * qi, caddr_t iri, caddr_t * ns_prefix_ret, caddr_t * local_ret,
+    ptrlong * is_bnode_ret, int flag)
 {
   is_bnode_ret[0] = 0;
   switch (DV_TYPE_OF (iri))
@@ -2487,7 +2487,7 @@ iri_cast_and_split_ttl_qname (query_instance_t * qi, caddr_t iri, caddr_t * ns_p
 	    is_bnode_ret[0] = 1;
 	    return 1;
 	  }
-	iri_split_ttl_qname (iri, ns_prefix_ret, local_ret, 1);
+	iri_split_ttl_qname_impl (iri, ns_prefix_ret, local_ret, 1, flag);
 	return 1;
       }
     case DV_IRI_ID:
@@ -2519,7 +2519,7 @@ iri_cast_and_split_ttl_qname (query_instance_t * qi, caddr_t iri, caddr_t * ns_p
 	    for (tail = local + local_len; tail > local; tail--)
 	      {
 		unsigned char c = (unsigned char) tail[-1];
-		if (!isalnum (c) && ('_' != c) && ('-' != c) && !(c & 0x80))
+		if (!isalnum (c) && ('_' != c) && ('-' != c) && !(c & 0x80) && !(flag == SPLIT_MODE_XML && '.' == c))
 		  break;
 	      }
 	    if (isdigit (tail[0]) || ('-' == tail[0]) || ((tail > local) && (NULL == strchr ("#/:?", tail[-1]))))
@@ -2546,6 +2546,18 @@ iri_cast_and_split_ttl_qname (query_instance_t * qi, caddr_t iri, caddr_t * ns_p
   return 0;
 }
 
+int
+iri_cast_and_split_ttl_qname (query_instance_t * qi, caddr_t iri, caddr_t * ns_prefix_ret, caddr_t * local_ret,
+    ptrlong * is_bnode_ret)
+{
+  return iri_cast_and_split_ttl_qname_impl (qi, iri, ns_prefix_ret, local_ret, is_bnode_ret, SPLIT_MODE_TTL);
+}
+
+iri_cast_and_split_xml_qname (query_instance_t * qi, caddr_t iri, caddr_t * ns_prefix_ret, caddr_t * local_ret,
+    ptrlong * is_bnode_ret)
+{
+  return iri_cast_and_split_ttl_qname_impl (qi, iri, ns_prefix_ret, local_ret, is_bnode_ret, SPLIT_MODE_XML);
+}
 
 int
 iri_cast_rdfxml_qname (query_instance_t * qi, caddr_t iri, caddr_t * uri_ret, ptrlong * is_bnode_ret)
@@ -3754,7 +3766,7 @@ bif_http_rdfxml_triple (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     sqlr_new_error ("22023", "SR601", "Argument 1 of http_rdfxml_triple() should be an array of special format");
   if (!iri_cast_rdfxml_qname (qi, subj, &tii.s.uri, &tii.s.is_bnode))
     goto fail;			/* see below */
-  if (!iri_cast_and_split_ttl_qname (qi, pred, &tii.p.ns, &tii.p.loc, &tii.p.is_bnode))
+  if (!iri_cast_and_split_xml_qname (qi, pred, &tii.p.ns, &tii.p.loc, &tii.p.is_bnode))
     goto fail;			/* see below */
   if ((NULL != tii.p.ns) && ('\0' != tii.p.ns[0]) && (!tii.p.is_bnode))
     {

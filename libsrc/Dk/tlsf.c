@@ -65,8 +65,15 @@ static __inline__ void MAPPING_SEARCH(size_t * _r, int *_fl, int *_sl);
 static __inline__ void MAPPING_INSERT(size_t _r, int *_fl, int *_sl);
 static __inline__ bhdr_t *FIND_SUITABLE_BLOCK(tlsf_t * _tlsf, int *_fl, int *_sl);
 static __inline__ bhdr_t *process_area(void *area, size_t size);
-#if USE_SBRK || USE_MMAP
 static __inline__ void *get_new_area(tlsf_t * tlsf, size_t * size);
+
+#ifdef WIN32
+int getpagesize()
+{
+  SYSTEM_INFO si;
+  GetSystemInfo(&si);
+  return si.dwPageSize;
+}
 #endif
 
 static const int table[] = {
@@ -217,7 +224,6 @@ static __inline__ bhdr_t *FIND_SUITABLE_BLOCK(tlsf_t * _tlsf, int *_fl, int *_sl
 		set_bit (_fl, &_tlsf -> fl_bitmap);								\
 	} while(0)
 
-#if USE_SBRK || USE_MMAP
 static __inline__ void *get_new_area(tlsf_t * tlsf, size_t * size)
 {
     void *area;
@@ -246,10 +252,13 @@ static __inline__ void *get_new_area(tlsf_t * tlsf, size_t * size)
     *size = ROUNDUP(*size, PAGE_SIZE);
     if ((area = mmap(0, *size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)) != MAP_FAILED)
         return area;
+#else
+  *size = ROUNDUP(*size, PAGE_SIZE);
+  if ((area = malloc(*size)) != NULL)
+    return area;
 #endif
     return ((void *) ~0);
 }
-#endif
 
 static __inline__ bhdr_t *process_area(void *area, size_t size)
 {
@@ -270,6 +279,15 @@ static __inline__ bhdr_t *process_area(void *area, size_t size)
     ai->next = 0;
     ai->end = lb;
     return ib;
+}
+
+void
+tlsf_printf (char * fmt, ...)
+{
+  va_list ap;
+  va_start (ap, fmt);
+  vfprintf (tlsf_fp, fmt, ap);
+  va_end (ap);
 }
 
 /******************************************************************/
@@ -511,6 +529,10 @@ tlsf_malloc(DBG_PARAMS size_t size, du_thread_t * thr)
   return ret;
 }
 
+#if defined (WIN32) || defined (SOLARIS)
+#define __builtin_prefetch(m)
+#endif
+
 void
 tlsf_free(void *ptr)
 {
@@ -566,7 +588,6 @@ void *malloc_ex(size_t size, void *mem_pool)
     /* Searching a free block, recall that this function changes the values of fl and sl,
        so they are not longer valid when the function fails */
     b = FIND_SUITABLE_BLOCK(tlsf, &fl, &sl);
-#if USE_MMAP || USE_SBRK
     if (!b) {
         size_t area_size;
         void *area;
@@ -590,7 +611,6 @@ void *malloc_ex(size_t size, void *mem_pool)
         /* Searching a free block */
         b = FIND_SUITABLE_BLOCK(tlsf, &fl, &sl);
     }
-#endif
     if (!b)
         return NULL;            /* Not found */
 
@@ -918,9 +938,6 @@ tlsf_print_all_blocks(tlsf_t * tlsf, void * ht1, int mode)
 #endif
 
 
-
-
-
 tlsf_t * dk_base_tlsf;
 size_t tlsf_mmap_threshold = ((128 * 1024) - BHDR_OVERHEAD);
 tlsf_t * dk_all_tlsfs[MAX_TLSFS];
@@ -932,7 +949,12 @@ tlsf_new (size_t size)
 {
   tlsf_t * tlsf;
   void * area;
+#ifdef HAVE_SYS_MMAN_H
   if ((area = mmap(0, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)) != MAP_FAILED)
+#else
+  size = ROUNDUP(size, PAGE_SIZE);
+  if ((area = malloc(size)) != NULL)
+#endif
     {
       init_memory_pool (size, area);
       tlsf = (tlsf_t*)area;

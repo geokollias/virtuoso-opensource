@@ -122,7 +122,9 @@ sqlo_dfe_csets (sqlo_t * so, df_elt_t * dt_dfe)
     s_str = box_dv_short_string ("S");
   DO_SET (df_elt_t *, tb_dfe, &dt_dfe->_.sub.ot->ot_from_dfes)
   {
-    if (DFE_TABLE == tb_dfe->dfe_type && tb_is_rdf_quad (tb_dfe->_.table.ot->ot_table))
+    if (DFE_TABLE == tb_dfe->dfe_type && tb_is_rdf_quad (tb_dfe->_.table.ot->ot_table)
+	&& !sqlo_opt_value (tb_dfe->_.table.ot->ot_opts, OPT_NO_DT_INLINE)
+	&& !sqlo_opt_value (tb_dfe->_.table.ot->ot_opts, OPT_SELF))
       {
 	iri_id_t fixed_p = sqlo_fixed_p (dt_dfe, tb_dfe);
 	dk_set_t cset_ps = gethash ((void *) fixed_p, &p_to_csetp_list);
@@ -184,7 +186,7 @@ pred_s_value (df_elt_t * pred, df_elt_t * tb_dfe)
 void
 sqlo_add_s_eq (dk_set_t * res, df_elt_t * col)
 {
-  if (DFE_COLUMN == col->dfe_type && col->dfe_tables)
+  if (DFE_COLUMN == col->dfe_type && col->dfe_tables && 'S' == col->_.col.col->col_name[0])
     t_set_pushnew (res, ((op_table_t *) col->dfe_tables->data)->ot_dfe);
 }
 
@@ -326,6 +328,7 @@ cset_new_col (dbe_table_t * tb, caddr_t name, dtp_t dtp, int nn, int is_opt)
   col->col_name = box_dv_short_string (name);
   col->col_is_cset_opt = is_opt;
   id_hash_set (tb->tb_name_to_col, (caddr_t) & col->col_name, (caddr_t) & col);
+  col->col_defined_in = tb;
   return col;
 }
 
@@ -773,7 +776,8 @@ sqlo_cset_inx_dfe (sqlo_t * so, df_elt_t * cset_dfe)
 	      COL_DOTTED, inx_ot->ot_new_prefix, t_box_string ("S")));
       inx_ot->ot_cset_inx_s_eq = sqlo_df (so, s_eq);
       t_set_push (&inx_dfe->_.table.out_cols, inx_ot->ot_cset_inx_s_eq->_.bin.right);
-      BIN_OP (p_eq, BOP_EQ, t_listst (3, COL_DOTTED, inx_dfe->_.table.ot->ot_new_prefix, t_box_string ("P")), t_box_iri_id (0));
+      BIN_OP (p_eq, BOP_EQ, t_listst (3, COL_DOTTED, inx_dfe->_.table.ot->ot_new_prefix, t_box_string ("P")),
+	  t_box_iri_id (so->so_name_ctr++));
       inx_ot->ot_cset_inx_p_eq = sqlo_df (so, p_eq);
     }
   return cset_ot->ot_cset_inx_dfe;
@@ -1005,4 +1009,145 @@ sqlo_cset_choose_index (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * col_preds, dk
     }
   sqlo_place_cset_inx (so, tb_dfe, best_col, s_pred, g_pred);
   tb_dfe->_.table.key = tb_dfe->_.table.ot->ot_table->tb_primary_key;
+}
+
+dbe_column_t *
+dfe_rq_cset_equiv_col (df_elt_t * dfe, cset_p_t * csetp, df_elt_t * left_col)
+{
+  dbe_table_t *cset_tb = dfe->_.table.key->key_table;
+  dbe_column_t *same_col;
+  if (0 == strcmp (left_col->_.col.col->col_name, "O"))
+    return csetp->csetp_col;
+  if (0 == strcmp (left_col->_.col.col->col_name, "P"))
+    return NULL;
+  same_col = tb_name_to_column (cset_tb, left_col->_.col.col->col_name);
+  if (!same_col)
+    SQL_GPF_T1 (top_sc->sc_cc, "rdf quad going to cset has non-equality P condition or other column not in PSOG");
+  return same_col;
+}
+
+
+
+void
+dfe_rq_cset_cost (df_elt_t * dfe, cset_p_t * csetp, index_choice_t * ic)
+{
+  dbe_column_t *equiv;
+  dk_set_t na_preds = NULL;
+  dk_set_t org_cp = dfe->_.table.col_preds;
+  cset_t *cset = csetp->csetp_cset;
+  dk_hash_t col_bk[100];
+  dbe_key_t *save_key = dfe->_.table.key;
+  hash_table_init (col_bk, 11);
+  dfe->_.table.key = cset->cset_table->tb_primary_key;
+  DO_SET (df_elt_t *, cp, &dfe->_.table.col_preds)
+  {
+    df_elt_t *left_col = dfe_left_col (dfe, cp);
+    if (!left_col)
+      continue;
+    equiv = dfe_rq_cset_equiv_col (dfe, csetp, left_col);
+    if (!equiv)
+      t_set_push (&na_preds, (void *) cp);
+    if (!gethash ((void *) left_col, &col_bk))
+      {
+	sethash ((void *) left_col, &col_bk, left_col->_.col.col);
+	left_col->_.col.col = equiv;
+      }
+  }
+  END_DO_SET ();
+  if (na_preds)
+    dfe->_.table.col_preds = t_set_diff (dfe->_.table.col_preds, na_preds);
+  dfe_table_cost_ic_2 (dfe, ic, 0);
+  dfe->_.table.col_preds = org_cp;
+  DO_HT (df_elt_t *, left_col, dbe_column_t *, cset_col, &col_bk) left_col->_.col.col = cset_col;
+  END_DO_HT;
+  hash_table_destroy (&col_bk);
+  dfe->_.table.key = save_key;
+}
+
+
+int
+sqlo_cset_quad_choose_index (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * col_preds, dk_set_t * after_preds)
+{
+  /* if this is a quad that can fall on a cset then ps forces pk and po forces posg followed by psog for cases of  o needing scan.  If this is a quad that cannot fall on a cset then return 0 */
+  int extra_psog = 0, n_csets;
+  index_choice_t ic;
+  dk_set_t csp = NULL;
+  dbe_table_t *tb = tb_dfe->_.table.ot->ot_table;
+  rq_cols_t rq;
+  memzero (&ic, sizeof (ic));
+  memzero (&rq, sizeof (rq));
+  tb_dfe->_.table.key = tb->tb_primary_key;
+  rq_cols_init (tb_dfe, &rq);
+  tb_dfe->_.table.key = NULL;
+  if (RQ_CONST_EQ == rq.rq_s.rqp_op)
+    {
+      iri_id_t s = unbox_iri_id (dfe_right (tb_dfe, rq.rq_s.rqp_lower)->dfe_tree);
+      if (IRI_RANGE (s))
+	goto psog;
+      return 0;
+    }
+  if (RQ_CONST_EQ == rq.rq_p.rqp_op)
+    {
+      iri_id_t p = unbox_iri_id (dfe_right (tb_dfe, rq.rq_p.rqp_lower)->dfe_tree);
+      csp = (dk_set_t) gethash ((void *) p, &p_to_csetp_list);
+      if (!csp)
+	return 0;
+    }
+  if (RQ_BOUND_EQ == rq.rq_s.rqp_op)
+    goto psog;
+  if (RQ_UNBOUND == rq.rq_o.rqp_op)
+    goto psog;
+  if (csp)
+    {
+      if (RQ_BOUND_EQ == rq.rq_s.rqp_op)
+	goto psog;
+      DO_SET (cset_p_t *, csetp, &csp)
+      {
+	if (!csetp->csetp_index_o)
+	  goto posg_cset;
+	if (RQ_CONST_EQ == rq.rq_o.rqp_op)
+	  {
+	    caddr_t o = rq.rq_o.rqp_lower->dfe_tree;
+	    if (csetp->csetp_non_index_o && id_hash_get (csetp->csetp_non_index_o, (caddr_t) & o))
+	      goto posg_cset;
+	  }
+      }
+      END_DO_SET ();
+      goto posg;
+    }
+posg_cset:
+  extra_psog = 1;
+posg:
+  tb_dfe->_.table.key = tb_px_key (tb, rq.rq_o_col);
+  if (extra_psog)
+    {
+      tb_dfe->_.table.cset_role = TS_CSET_POSG;
+      tb_dfe->_.table.add_cset_psog = 1;
+    }
+  return 1;
+psog:
+  tb_dfe->_.table.key = tb_px_key (tb, rq.rq_s_col);
+  dfe_table_cost_ic (tb_dfe, &ic, 0);
+  n_csets = 1 + dk_set_length (csp);
+  DO_SET (cset_p_t *, csetp, &csp)
+  {
+    index_choice_t ic2;
+    memzero (&ic2, sizeof (index_choice_t));
+    dfe_rq_cset_cost (tb_dfe, csetp, &ic2);
+    ic.ic_unit += ic2.ic_unit;
+    ic.ic_arity += ic2.ic_arity;
+    ic.ic_inx_card += ic2.ic_inx_card;
+    if (ic2.ic_altered_col_pred)
+      {
+	ic.ic_altered_col_pred = ic2.ic_altered_col_pred;
+	if (ic2.ic_after_test)
+	  ic.ic_after_test = ic2.ic_after_test;
+      }
+  }
+  END_DO_SET ();
+  ic.ic_unit /= n_csets;
+  ic.ic_arity /= n_csets;
+  ic.ic_inx_card /= n_csets;
+  dfe_table_set_by_best (tb_dfe, &ic, -1, col_preds, after_preds);
+  return 1;
 }

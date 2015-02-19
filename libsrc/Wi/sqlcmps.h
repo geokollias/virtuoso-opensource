@@ -303,6 +303,9 @@ typedef struct sql_comp_s
   dk_hash_t *sc_tree_to_dfe;
   dk_hash_t *sc_cset_param;
   state_slot_t *sc_cset_o_scan_mode;
+  caddr_t *sc_csg_o_mode;
+  cset_t *sc_csg_cset;
+  int sc_csg_mode;
   query_frag_t *sc_trans_qf;	/* in trans stmt, the qf of the dfg of the clause */
   gb_op_t *sc_in_group_by_exec;
 } sql_comp_t;
@@ -763,5 +766,6 @@ key_partition_def_t *kpd_copy (key_partition_def_t * kpd);
 
 state_slot_t *sqlg_group_by_exec_col (sql_comp_t * sc, ST * tree);
 void sqlo_cset_partition (dbe_table_t * tb);
+void ks_set_search_params (comp_context_t * cc, comp_table_t * ct, key_source_t * ks);
 
 #endif /* _SQLCMPS_H */

@@ -253,6 +253,7 @@ caddr_t iri_ensure (caddr_t * qst, caddr_t name, int flag, caddr_t * err_ret);
 
 void cl_rdf_inf_init_1 (caddr_t * qst);
 rdf_inf_ctx_t *dfe_ric (df_elt_t * dfe);
+int ric_sub_p_in_cset (rdf_inf_ctx_t * ric, caddr_t p);
 int ric_p_stat_from_cache (rdf_inf_ctx_t * ric, dbe_key_t * key, iri_id_t id, float *p_stat);
 void ric_set_p_stat (rdf_inf_ctx_t * ric, dbe_key_t * key, caddr_t p, float *p_stat);
 extern rdf_inf_ctx_t *empty_ric;

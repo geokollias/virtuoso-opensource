@@ -47,7 +47,7 @@ extern dk_hash_t rdf_iri_always_cached;
 #define SQ_N_BASE 450
 square_list_t base_squares[SQ_N_BASE];
 id_hash_t *cscl_funcs;
-
+dk_mutex_t cset_p_def_mtx;
 
 void
 cscl_define (char *name, cset_cluster_t * func)
@@ -71,6 +71,7 @@ cset_opt_value (caddr_t * opts, char *opt)
 caddr_t
 bif_cset_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
+  dbe_table_t *text_tb;
   char tmp[400];
   ptrlong id = bif_long_arg (qst, args, 0, "cset_def");
   int range = bif_long_arg (qst, args, 1, "cset_def");
@@ -90,6 +91,7 @@ bif_cset_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       hash_table_init (&cset->cset_p, 53);
       hash_table_init (&cset->cset_except_p, 53);
       cset->cset_except_p.ht_rehash_threshold = 2;
+      dk_mutex_init (&cset->cset_mtx, MUTEX_TYPE_SHORT);
     }
   cset->cset_id = id;
   cset->cset_rtr_id = range;
@@ -105,6 +107,9 @@ bif_cset_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   cset->cset_rtr->rtr_seq = box_dv_short_string (tmp);
   cset->cset_ir = ir;
   cset->cset_bn_ir = bn_ir;
+  text_tb = sch_name_to_table (wi_inst.wi_schema, "DB.DBA.RDF_OBJ_RO_FLAGS_WORDS");
+  if (text_tb)
+    cset->cset_table->tb_primary_key->key_text_table = text_tb;
   return NULL;
 }
 
@@ -112,6 +117,11 @@ bif_cset_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 caddr_t
 bif_cset_p_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
+  dk_set_t lst;
+  caddr_t max_inl;
+  caddr_t cscl_func = NULL;
+  caddr_t cscl_cd = NULL;
+  cset_cluster_t *cf = NULL;
   ptrlong id = bif_long_arg (qst, args, 0, "cset_p_def");
   int nth = bif_long_arg (qst, args, 1, "cset_p_def");
   iri_id_t iri = bif_iri_id_arg (qst, args, 2, "cset_p_def");
@@ -119,6 +129,7 @@ bif_cset_p_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   caddr_t *opts = (caddr_t *) bif_arg (qst, args, 4, "cset_p_def");
   cset_t *cset = (cset_t *) gethash ((void *) id, &id_to_cset);
   dbe_column_t *col;
+  int n_slices;
   if (!cset)
     sqlr_new_error ("42000", "NCSET", "No cset %ld", id);
   col = tb_name_to_column (cset->cset_table, cn);
@@ -126,15 +137,16 @@ bif_cset_p_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     sqlr_new_error ("420000", "CSENC", "cset %ld has no col %s", id, cn);
   {
     dk_set_t list;
-    caddr_t max_inl;
-    caddr_t cscl_func = NULL;
-    caddr_t cscl_cd = NULL;
-    cset_cluster_t *cf = NULL;
     NEW_VARZ (cset_p_t, csetp);
     sethash ((void *) iri, &cset->cset_p, (void *) csetp);
     csetp->csetp_iri = iri;
-    list = (dk_set_t) gethash ((void *) iri, &p_to_csetp_list);
-    sethash ((void *) iri, &p_to_csetp_list, CONS (csetp, list));
+    dk_mutex_init (&csetp->csetp_bloom_mtx, MUTEX_TYPE_SHORT);
+    n_slices = CL_RUN_LOCAL == cl_run_local_only ? 1
+	: cset->cset_table->tb_primary_key->key_partition->kpd_map->clm_distinct_slices;
+    csetp->csetp_bloom = dk_alloc_box_zero (sizeof (caddr_t) * n_slices, DV_BIN);
+    csetp->csetp_n_bloom = dk_alloc_box_zero (sizeof (int) * n_slices, DV_BIN);
+    lst = (dk_set_t) gethash ((void *) iri, &p_to_csetp_list);
+    sethash ((void *) iri, &p_to_csetp_list, CONS (csetp, lst));
     sethash ((void *) iri, &rdf_iri_always_cached, (void *) 1);
     csetp->csetp_col = col;
     col->col_csetp = csetp;
@@ -160,6 +172,184 @@ bif_cset_p_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   return NULL;
 }
 
+
+void
+csetp_ensure_bloom (cset_p_t * csetp, caddr_t * inst, int n_bloom, uint64 ** bf_ret, uint32 * bf_n_ret)
+{
+  int prev_sz = 0;
+  QNCAST (QI, qi, inst);
+  slice_id_t slid = qi->qi_client->cli_slice;
+  uint64 **bfs = csetp->csetp_bloom;
+  if (QI_NO_SLICE == slid)
+    slid = 0;
+  if (!bfs || BOX_ELEMENTS (bfs) <= slid)
+    {
+      mutex_enter (&cset_p_def_mtx);
+      bfs = csetp->csetp_bloom;
+      if (!bfs || (prev_sz = BOX_ELEMENTS (bfs)) < slid)
+	{
+	  uint64 **nbfs = (uint64 **) dk_alloc_box_zero (sizeof (caddr_t) * (slid + 100), DV_BIN);
+	  uint32 *nbfs_n = (uint32 *) dk_alloc_box_zero (sizeof (uint32) * (slid + 100), DV_BIN);
+	  memcpy (nbfs, csetp->csetp_bloom, prev_sz * sizeof (caddr_t));
+	  memcpy (nbfs_n, csetp->csetp_n_bloom, prev_sz * sizeof (uint32));
+	  csetp->csetp_bloom = nbfs;
+	  csetp->csetp_n_bloom = nbfs_n;
+	}
+      mutex_leave (&cset_p_def_mtx);
+    }
+  if (n_bloom < 0)
+    {
+      csetp->csetp_bloom[slid] = dk_alloc (sizeof (uint64));
+      memset (csetp->csetp_bloom[slid], 0xff, sizeof (uint64));
+      csetp->csetp_n_bloom[slid] = 1;
+    }
+  else if (!csetp->csetp_n_bloom[slid])
+    {
+      csetp->csetp_bloom[slid] = dk_alloc (sizeof (uint64) * n_bloom);
+      memzero (csetp->csetp_bloom[slid], sizeof (uint64) * n_bloom);
+      csetp->csetp_n_bloom[slid] = n_bloom;
+    }
+  *bf_ret = csetp->csetp_bloom[slid];
+  *bf_n_ret = csetp->csetp_n_bloom[slid];
+}
+
+
+void
+csetp_bloom (cset_p_t * csetp, caddr_t * inst, uint64 ** bf_ret, uint32 * bf_n_ret)
+{
+  /* if null is returned this means no bf and no values that could be in one */
+  QNCAST (QI, qi, inst);
+  slice_id_t slid;
+  if (CL_RUN_LOCAL == cl_run_local_only || QI_NO_SLICE == qi->qi_client->cli_slice)
+    slid = 0;
+  if (BOX_ELEMENTS (csetp->csetp_bloom) <= slid)
+    {
+      *bf_ret = NULL;
+      *bf_n_ret = 0;
+    }
+  *bf_ret = csetp->csetp_bloom[slid];
+  *bf_n_ret = csetp->csetp_n_bloom[slid];
+}
+
+extern float chash_bloom_bits;
+
+caddr_t
+bif_cset_p_exc (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  /* mark the existence of an exception p, set the size of the bloom filter for s if the p is a column in the cset */
+  /* a bf size < 0 means a bf with all 1's where all passes */
+  uint64 *bf;
+  uint32 n_bf;
+  int prev_sz = 0;
+  QNCAST (QI, qi, qst);
+  slice_id_t slid = qi->qi_client->cli_slice;
+  uint64 **bfs;
+  ptrlong id = bif_long_arg (qst, args, 0, "cset_p_exc");
+  iri_id_t iri = bif_iri_id_arg (qst, args, 1, "cset_p_def");
+  int n_bloom = bif_long_arg (qst, args, 2, "cset_p_exc");
+  cset_t *cset = (cset_t *) gethash ((void *) id, &id_to_cset);
+  cset_p_t *csetp;
+  if (!cset)
+    sqlr_new_error ("42000", "NCSET", "No cset %ld", id);
+  csetp = gethash ((void *) iri, &cset->cset_p);
+  if (!csetp)
+    {
+      sethash ((void *) iri, &cset->cset_except_p, (void *) 1);
+      return NULL;
+    }
+  if (QI_NO_SLICE == slid)
+    slid = 0;
+  n_bloom = _RNDUP_PWR2 (((uint64) (_RNDUP_PWR2 (n_bloom + 1, 32) * chash_bloom_bits / 8)), 64);
+  csetp_ensure_bloom (csetp, qst, n_bloom, &bf, &n_bf);
+  return (caddr_t) 1;
+}
+
+
+caddr_t
+bif_cset_add_exc (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  sqlr_new_error ("CSEXC", "CSEXC", "cset_add_exc only vectored");
+  return NULL;
+}
+
+
+void
+bif_cset_add_exc_vec (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, state_slot_t * ret)
+{
+  uint64 *bf;
+  uint32 n_bf;
+  int inx;
+  QNCAST (QI, qi, qst);
+  data_col_t *ret_dc = NULL;
+  slice_id_t slid = qi->qi_client->cli_slice;
+  uint64 **bfs;
+  ptrlong id = bif_long_arg (qst, args, 0, "cset_add_exc");
+  iri_id_t iri = bif_iri_id_arg (qst, args, 1, "cset_add_exc");
+  data_col_t *s_dc;
+  cset_t *cset = (cset_t *) gethash ((void *) id, &id_to_cset);
+  cset_p_t *csetp;
+  if (ret && SSL_VEC == ret->ssl_type)
+    {
+      ret_dc = QST_BOX (data_col_t *, qst, ret->ssl_index);
+      DC_CHECK_LEN (ret_dc, qi->qi_n_sets - 1);
+      if (DV_LONG_INT == ret_dc->dc_dtp)
+	memzero (ret_dc->dc_values, qi->qi_n_sets * sizeof (int64));
+    }
+  if (!cset)
+    return;
+  csetp = gethash ((void *) iri, &cset->cset_p);
+  if (!csetp)
+    return;
+  if (BOX_ELEMENTS (args) < 3 || SSL_VEC != args[2]->ssl_type)
+    sqlr_new_error ("CSEXC", "CSEXC", "");
+  s_dc = QST_BOX (data_col_t *, qst, args[2]->ssl_index);
+  if (QI_NO_SLICE == slid)
+    slid = 0;
+  csetp_bloom (csetp, qst, &bf, &n_bf);
+  if (!bf)
+    return;
+  for (inx = 0; inx < s_dc->dc_n_values; inx++)
+    {
+      iri_id_t s = ((iri_id_t *) s_dc->dc_values)[inx];
+      uint64 h = 1;
+      uint32 w;
+      uint64 mask;
+      MHASH_STEP_1 (h, s);
+      w = BF_WORD (h, n_bf);
+      mask = BF_MASK (h);
+      bf[w] |= mask;
+    }
+}
+
+
+
+caddr_t
+bif_cset_p_no_index (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  /* declare that in a given cset a given o value for a p has no posg even if other values do */
+  caddr_t err = NULL;
+  ptrlong id = bif_long_arg (qst, args, 0, "cset_p_no_index");
+  iri_id_t iri = bif_iri_id_arg (qst, args, 1, "cset_p_no_index");
+  caddr_t exc = bif_arg (qst, args, 2, "cset_p_no_index");
+  caddr_t any;
+  cset_t *cset = (cset_t *) gethash ((void *) id, &id_to_cset);
+  cset_p_t *csetp;
+  if (!cset)
+    sqlr_new_error ("42000", "NCSET", "No cset %ld", id);
+  csetp = gethash ((void *) iri, &cset->cset_p);
+  if (!csetp)
+    return NULL;
+  if (!csetp->csetp_non_index_o)
+    {
+      csetp->csetp_non_index_o = id_hash_allocate (101, sizeof (caddr_t), 0, treehash, treehashcmp);
+      csetp->csetp_non_index_o->ht_rehash_threshold = 200;
+    }
+  caddr_t cp = box_copy_tree (exc);
+  any = box_to_any (exc, &err);
+  id_hash_set (csetp->csetp_non_index_o, (caddr_t) & any, NULL);
+  id_hash_set (csetp->csetp_non_index_o, (caddr_t) & cp, NULL);
+  return NULL;
+}
 
 caddr_t
 bif_cset_type_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
@@ -885,6 +1075,9 @@ cset_init ()
   hash_table_init (&int_seq_to_cset, 51);
   bif_define ("cset_def", bif_cset_def);
   bif_define ("cset_p_def", bif_cset_p_def);
+  bif_define ("cset_p_exc", bif_cset_p_exc);
+  bif_define_ex ("cset_add_exc", bif_cset_add_exc, BMD_VECTOR_IMPL, bif_cset_add_exc_vec, BMD_RET_TYPE, &bt_integer, BMD_DONE);
+  bif_define ("cset_p_no_index", bif_cset_p_no_index);
   bif_define ("cset_type_def", bif_cset_type_def);
   bif_define ("cset_uri_def", bif_cset_uri_def);
   bif_define ("cset_sq_def", bif_cset_sq_def);
@@ -903,6 +1096,25 @@ cset_init ()
       "select count (iri_pattern_def (rip_pattern, rip_start, rip_fields, rip_cset, rip_int_range, rip_exc_range))  from rdf_iri_pattern");
   ddl_ensure_table ("do this always", "iri_pattern_changed ()");
   enable_qp = save;
+  dk_mutex_init (&cset_p_def_mtx, MUTEX_TYPE_SHORT);
+  {
+  }
+  {
+    dbe_table_t *text_tb;
+    char tmp[400];
+    NEW_VARZ (cset_t, cset);
+    hash_table_init (&cset->cset_p, 53);
+    hash_table_init (&cset->cset_except_p, 53);
+    cset->cset_except_p.ht_rehash_threshold = 2;
+    cset->cset_id = 0;
+    cset->cset_rtr_id = 0;
+    cset->cset_rq_table = sch_name_to_table (wi_inst.wi_schema, "DB.DBA.RDF_QUAD");
+    sethash ((void *) (ptrlong) 0, &id_to_cset, (void *) cset);
+    rt_ranges[0].rtr_cset = cset;
+    cset->cset_rtr = &rt_ranges[0];
+  }
+  ddl_ensure_table ("do this always", "cset_bf_init ()");
+  ddl_ensure_table ("do this always", "select count (cset_p_no_index (csni_cset, csni_iid, csni_o)) from RDF_CSET_P_NI ");
 }
 
 #else

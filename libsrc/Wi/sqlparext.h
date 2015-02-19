@@ -316,6 +316,7 @@ Note: bitwise OR of all these masks should be less than SMALLEST_POSSIBLE_POINTE
 
 /* options */
 #define OPT_ORDER  ((ptrlong) 900)
+#define OPT_INDEX_ORDER ((ptrlong)968)
 #define OPT_JOIN  ((ptrlong) 901)
 #define OPT_INDEX ((ptrlong) 902)
 #define OPT_SPARQL ((ptrlong) 907)
@@ -333,6 +334,7 @@ Note: bitwise OR of all these masks should be less than SMALLEST_POSSIBLE_POINTE
 #define OPT_FILE_START  ((ptrlong)954)
 #define OPT_FILE_END  ((ptrlong)955)
 #define OPT_JOIN_RESTR ((ptrlong)958)	/* do not put table as extra restriction on hash build side */
+#define OPT_SELF ((ptrlong)969)
 
 #define OPT_HASH ((ptrlong) 903)
 #define OPT_INTERSECT ((ptrlong) 1015)

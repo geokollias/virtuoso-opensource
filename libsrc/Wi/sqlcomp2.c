@@ -297,7 +297,7 @@ sqlc_add_table_ref (sql_comp_t * sc, ST * tree, dk_set_t * res)
 	if (ct->ct_derived)
 	  {
 	    if (!sec_tb_check (tb, ct->ct_u_id, ct->ct_u_id, GR_SELECT))
-	      sqlc_new_error (sc->sc_cc, "42000", "SQ070", "Must have select privileges on view %s", tb->tb_name);
+	      sqlc_new_error (sc->sc_cc, "42000", "SQ070:SECURITY", "Must have select privileges on view %s", tb->tb_name);
 	    if (ST_P (ct->ct_derived, SELECT_STMT))
 	      sqlc_union_constants (ct->ct_derived);
 	    sqlc_ct_derived_cols (sc, ct);
@@ -951,7 +951,7 @@ sql_stmt_comp (sql_comp_t * sc, ST ** ptree)
 
 dk_mutex_t *parse_mtx;
 du_thread_t *parse_mtx_owner;
-int enable_parse_mtx = 1;
+int enable_parse_mtx = 0;
 
 void
 parse_enter ()

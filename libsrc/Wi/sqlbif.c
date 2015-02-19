@@ -10617,7 +10617,7 @@ bif_blob_to_string (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     }
 
   if (((blob_handle_t *) bh)->bh_length > 10000000)
-    sqlr_new_error ("22001", "SR072", "Blob longer than maximum string length not allowed in blob_to_string");
+    sqlr_new_error ("22001", "SR072", "Blob longer than maximum string length not allowed in blob_to_string()");
   res = blob_to_string (qi->qi_trx, bh);
   return res;
 }
@@ -10814,10 +10814,11 @@ check_sequence_grants (query_instance_t * qi, caddr_t name)
   if (sec_bif_caller_is_dba (qi))
     return;
   if (id_hash_get (dba_sequences, (caddr_t) & name))
-    sqlr_new_error ("42000", "SR159", "Sequence %.300s restricted to dba group.", name);
+    sqlr_new_error ("42000", "SR159:SECURITY", "Sequence %.300s restricted to DBA group.", name);
   tbl = sequence_auto_increment_of (name);
   if (tbl && !sec_tb_check (tbl, qi->qi_u_id, qi->qi_g_id, GR_INSERT))
-    sqlr_new_error ("42000", "SR159", "No permission to write sequence %.300s.", name);
+    sqlr_new_error ("42000", "SR159:SECURITY", "No permission to write sequence %.300s with user ID %d, group ID %d", name,
+	(int) (qi->qi_u_id), (int) (qi->qi_g_id));
 }
 
 static int
@@ -11120,7 +11121,8 @@ bif_registry_set (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   if (2 < BOX_ELEMENTS (args))
     {
       if (!sec_bif_caller_is_dba ((query_instance_t *) qst))
-	sqlr_new_error ("42000", "SR159", "Function registry_set restricted to dba group when is called with 3 arguments.");
+	sqlr_new_error ("42000", "SR159:SECURITY",
+	    "Function registry_set() is restricted to DBA group when is called with 3 arguments.");
       force = bif_long_arg (qst, args, 2, "registry_set");
     }
   switch (name_is_protected)
@@ -11130,12 +11132,12 @@ bif_registry_set (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     case 1:
       if (force)
 	break;
-      sqlr_new_error ("42000", "SR483", "Function registry_set needs nonzero third argument to modify registry variable '%.300s'.",
-	  name);
+      sqlr_new_error ("42000", "SR483",
+	  "Function registry_set() needs nonzero third argument to modify registry variable '%.300s'.", name);
     case 2:
       if (2 == force)
 	return (box_num (0));
-      sqlr_new_error ("42000", "SR484", "Function registry_set can not modify protected registry variable '%.300s'.", name);
+      sqlr_new_error ("42000", "SR484", "Function registry_set() can not modify protected registry variable '%.300s'.", name);
     }
   check_sequence_grants ((query_instance_t *) qst, name);
   IN_TXN;
@@ -12049,11 +12051,11 @@ bif_deserialize (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   if (!IS_BLOB_HANDLE_DTP (dtp))
     sqlr_new_error ("22023", "SR581", "deserialize() requires a blob or NULL or string argument");
   if (((blob_handle_t *) xx)->bh_ask_from_client)
-    sqlr_new_error ("22023", "SR582", "Blob argument to deserialize () must be a non-interactive blob");
+    sqlr_new_error ("22023", "SR582", "Blob argument to deserialize() must be a non-interactive blob");
   if (0 == (((blob_handle_t *) xx)->bh_length))
-    sqlr_new_error ("22023", "SR583", "Empty blob is not a valid argument for deserialize () built-in function");
+    sqlr_new_error ("22023", "SR583", "Empty blob is not a valid argument for deserialize() built-in function");
   if (((blob_handle_t *) xx)->bh_length > 10000000)
-    sqlr_new_error ("22001", "SR584", "Blob longer than maximum string length not allowed in deserialize ()");
+    sqlr_new_error ("22001", "SR584", "Blob longer than maximum string length not allowed in deserialize()");
   tmp_xx = blob_to_string (qi->qi_trx, xx);
   QR_RESET_CTX
   {
@@ -12256,7 +12258,7 @@ bif_icc_name_arg (caddr_t * qst, state_slot_t ** args, int nth, const char *func
   if (caller_is_dba)
     return arg;
   if (' ' == arg[0])
-    sqlr_new_error ("42000", "ICC01", "Lock names whose first char is whitespace are reserved for dba group.");
+    sqlr_new_error ("42000", "ICC01:SECURITY", "Lock names whose first char is whitespace are reserved for DBA group.");
   if (name_to_set)
     {
       char *at_sign = strrchr (arg, '@');
@@ -15332,6 +15334,24 @@ bif_rdflit_idn (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   return bif_idn (qst, err_ret, args);
 }
 
+void
+bif_1st_arg_type (state_slot_t ** args, long *dtp, long *prec, long *scale, collation_t ** collation)
+{
+  sql_type_t sqt;
+  if (!BOX_ELEMENTS (args))
+    return;
+  sqt = args[0]->ssl_sqt;
+  *dtp = sqt.sqt_dtp;
+  *prec = sqt.sqt_precision;
+  *scale = sqt.sqt_scale;
+  *collation = sqt.sqt_collation;
+}
+
+
+bif_type_t bt_1st_arg = { (bif_type_func_t) bif_1st_arg_type, 0, 0, 0 };
+
+
+
 
 caddr_t
 bif_idn_no_copy (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
@@ -15369,6 +15389,64 @@ no:
   *err_ret = BIF_NOT_VECTORED;
 }
 
+
+caddr_t
+bif_scalar_to_vec (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  return box_copy_tree (bif_arg (qst, args, 0, "cl_idn"));
+}
+
+
+void
+bif_scalar_to_vec_vec (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, state_slot_t * ret)
+{
+  QNCAST (QI, qi, qst);
+  caddr_t *source;
+  data_col_t *ret_dc;
+  caddr_t arg;
+  db_buf_t set_mask = qi->qi_set_mask;
+  int set, n_sets = qi->qi_n_sets;
+  ret_dc = QST_BOX (data_col_t *, qst, ret->ssl_index);
+  dc_reset (ret_dc);
+  DC_CHECK_LEN (ret_dc, qi->qi_n_sets);
+  if (BOX_ELEMENTS (args) < 1 || SSL_IS_VEC_OR_REF (args[0]))
+    goto no;
+  arg = QST_GET (qst, args[0]);
+  if (set_mask)
+    goto no;
+  if ((DCT_BOXES & ret_dc->dc_type))
+    {
+      for (set = 0; set < n_sets; set++)
+	{
+	  ((caddr_t *) ret_dc->dc_values)[set] = box_mt_copy_tree (arg);
+	}
+    }
+  else
+    {
+      dtp_t dtp = DV_TYPE_OF (arg);
+      int64 nb;
+      switch (dtp)
+	{
+	case DV_LONG_INT:
+	  nb = unbox (arg);
+	  break;
+	case DV_IRI_ID:
+	case DV_DOUBLE_FLOAT:
+	  nb = *(int64 *) arg;
+	  break;
+	default:
+	  goto no;
+	}
+      for (set = 0; set < n_sets; set++)
+	{
+	  ((int64 *) ret_dc->dc_values)[set] = nb;
+	}
+    }
+  ret_dc->dc_n_values = qi->qi_n_sets;
+  return;
+no:
+  *err_ret = BIF_NOT_VECTORED;
+}
 
 caddr_t
 bif_asg_v (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
@@ -16580,8 +16658,8 @@ sql_bif_init (void)
   bif_define_ex ("cl_idn", bif_cl_idn, BMD_NO_CLUSTER, BMD_DONE);
   bif_define_ex ("cl_idni", bif_cl_idni, BMD_RET_TYPE, &bt_integer, BMD_VECTOR_IMPL, bif_cl_idni_vec, BMD_NO_CLUSTER, BMD_DONE);
   bif_define ("idn", bif_idn);
-  bif_define_ex ("idn_no_copy", bif_idn_no_copy, BMD_RET_TYPE, &bt_any_box, BMD_VECTOR_IMPL,
-      bif_idn_no_copy_vec /*, BMD_NO_CLUSTER */ , BMD_DONE);
+  bif_define_ex ("idn_no_copy", bif_idn_no_copy, BMD_RET_TYPE, &bt_any_box, BMD_VECTOR_IMPL, bif_idn_no_copy_vec, BMD_DONE);
+  bif_define_ex ("scalar_to_vec", bif_scalar_to_vec, BMD_RET_TYPE, &bt_1st_arg, BMD_VECTOR_IMPL, bif_scalar_to_vec_vec, BMD_DONE);
   bif_define_ex ("__rdflit", bif_rdflit_idn, BMD_RET_TYPE, &bt_any_box, BMD_DONE);
   bif_define ("asg_v", bif_asg_v);
   bif_define_ex ("vector", bif_vector, BMD_RET_TYPE, &bt_any_box, BMD_DONE);

@@ -3881,7 +3881,7 @@ dbs_write_cfg_page (dbe_storage_t * dbs, int is_first)
   memcpy (db.db_id, dbs->dbs_id, sizeof (db.db_id));
   memcpy (db.db_cpt_dt, dbs->dbs_cfg_page_dt, DT_LENGTH);
   if (-1 == timezoneless_datetimes)
-    timezoneless_datetimes = DT_TZL_PREFER;
+    timezoneless_datetimes = DT_TZL_BY_DEFAULT;
   db.db_timezoneless_datetimes = timezoneless_datetimes;
   LSEEK (fd, 0, SEEK_SET);
   memcpy (zero, &db, sizeof (db));
@@ -4327,7 +4327,7 @@ dbs_read_cfg_page (dbe_storage_t * dbs, wi_database_t * cfg_page)
 	{
 	  log_error
 	      ("The database you are opening has TimezonelessDatetimes set to %d whereas the value in configuration file is %d.",
-	      cfg_page->db_timezoneless_datetimes != timezoneless_datetimes);
+	      cfg_page->db_timezoneless_datetimes, timezoneless_datetimes);
 	  log_error ("The value from configuration file is ignored.");
 	}
       timezoneless_datetimes = cfg_page->db_timezoneless_datetimes;

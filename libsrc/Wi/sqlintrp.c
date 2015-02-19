@@ -589,7 +589,7 @@ ins_call (instruction_t * ins, caddr_t * qst, code_vec_t code_vec)
   if (proc->qr_to_recompile)
     proc = qr_recompile (proc, NULL);
   if (!sec_proc_check (proc, eff_g_id, eff_u_id))
-    sqlr_new_error ("42000", "SR186", "No permission to execute procedure %s with user ID %d, group ID %d",
+    sqlr_new_error ("42000", "SR186:SECURITY", "No permission to execute procedure %s with user ID %d, group ID %d",
 	proc_name, (int) eff_g_id, (int) eff_u_id);
   if (1 || ins->_.call.kwds || 0 == param_len)
     {
@@ -801,7 +801,7 @@ ins_call_vec_vec (instruction_t * ins, caddr_t * qst, query_t * proc, code_vec_t
 	eff_g_id = eff_u_id;
     }
   if (!sec_proc_check (proc, eff_g_id, eff_u_id))
-    sqlr_new_error ("42000", "SR186", "No permission to execute vectored procedure %s with user ID %d, group ID %d.",
+    sqlr_new_error ("42000", "SR186:SECURITY", "No permission to execute vectored procedure %s with user ID %d, group ID %d",
 	proc->qr_proc_name ? proc->qr_proc_name : "<unknown>", (int) eff_g_id, (int) eff_u_id);
   formal_len = dk_set_length (proc->qr_parms);
   BOX_AUTO (ptmp, pars_auto, formal_len * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
@@ -921,6 +921,10 @@ qn_init (table_source_t * ts, caddr_t * inst)
 	qst_set (inst, ts->ts_aq_qis, NULL);
       if (ts->ts_in_sdfg)
 	QST_INT (inst, ts->ts_in_sdfg) = 0;
+      if (ts->ts_csq && ts->ts_csq->csq_nth_step)
+	QST_INT (inst, ts->ts_csq->csq_nth_step) = 0;
+      if (ts->ts_csq && ts->ts_csq->csq_at_end)
+	QST_INT (inst, ts->ts_csq->csq_at_end) = 0;
       if (ts->ts_order_ks	/* not set if inx op */
 	  && ts->ts_order_ks->ks_key->key_id == KI_TEMP)
 	{

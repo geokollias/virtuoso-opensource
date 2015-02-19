@@ -230,6 +230,8 @@ extern int32 https_client_verify;
 extern int32 https_client_verify_depth;
 extern char *https_client_verify_file;
 extern char *https_client_verify_crl_file;
+extern char *https_cipher_list;
+extern char *https_protocols;
 extern int32 http_threads;
 extern int32 ini_http_threads;
 extern int32 http_keep_alive_timeout;
@@ -332,7 +334,9 @@ the order of columns in dks_charclasses, file dks_esc.c */
 #define DKS_ESC_HTML_TTL_SQ	0x0F
 #define DKS_ESC_HTML_TTL_DQ	0x10
 #define DKS_ESC_HTML_TTL_IRI	0x11
-#define COUNTOF__DKS_ESC	0x12
+#define DKS_ESC_JAVA_SQ		0x12
+#define DKS_ESC_JAVA_DQ		0x13
+#define COUNTOF__DKS_ESC	0x14
 
 #define DKS_ESC_COMPAT_HTML	0x100
 #define DKS_ESC_COMPAT_SOAP	0x200

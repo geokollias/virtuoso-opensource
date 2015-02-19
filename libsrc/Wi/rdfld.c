@@ -160,7 +160,7 @@ cu_rl_local_exec (cucurbit_t * cu)
     if (!cli->cli_user || !sec_proc_check (proc, cli->cli_user->usr_id, cli->cli_user->usr_g_id))
       {
 	user_t *usr = cli->cli_user;
-	sqlr_new_error ("42000", "SR186", "No permission to execute dpipe %s with user ID %d, group ID %d",
+	sqlr_new_error ("42000", "SR186:SECURITY", "No permission to execute dpipe %s with user ID %d, group ID %d",
 	    clo->_.call.func, (int) (usr ? usr->usr_id : 0), (int) (usr ? usr->usr_g_id : 0));
       }
     memcpy (save_pars, clo->_.call.params, box_length ((caddr_t) clo->_.call.params));
@@ -827,21 +827,6 @@ return_error:
 void
 rdf_g_sec_check (caddr_t * inst, iri_id_t * g, int n_g)
 {
-  QNCAST (QI, qi, inst);
-  index_tree_t *tree;
-  int inx;
-  cl_op_t *sec = qi->qi_client->cli_sec;
-  if (!qi->qi_client->cli_sec || sec->_.sec.g_sponge)
-    return;
-  tree = qi_g_tree (inst, NULL, 1);
-  if (!tree || !tree->it_hi || !tree->it_hi->hi_chash)
-    goto no;
-  for (inx = 0; inx < n_g; inx++)
-    if (!cha_check_1_int (tree->it_hi->hi_chash, g[inx]))
-      goto no;
-  return;
-no:
-  sqlr_trx_error (qi->qi_trx, LT_BLOWN_OFF, LTE_NO_PERM, "42000", "RPERM", "No permission to insert into graph");
 }
 
 

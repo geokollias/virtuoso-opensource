@@ -261,7 +261,7 @@ sqlr_set_cbk_name_and_proc (client_connection_t * cli, const char *cbk_name, con
   if (NULL != cli->cli_user && !sec_proc_check (proc_ret[0], cli->cli_user->usr_id, cli->cli_user->usr_g_id))
     {
       err_ret[0] =
-	  srv_make_new_error ("42000", "SR575",
+	  srv_make_new_error ("42000", "SR575:SECURITY",
 	  "No permission to execute %.300s as callback of %.100s() with user ID %d, group ID %d", full_name, funname,
 	  (int) (cli->cli_user->usr_id), (int) (cli->cli_user->usr_g_id));
       return;
@@ -2349,7 +2349,7 @@ local_start_found:
 }
 
 void
-iri_split_ttl_qname (const char *iri, caddr_t * pref_ret, caddr_t * name_ret, int abbreviate_nodeid)
+iri_split_ttl_qname_impl (const char *iri, caddr_t * pref_ret, caddr_t * name_ret, int abbreviate_nodeid, int flag)
 {
   const char *tail;
   int iri_strlen;
@@ -2363,7 +2363,7 @@ iri_split_ttl_qname (const char *iri, caddr_t * pref_ret, caddr_t * name_ret, in
   for (tail = iri + iri_strlen; tail > iri; tail--)
     {
       unsigned char c = (unsigned char) tail[-1];
-      if (!isalnum (c) && ('_' != c) && ('-' != c) && !(c & 0x80))
+      if (!isalnum (c) && ('_' != c) && ('-' != c) && !(c & 0x80) && !(flag == SPLIT_MODE_XML && '.' == c))
 	break;
     }
   if (isdigit (tail[0]) || ('-' == tail[0]) || ((tail > iri) && (NULL == strchr ("#/:?", tail[-1]))))
@@ -2380,6 +2380,12 @@ iri_split_ttl_qname (const char *iri, caddr_t * pref_ret, caddr_t * name_ret, in
   else
     pref_ret[0] = box_dv_short_nchars (iri, tail - iri);
   name_ret[0] = box_dv_short_nchars (tail, iri + iri_strlen - tail);
+}
+
+void
+iri_split_ttl_qname (const char *iri, caddr_t * pref_ret, caddr_t * name_ret, int abbreviate_nodeid)
+{
+  iri_split_ttl_qname_impl (iri, pref_ret, name_ret, abbreviate_nodeid, SPLIT_MODE_TTL);
 }
 
 name_id_cache_t *iri_name_cache;

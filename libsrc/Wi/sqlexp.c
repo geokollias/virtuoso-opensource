@@ -877,9 +877,6 @@ ssl_type_to_name (char ssl_type)
   return "<unnamed>";
 }
 
-#define IS_DATE_DTP(dtp) \
-  (DV_TIMESTAMP == (dtp) || DV_DATE == (dtp) || DV_DATETIME == (dtp))
-
 void
 cv_bop_params (state_slot_t * l, state_slot_t * r, const char *op)
 {
@@ -2229,6 +2226,7 @@ ks_refd_slots (sql_comp_t * sc, key_source_t * ks, dk_hash_t * res, dk_hash_t * 
   REF_SSL (res, ks->ks_ht_id);
 }
 
+
 void
 ts_cset_refd_slots (table_source_t * ts, dk_hash_t * res, dk_hash_t * all_res)
 {
@@ -2241,11 +2239,22 @@ ts_cset_refd_slots (table_source_t * ts, dk_hash_t * res, dk_hash_t * all_res)
       END_DO_BOX;
       REF_SSL (res, csm->csm_cset_o);
       ASG_SSL (res, all_res, csm->csm_rq_o);
+      ASG_SSL (res, all_res, csm->csm_o_scan_mode);
     }
   if (ts->ts_csts)
     {
       cset_ts_t *csts = ts->ts_csts;
       REF_SSL (res, csts->csts_o_scan_mode);
+      REF_SSL (res, csts->csts_o_from_posg);
+      ASG_SSL (res, all_res, csts->csts_posg_o_out);
+    }
+  if (ts->ts_csq)
+    {
+      cset_quad_t *csq = ts->ts_csq;
+      REF_SSL (res, csq->csq_org_s);
+      REF_SSL (res, csq->csq_org_o);
+      REF_SSL (res, csq->csq_org_g);
+      REF_SSL (res, csq->csq_o_scan_mode);
     }
 }
 

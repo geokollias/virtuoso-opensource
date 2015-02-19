@@ -1826,7 +1826,8 @@ itc_param_sort (key_source_t * ks, it_cursor_t * itc, int is_del_with_nulls)
       else if (TS_CSET_PSOG == csm->csm_role)
 	{
 	  QST_INT (inst, ts->src_gen.src_out_fill) = org_out_fill;	/* a cset exception ts may have results from the cset at this point */
-	  itc_cset_exc_param_nos (itc);
+	  if (!itc_cset_exc_param_nos (itc))
+	    goto general;
 	  if (!itc->itc_n_sets)
 	    return;
 	}
@@ -1908,7 +1909,11 @@ ks_vec_new_results (key_source_t * ks, caddr_t * inst, it_cursor_t * itc)
 	}
     }
   if (IS_TS (ts) && ts->ts_csm)
-    dc_reset_array (inst, (data_source_t *) ts, ts->ts_csm->csm_exc_bits_out, batch);
+    {
+      dc_reset_array (inst, (data_source_t *) ts, ts->ts_csm->csm_exc_bits_out, batch);
+      if (ts->ts_csm->csm_n_from_cset)
+	QST_INT (inst, ts->ts_csm->csm_n_from_cset) = 0;
+    }
 }
 
 void
@@ -2810,6 +2815,28 @@ fun_ref_reset_setps (fun_ref_node_t * fref, caddr_t * inst)
 
 
 void
+ts_cset_thread (table_source_t * ts, caddr_t * inst, caddr_t * cp_inst)
+{
+  /* a qp thread for psog scan for o will set the step on the qp thread to either make a cset scan or scan psogg, depending on state of coord ts */
+  cset_quad_t *csq = ts->ts_csq;
+  if (CSQ_CSET_SCAN == csq->csq_mode || CSQ_CSET_SCAN_CSET == csq->csq_mode)
+    {
+      int step = QST_INT (inst, csq->csq_nth_step);
+      if (step != CSQS_EXC_SCAN)
+	QST_INT (cp_inst, csq->csq_nth_step) = CSQS_QP_START;
+      else
+	QST_INT (cp_inst, csq->csq_nth_step) = CSQS_EXC_SCAN;
+    }
+  if (CSQ_CSET == csq->csq_mode)
+    {
+      /* a cset access by s is split by sets */
+      QST_BOX (dk_set_t, cp_inst, csq->csq_cset) = QST_BOX (dk_set_t, inst, csq->csq_cset);
+      QST_INT (cp_inst, csq->csq_nth_step) = CSQS_QP_START;
+    }
+}
+
+
+void
 ts_thread (table_source_t * ts, caddr_t * inst, it_cursor_t * itc, int aq_state, int inx)
 {
   /* add a thread to ts_aq running over itc */
@@ -2860,6 +2887,8 @@ ts_thread (table_source_t * ts, caddr_t * inst, it_cursor_t * itc, int aq_state,
       QST_INT (cp_inst, ts->ts_in_sdfg) = 1;
     }
   qst_set (cp_inst, ts->ts_order_cursor, (caddr_t) itc);
+  if (ts->ts_csq)
+    ts_cset_thread (ts, inst, cp_inst);
   itc->itc_out_state = cp_inst;
   itc_copy_vec_params (itc, ts->ts_order_ks->ks_spec.ksp_spec_array);
   itc_copy_vec_params (itc, ts->ts_order_ks->ks_row_spec);
@@ -3777,7 +3806,10 @@ vec_fref_single_result (fun_ref_node_t * fref, table_source_t * ts, caddr_t * in
       continue;
     for (set = 0; set < n_sets; set++)
       {
-	int agg_set = set_nos ? ((int64 *) set_nos->dc_values)[set] : set, no_old;
+	int agg_set, no_old;
+	if (set_nos && set >= set_nos->dc_n_values)
+	  sqlr_new_error ("42000", "VEC..", "Internal error, please report query to the support");
+	agg_set = set_nos ? ((int64 *) set_nos->dc_values)[set] : set;
 	qi->qi_set = agg_set;
 	((query_instance_t *) branch)->qi_set = agg_set;
 	DO_SET (state_slot_t *, ssl, &fref->fnr_default_ssls)

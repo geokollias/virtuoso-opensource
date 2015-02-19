@@ -25,7 +25,7 @@
  *
  */
 
-#define PRODUCT_COPYRIGHT	"Copyright (C) 1998-2014 OpenLink Software"
+#define PRODUCT_COPYRIGHT	"Copyright (C) 1998-2015 OpenLink Software"
 #define PRODUCT_NAME		"OpenLink Virtuoso"
 
 /* DBMS Server */
@@ -33,7 +33,7 @@
 #define DBMS_SRV_NAME		PRODUCT_DBMS " Universal Server"
 #define DBMS_SRV_VER_ONLY	"07.50"
 #define DBMS_SRV_GEN_MAJOR	"32"
-#define DBMS_SRV_GEN_MINOR	"11"
+#define DBMS_SRV_GEN_MINOR	"12"
 #define DBMS_SRV_VER		DBMS_SRV_VER_ONLY "." \
 				DBMS_SRV_GEN_MAJOR DBMS_SRV_GEN_MINOR
 

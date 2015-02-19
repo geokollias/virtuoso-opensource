@@ -1,3 +1,27 @@
+/*
+ *  emergent.h
+ *
+ *  $Id$
+ *
+ *  This file is part of the OpenLink Software Virtuoso Open-Source (VOS)
+ *  project.
+ *
+ *  Copyright (C) 1998-2014 OpenLink Software
+ *
+ *  This project is free software; you can redistribute it and/or modify it
+ *  under the terms of the GNU General Public License as published by the
+ *  Free Software Foundation; only version 2 of the License, dated June 1991.
+ *
+ *  This program is distributed in the hope that it will be useful, but
+ *  WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ *  General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
+ *
+ */
 
 
 
@@ -5,7 +29,8 @@
 
 typedef unsigned short rtr_id_t;
 
-#define IRI_RANGE(i) ((((iri_id_t)(i)) >>  53) & 0x1FF)
+#define CSET_RNG_SHIFT 53
+#define IRI_RANGE(i) ((((iri_id_t)(i)) >> CSET_RNG_SHIFT) & 0x1FF)
 
 
 typedef struct rt_range_s
@@ -36,6 +61,7 @@ typedef struct cset_s
   struct query_s *cset_del;
   id_range_t *cset_ir;
   id_range_t *cset_bn_ir;
+  dk_mutex_t cset_mtx;
 } cset_t;
 
 typedef struct cset_p_s cset_p_t;
@@ -53,8 +79,8 @@ struct cset_p_s
   int csetp_nth;
   int csetp_inline_max;
   char csetp_index_o;
-  uint32 csetp_n_bloom;
-  uint64 *csetp_bloom;
+  uint32 *csetp_n_bloom;
+  uint64 **csetp_bloom;
   dk_mutex_t csetp_bloom_mtx;	/* serialize writing to bloom */
   id_hash_t *csetp_non_index_o;
   cset_cluster_t csetp_cluster;
@@ -114,3 +140,13 @@ typedef struct dv_arr_iter_s
 caddr_t cset_opt_value (caddr_t * opts, char *opt);
 id_range_t *ir_by_name (char *name);
 id_range_t *ir_sub_ir (id_range_t * super, int nth);
+
+
+void csetp_ensure_bloom (cset_p_t * csetp, caddr_t * inst, int create_sz, uint64 ** bf_ret, uint32 * bf_n_ret);
+void csetp_bloom (cset_p_t * csetp, caddr_t * inst, uint64 ** bf_ret, uint32 * bf_n_ret);
+
+
+#define CSQ_PS 3
+#define CSQ_P 2
+#define CSQ_S 1
+#define CSQ_ 0

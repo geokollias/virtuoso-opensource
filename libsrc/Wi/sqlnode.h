@@ -802,6 +802,9 @@ typedef struct cset_ts_s
   ssl_index_t csts_s_sets;	/* if s given, the set nos that fall in the same cset */
   state_slot_t *csts_lookup_csets;	/* for heterogenous s, csets to cover all values */
   state_slot_t *csts_o_scan_mode;	/* if csts is by s given from posg.  If cset o doed not figure in posg, then this is set to force a scan for the o for the cset given here */
+  iri_id_t csts_o_index_p;	/* if posg before cset on this p git the o from the posg, not the cset */
+  state_slot_t *csts_o_from_posg;	/* if indexed posg + cset, the o from the posg */
+  state_slot_t *csts_posg_o_out;	/* ssl assigned in cset ts based on csts_o_from_posg */
   state_slot_t *csts_s;		/* if s is given, this is the s that gives the cset */
   state_slot_t *csts_prev_last_cset_s;	/* in cset scan, the last s found in the cset table for previous batch */
   state_slot_t *csts_last_cset_s;	/* in cset scan the last s of this batch */
@@ -821,8 +824,8 @@ typedef struct cset_mode_s
   /* an expansion of a cset abstract ts has cset behaviors coded here */
   char csm_role;
   ssl_index_t csm_mode;
-  ssl_index_t csm_optional_state;	/* if exception lookup optional, flag set if returning the nulls for the missed */
   ssl_index_t csm_last_outer;	/* where left off if returning optional nulls in more than one batch */
+  ssl_index_t csm_n_from_cset;
   cset_t *csm_cset;
   state_slot_t **csm_exc_bits_in;
   state_slot_t **csm_exc_bits_out;
@@ -857,6 +860,45 @@ typedef struct cset_mode_s
 #define CSM_CSET_DIRECT 1	/* all columns and conds are resolved from the cset table */
 #define CSM_EXCEPT 2		/* ts against psog considers only psog, accessing cset exceptions */
 #define CSM_CSET_COL 3 /* use psog if s not in cset, use the cset table if s in cset */ 2
+
+
+typedef struct cset_quad_s
+{
+  char csq_mode;
+  ssl_index_t csq_last_p;
+  ssl_index_t csq_nth_step;
+  ssl_index_t csq_cset;		/* for the current p, the cset that is going */
+  ssl_index_t csq_ts;		/* temp ts+ks etc allocd from qi mp */
+  ssl_index_t csq_at_end;	/* set when at end of cset/p in per cset temp ts */
+  ssl_index_t csq_param_order;	/* set when at end of cset/p in per cset temp ts */
+  state_slot_t *csq_itc;	/* use for itc in temp ts */
+  state_slot_t *csq_rq_itc;	/* the itc for the ts on quads */
+  state_slot_t *csq_o_scan_mode;	/* if csts is by s given from posg.  If cset o doed not figure in posg, then this is set to force a scan for the o for the cset given here */
+  state_slot_t *csq_s_out;	/* if scan of non-indexed o's , output slot for that */
+  state_slot_t *csq_o_out;
+  state_slot_t *csq_g_out;
+  state_slot_t *csq_org_s;	/* the pso produced by the posg before the cset scaan psog for non-indexed p/o */
+  state_slot_t *csq_org_o;
+  state_slot_t *csq_org_g;
+  state_slot_t *csq_s_min;
+  state_slot_t *csq_s_max;
+} cset_quad_t;
+
+/* csq_mode */
+#define CSQ_QUAD 1
+#define CSQ_CSET 2		/* special temp ts for cset table case */
+#define CSQ_CSET_SCAN 3		/*after posg for non indexed p/o, must scan applicable csets */
+#define CSQ_CSET_SCAN_CSET 4	/* specialized ts for one cset after csq cset scan */
+/* values in csq_step */
+#define CSQS_INIT 1
+#define CSQS_NEW_P 2
+#define CSQS_NEW_CSET 3
+#define CSQS_CONTINUE 4
+#define CSQS_CSET_SCAN_COORD 5
+#define CSQS_EXC_SCAN 6
+#define CSQS_QP_START 7		/* make cset scan on qp thread */
+#define CSQS_QP_RUN 8		/* continue cset scan on qp thread */
+
 
 typedef struct table_source_s
 {
@@ -922,6 +964,7 @@ typedef struct table_source_s
   struct file_source_s *ts_fs;
   cset_ts_t *ts_csts;
   cset_mode_t *ts_csm;
+  cset_quad_t *ts_csq;
   trans_read_t *ts_trans_read;
   short ts_max_rows;		/* if last of top n and a single state makes this many, then can end whole set */
   short ts_prefetch_rows;	/* recommend cluster end batch   after this many because top later */
@@ -958,12 +1001,18 @@ typedef struct cset_align_s
   state_slot_t *csa_res;
   state_slot_t *csa_first;
   state_slot_t *csa_second;
+  char csa_flag;
 } cset_align_t;
+
+
+/* csa_flag */
+#define CSA_S 1
+#define CSA_G 2
 
 typedef struct cset_align_node_s
 {
   data_source_t src_gen;
-  ssl_index_t csa_mode;
+  short csa_no_cset_bit;
   table_source_t *csa_model_ts;
   state_slot_t **csa_exc_bits;
   cset_align_t *csa_ssls;
@@ -1664,6 +1713,7 @@ typedef struct setp_node_s
   state_slot_t *setp_last;
   int setp_ties;
   state_slot_t **setp_dependent_box;
+  state_slot_t **setp_org_slots;	/* if shadows on keys and deps, this is the unshadowed keys+deps */
   state_slot_t *setp_top_id;
   state_slot_t *setp_top_clo;
   state_slot_t *setp_top_ser;
@@ -2190,6 +2240,7 @@ typedef struct client_connection_s
   dk_session_t *cli_blob_ses_save;	/* save the cli_session here for the time of reading b.blobs from cluster as if they were from client */
   struct xml_ns_2dict_s *cli_ns_2dict;
   dk_set_t cli_dae_blobs;
+  char cli_logged_in;
 } client_connection_t;
 
 

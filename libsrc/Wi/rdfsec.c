@@ -250,86 +250,18 @@ bif_rdf_ctx_changed (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 caddr_t
 bif_rdf_set_writable (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  QNCAST (QI, qi, qst);
-  client_connection_t *cli = qi->qi_client;
-  caddr_t str = bif_arg (qst, args, 0, "rdf_set_writable");
-  caddr_t params = bif_arg (qst, args, 1, "rdf_ctx_changed");
-  index_tree_t *tree;
-  cl_op_t *sec = qi->qi_client->cli_sec;
-  if (DV_DB_NULL == DV_TYPE_OF (str))
-    {
-      cli_set_sec (qi->qi_client, NULL);
-      return NULL;
-    }
-  if (!DV_STRINGP (str))
-    sqlr_new_error ("42000", "RWRQS", "query for rdf_set_qritable ritable mist be a string or null");
-  tree = rdf_ctx_hash (qi, str, params);
-  if (!sec)
-    sec = clo_allocate (CLO_SEC_TOKEN);
-  dk_free_box (sec->_.sec.g_wr);
-  sec->_.sec.g_wr = tree;
-  if (tree)
-    sec->_.sec.g_wr_id = tree->it_hi->hi_cl_id;
-  if (!cli->cli_sec)
-    cli_set_sec (qi->qi_client, sec);
   return NULL;
 }
 
 caddr_t
 bif_rdf_set_sponge (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  QNCAST (QI, qi, qst);
-  client_connection_t *cli = qi->qi_client;
-  cl_op_t *sec = cli->cli_sec;
-  int f = bif_long_arg (qst, args, 0, "rdf_set_sponge");
-  if (sec)
-    sec->_.sec.g_sponge = f ? 1 : 0;
   return NULL;
 }
 
 void
 cli_ensure_sec (query_instance_t * qi, client_connection_t * cli)
 {
-  index_tree_t *tree;
-  caddr_t str = NULL, *params = NULL;
-  caddr_t place;
-  char *g_name = "g_ctx_query";
-  char *p_name = "g_ctx_param";
-  cl_op_t *sec = cli->cli_sec;
-  if (sec && sec->_.sec.g_rd && sec->_.sec.g_rd->it_invalidated)
-    {
-      dk_free_box (sec->_.sec.g_rd);
-      sec->_.sec.g_rd = NULL;
-      sec->_.sec.g_rd_id = 0;
-    }
-  if (sec && (sec->_.sec.g_rd_id || sec->_.sec.g_rd || sec->_.sec.g_all_allowed))
-    return;
-  place = id_hash_get (cli->cli_globals, (caddr_t) & g_name);
-  if (place)
-    str = *(caddr_t *) place;
-  if (!str || DV_DB_NULL == DV_TYPE_OF (str))
-    {
-      if (!sec)
-	return;
-      dk_free_box ((caddr_t) sec->_.sec.g_rd);
-      sec->_.sec.g_rd = NULL;
-      sec->_.sec.g_rd_id = 0;
-      return;
-    }
-  if (!sec)
-    {
-      sec = clo_allocate (CLO_SEC_TOKEN);
-      cli_set_sec (cli, sec);
-    }
-  place = id_hash_get (cli->cli_globals, (caddr_t) & p_name);
-  if (place)
-    params = *(caddr_t **) place;
-  tree = rdf_ctx_hash (qi, str, params);
-  sec->_.sec.g_rd_empty = NULL == tree;
-  sec->_.sec.g_rd = tree;
-  if (tree)
-    sec->_.sec.g_rd_id = tree->it_hi->hi_cl_id;
-
 }
 
 

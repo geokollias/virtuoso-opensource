@@ -2012,6 +2012,30 @@ ric_iri_has_subs (rdf_inf_ctx_t * ric, caddr_t iri, int mode)
 }
 
 
+int
+ric_sub_p_in_cset (rdf_inf_ctx_t * ric, caddr_t p)
+{
+  int found = 0;
+  if (ric_iri_has_subs (ric, p, RI_SUBPROPERTY))
+    {
+      rdf_sub_t *sub = ric_iri_to_sub (ric, p, RI_SUBPROPERTY, 0);
+      if (sub)
+	{
+	  rdf_sub_t *x;
+	  ri_iterator_t *rit = ri_iterator (sub, RI_SUBPROPERTY, 1);
+	  while ((x = rit_next (rit)))
+	    if (gethash ((void *) unbox_iri_id (x->rs_iri), &p_to_csetp_list))
+	      {
+		found = 1;
+		break;
+	      }
+	  rit_free (rit);
+	}
+    }
+  return found;
+}
+
+
 void
 sqlg_leading_subclass_inf (sqlo_t * so, data_source_t ** q_head, data_source_t * ts, df_elt_t * p_dfe, caddr_t p_const,
     df_elt_t * o_dfe, caddr_t o_iri, rdf_inf_ctx_t * ctx, df_elt_t * tb_dfe, int inxop_inx, rdf_inf_pre_node_t * sas_o)

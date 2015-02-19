@@ -3895,7 +3895,7 @@ sparp_extract_filters_replaced_by_equiv (sparp_t * sparp, sparp_equiv_t * eq, dk
       else if (eq->e_rvr.rvrRestrictions & SPART_VARR_IS_REF)
 	r = spartlist (sparp, 2, SPAR_QNAME, eq->e_rvr.rvrFixedValue);
       else
-	r = spartlist (sparp, 4, SPAR_LIT, eq->e_rvr.rvrFixedValue, eq->e_rvr.rvrDatatype, eq->e_rvr.rvrLanguage);
+	r = spartlist (sparp, 5, SPAR_LIT, eq->e_rvr.rvrFixedValue, eq->e_rvr.rvrDatatype, eq->e_rvr.rvrLanguage, NULL);
       t_set_push (filts_from_equiv_ret, spartlist (sparp, 3, BOP_EQ, spar_make_variable (sparp, sample_varname), r));
     }
   if (repl_bits & SPART_VARR_NOT_NULL)
@@ -5465,8 +5465,8 @@ spart_dump (void *tree_arg, dk_session_t * ses, int indent, const char *title, i
 		  rowctr = ((rowctr < 4) || (rowctr >= rowcount - 4)) ? (rowctr + 1) : (rowcount - 4))
 		{
 		  char rowtitle[100];
-		  unsigned int rowmask = tree->_.binv.data_rows_mask[rowctr] - '/';
-		  sprintf (rowtitle, "ROW %d/%d (%s%s)", rowctr, rowcount,
+		  int rowmask = tree->_.binv.data_rows_mask[rowctr] - '/';
+		  sprintf (rowtitle, "ROW %d/%d (%s%s)", rowctr + 1, rowcount,
 		      (rowmask ? "disabled via " : "enabled"),
 		      ((0 < rowmask) ? tree->_.binv.vars[rowmask - 1]->_.var.vname : ((0 > rowmask) ? "LIMIT" : "")));
 		  spart_dump (tree->_.binv.data_rows[rowctr], ses, indent + 2, rowtitle, -2);
@@ -5678,26 +5678,6 @@ spart_dump (void *tree_arg, dk_session_t * ses, int indent, const char *title, i
 	SES_PRINT (ses, " }");
 	break;
       }
-#if 0
-    case -3:
-      {
-	char **execname = (char **) id_hash_get (xpf_reveng, (caddr_t) (&tree));
-	SES_PRINT (ses, "native code started at ");
-	if (NULL == execname)
-	  {
-	    char buf[30];
-	    sprintf (buf, "0x%p", (void *) tree);
-	    SES_PRINT (ses, buf);
-	  }
-	else
-	  {
-	    SES_PRINT (ses, "label '");
-	    SES_PRINT (ses, execname[0]);
-	    SES_PRINT (ses, "'");
-	  }
-	break;
-      }
-#endif
     case DV_LONG_INT:
       {
 	char buf[30];
@@ -5757,7 +5737,7 @@ sparp_valmode_is_correct (ssg_valmode_t fmt)
       (qm_format_default_ref == fmt) || (qm_format_default_ref_nullable == fmt) ||
       (qm_format_default == fmt) || (qm_format_default_nullable == fmt))
     return 2;
-  rtti = gethash (fmt, jso_rttis_of_structs);
+  rtti = (jso_rtti_t *) gethash (fmt, jso_rttis_of_structs);
   if ((NULL != rtti) && (fmt == rtti->jrtti_self))
     {
       return 3;

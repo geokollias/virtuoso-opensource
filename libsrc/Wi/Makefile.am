@@ -249,6 +249,7 @@ libwi_la_SOURCES = \
 	csetgen.c \
 	cset.c \
 	csetins.c \
+	csetquad.c \
 	bif_rng.c \
 	rdfjoin.c \
 	bsp.c \
@@ -626,6 +627,7 @@ libwic_la_LDLAGS  = -static
 #generated stuff
 
 SQL_FILES		= \
+	$(srcdir)/sys_unicode3_collations.sql \
 	$(srcdir)/system.sql \
 	$(srcdir)/system2.sql \
 	$(srcdir)/qlog.sql \
@@ -661,6 +663,7 @@ SQL_FILES_DAV		= \
 	$(top_srcdir)/binsrc/dav/rdfxml2n3xml.xsl \
 	$(top_srcdir)/binsrc/dav/n3xml2uriqahtml.xsl \
 	$(top_srcdir)/binsrc/dav/uriqa.sql \
+	$(top_srcdir)/binsrc/dav/dav_det.sql \
 	$(top_srcdir)/binsrc/dav/DET_CatFilter.sql \
 	$(top_srcdir)/binsrc/dav/DET_HostFs.sql \
 	$(top_srcdir)/binsrc/dav/DET_ResFilter.sql \

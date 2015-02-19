@@ -3310,7 +3310,7 @@ bifsparqlopt_special_bif_agg (sparp_t * sparp, int bif_opt_opcode, SPART * tree,
 	  sparp_get_expn_rvr (sparp, tree->_.funcall.argtrees[0], rvr_ret, 1 /*return_independent_copy */ );
 	else
 	  memset (rvr_ret, 0, sizeof (rdf_val_range_t));
-	if (uname_SPECIAL_cc_bif_c_MAX == qname || uname_SPECIAL_cc_bif_c_MIN == qname)
+	if (uname_SPECIAL_cc_bif_c_MAX == qname || uname_SPECIAL_cc_bif_c_MIN == qname || uname_SPECIAL_cc_bif_c_GROUPING == qname)
 	  {
 	    rvr_ret->rvrRestrictions &= ~SPART_VARR_NOT_NULL;
 	    break;
@@ -3694,7 +3694,8 @@ sparp_calc_bop_of_fixed_vals (sparp_t * sparp, ptrlong bop_type, rdf_val_range_t
 		break;
 	      }
 	    res_ret[0] =
-		spartlist (sparp, 4, SPAR_LIT, (SPART *) t_box_num_nonull (res_int), uname_xmlschema_ns_uri_hash_integer, NULL);
+		spartlist (sparp, 5, SPAR_LIT, (SPART *) t_box_num_nonull (res_int), uname_xmlschema_ns_uri_hash_integer, NULL,
+		NULL);
 	  }
 	return 1;		/* !!!TBD add arithmetics for other datatypes and their combinations */
       }
@@ -3774,11 +3775,17 @@ sparp_simplify_builtin (sparp_t * sparp, SPART * tree, int *trouble_ret)
       break;
     case SPAR_BIF_CONTAINS:
       break;
+    case SPAR_BIF__CUBE:
+      break;
     case SPAR_BIF_DAY:
       break;
     case SPAR_BIF_ENCODE_FOR_URI:
       break;
     case SPAR_BIF_FLOOR:
+      break;
+    case SPAR_BIF__GROUPING_SET:
+      break;
+    case SPAR_BIF__GROUPING_SETS:
       break;
     case SPAR_BIF_HOURS:
       break;
@@ -3870,6 +3877,8 @@ sparp_simplify_builtin (sparp_t * sparp, SPART * tree, int *trouble_ret)
     case SPAR_BIF_REPLACE:
       break;
     case SPAR_BIF_ROUND:
+      break;
+    case SPAR_BIF__ROLLUP:
       break;
     case SPAR_BIF_SAMETERM:
       break;
@@ -5413,11 +5422,15 @@ sparp_flatten_join (sparp_t * sparp, SPART * parent_gp)
 	  int memb_equiv_inx;
 	  int first_conflicting_predecessor_idx;
 	  int first_optional_sub_memb_pos;
+#if 0
+/* There was an error, bug 16535. In case of SELECT ?x WHERE { VALUES ?x { 1 2 } {} } the {} produces one empty binding, i.e. {} is (select top 1 1 where fake), not (select top 0 1 where fake)
+So this special case is not valid: */
 	  if (0 == sub_count)
 	    {
 	      sparp_gp_produce_nothing (sparp, parent_gp);
 	      return;
 	    }
+#endif
 	  if (0 == memb_ctr)
 	    goto just_remove_braces;	/* see below */
 /* First member can always be flatten. For others, there is an exception.
@@ -7372,7 +7385,7 @@ sparp_gp_trav_restore_filters_for_weird_subq (sparp_t * sparp, SPART * curr, spa
 	else if (eq->e_rvr.rvrRestrictions & SPART_VARR_IS_REF)
 	  r = spartlist (sparp, 2, SPAR_QNAME, eq->e_rvr.rvrFixedValue);
 	else
-	  r = spartlist (sparp, 4, SPAR_LIT, eq->e_rvr.rvrFixedValue, eq->e_rvr.rvrDatatype, eq->e_rvr.rvrLanguage);
+	  r = spartlist (sparp, 5, SPAR_LIT, eq->e_rvr.rvrFixedValue, eq->e_rvr.rvrDatatype, eq->e_rvr.rvrLanguage, NULL);
 	filt = spartlist (sparp, 3, BOP_EQ, l, r);
 	sparp_gp_attach_filter (sparp, parent_gp, filt, 0, NULL);
 	if (NULL == recv_eq)
@@ -7509,7 +7522,7 @@ sparp_gp_trav_add_graph_perm_read_filters (sparp_t * sparp, SPART * curr, sparp_
 	  (NULL == g_fake_arg_for_side_fx) ?
 	  (SPART **) t_list (3, g_copy, spar_exec_uid_and_gs_cbk (sparp), t_box_num (RDF_GRAPH_PERM_READ)) :
 	  (SPART **) t_list (5, g_copy, spar_exec_uid_and_gs_cbk (sparp), t_box_num (RDF_GRAPH_PERM_READ),
-	      spartlist (sparp, 4, SPAR_LIT, t_box_dv_short_string ("SPARQL query"), NULL, NULL), g_fake_arg_for_side_fx));
+	      spartlist (sparp, 5, SPAR_LIT, t_box_dv_short_string ("SPARQL query"), NULL, NULL, NULL), g_fake_arg_for_side_fx));
       sparp_gp_attach_filter (sparp, curr, filter, 0, NULL);
       if (!g_norm_is_var ||
 	  ((SPART_VARR_NOT_NULL & g_norm_expn->_.var.rvr.rvrRestrictions) &&
@@ -8111,22 +8124,33 @@ spar_propagate_limit_as_option (sparp_t * sparp, SPART * tree, SPART * outer_lim
 	    {
 	      int memb_ctr, memb_count = BOX_ELEMENTS_0 (tree->_.gp.members);
 	      int nonoptional_ctr = 0;
+	      SPART *nonoptional_member = NULL;
 	      if (0 == memb_count)
 		return;
 	      for (memb_ctr = 0; memb_ctr < memb_count; memb_ctr++)
 		{
 		  SPART *memb = tree->_.gp.members[memb_ctr];
 		  if ((SPAR_GP != SPART_TYPE (memb)) || (OPTIONAL_L != memb->_.gp.subtype))
-		    nonoptional_ctr++;
-		}
-	      if (1 == nonoptional_ctr)
-		{
-		  for (memb_ctr = 0; memb_ctr < memb_count; memb_ctr++)
 		    {
-		      SPART *memb = tree->_.gp.members[memb_ctr];
-		      spar_propagate_limit_as_option (sparp, memb, outer_limit);
+		      nonoptional_ctr++;
+		      nonoptional_member = memb;
+		      if (SPAR_GP == SPART_TYPE (memb))
+			{
+			  int equiv_ctr;
+			  SPARP_FOREACH_GP_EQUIV (sparp, memb, equiv_ctr, eq)
+			  {
+			    if (eq->e_rvr.rvrRestrictions & (SPART_VARR_GLOBAL | SPART_VARR_EXTERNAL))
+			      {
+				nonoptional_ctr++;	/* An equality between equivs of member and external is anequivalent of an extra side for join */
+				break;
+			      }
+			  }
+			  END_SPARP_FOREACH_GP_EQUIV;
+			}
 		    }
 		}
+	      if (1 == nonoptional_ctr)
+		spar_propagate_limit_as_option (sparp, nonoptional_member, outer_limit);
 	      if ((0 == tree->_.gp.subtype) && (NULL != outer_limit))
 		sparp_set_option (sparp, &(tree->_.gp.options), LIMIT_L, outer_limit, SPARP_SET_OPTION_REPLACING);
 	      return;

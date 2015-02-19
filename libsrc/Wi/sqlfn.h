@@ -733,6 +733,11 @@ void cset_align_input (cset_align_node_t * csa, caddr_t * inst, caddr_t * state)
 void csa_free (cset_align_node_t * csa);
 void table_source_cset_scan_input (table_source_t * ts, caddr_t * inst, caddr_t * state);
 void table_source_cset_lookup_scan_input (table_source_t * ts, caddr_t * inst, caddr_t * state);
+void ts_csq_end (table_source_t * ts, caddr_t * inst);
+void ts_csq_ret (table_source_t * ts, caddr_t * inst);
+int ks_cset_quad_start_search (key_source_t * ks, caddr_t * inst, buffer_desc_t ** buf_ret);
+void ts_psog_scan (table_source_t * ts, caddr_t * inst, caddr_t * state);
+void ts_csq_cset_qp (table_source_t * ts, caddr_t * inst);
 
 void breakup_node_input (breakup_node_t * brk, caddr_t * inst, caddr_t * state);
 void breakup_node_free (breakup_node_t * brk);
@@ -1312,6 +1317,7 @@ void itc_invalidate_bm_crs (it_cursor_t * itc, buffer_desc_t * buf, int is_trans
 extern int iri_split (char *iri, caddr_t * pref, caddr_t * name);
 /*! This splits an IRI to "prefix" and "local" parts, making "local" as short as it is allowed by TURTLE syntax. */
 extern void iri_split_ttl_qname (const char *iri, caddr_t * pref, caddr_t * name, int abbreviate_nodeid);
+extern void iri_split_ttl_qname_impl (const char *iri, caddr_t * pref, caddr_t * name, int abbreviate_nodeid, int flag);
 int64 unbox_iri_int64 (caddr_t x);
 int itc_bm_land_lock (it_cursor_t * itc, buffer_desc_t ** buf_ret);
 void itc_init_bm_search (it_cursor_t * itc);
@@ -1760,7 +1766,7 @@ void itc_check_cset_quad (it_cursor_t * itc, insert_node_t * ins, int min);
 void itc_check_col_bits (it_cursor_t * itc, int rows_in_seg);
 int itc_cset_unmatched_by_s (it_cursor_t * itc);
 void itc_init_exc_bits (it_cursor_t * itc, buffer_desc_t * buf);
-void itc_cset_except (it_cursor_t * itc, buffer_desc_t * buf, int prev_matches, int rows_in_seg);
+void itc_cset_except (it_cursor_t * itc, buffer_desc_t * buf, int prev_matches, int rows_in_seg, col_pos_t * cpo);
 void qi_ensure_array (caddr_t * inst, caddr_t * place, int n_bytes, int copy_content);
 void itc_ensure_array (it_cursor_t * itc, caddr_t * place, int n_bytes, int copy_content);
 int itc_cset_exc_param_nos (it_cursor_t * itc);
@@ -1769,8 +1775,9 @@ void itc_cset_opt_nulls (it_cursor_t * itc);
 query_t *cset_ins_qr (cset_t * cset, caddr_t * err_ret);
 query_t *cset_del_qr (cset_t * cset, caddr_t * err_ret);
 void rdf_quad_key_labels (dbe_table_t * tb);
-query_t *csg_query (cset_t * cset, table_source_t * ts, int mode, caddr_t * err);
+query_t *csg_query (cset_t * cset, table_source_t * ts, int mode, caddr_t * o_mode, caddr_t * err);
 void qr_cset_adjust_dcs (query_t * qr, caddr_t * inst);
+void csetp_set_bloom (caddr_t * inst, iri_id_t * p_arr, iri_id_t * s_arr, int n_values);
 
 
 #endif /* _SQLFN_H */

@@ -377,6 +377,7 @@ extern int32 cl_non_logged_write_mode;
 caddr_t bif_rollback (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args);
 caddr_t bif_topk (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args);
 void bif_topk_vec (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, state_slot_t * ret);
+caddr_t bif_scalar_to_vec (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args);
 
 int iso_string_to_code (char *i);
 

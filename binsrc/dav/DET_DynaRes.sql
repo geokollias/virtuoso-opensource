@@ -134,19 +134,19 @@ create function "DynaRes_DAV_AUTHENTICATE" (
 
   if (a_uid >= 0)
   {
-  if (DAV_CHECK_PERM (pperms, req, a_uid, http_nogroup_gid(), pgid, puid))
-    return a_uid;
+    if (DAV_CHECK_PERM (pperms, req, a_uid, http_nogroup_gid(), pgid, puid))
+      return a_uid;
 
-  pacl := "DynaRes__acl" (id[1]);
-  if (not isnull (pacl) and WS.WS.ACL_IS_GRANTED (pacl, a_uid, DAV_REQ_CHARS_TO_BITMASK (req)))
-    return a_uid;
+    pacl := "DynaRes__acl" (id[1]);
+    if (not isnull (pacl) and WS.WS.ACL_IS_GRANTED (pacl, a_uid, DAV_REQ_CHARS_TO_BITMASK (req)))
+      return a_uid;
   }
 
-    declare _perms, a_gid any;
+  declare _perms, a_gid any;
   declare webid, serviceId varchar;
 
   if (DAV_AUTHENTICATE_SSL (id, what, null, req, a_uid, a_gid, _perms, webid))
-      return a_uid;
+    return a_uid;
 
   if (DAV_AUTHENTICATE_WITH_SESSION_ID (id, what, null, req, a_uid, a_gid, _perms, serviceId))
     return a_uid;
@@ -268,7 +268,7 @@ create function "DynaRes_DAV_AUTHENTICATE_HTTP" (
         }
         if (WS.WS.ACL_IS_GRANTED (pacl, a_uid, DAV_REQ_CHARS_TO_BITMASK (req)))
         {
-        return a_uid;
+          return a_uid;
         }
       }
 
@@ -527,9 +527,9 @@ create function "DynaRes_DAV_PROP_GET" (
       return (select DR_PERMS from WS.WS.DYNA_RES where DR_RES_ID = id[3]);
     }
     if ('virt:aci_meta_n3' = propname)
-  {
-    return (select DR_ACL from WS.WS.DYNA_RES where DR_RES_ID = id[3]);
-  }
+    {
+      return (select DR_ACL from WS.WS.DYNA_RES where DR_RES_ID = id[3]);
+    }
   }
   return -11;
 }

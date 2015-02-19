@@ -1469,7 +1469,8 @@ ks_start_search (key_source_t * ks, caddr_t * inst, caddr_t * state,
   query_instance_t *qi = (query_instance_t *) inst;
 
   buffer_desc_t *buf;
-
+  if (ts->ts_csq && CSQ_CSET == ts->ts_csq->csq_mode)
+    return ks_cset_quad_start_search (ks, inst, buf_ret);
   itc->itc_n_results = 0;
   itc->itc_cl_qf_any_passed = 0;
   itc->itc_ks = ks;
@@ -1827,13 +1828,22 @@ ts_at_end (table_source_t * ts, caddr_t * inst)
   if (ts->ts_csm && TS_CSET_POSG == ts->ts_csm->csm_role)
     {
       int aq_state = ts->ts_aq_state ? QST_INT (inst, ts->ts_aq_state) : TS_AQ_COORD;
-      if (TS_AQ_COORD != aq_state)
+      if (TS_AQ_COORD != aq_state && TS_AQ_NONE != aq_state)
 	{
 	  SRC_IN_STATE (ts, inst) = NULL;
 	  return;
 	}
       QST_BOX (caddr_t, inst, ts->ts_csm->csm_posg_cset_pos) = (caddr_t) - 1;
       SRC_IN_STATE (ts, inst) = inst;
+    }
+  else if (ts->ts_csq && (CSQ_CSET_SCAN == ts->ts_csq->csq_mode || CSQ_CSET_SCAN_CSET == ts->ts_csq->csq_mode))
+    {
+      int aq_state = ts->ts_aq_state ? QST_INT (inst, ts->ts_aq_state) : TS_AQ_COORD;
+      if (TS_AQ_COORD == aq_state || TS_AQ_NONE == aq_state)
+	QST_INT (inst, ts->ts_csq->csq_at_end) = 1;
+      if (CSQS_EXC_SCAN == QST_INT (inst, ts->ts_csq->csq_nth_step))
+	QST_INT (inst, ts->ts_csq->csq_nth_step) = 0;
+      SRC_IN_STATE (ts, inst) = NULL;
     }
   else if (ts->ts_stream_setp)
     {
@@ -1904,12 +1914,17 @@ ts_top_oby_limit (table_source_t * ts, caddr_t * inst, it_cursor_t * itc)
   top_setp = ks->ks_top_oby_top_setp ? ks->ks_top_oby_top_setp : setp;
   if (!setp_top_k_limit (setp, inst, &val))
     return;
-  if (tb_is_rdf_quad (ks->ks_key->key_table))
+  if (tb_is_rdf_quad (ks->ks_key->key_table) || ks->ks_key->key_table->tb_cset)
     {
-      if (DV_STRINGP (val))
+      /* string cases, i.e. rdf box or iri cannot be pushed as a selection on the table, need the conversion function */
+      dtp_t dtp = DV_TYPE_OF (val);
+      if (DV_STRING == dtp)
+	return;
+      if (DV_RDF == dtp)
 	{
-	  /* string cases, i.e. rdf box or iri cannot be pushed as a selection on the table, need the conversion function */
-	  return;
+	  dtp = DV_TYPE_OF (((rdf_box_t *) val)->rb_box);
+	  if (DV_STRING == dtp)
+	    return;
 	}
     }
   if (!itc->itc_top_row_spec)
@@ -1961,6 +1976,33 @@ table_source_input (table_source_t * ts, caddr_t * inst, caddr_t * volatile stat
   volatile int any_passed = 1;
   query_instance_t *qi = (query_instance_t *) inst;
   int rc, start;
+  if (ts->ts_csq && CSQ_QUAD == ts->ts_csq->csq_mode)
+    {
+      cset_quad_t *csq = ts->ts_csq;
+      int step = QST_INT (inst, ts->ts_csq->csq_nth_step);
+      if (state)
+	QST_INT (inst, ts->ts_csq->csq_nth_step) = 0;
+      else if (CSQ_QUAD == csq->csq_mode && (CSQS_NEW_CSET == step || CSQS_NEW_P == step || CSQS_CONTINUE == step))
+	{
+	  /* continue with the main psog ts  in going through csets mode.  Call bak with the cset specific ts */
+	  ts_csq_ret (ts, inst);
+	  return;
+	}
+      else if (CSQS_QP_START == step || CSQS_QP_RUN == step)
+	{
+	  ts_csq_cset_qp (ts, inst);
+	  return;
+	}
+    }
+  if (ts->ts_csq && CSQ_CSET_SCAN == ts->ts_csq->csq_mode)
+    {
+      /* for a cset o scan, the model ts is on rdf quad and does the exceptions, the cset and pass through from psog are in ts_psog_scan */
+      if (CSQS_EXC_SCAN != QST_INT (inst, ts->ts_csq->csq_nth_step))
+	{
+	  ts_psog_scan (ts, inst, state);
+	  return;
+	}
+    }
   if (ts->ts_csm)
     {
       if (TS_CSET_PSOG == ts->ts_csm->csm_role)
@@ -1973,9 +2015,11 @@ table_source_input (table_source_t * ts, caddr_t * inst, caddr_t * volatile stat
 	  if (state)
 	    {
 	      qst_set (inst, ts->ts_csm->csm_o_scan_mode, NULL);
+	      QST_INT (inst, ts->ts_csm->csm_posg_last_set) = -1;
 	      QST_BOX (caddr_t, inst, ts->ts_csm->csm_posg_cset_pos) = NULL;
 	    }
-	  if (!state && QST_BOX (caddr_t, inst, ts->ts_csm->csm_posg_cset_pos))
+	  if (!state && (-1 != QST_INT (inst, ts->ts_csm->csm_posg_last_set)
+		  || (caddr_t) - 1 == QST_BOX (caddr_t, inst, ts->ts_csm->csm_posg_cset_pos)))
 	    {
 	      posg_special_o (ts, inst);
 	      return;
@@ -2077,6 +2121,8 @@ table_source_input (table_source_t * ts, caddr_t * inst, caddr_t * volatile stat
 	  if (2 == rc)
 	    {
 	      SRC_IN_STATE (ts, inst) = NULL;
+	      if (ts->ts_csq && CSQ_QUAD == ts->ts_csq->csq_mode)
+		ts_csq_ret (ts, inst);
 	      return;		/* was a sdfg and ks start search did the work to completion */
 
 	    }
@@ -2089,14 +2135,22 @@ table_source_input (table_source_t * ts, caddr_t * inst, caddr_t * volatile stat
 	      if (order_itc->itc_batch_size && order_itc->itc_n_results)
 		{
 		  ts_alt_path_ck (ts, inst);
+		  if (ts->ts_csq)
+		    ts_csq_end (ts, inst);
 		  qn_ts_send_output ((data_source_t *) ts, inst, ts->ts_after_join_test);
 		  ts_stream_flush_ck (ts, inst);
 		  ts_aq_final (ts, inst, order_itc);
 		  POSG_SPEC_O (ts);
+		  if (ts->ts_csq && CSQ_QUAD == ts->ts_csq->csq_mode)
+		    ts_csq_ret (ts, inst);
 		  return;
 		}
 	      ts_aq_final (ts, inst, NULL);
 	      POSG_SPEC_O (ts);
+	      if (ts->ts_csq)
+		ts_csq_end (ts, inst);
+	      if (ts->ts_csq && CSQ_QUAD == ts->ts_csq->csq_mode)
+		ts_csq_ret (ts, inst);
 	      return;
 	    }
 #ifndef NDEBUG
@@ -2165,6 +2219,8 @@ table_source_input (table_source_t * ts, caddr_t * inst, caddr_t * volatile stat
 		if (ts->ts_aq)
 		  ts_aq_handle_end (ts, inst);
 		ts_check_batch_sz (ts, inst, order_itc);
+		if (ts->ts_csq)
+		  ts_csq_end (ts, inst);
 		if (order_itc->itc_n_results)
 		  {
 		    ts_alt_path_ck (ts, inst);
@@ -2173,6 +2229,8 @@ table_source_input (table_source_t * ts, caddr_t * inst, caddr_t * volatile stat
 		ts_stream_flush_ck (ts, inst);
 		ts_aq_final (ts, inst, NULL);
 		POSG_SPEC_O (ts);
+		if (ts->ts_csq && CSQ_QUAD == ts->ts_csq->csq_mode)
+		  ts_csq_ret (ts, inst);
 		return;
 	      }
 	  }
@@ -2259,18 +2317,7 @@ table_source_input_unique (table_source_t * ts, caddr_t * inst, caddr_t * state)
 	  return;
 	}
       if (TS_CSET_POSG == ts->ts_csm->csm_role)
-	{
-	  if (state)
-	    {
-	      qst_set (inst, ts->ts_csm->csm_o_scan_mode, NULL);
-	      QST_BOX (caddr_t, inst, ts->ts_csm->csm_posg_cset_pos) = NULL;
-	    }
-	  if (!state && QST_BOX (caddr_t, inst, ts->ts_csm->csm_posg_cset_pos))
-	    {
-	      posg_special_o (ts, inst);
-	      return;
-	    }
-	}
+	sqlr_new_error ("CSPOS", "CSPOS", "Unique ts in csets should not be on posg");
     }
   if (ts->ts_csts)
     {
@@ -3600,7 +3647,8 @@ fref_setp_flush (fun_ref_node_t * fref, caddr_t * state)
     hash_area_t *ha = setp->setp_ha;
     if (setp == fref->fnr_setp)
       continue;
-    itc_ha_flush_memcache (ha, state, 0);
+    if (!setp->setp_any_user_aggregate_gos && !setp->setp_any_distinct_gos)
+      itc_ha_flush_memcache (ha, state, SETP_NO_CHASH_FLUSH);
     setp_filled (setp, state);
     setp_mem_sort_flush (setp, state);
     if (setp->setp_ordered_gb_fref)

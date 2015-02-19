@@ -623,6 +623,7 @@ sqlo_rdf_string_range (df_elt_t * tb_dfe, index_choice_t * ic)
   dt_col_name = ((dbe_column_t *) range_tb->tb_primary_key->key_parts->next->data)->col_name;
   range_col = range_col_dfe->_.col.col;
   r_tb_dfe = sqlo_new_dfe (so, DFE_TABLE, NULL);
+  r_tb_dfe->dfe_super = tb_dfe;	/* if expressions placed, then these are placed before tb dfe and must be found to avoid placing twice */
   snprintf (r_pref, sizeof (r_pref), "r%s", tb_dfe->_.table.ot->ot_new_prefix);
   r_ot = sqlo_ot_by_name (so, r_pref, range_tb);
   r_prefix = r_ot->ot_new_prefix;
@@ -695,6 +696,8 @@ dfe_tb_o_range_comp (df_elt_t * left, df_elt_t * right, df_elt_t * tb_dfe)
   /* left is __ro2sq (tb.o) and right is independent of tb */
   ST *tree = left->dfe_tree;
   if (dk_set_member (right->dfe_tables, (void *) tb_dfe))
+    return 0;
+  if (right->dfe_type == DFE_CONST && (IS_NUM_DTP (DV_TYPE_OF (right->dfe_tree)) || IS_DATE_DTP (DV_TYPE_OF (right->dfe_tree))))
     return 0;
   if (ST_P (tree, CALL_STMT) && DV_STRINGP (tree->_.call.name)
       && !stricmp (tree->_.call.name, "__ro2sq")
@@ -1060,6 +1063,7 @@ sqlg_make_1_ts (sqlo_t * so, df_elt_t * tb_dfe, index_choice_t * ic, df_elt_t **
   sql_comp_t *sc = so->so_sc;
   comp_context_t *cc = so->so_sc->sc_cc;
   char ord = so->so_sc->sc_order;
+  char no_cset = NULL != sqlo_opt_value (tb_dfe->_.table.ot->ot_opts, OPT_NO_DT_INLINE);
   key_source_t *order_ks;
   op_table_t *ot = tb_dfe->_.table.ot;
   dbe_table_t *table = ot->ot_table;
@@ -1181,6 +1185,8 @@ sqlg_make_1_ts (sqlo_t * so, df_elt_t * tb_dfe, index_choice_t * ic, df_elt_t **
     dfe_list_set_placed (ic->ic_col_preds, DFE_PLACED);	/* if partial inx, must recheck the preds with a real inx, could be out of date */
   if (ic->ic_o_range)
     sqlg_rdf_string_range (tb_dfe, ts, ic);
+  if (!no_cset && tb_is_rdf_quad (tb_dfe->_.table.ot->ot_table))
+    ts_set_csq (sc, tb_dfe, ts);
   return (data_source_t *) ts;
 }
 

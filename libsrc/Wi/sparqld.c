@@ -64,6 +64,8 @@ ssg_sdprin_literal (spar_sqlgen_t * ssg, SPART * tree)
 	  ssg_puts (temp);
 	  ssg_putchar ('"');
 	}
+      else if (NULL != tree->_.lit.original_text)
+	ssg_puts (tree->_.lit.original_text);
       else
 	ssg_sdprin_literal (ssg, (SPART *) (tree->_.lit.val));
       if (DV_STRING != DV_TYPE_OF (tree->_.lit.val))
@@ -113,7 +115,7 @@ ssg_sdprin_literal (spar_sqlgen_t * ssg, SPART * tree)
 	return;
       }
     default:
-      ssg_print_box_as_sql_atom (ssg, (caddr_t) tree, SQL_ATOM_UTF8_ONLY);
+      ssg_print_box_as_sql_atom (ssg, (caddr_t) tree, SQL_ATOM_SPARQL_INTEROP);
       return;
     }
 }
@@ -1488,6 +1490,7 @@ ssg_sdprint_tree (spar_sqlgen_t * ssg, SPART * tree)
 	SPART *expn = tree->_.oby.expn;
 	switch (tree->_.oby.direction)
 	  {
+	  case 0:
 	  case ASC_L:
 	    ssg_puts (" ASC (");
 	    break;

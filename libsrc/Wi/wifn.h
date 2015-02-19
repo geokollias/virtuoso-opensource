@@ -1294,8 +1294,8 @@ EXE_EXPORT (box_t, registry_get_all, (void));	/* returns the name,value, name,va
      extern int is_read_pending;
      extern int32 bp_n_bps;
 
-     extern int cp_unremap_quota;
-     extern int cp_unremap_quota_is_set;
+     extern int32 cp_unremap_quota;
+     extern int32 cp_unremap_quota_is_set;
      extern dp_addr_t crashdump_start_dp;
      extern dp_addr_t crashdump_end_dp;
      extern int sqlc_hook_enable;
@@ -1350,7 +1350,7 @@ EXE_EXPORT (box_t, registry_get_all, (void));	/* returns the name,value, name,va
      extern int virtuoso_server_initialized;
      extern int dive_pa_mode;
      extern unsigned int bp_hit_ctr;
-     extern int c_compress_mode;
+     extern int32 c_compress_mode;
      extern int rdf_no_string_inline;
 /* geo.c */
 

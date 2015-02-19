@@ -885,7 +885,8 @@ sec_check_login (char *name, char *pass, dk_session_t * ses)
     goto failed;
   if (0 == strcmp (pass, user->usr_pass))
     return user;
-
+  if (!ses->dks_peer_name)
+    goto failed;
   sec_login_digest (ses->dks_peer_name, name, user->usr_pass, digest);
   if (0 == memcmp (digest, pass, 16))
     return user;
@@ -2268,7 +2269,7 @@ sec_check_ddl (query_instance_t * qi, ST * tree)
 	    sqlr_new_error ("42S02", "SR157", "No in table alter table modify column");
 	  }
     }
-  sqlr_new_error ("42000", "SR158", "Permission denied. Must be owner of object or member of dba group.");
+  sqlr_new_error ("42000", "SR158:SECURITY", "Permission denied. Must be owner of object or member of dba group.");
 }
 
 oid_t
@@ -2300,7 +2301,7 @@ void
 sec_check_dba (query_instance_t * qi, const char *func)
 {
   if (!sec_bif_caller_is_dba (qi))
-    sqlr_new_error ("42000", "SR159", "Function %.300s restricted to dba group.", func);
+    sqlr_new_error ("42000", "SR159:SECURITY", "Function %.300s restricted to DBA group.", func);
 }
 
 
@@ -2617,22 +2618,10 @@ sec_read_tb_rls (client_connection_t * cli, query_instance_t * caller_qi, char *
 cl_op_t *
 sec_copy (cl_op_t * sec)
 {
-  cl_op_t *cp;
-  if (!sec)
-    return sec;
-  cp = clo_allocate (CLO_SEC_TOKEN);
-  cp->_.sec.g_wr_id = sec->_.sec.g_wr_id;
-  cp->_.sec.g_rd_id = sec->_.sec.g_rd_id;
-  cp->_.sec.g_wr = (index_tree_t *) box_copy ((caddr_t) sec->_.sec.g_wr);
-  cp->_.sec.g_rd = (index_tree_t *) box_copy ((caddr_t) sec->_.sec.g_rd);
-  cp->_.sec.g_sponge = sec->_.sec.g_sponge;
-  return cp;
+  return NULL;
 }
 
 void
 cli_set_sec (client_connection_t * cli, cl_op_t * sec)
 {
-  if (cli->cli_sec)
-    dk_free_box ((caddr_t) cli->cli_sec);
-  cli->cli_sec = sec;
 }

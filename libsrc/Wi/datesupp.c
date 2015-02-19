@@ -48,17 +48,6 @@
 #define  YEAR_MAX    9999	/* Maximum year able to compute */
 
 
-/*
- *  The Gregorian Reformation date
- */
-#define GREG_YEAR	1582
-#define GREG_MONTH	10
-#define GREG_FIRST_DAY	5
-#define GREG_LAST_DAY	14
-#define GREG_JDAYS	577737L	/* date2num (GREG_YEAR, GREG_MONTH,
-				   GREG_FIRST_DAY - 1) */
-
-
 /* Number of days in months */
 static const int days_in_month[] = {
   31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
@@ -79,7 +68,8 @@ days_in_february (const int year)
 {
   int day;
 
-  if ((year > GREG_YEAR) || ((year == GREG_YEAR) && (GREG_MONTH == 1 || ((GREG_MONTH == 2) && (GREG_LAST_DAY >= 28)))))
+  if ((year > GREG_YEAR)
+      || ((year == GREG_YEAR) && (GREG_MONTH == 1 || ((GREG_MONTH == 2) && (GREG_LAST_JULIAN_DAY_AS_PROLEPTIC_GREG >= 28)))))
     {
       day = (year & 3) ? 28 : ((!(year % 100) && (year % 400)) ? 28 : 29);
     }
@@ -174,9 +164,10 @@ date2num_old (const int year, const int month, const int day)
 
   julian_days = (uint32) ((year - 1) * (uint32) (DAY_LAST) + ((year - 1) >> 2));
 
-  if (year > GREG_YEAR || ((year == GREG_YEAR) && (month > GREG_MONTH || ((month == GREG_MONTH) && (day > GREG_LAST_DAY)))))
+  if (year > GREG_YEAR
+      || ((year == GREG_YEAR) && (month > GREG_MONTH || ((month == GREG_MONTH) && (day > GREG_LAST_JULIAN_DAY_AS_PROLEPTIC_GREG)))))
     {
-      julian_days -= (uint32) (GREG_LAST_DAY - GREG_FIRST_DAY + 1);
+      julian_days -= (uint32) (GREG_LAST_JULIAN_DAY_AS_PROLEPTIC_GREG - GREG_LAST_JULIAN_DAY);
     }
   if (year > GREG_YEAR)
     {
@@ -201,7 +192,7 @@ date2num (const int year, const int month, const int day)
   a = (14 - month) / 12;
   y = ((year < 0) ? year + 1 : year) + 4800 - a;
   m = month + 12 * a - 3;
-  if (year < GREG_YEAR || ((year == GREG_YEAR) && (month < GREG_MONTH || ((month == GREG_MONTH) && (day < GREG_LAST_DAY)))))
+  if (GREG_YMD_IS_PROLEPTIC_GREG (year, month, day))
     {
       jdn = day + (153 * m + 2) / 5 + 365 * y + y / 4 - 32083;
       if ((1722885 == jdn) && (1 == day))
@@ -235,7 +226,7 @@ num2date_old (int32 julian_days, int *year, int *month, int *day)
   double x;
   int i;
   if (julian_days > GREG_JDAYS)
-    julian_days += (uint32) (GREG_LAST_DAY - GREG_FIRST_DAY + 1);
+    julian_days += (uint32) (GREG_LAST_JULIAN_DAY_AS_PROLEPTIC_GREG - GREG_LAST_JULIAN_DAY);
   x = (double) julian_days / (DAY_LAST + 0.25);
   i = (int) x;
   if ((double) i != x)
@@ -407,7 +398,7 @@ gettimeofday (struct timeval *tv, struct timezone *tz)
 }
 #endif
 
-int timezoneless_datetimes = DT_TZL_NEVER;
+int timezoneless_datetimes = DT_TZL_NEVER_COMPAT;
 int dt_local_tz_for_logs = 0;	/* minutes from GMT */
 int dt_local_tz_for_weird_dates = 0;	/* minutes from GMT */
 
@@ -454,7 +445,7 @@ void
 dt_now (caddr_t dt)
 {
   dt_now_GMT (dt);
-  if (DT_TZL_NEVER == timezoneless_datetimes)
+  if (DT_TZL_NEVER_COMPAT == timezoneless_datetimes)
     DT_SET_TZ (dt, dt_local_tz_for_logs);
   else
     {
@@ -914,7 +905,7 @@ dt_to_string (const char *dt, char *str, int len)
   dt_to_timestamp_struct (dt, &ts);
   dt_type = DT_DT_TYPE (dt);
   len_before_fra = len - (ts.fraction ? 10 : 0);
-  if ((DT_TZL_NEVER != timezoneless_datetimes) && (!DT_TZL (dt)))
+  if ((DT_TZL_NEVER_COMPAT != timezoneless_datetimes) && (!DT_TZL (dt)))
     {
       if (0 != DT_TZ (dt))
 	len_before_fra -= 6;	/* +99:00 */
@@ -951,7 +942,7 @@ add_fra_and_tz:
 	tail += snprintf (tail, (str + len) - tail, ".%03d", (int) (ts.fraction / 1000000));
     }
 add_tz:
-  if ((DT_TZL_NEVER != timezoneless_datetimes) && (!DT_TZL (dt)))
+  if ((DT_TZL_NEVER_COMPAT != timezoneless_datetimes) && (!DT_TZL (dt)))
     {
       int tz = DT_TZ (dt);
       int atz = abs (tz);
@@ -1535,6 +1526,15 @@ iso8601_or_odbc_string_to_dt_1 (const char *str, char *dt, int dtflags, int dt_t
 	      err_msg_ret[0] = box_sprintf (500, "Too many days (%d, the month has only %d)", fld_value, days_in_this_month);
 	      return;
 	    }
+	  if (GREG_YMD_IS_POST_JULIAN_PROLEPTIC_GREG (fld_values[0], fld_values[1], fld_values[2]))
+	    {
+	      err_msg_ret[0] =
+		  box_sprintf (500,
+		  "The notation %04d-%02d-%02d refers to day that does not exist due to Gregorian reform, valid dates of that month are Julian 1 to %d and Gregorean %d to %d",
+		  fld_values[0], fld_values[1], fld_values[2], GREG_LAST_JULIAN_DAY, GREG_LAST_JULIAN_DAY_AS_PROLEPTIC_GREG + 1,
+		  days_in_this_month);
+	      return;
+	    }
 	}
     }
   if (leading_minus)
@@ -1559,21 +1559,21 @@ iso8601_or_odbc_string_to_dt_1 (const char *str, char *dt, int dtflags, int dt_t
 	tzl_set = 1;
       else if (DT_TZL_PREFER == timezoneless_datetimes)
 	tzl_set = 1;
-      else if (((DT_TYPE_TIME == dt_type) || (DT_TYPE_DATE == dt_type)) && (DT_TZL_NEVER != timezoneless_datetimes)
-	  && (dtflags & DTFLAG_DATES_AND_TIMES_ARE_ISO))
+      else if (((DT_TYPE_TIME == dt_type) || (DT_TYPE_DATE == dt_type))
+	  && (DT_TZL_BY_ISO == timezoneless_datetimes) && (dtflags & DTFLAG_DATES_AND_TIMES_ARE_ISO))
 	tzl_set = 1;
     }
   if (tzl_set)
-    {
-      tzmin = 0;
-    }
-  else
+    tzmin = 0;
+  else if (tz_is_set)
     {
       if (tzsign)
 	tzmin *= -1;
-      if (!tz_is_set)
-	tzmin = dt_local_tzmin_for_parts (fld_values[0], fld_values[1], fld_values[2], fld_values[3], fld_values[4], fld_values[5]);
     }
+  else if (DT_TZL_AS_GMT == timezoneless_datetimes)
+    tzmin = 0;
+  else
+    tzmin = dt_local_tzmin_for_parts (fld_values[0], fld_values[1], fld_values[2], fld_values[3], fld_values[4], fld_values[5]);
   dt_from_parts (dt,
       fld_values[0], fld_values[1], fld_values[2], fld_values[3], fld_values[4], fld_values[5], fld_values[6], tzmin);
   if ((DT_TYPE_TIME == dt_type) || (DTFLAG_FORCE_DAY_ZERO & dtflags))

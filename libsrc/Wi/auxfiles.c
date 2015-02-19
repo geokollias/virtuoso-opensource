@@ -40,6 +40,8 @@ char *https_port;
 char *https_cert;
 char *https_key;
 char *https_extra;
+char *https_cipher_list;
+char *https_protocols;
 int32 https_client_verify = 0;
 int32 https_client_verify_depth = 0;
 char *https_client_verify_file = NULL;
@@ -89,7 +91,7 @@ int n_oldest_flushable;
 int null_bad_dtp;
 int atomic_dive = 0;
 int dive_pa_mode = PA_READ;
-int c_compress_mode = 0;
+int32 c_compress_mode = 0;
 int default_txn_isolation = ISO_COMMITTED;
 int c_col_by_default = 0;
 int c_query_log = 0;
@@ -617,6 +619,9 @@ _db_read_cfg (dbe_storage_t * ignore, char *mode)
   c_ssl_server_port = cfg_get_parm (wholefile, "\nssl_server_port:", 1);
   c_ssl_server_cert = cfg_get_parm (wholefile, "\nssl_server_certificate:", 1);
   c_ssl_server_key = cfg_get_parm (wholefile, "\nssl_server_private_key:", 1);
+
+  https_cipher_list = cfg_get_parm (wholefile, "\nssl_cipher_list:", 1);
+  https_protocols = cfg_get_parm (wholefile, "\nssl_protocols:", 1);
 #endif
 
 #ifdef _IMSG

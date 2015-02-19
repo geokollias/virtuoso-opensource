@@ -1392,7 +1392,6 @@ sqlp_stars (ST ** selection, ST ** from)
   return ((ST **) t_list_to_array (exp_list));
 }
 
-
 dk_set_t
 sqlp_process_col_options (caddr_t table_name, dk_set_t table_opts)
 {
@@ -2756,7 +2755,7 @@ sqlp_top_gby (ST * gb)
 {
   ST *proct =
       t_listst (4, DERIVED_TABLE, t_listst (5, PROC_TABLE, t_box_string ("proc"), list (0), t_listst (2, t_box_string ("__r"),
-	      list (1, list (2, 189, 0), t_list (0))), t_list (2, 964, t_list (1, t_list (1, 0)))), t_box_string ("dt1"));
+	      list (1, list (2, 189, 0), t_list (0))), t_list (2, 964, t_list (1, t_list (1, 0)))), t_box_string ("dt1"), NULL);
   ST *texp = t_listst (9, TABLE_EXP, t_list (1, proct), NULL, NULL, NULL, NULL, NULL, NULL, NULL);
   texp->_.table_exp.group_by = gb->_.gb_ext.cols;
   texp->_.table_exp.group_by_full = t_listst (1, texp->_.table_exp.group_by);

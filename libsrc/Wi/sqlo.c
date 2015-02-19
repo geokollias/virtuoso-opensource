@@ -87,12 +87,16 @@
 dbe_table_t *
 so_name_to_temp_table (sqlo_t * so, char *name)
 {
-  DO_SET (dbe_table_t *, tb, &so->so_sc->sc_temp_tables)
-  {
-    if (!CASEMODESTRCMP (tb->tb_name, name))
-      return tb;
-  }
-  END_DO_SET ();
+  sql_comp_t *sc = so->so_sc;
+  for (sc = sc; sc; sc = sc->sc_super)
+    {
+      DO_SET (dbe_table_t *, tb, &sc->sc_temp_tables)
+      {
+	if (!CASEMODESTRCMP (tb->tb_name, name))
+	  return tb;
+      }
+      END_DO_SET ();
+    }
   return NULL;
 }
 
@@ -925,7 +929,7 @@ sqlo_add_table_ref (sqlo_t * so, ST ** tree_ret, dk_set_t * res)
 	  {
 	    op_table_t *ot = NULL;
 	    if (!with_view && !sec_tb_check (tb, (oid_t) unbox (tree->_.table.u_id), (oid_t) unbox (tree->_.table.u_id), GR_SELECT))
-	      sqlc_error (so->so_sc->sc_cc, "42000", "Must have select privileges on view %s", tb->tb_name);
+	      sqlc_new_error (so->so_sc->sc_cc, "42000", "SQ070:SECURITY", "Must have select privileges on view %s", tb->tb_name);
 	    view = (ST *) t_box_copy_tree ((caddr_t) view);
 	    if (ST_P (view, UNION_ST) ||
 		ST_P (view, UNION_ALL_ST) ||

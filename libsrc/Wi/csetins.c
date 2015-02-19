@@ -675,12 +675,13 @@ upd_cset_delete_rows (update_node_t * upd, it_cursor_t * itc, buffer_desc_t * bu
 
 
 void
-csetp_set_bloom (iri_id_t * p_arr, iri_id_t * s_arr, int n_values)
+csetp_set_bloom (caddr_t * inst, iri_id_t * p_arr, iri_id_t * s_arr, int n_values)
 {
   /* set the bloom for the p/s if these fall in a cset */
   cset_t *cset = NULL, *prev_cset = NULL;
   int prev_rn = -1;
   iri_id_t prev_p = 0;
+  cset_t *rq_cset = NULL;
   int inx;
   cset_p_t *csetp = NULL;
   for (inx = 0; inx < n_values; inx++)
@@ -689,7 +690,18 @@ csetp_set_bloom (iri_id_t * p_arr, iri_id_t * s_arr, int n_values)
       iri_id_t s = s_arr[inx];
       int rn = IRI_RANGE (s);
       if (!rn)
-	continue;
+	{
+	  if (!rq_cset)
+	    {
+	      rq_cset = gethash ((void *) 0, &id_to_cset);
+	      if (!rq_cset)
+		continue;
+	    }
+	  mutex_enter (&rq_cset->cset_mtx);
+	  sethash (p, &rq_cset->cset_except_p, (void *) 1);
+	  mutex_leave (&rq_cset->cset_mtx);
+	  continue;
+	}
       if (rn != prev_rn)
 	{
 	  cset = rt_ranges[rn].rtr_cset;
@@ -703,19 +715,23 @@ csetp_set_bloom (iri_id_t * p_arr, iri_id_t * s_arr, int n_values)
 	      csetp = gethash ((void *) p, &cset->cset_p);
 	      prev_p = p;
 	      prev_cset = cset;
+	      if (!csetp && cset)
+		{
+		  mutex_enter (&cset->cset_mtx);
+		  sethash ((void *) p, &cset->cset_except_p, (void *) 1);
+		  mutex_leave (&cset->cset_mtx);
+		}
 	    }
 	  if (csetp)
 	    {
+	      uint64 *bf;
+	      uint32 n_bf;
 	      uint64 h, mask;
 	      MHASH_STEP_1 (h, s);
 	      mask = BF_MASK (h);
 	      mutex_enter (&csetp->csetp_bloom_mtx);
-	      if (!csetp->csetp_bloom)
-		{
-		  csetp->csetp_bloom = dk_alloc_box_zero (8 * 211, DV_BIN);
-		  csetp->csetp_n_bloom = 211;
-		}
-	      csetp->csetp_bloom[BF_WORD (h, csetp->csetp_n_bloom)] |= mask;
+	      csetp_ensure_bloom (csetp, inst, 1000, &bf, &n_bf);
+	      bf[BF_WORD (h, n_bf)] |= mask;
 	      mutex_leave (&csetp->csetp_bloom_mtx);
 	    }
 	}

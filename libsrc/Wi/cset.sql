@@ -136,5 +136,56 @@ create procedure cset_iri_pattern (in name varchar, in pattern varchar, in field
 ;
 
 
+create procedure CSET_BF_INIT_SL (in slid int)
+{
+  declare csno, n_exc int;
+  declare this_p, csmin, csmax iri_id_8;
+  cl_set_slice ('DB.DBA.RDF_QUAD', 'RDF_QUAD', slid);
+ this_p :=  #i0;
+  for (;;)
+    {
+    this_p := (select top 1 p from rdf_quad table option (index rdf_quad, final, no cluster) where p > this_p);
+      if (this_p is null)
+	return;
+      for (csno := 0; csno < 512; csno := csno + 1)
+	{
+	csmin := iri_id_from_num (bit_shift (csno, 53));
+    csmax := iri_id_from_num (bit_shift (csno + 1, 53) - 1);
+	  if (not exists (select 1 from rdf_cset_p where csetp_cset = csno and csetp_iid = this_p))
+	    {
+	      if (exists (select 1 from rdf_quad table option (index rdf_quad, final, no cluster) where p = this_p and s between csmin and csmax))
+		cset_p_exc (csno, this_p, 1);
+	    }
+	  else
+	    {
+	    n_exc := (select count (*) from rdf_quad table option (index rdf_quad, final, no cluster) where p = this_p and s between csmin and csmax);
+	      if (n_exc > 0 and cset_p_exc (csno, this_p, n_exc))
+		{
+		n_exc := (select count (cset_add_exc (scalar_to_vec (csno, s), scalar_to_vec (this_p, s), s)) from rdf_quad table option (index rdf_quad, final, no cluster) where p = this_p and s between csmin and csmax);
+		}
+	    }
+	}
+    }
+}
+;
 
+create procedure cset_bf_init ()
+{
+  if (1 = sys_stat ('cl_run_local_only'))
+    cset_bf_init_sl (0);
+  else
+    cl_call_local_slices ('DB.DBA.RDF_QUAD',  'RDF_QUAD', 'DB.DBA.CSET_BF_INIT_CL', vector ());
+}
+;
+
+create procedure cset_no_index (in cs varchar, in p varchar, in val any)
+{
+  declare csi, pi iri_id_8;
+  csi = iri_to_id (cs);
+  pi := iri_to_id (p);
+  if (exists (select 1 from RDF_CSET_P_NI where csni_cset = csi and csni_iid = pi and csni_o = val))
+    return;
+  insert  into RDF_CSET_P_NI values (csi, pi, val);
+}
+;
 
