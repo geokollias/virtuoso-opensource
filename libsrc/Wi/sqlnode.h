@@ -848,6 +848,14 @@ typedef struct cset_mode_s
   ssl_index_t csm_posg_cset_pos;
   state_slot_t *csm_o_scan_mode;	/* a posg rq detects scannable o, sets this to cset no to guide subsequent cset abstract to do a scan */
   short *csm_cset_col_bits;
+  ssl_index_t csm_cset_scan_state;	/* first window, middle, last window, 1,0, 2, set by cset ts, read by 1st rq ts */
+  ssl_index_t csm_at_end;	/* sg cset table lookup/scan at end */
+  query_t *csm_g_mix_qr;
+  /* for scan of s not in cset table */
+  key_source_t *csm_exc_scan_ks;
+  state_slot_t *csm_exc_scan_lower;
+  state_slot_t *csm_exc_scan_upper;
+  state_slot_t *csm_exc_scan_exc_s;
 } cset_mode_t;
 
 /* csm_role */
@@ -857,9 +865,14 @@ typedef struct cset_mode_s
 
 
 /* csm_mode */
-#define CSM_CSET_DIRECT 1	/* all columns and conds are resolved from the cset table */
-#define CSM_EXCEPT 2		/* ts against psog considers only psog, accessing cset exceptions */
-#define CSM_CSET_COL 3 /* use psog if s not in cset, use the cset table if s in cset */ 2
+#define CSM_CSET_DIRECT 0
+#define CSM_CSET_START_G_MIX 2
+#define CSM_CSET_G_MIX 3
+
+
+/* ts_scan_state */
+#define CSET_SCAN_FIRST 1
+#define CSET_SCAN_LAST 2
 
 
 typedef struct cset_quad_s
@@ -882,6 +895,7 @@ typedef struct cset_quad_s
   state_slot_t *csq_org_g;
   state_slot_t *csq_s_min;
   state_slot_t *csq_s_max;
+  ssl_index_t csq_nth_set;
 } cset_quad_t;
 
 /* csq_mode */
@@ -889,6 +903,8 @@ typedef struct cset_quad_s
 #define CSQ_CSET 2		/* special temp ts for cset table case */
 #define CSQ_CSET_SCAN 3		/*after posg for non indexed p/o, must scan applicable csets */
 #define CSQ_CSET_SCAN_CSET 4	/* specialized ts for one cset after csq cset scan */
+#define CSQ_SP 5
+
 /* values in csq_step */
 #define CSQS_INIT 1
 #define CSQS_NEW_P 2
@@ -914,13 +930,10 @@ typedef struct table_source_s
   state_slot_t *ts_current_of;
   state_slot_t *ts_cset_in;
   state_slot_t *ts_cset_out;
-  state_slot_t *ts_cset_s;	/* use for reading the s col in cset for exception check */
   ssl_index_t ts_set_card_bits;	/* 2 bits per set, 0 if no hit, 1 if 1, 2 if more */
   int ts_batch_sz;
   short ts_qp_max;
   bitf_t ts_is_cset:3;
-  bitf_t ts_is_cset_exc:1;	/* is a cset exception lookup in quad */
-  bitf_t ts_is_cset_exc_opt:1;	/* cset exception lookup for optional col */
   bitf_t ts_is_unique:1;	/* Only one hit expected, do not look for more */
   bitf_t ts_is_outer:1;
   bitf_t ts_is_random:1;	/* random search */
@@ -968,6 +981,10 @@ typedef struct table_source_s
   trans_read_t *ts_trans_read;
   short ts_max_rows;		/* if last of top n and a single state makes this many, then can end whole set */
   short ts_prefetch_rows;	/* recommend cluster end batch   after this many because top later */
+  qn_input_fn *ts_step_input;
+  int *ts_cycle_length;
+  ssl_index_t *ts_cycle_pos;
+  ssl_index_t ts_step_at_end;
 } table_source_t;
 
 /* for alternate index path, flag whether ts is 1st or 2nd */
@@ -1338,7 +1355,8 @@ typedef struct file_source_s
 
 #define IS_TS(n) \
   ((qn_input_fn) table_source_input_unique == ((data_source_t*)(n))->src_input || \
-   (qn_input_fn) table_source_input == ((data_source_t*)(n))->src_input)
+   (qn_input_fn) table_source_input == ((data_source_t*)(n))->src_input \
+   || IS_QN (n, table_source_cycle_input))
 #define IS_TS_LAYOUT(ts) (IS_TS (ts) || IS_QN (ts, chash_read_input) || IS_QN (ts, sort_read_input))
 #define IS_HS(qn) (((data_source_t *)qn)->src_input == (qn_input_fn)hash_source_input)
 

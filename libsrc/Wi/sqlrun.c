@@ -1822,16 +1822,30 @@ ts_always_null (table_source_t * ts, caddr_t * inst)
 }
 
 
-void
+int
 ts_at_end (table_source_t * ts, caddr_t * inst)
 {
-  if (ts->ts_csm && TS_CSET_POSG == ts->ts_csm->csm_role)
+  cset_mode_t *csm = ts->ts_csm;
+  if (ts->ts_step_at_end)
+    {
+      QST_INT (inst, ts->ts_step_at_end) = 1;
+      if (!ts_next_step (ts, inst))
+	SRC_IN_STATE (ts, inst) = NULL;
+      else
+	SRC_IN_STATE (ts, inst) = inst;
+      return NULL != SRC_IN_STATE (ts, inst);
+    }
+  if (csm && csm->csm_cset_scan_state)
+    {
+      QST_INT (inst, csm->csm_cset_scan_state) |= CSET_SCAN_LAST;
+    }
+  if (csm && TS_CSET_POSG == csm->csm_role)
     {
       int aq_state = ts->ts_aq_state ? QST_INT (inst, ts->ts_aq_state) : TS_AQ_COORD;
       if (TS_AQ_COORD != aq_state && TS_AQ_NONE != aq_state)
 	{
 	  SRC_IN_STATE (ts, inst) = NULL;
-	  return;
+	  return 0;
 	}
       QST_BOX (caddr_t, inst, ts->ts_csm->csm_posg_cset_pos) = (caddr_t) - 1;
       SRC_IN_STATE (ts, inst) = inst;
@@ -1852,6 +1866,7 @@ ts_at_end (table_source_t * ts, caddr_t * inst)
     }
   else
     SRC_IN_STATE (ts, inst) = NULL;
+  return 0;
 }
 
 int
@@ -1982,7 +1997,8 @@ table_source_input (table_source_t * ts, caddr_t * inst, caddr_t * volatile stat
       int step = QST_INT (inst, ts->ts_csq->csq_nth_step);
       if (state)
 	QST_INT (inst, ts->ts_csq->csq_nth_step) = 0;
-      else if (CSQ_QUAD == csq->csq_mode && (CSQS_NEW_CSET == step || CSQS_NEW_P == step || CSQS_CONTINUE == step))
+      else if (CSQ_QUAD == csq->csq_mode && (CSQS_NEW_CSET == step || CSQS_NEW_P == step || CSQS_CONTINUE == step
+	      || CSQS_INIT == step))
 	{
 	  /* continue with the main psog ts  in going through csets mode.  Call bak with the cset specific ts */
 	  ts_csq_ret (ts, inst);
@@ -2005,6 +2021,11 @@ table_source_input (table_source_t * ts, caddr_t * inst, caddr_t * volatile stat
     }
   if (ts->ts_csm)
     {
+      if (TS_CSET_SG == ts->ts_csm->csm_role)
+	{
+	  table_source_sg_input (ts, inst, state);
+	  return;
+	}
       if (TS_CSET_PSOG == ts->ts_csm->csm_role)
 	{
 	  cset_psog_input (ts, inst, state);
@@ -2128,7 +2149,8 @@ table_source_input (table_source_t * ts, caddr_t * inst, caddr_t * volatile stat
 	    }
 	  if (!rc)
 	    {
-	      ts_at_end (ts, inst);
+	      if (ts_at_end (ts, inst))
+		return;
 	      if (ts->ts_aq)
 		ts_aq_handle_end (ts, inst);
 	      ts_check_batch_sz (ts, inst, order_itc);
@@ -2215,7 +2237,8 @@ table_source_input (table_source_t * ts, caddr_t * inst, caddr_t * volatile stat
 	    else
 	      {
 		itc_page_leave (order_itc, order_buf);
-		ts_at_end (ts, inst);
+		if (ts_at_end (ts, inst))
+		  return;
 		if (ts->ts_aq)
 		  ts_aq_handle_end (ts, inst);
 		ts_check_batch_sz (ts, inst, order_itc);
@@ -2282,6 +2305,8 @@ table_source_input (table_source_t * ts, caddr_t * inst, caddr_t * volatile stat
 #endif
 	  ts_alt_path_ck (ts, inst);
 	  qn_ts_send_output ((data_source_t *) ts, state, ts->ts_after_join_test);
+	  if (ts->ts_csm && ts->ts_csm->csm_cset_scan_state)
+	    QST_INT (inst, ts->ts_csm->csm_cset_scan_state) = 0;	/* not first and not last result vector */
 	  if (ts->ts_order_ks->ks_top_oby_col)
 	    ts_top_oby_limit (ts, inst, order_itc);
 	}
@@ -2376,6 +2401,74 @@ table_source_input_unique (table_source_t * ts, caddr_t * inst, caddr_t * state)
     }
   ts_aq_final (ts, inst, NULL);
 }
+
+
+int
+ts_next_step (table_source_t * ts, caddr_t * inst)
+{
+  int inx = 0, pos;
+  int n_nested = box_length (ts->ts_cycle_length) / sizeof (int);
+  for (;;)
+    {
+      pos = ++QST_INT (inst, ts->ts_cycle_pos[inx]);
+      if (pos == ts->ts_cycle_length[inx])
+	{
+	  QST_INT (inst, ts->ts_cycle_pos[inx]) = 0;
+	  inx++;
+	  if (inx == n_nested)
+	    {
+	      SRC_IN_STATE (ts, inst) = NULL;
+	      return 0;
+	    }
+	}
+      else
+	return 1;
+    }
+}
+
+
+void
+table_source_cycle_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
+{
+  /* each thread of a ts goes through a set of functions in sequence.  When one is at end the next is called, when last is art end, coord syncs aq threads */
+  int n_nested = box_length (ts->ts_cycle_length) / sizeof (int), inx;
+  if (state)
+    {
+      for (inx = 0; inx < n_nested; inx++)
+	QST_INT (inst, ts->ts_cycle_pos[inx]) = 0;
+      QST_INT (inst, ts->ts_step_at_end) = 0;
+      ts->ts_step_input[0] (ts, inst, inst);
+    }
+  if (!state)
+    {
+      int aq_state = ts->ts_aq_state ? QST_INT (inst, ts->ts_aq_state) : TS_AQ_NONE;
+      if (TS_AQ_COORD_AQ_WAIT == aq_state)
+	{
+	  ts_handle_aq (ts, inst, NULL, NULL);
+	  return;
+	}
+    }
+  for (;;)
+    {
+      int step = QST_INT (inst, ts->ts_cycle_pos[0]);
+      if (QST_INT (inst, ts->ts_step_at_end))
+	{
+	  QST_INT (inst, ts->ts_step_at_end) = 0;
+	  ts->ts_step_input[step] (ts, inst, inst);
+	}
+      else
+	ts->ts_step_input[step] (ts, inst, NULL);
+      if (!SRC_IN_STATE (ts, inst))
+	{
+	  ts_aq_handle_end (ts, inst);
+	  if (QST_INT (inst, ts->src_gen.src_out_fill))
+	    qn_ts_send_output ((data_source_t *) ts, inst, ts->ts_after_join_test);
+	  ts_aq_final (ts, inst, NULL);
+	  return;
+	}
+    }
+}
+
 
 
 int dbf_rq_slice_only = -1;
@@ -3480,7 +3573,7 @@ box_is_string (char **box, char *str, int from, int len)
 {
   int inx;
   for (inx = from; inx < len; inx++)
-    if (box[inx] && 0 == strcmp (box[inx], str))
+    if (DV_STRINGP (box[inx]) && 0 == strcmp (box[inx], str))
       return 1;
   return 0;
 }

@@ -55,6 +55,7 @@ typedef struct cset_s
   rt_range_t *cset_rtr;
   dk_hash_t cset_p;
   dk_hash_t cset_except_p;
+  struct cset_p_s **cset_p_array;	/* cols left to right  in def order */
   dbe_table_t *cset_table;
   dbe_table_t *cset_rq_table;
   struct query_s *cset_ins;

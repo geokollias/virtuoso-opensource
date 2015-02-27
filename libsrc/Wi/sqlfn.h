@@ -305,6 +305,8 @@ switch (dtp) \
 void sinv_builtin_inverse (caddr_t * f1, caddr_t * f2, int *flags, int n);
 
 void table_source_input (table_source_t * ts, caddr_t * inst, caddr_t * volatile state);
+void table_source_cycle_input (table_source_t * ts, caddr_t * inst, caddr_t * volatile state);
+void ts_sp_cset_p (table_source_t * ts, caddr_t * inst, caddr_t * state);
 void inx_op_source_input (table_source_t * ts, caddr_t * inst, caddr_t * volatile state);
 int table_source_input_rdf_range (table_source_t * ts, caddr_t * inst, caddr_t * state);
 extern dk_mutex_t *alt_ts_mtx;
@@ -1758,8 +1760,12 @@ void posg_special_o (table_source_t * ts, caddr_t * inst);
 void cset_psog_input (table_source_t * ts, caddr_t * inst, caddr_t * state);
 void csts_free (cset_ts_t * csts);
 
-void ts_at_end (table_source_t * ts, caddr_t * inst);
+int ts_at_end (table_source_t * ts, caddr_t * inst);
 void ts_top_oby_limit (table_source_t * ts, caddr_t * inst, it_cursor_t * itc);
+void cset_psog_cset_values (table_source_t * ts, caddr_t * inst, caddr_t * state);
+void psog_cset_scan_exceptions (table_source_t * ts, caddr_t * inst, caddr_t * state);
+void psog_outer_nulls (table_source_t * ts, caddr_t * inst, caddr_t * state);
+void cset_psog_input (table_source_t * ts, caddr_t * inst, caddr_t * state);
 int ts_stream_flush_ck (table_source_t * ts, caddr_t * inst);
 int itc_cset_update (it_cursor_t * itc, buffer_desc_t * buf, insert_node_t * ins);
 void itc_check_cset_quad (it_cursor_t * itc, insert_node_t * ins, int min);

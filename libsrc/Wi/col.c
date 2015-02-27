@@ -1294,6 +1294,13 @@ neq:
   return 0;
 }
 
+int
+cpo_ord_not_in (col_pos_t * cpo, iri_id_t s)
+{
+  /* the min ssl is a dc of ordered iris and cpo hash min is the last checked.  True if s not in the array */
+  return 1;
+}
+
 
 int
 ce_filter (col_pos_t * cpo, int row, dtp_t flags, db_buf_t val, int len, int64 offset, int rl)
@@ -1362,6 +1369,22 @@ ce_filter (col_pos_t * cpo, int row, dtp_t flags, db_buf_t val, int len, int64 o
 	if ((is_null && CMP_NULL == cpo->cpo_min_op) || (!is_null && CMP_NON_NULL == cpo->cpo_min_op))
 	  goto found;
 	goto filter_done;
+      }
+    case CMP_ORD_NOT_IN:
+      {
+	/* last checked place in cpo_hash_min */
+	iri_id_t s;
+	if (CE_INTLIKE (flags))
+	  s = val;
+	else
+	  {
+	    dtp_t tmp[20];
+	    any_add (val, len, offset, tmp, flags);
+	    s = DV_IRI_ID == tmp[0] ? (iri_id_t) (uint32) LONG_REF_NA (&tmp[1]) : (iri_id_t) INT64_REF_NA (&tmp[1]);
+	  }
+	if (!cpo_ord_not_in (cpo, s))
+	  goto filter_done;
+	break;
       }
     default:
       rc = ce_col_cmp (val, offset, flags, cpo->cpo_cl, cpo->cpo_cmp_min);

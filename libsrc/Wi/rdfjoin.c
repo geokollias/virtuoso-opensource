@@ -1028,7 +1028,7 @@ itc_cset_s_param_nos (it_cursor_t * itc, int n_values)
 #define PSOG_CSET_VALUES 1
 #define PSOG_OWN_VALUES 2
 #define PSOG_OUTER_NULLS 3
-
+#define PSOG_SCAN_EXC 4		/* after cset ts, get s values not in cset ts scan */
 
 void
 cset_psog_bits (table_source_t * ts, caddr_t * inst)
@@ -1083,7 +1083,7 @@ sslr_n_consec_ref_2 (caddr_t * inst, state_slot_ref_t * sslr, int *sets, int set
 
 
 void
-cset_psog_cset_values (table_source_t * ts, caddr_t * inst)
+cset_psog_cset_values (table_source_t * ts, caddr_t * inst, caddr_t * state)
 {
   int n_sets = QST_INT (inst, ts->src_gen.src_prev->src_out_fill), set, r;
   cset_mode_t *csm = ts->ts_csm;
@@ -1119,9 +1119,9 @@ cset_psog_cset_values (table_source_t * ts, caddr_t * inst)
       for (set = 0; set < n_sets; set += ARTM_VEC_LEN)
 	{
 	  int last = MIN (n_sets, set + ARTM_VEC_LEN), r;
-	  sslr_n_consec_ref (inst, (state_slot_ref_t *) csm->csm_exc_bits_in[0], sets, set, last);
+	  sslr_n_consec_ref (inst, (state_slot_ref_t *) csm->csm_exc_bits_in[0], sets, set, last - set);
 	  if (o_dc)
-	    sslr_n_consec_ref_2 (inst, (state_slot_ref_t *) csm->csm_cset_o, cset_sets, set, last);
+	    sslr_n_consec_ref_2 (inst, (state_slot_ref_t *) csm->csm_cset_o, cset_sets, set, last - set);
 	  for (r = 0; r < last - set; r++)
 	    {
 	      if (this_mask & bits[sets[r]])
@@ -1140,7 +1140,7 @@ cset_psog_cset_values (table_source_t * ts, caddr_t * inst)
 	{
 	  int last = MIN (n_sets, set + ARTM_VEC_LEN), r;
 	  if (o_dc)
-	    sslr_n_consec_ref_2 (inst, (state_slot_ref_t *) csm->csm_cset_o, cset_sets, set, last);
+	    sslr_n_consec_ref_2 (inst, (state_slot_ref_t *) csm->csm_cset_o, cset_sets, set, last - set);
 	  for (r = 0; r < last - set; r++)
 	    {
 	      if (this_mask & bits[set + r])
@@ -1157,14 +1157,137 @@ cset_psog_cset_values (table_source_t * ts, caddr_t * inst)
   if (ks->ks_last_vec_param)
     ssl_consec_results (ks->ks_last_vec_param, inst, n_sets);
   QST_INT (inst, csm->csm_n_from_cset) = QST_INT (inst, ts->src_gen.src_out_fill);
+  ts_at_end (ts, inst);
+}
+
+
+table_source_t *
+rq_ts_cset_ts (table_source_t * ts)
+{
+  for (ts = (table_source_t *) ts->src_gen.src_prev; ts; ts = (table_source_t *) ts->src_gen.src_prev)
+    {
+      if (IS_TS (ts) && ts->ts_csm && ts->ts_csm->csm_cset_scan_state)
+	return ts;
+    }
+  GPF_T1 ("first rq ts must be after cset ts");
+  return NULL;
+}
+
+#define CSET_LOWER(c) ((uint64)c->cset_id << CSET_RNG_SHIFT)
+
+void
+psog_cset_scan_exceptions (table_source_t * ts, caddr_t * inst, caddr_t * state)
+{
+  search_spec_t *cset_s_spec;
+  buffer_desc_t *buf;
+  QNCAST (QI, qi, inst);
+  int n_sets = QST_INT (inst, ts->src_gen.src_prev->src_out_fill);
+  int scan_state, from_next, batch_size;
+  it_cursor_t *cset_itc;
+  cset_mode_t *csm = ts->ts_csm;
+  table_source_t *cset_ts = rq_ts_cset_ts (ts);
+  cset_mode_t *cset_csm = cset_ts->ts_csm;
+  it_cursor_t *itc = TS_ORDER_ITC (ts, inst);
+  iri_id_t lower = 0, upper = 0;
+  key_source_t *ks = ts->ts_order_ks;
+  key_source_t *exc_ks = ts->ts_csm->csm_exc_scan_ks;
+  data_col_t *s_lookup_dc;
+again:
+  batch_size = QST_INT (inst, ts->src_gen.src_batch_size);
+  if (state)
+    {
+      QST_INT (inst, csm->csm_mode) = PSOG_SCAN_EXC;
+      if (!itc)
+	{
+	  /* can be no itc if cset empty */
+	  s_lookup_dc = NULL;
+	  itc = itc_create (NULL, qi->qi_trx);
+	  TS_ORDER_ITC (ts, state) = itc;
+	  QST_BOX (data_col_t *, inst, csm->csm_exc_scan_exc_s->ssl_index)->dc_n_values = 0;
+	}
+      else
+	{
+	  data_col_t *exc_s_dc = QST_BOX (data_col_t *, inst, csm->csm_exc_scan_exc_s->ssl_index);
+	  s_lookup_dc = ITC_P_VEC (itc, 1);
+	  DC_CHECK_LEN (exc_s_dc, s_lookup_dc->dc_n_values - 1);
+	  memcpy_16 (exc_s_dc->dc_values, s_lookup_dc->dc_values, sizeof (iri_id_t) * s_lookup_dc->dc_n_values);
+	  exc_s_dc->dc_n_values = s_lookup_dc->dc_n_values;
+	}
+      scan_state = QST_INT (inst, cset_csm->csm_cset_scan_state);
+      cset_itc = TS_ORDER_ITC (cset_ts, inst);
+      cset_s_spec = cset_itc->itc_key_spec.ksp_spec_array;
+      if ((CSET_SCAN_FIRST & scan_state))
+	{
+	  /* the lower is the cset lower or the cset itc lowrer, if set */
+	  lower = (!cset_s_spec || CMP_NONE == cset_s_spec->sp_min_op) ? CSET_LOWER (cset_csm->csm_cset)
+	      : unbox_iri_id (cset_itc->itc_search_params[cset_s_spec->sp_min]);
+	}
+      else if (s_lookup_dc)
+	lower = unbox_iri_id (qst_get (inst, csm->csm_exc_scan_upper));
+      if ((CSET_SCAN_LAST & scan_state))
+	{
+	  /* the upper is the next cset lower or the cset itc upper, if set */
+	  upper = (!cset_s_spec || CMP_NONE == cset_s_spec->sp_max_op) ? (1L << CSET_RNG_SHIFT) + CSET_LOWER (cset_csm->csm_cset)
+	      : unbox_iri_id (cset_itc->itc_search_params[cset_s_spec->sp_max]);
+	}
+      else if (s_lookup_dc)
+	upper = ((iri_id_t *) s_lookup_dc->dc_values)[s_lookup_dc->dc_n_values - 1];
+      qst_set (inst, csm->csm_exc_scan_lower, box_iri_id (lower));
+      qst_set (inst, csm->csm_exc_scan_upper, box_iri_id (upper));
+      ks_start_search (exc_ks, inst, inst, itc, &buf, ts, SM_READ);
+      from_next = 0;
+    }
+  else
+    {
+      ITC_FAIL (itc)
+      {
+	buf = page_reenter_excl (itc);
+	from_next = 1;
+	itc_vec_next (itc, &buf);
+      }
+      END_FAIL (itc);
+    }
+  if (batch_size == itc->itc_n_results)
+    {
+      itc_register_and_leave (itc, buf);
+    }
+  else
+    {
+      if (from_next)
+	itc_page_leave (itc, buf);
+      SRC_IN_STATE (ts, inst) = NULL;
+    }
+
+  if (batch_size == itc->itc_n_results)
+    {
+      qn_ts_send_output ((data_source_t *) ts, inst, NULL);
+      itc_vec_new_results (itc);
+      state = NULL;
+      goto again;
+    }
+  else
+    ts_at_end (ts, inst);
 }
 
 
 void
-psog_outer_nulls (table_source_t * ts, caddr_t * inst, it_cursor_t * itc)
+ts_empty_cset_scan (table_source_t * ts, caddr_t * inst)
+{
+  table_source_t *exc_ts = (table_source_t *) qn_next ((data_source_t *) ts);
+  cset_mode_t *exc_csm = exc_ts->ts_csm;
+  QST_INT (inst, exc_csm->csm_cset_scan_state) = CSET_SCAN_FIRST | CSET_SCAN_LAST;
+  qn_result ((data_source_t *) ts, inst, 0);
+  QST_INT (inst, exc_ts->ts_cycle_pos[0]) = 2;
+  psog_cset_scan_exceptions (ts, inst, inst);
+}
+
+
+void
+psog_outer_nulls (table_source_t * ts, caddr_t * inst, caddr_t * state)
 {
   /* set a null o for the sets with no output from this */
   int this_bit = -1, set;
+  it_cursor_t *itc = TS_ORDER_ITC (ts, inst);
   data_col_t *o_dc = NULL;
   data_col_t *exc_bits_dc = NULL;
   state_slot_t *exc_ssl = NULL;
@@ -1172,8 +1295,12 @@ psog_outer_nulls (table_source_t * ts, caddr_t * inst, it_cursor_t * itc)
   int n_sets = QST_INT (inst, ts->src_gen.src_prev->src_out_fill);
   db_buf_t set_card = QST_BOX (db_buf_t, inst, ts->ts_set_card_bits);
   cset_mode_t *csm = ts->ts_csm;
-  int last_outer = QST_INT (inst, csm->csm_last_outer);
+  int last_outer;
   int batch_size = QST_INT (inst, ts->src_gen.src_batch_size);
+  if (state)
+    last_outer = QST_INT (inst, csm->csm_last_outer) = 0;
+  else
+    last_outer = QST_INT (inst, csm->csm_last_outer);
   if (-1 != csm->csm_bit)
     {
       this_bit = csm->csm_bit % 64;
@@ -1219,14 +1346,9 @@ psog_outer_nulls (table_source_t * ts, caddr_t * inst, it_cursor_t * itc)
 	  batch_size = QST_INT (inst, ts->src_gen.src_batch_size);
 	}
     }
-  SRC_IN_STATE (ts, inst) = NULL;
-  QST_INT (inst, csm->csm_mode) = 0;
+  ts_at_end (ts, inst);
   if (QST_INT (inst, ts->src_gen.src_out_fill))
-    {
-      cset_psog_bits (ts, inst);
-      itc->itc_n_results = 0;
-      qn_ts_send_output ((data_source_t *) ts, inst, NULL);
-    }
+    cset_psog_bits (ts, inst);
 }
 
 
@@ -1241,30 +1363,6 @@ cset_psog_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
   int batch_size = QST_INT (inst, ts->src_gen.src_batch_size);
   if (state)
     {
-      QST_INT (inst, csm->csm_mode) = PSOG_CSET_INIT;
-      if (csm->csm_last_outer)
-	QST_INT (inst, ts->ts_csm->csm_last_outer) = 0;
-    }
-  if (state && -1 != csm->csm_bit)
-    {
-      /* first pass through values for this col where filled in from cset */
-      int n_out;
-      cset_psog_cset_values (ts, inst);
-      n_out = QST_INT (inst, ts->src_gen.src_out_fill);
-      if (n_out == batch_size)
-	{
-	  SRC_IN_STATE (ts, inst) = inst;
-	  QST_INT (inst, csm->csm_mode) = PSOG_CSET_VALUES;
-	  qn_ts_send_output ((data_source_t *) ts, inst, NULL);
-	}
-    }
-  if (PSOG_CSET_VALUES == QST_INT (inst, csm->csm_mode))
-    {
-      ks_vec_new_results (ts->ts_order_ks, inst, NULL);
-      state = inst;
-    }
-  if (state)
-    {
       QST_INT (inst, csm->csm_mode) = PSOG_OWN_VALUES;
       if (ts->ts_is_outer)
 	{
@@ -1273,13 +1371,7 @@ cset_psog_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
 	  memzero (QST_BOX (caddr_t, inst, ts->ts_set_card_bits), set_bytes);
 	}
     }
-  if (!state && PSOG_OUTER_NULLS == QST_INT (inst, csm->csm_mode))
-    {
-      psog_outer_nulls (ts, inst, TS_ORDER_ITC (ts, inst));
-      return;
-    }
-  if (!state && ts_stream_flush_ck (ts, inst))
-    return;
+
   for (;;)
     {
       buffer_desc_t *order_buf = NULL;
@@ -1287,9 +1379,6 @@ cset_psog_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
       if (!state)
 	{
 	  start = 0;
-	  state = SRC_IN_STATE (ts, inst);
-	  if (!state)
-	    return;
 	  order_itc = TS_ORDER_ITC (ts, inst);
 	  if (ts->ts_aq && ts_handle_aq (ts, inst, &order_buf, &order_buf_preset))
 	    return;
@@ -1308,33 +1397,16 @@ cset_psog_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
 	  order_itc->itc_random_search = RANDOM_SEARCH_OFF;
 	  rc = ks_start_search (ts->ts_order_ks, inst, state,
 	      order_itc, &order_buf, ts, ts->ts_is_unique ? SM_READ_EXACT : SM_READ);
-	  if (2 == rc)
-	    {
-	      SRC_IN_STATE (ts, inst) = NULL;
-	      return;		/* was a sdfg and ks start search did the work to completion */
-	    }
 	  if (!rc)
 	    {
 	      ts_at_end (ts, inst);
 	      if (ts->ts_aq)
 		ts_aq_handle_end (ts, inst);
 	      ts_check_batch_sz (ts, inst, order_itc);
-	      if (ts->ts_is_outer)
-		psog_outer_nulls (ts, inst, order_itc);
-	      else if (order_itc->itc_n_results)
+	      if (!ts->ts_is_outer && QST_INT (inst, ts->src_gen.src_out_fill))
 		cset_psog_bits (ts, inst);
-	      if (order_itc->itc_batch_size && order_itc->itc_n_results)
-		{
-		  qn_ts_send_output ((data_source_t *) ts, inst, ts->ts_after_join_test);
-		  ts_stream_flush_ck (ts, inst);
-		  ts_aq_final (ts, inst, order_itc);
-		  return;
-		}
-	      ts_aq_final (ts, inst, NULL);
 	      return;
 	    }
-	  if (ts->ts_need_placeholder)
-	    ts_set_placeholder (ts, inst, order_itc, &order_buf);
 	  itc_register_and_leave (order_itc, order_buf);
 	}
       else
@@ -1357,11 +1429,8 @@ cset_psog_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
 		order_itc->itc_set_first = 0;
 		QST_INT (inst, ts->src_gen.src_out_fill) = 0;
 	      }
-	    if (ts->ts_order_ks->ks_vec_source)
-	      {
-		ks_set_dfg_queue (ts->ts_order_ks, inst, order_itc);
-		itc_vec_new_results (order_itc);	/* before reenter, could in principle be placeholders to unregister */
-	      }
+	    ks_set_dfg_queue (ts->ts_order_ks, inst, order_itc);
+	    itc_vec_new_results (order_itc);	/* before reenter, could in principle be placeholders to unregister */
 	    if (!order_buf_preset)
 	      {
 		order_itc->itc_ltrx = qi->qi_trx;	/* in sliced cluster a local can be continued under many different lt's dependeing on which aq thread gets the continue */
@@ -1372,8 +1441,6 @@ cset_psog_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
 	    rc = order_itc->itc_n_results == order_itc->itc_batch_size ? DVC_MATCH : DVC_LESS;
 	    if (DVC_MATCH == rc)
 	      {
-		if (ts->ts_need_placeholder)
-		  ts_set_placeholder (ts, inst, order_itc, &order_buf);
 		itc_register_and_leave (order_itc, order_buf);
 	      }
 	    else
@@ -1383,16 +1450,8 @@ cset_psog_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
 		if (ts->ts_aq)
 		  ts_aq_handle_end (ts, inst);
 		ts_check_batch_sz (ts, inst, order_itc);
-		if (ts->ts_is_outer)
-		  psog_outer_nulls (ts, inst, order_itc);
-		else if (order_itc->itc_n_results)
+		if (!ts->ts_is_outer && QST_INT (inst, ts->src_gen.src_out_fill))
 		  cset_psog_bits (ts, inst);
-		if (order_itc->itc_n_results)
-		  {
-		    qn_ts_send_output ((data_source_t *) ts, inst, ts->ts_after_join_test);
-		  }
-		ts_stream_flush_ck (ts, inst);
-		ts_aq_final (ts, inst, NULL);
 		return;
 	      }
 	  }
@@ -1502,4 +1561,146 @@ posg_special_o (table_source_t * ts, caddr_t * inst)
 	  return;
 	}
     }
+}
+
+#define SG_INIT 0
+#define SG_CSET 1
+#define SG_CHECK_G_MIX 2
+#define SG_IN_G_MIX 3
+
+
+void
+table_source_g_mix (table_source_t * ts, caddr_t * inst, caddr_t * state)
+{
+  int mode;
+  cset_mode_t *csm = ts->ts_csm;
+  if (!csm->csm_g_mix_qr)
+    return;
+  mode = QST_INT (inst, csm->csm_mode);
+  if (SG_CHECK_G_MIX == mode)
+    {
+
+    }
+}
+
+
+void
+table_source_sg_input (table_source_t * ts, caddr_t * inst, caddr_t * volatile state)
+{
+  /* for s cset table scan/lookup */
+  it_cursor_t *order_itc = NULL;
+  int need_leave = 0;
+  buffer_desc_t *order_buf = NULL;
+  int order_buf_preset = 0;
+  query_instance_t *qi = (query_instance_t *) inst;
+  cset_mode_t *csm = ts->ts_csm;
+  int rc;
+  order_itc = TS_ORDER_ITC (ts, inst);
+  if (!order_itc)
+    {
+      order_itc = itc_create (NULL, qi->qi_trx);
+      TS_ORDER_ITC (ts, state) = order_itc;
+      order_itc->itc_random_search = RANDOM_SEARCH_OFF;
+    }
+  if (state)
+    {
+      QST_INT (inst, csm->csm_at_end) = 0;
+      QST_INT (inst, csm->csm_mode) = SG_INIT;
+      if (ts->ts_stream_flush_only)
+	QST_INT (inst, ts->ts_stream_flush_only) = 0;
+      SRC_IN_STATE (ts, inst) = inst;
+    }
+again:
+  if (!state && ts_stream_flush_ck (ts, inst))
+    return;
+  if (!state)
+    {
+      if (ts->ts_aq && ts_handle_aq (ts, inst, &order_buf, &order_buf_preset))
+	return;
+    }
+
+  for (;;)
+    {
+      int mode = QST_INT (inst, csm->csm_mode);
+      int aq_state = ts->ts_aq_state ? QST_INT (inst, ts->ts_aq_state) : TS_AQ_NONE;
+      switch (mode)
+	{
+	case SG_INIT:
+	  rc = ks_start_search (ts->ts_order_ks, inst, state,
+	      order_itc, &order_buf, ts, ts->ts_is_unique ? SM_READ_EXACT : SM_READ);
+	  if (2 == rc)
+	    {
+	      SRC_IN_STATE (ts, inst) = NULL;
+	      return;
+	    }
+	  need_leave = rc;	/* if partial batch, order itc is not in order buf */
+	  goto results;
+	case SG_CHECK_G_MIX:
+	case SG_IN_G_MIX:
+	  table_source_g_mix (ts, inst, NULL);
+	  if (QST_INT (inst, csm->csm_at_end))
+	    {
+	      ts_aq_handle_end (ts, inst);
+	      ts_stream_flush_ck (ts, inst);
+	      SRC_IN_STATE (ts, inst) = NULL;
+	      ts_aq_final (ts, inst, order_itc);
+	      return;
+	    }
+	  QST_INT (inst, csm->csm_mode) = SG_CSET;
+	  /* no break */
+	case SG_CSET:
+	  if (!order_itc->itc_is_registered)
+	    {
+	      log_error ("cursor not continuable as it is unregistered");
+	      SRC_IN_STATE (ts, inst) = NULL;
+	      return;
+	    }
+	  ITC_FAIL (order_itc)
+	  {
+	    int rc;
+	    order_itc->itc_ltrx = qi->qi_trx;	/* next batch can be on a different aq thread than previous, so itc ltrx must match */
+	    order_itc->itc_set_first = 0;
+	    QST_INT (inst, ts->src_gen.src_out_fill) = 0;
+	    ks_set_dfg_queue (ts->ts_order_ks, inst, order_itc);
+	    itc_vec_new_results (order_itc);	/* before reenter, could in principle be placeholders to unregister */
+	    order_buf = page_reenter_excl (order_itc);
+	    rdbg_printf_if (enable_cr_trace, ("%p reenter L=%d pos=%d col_row=%d\n", order_itc, order_itc->itc_page,
+		    order_itc->itc_map_pos, order_itc->itc_col_row));
+	    itc_vec_next (order_itc, &order_buf);
+	    order_itc->itc_rows_selected += order_itc->itc_n_results;
+	    need_leave = 1;
+	  results:
+	    if (order_itc->itc_n_results == order_itc->itc_batch_size)
+	      {
+		itc_register_and_leave (order_itc, order_buf);
+	      }
+	    else
+	      {
+		if (need_leave)
+		  itc_page_leave (order_itc, order_buf);
+		QST_INT (inst, csm->csm_at_end) = 1;
+		ts_check_batch_sz (ts, inst, order_itc);
+	      }
+	    QST_INT (inst, csm->csm_mode) = SG_CHECK_G_MIX;
+	    if (order_itc->itc_n_results)
+	      {
+		qn_ts_send_output ((data_source_t *) ts, inst, ts->ts_after_join_test);
+		state = NULL;
+		goto again;
+	      }
+	    else if (csm->csm_cset_scan_state)
+	      {
+		ts_at_end (ts, inst);
+		ts_empty_cset_scan (ts, inst);
+		return;
+	      }
+	  }
+	  ITC_FAILED
+	  {
+	  }
+	  END_FAIL (order_itc);
+	}
+    }
+
+
 }

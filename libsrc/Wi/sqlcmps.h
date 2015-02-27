@@ -563,7 +563,7 @@ int tc_pk_value_inx (trig_cols_t * tc, char *col_name);
 state_slot_t **sqlc_ins_triggers_1 (sql_comp_t * sc, dbe_table_t * tb, oid_t * col_ids, dk_set_t values, dk_set_t * code);
 void sqlc_temp_tree (sql_comp_t * sc, caddr_t tree);
 
-void ks_set_search_params (comp_context_t * cc, comp_table_t * ct, key_source_t * ks);
+int ks_set_search_params (comp_context_t * cc, comp_table_t * ct, key_source_t * ks);
 void inx_op_set_search_params (comp_context_t * cc, comp_table_t * ct, inx_op_t * iop);
 
 ST *sqlc_ct_col_ref (comp_table_t * ct, char *col_name);
@@ -766,6 +766,7 @@ key_partition_def_t *kpd_copy (key_partition_def_t * kpd);
 
 state_slot_t *sqlg_group_by_exec_col (sql_comp_t * sc, ST * tree);
 void sqlo_cset_partition (dbe_table_t * tb);
-void ks_set_search_params (comp_context_t * cc, comp_table_t * ct, key_source_t * ks);
+int ks_set_search_params (comp_context_t * cc, comp_table_t * ct, key_source_t * ks);
+void ts_set_cycle (sql_comp_t * sc, table_source_t * ts, int n_nested, qn_input_fn * inputs);
 
 #endif /* _SQLCMPS_H */

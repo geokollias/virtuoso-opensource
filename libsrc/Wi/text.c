@@ -4062,6 +4062,7 @@ txs_ext_fti_vec_input (text_node_t * txs, caddr_t * inst, caddr_t * state)
       else
 	{
 	  int s;
+	  DC_CHECK_LEN (lin_qr, n_sets);
 	  for (s = 0; s < n_sets; s++)
 	    ((caddr_t *) lin_qr->dc_values)[s] = qst_get (inst, txs->txs_text_exp);
 	}

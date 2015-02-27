@@ -113,6 +113,33 @@ bif_cset_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   return NULL;
 }
 
+int
+csetp_compare (const void *s1, const void *s2)
+{
+  cset_p_t *c1 = *(cset_p_t **) s1;
+  cset_p_t *c2 = *(cset_p_t **) s2;
+  return c1->csetp_nth < c2->csetp_nth ? -1 : 1;
+}
+
+
+cset_p_t **
+cset_p_array (cset_t * cset)
+{
+  if (!cset->cset_p_array)
+    {
+      int n = cset->cset_p.ht_count, fill = 0;
+      cset_p_t **arr = (cset_p_t **) dk_alloc_box (sizeof (caddr_t) * n, DV_BIN);
+      DO_HT (iri_id_t, iri, cset_p_t *, csetp, &cset->cset_p)
+      {
+	arr[fill++] = csetp;
+      }
+      END_DO_HT;
+      qsort (arr, n, sizeof (caddr_t), csetp_compare);
+      cset->cset_p_array = arr;
+    }
+  return cset->cset_p_array;
+}
+
 
 caddr_t
 bif_cset_p_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)

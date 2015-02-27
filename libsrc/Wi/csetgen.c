@@ -42,7 +42,6 @@
 #include "xmlnode.h"
 #include "xmltree.h"
 #include "rdfinf.h"
-#include "sqlintrp.h"
 
 
 
@@ -804,6 +803,69 @@ csg_cset_top_oby (sqlo_t * so, table_source_t * ts, table_source_t * model_ts)
 
 
 void
+csg_rq_set_exc_scan (sql_comp_t * sc, table_source_t * ts, table_source_t * cset_ts)
+{
+  search_spec_t *s_row_sp;
+  cset_mode_t *csm = ts->ts_csm;
+  key_source_t *exc_ks = (key_source_t *) dk_alloc (sizeof (key_source_t));
+  NEW_VARZ (search_spec_t, s_sp);
+  *exc_ks = *ts->ts_order_ks;
+  csm->csm_cset_scan_state = cset_ts->ts_csm->csm_cset_scan_state;
+  csm->csm_exc_scan_ks = exc_ks;
+  *s_sp = *ts->ts_order_ks->ks_spec.ksp_spec_array;
+  exc_ks->ks_row_spec = sp_list_copy (exc_ks->ks_row_spec);
+  exc_ks->ks_hash_spec = dk_set_copy (exc_ks->ks_hash_spec);
+  if (exc_ks->ks_top_oby_spec)
+    exc_ks->ks_top_oby_spec = sp_copy (exc_ks->ks_top_oby_spec);
+  if (s_sp->sp_next)
+    {
+      search_spec_t *g_sp = sp_copy (s_sp->sp_next);
+      g_sp->sp_next = exc_ks->ks_row_spec;
+      exc_ks->ks_row_spec = g_sp;
+    }
+  s_sp->sp_next = NULL;
+  s_sp->sp_min_op = CMP_GT;
+  s_sp->sp_max_op = CMP_LT;
+  s_sp->sp_min_ssl = csm->csm_exc_scan_lower = ssl_new_scalar (sc->sc_cc, "exc_lower", DV_IRI_ID);
+  s_sp->sp_max_ssl = csm->csm_exc_scan_upper = ssl_new_scalar (sc->sc_cc, "exc_upper", DV_IRI_ID);
+  exc_ks->ks_spec.ksp_spec_array = s_sp;
+  s_row_sp = sp_copy (s_sp);
+  s_row_sp->sp_next = exc_ks->ks_row_spec;
+  exc_ks->ks_row_spec = s_row_sp;
+  {
+    NEW_VARZ (search_spec_t, s_exc_sp);
+    s_exc_sp->sp_min_op = CMP_ORD_NOT_IN;
+    csm->csm_exc_scan_exc_s = s_exc_sp->sp_min_ssl = ssl_new_vec (sc->sc_cc, "exc_s_set", DV_IRI_ID);
+    s_exc_sp->sp_next = exc_ks->ks_row_spec;
+    exc_ks->ks_row_spec = s_exc_sp;
+  }
+  ks_set_search_params (NULL, NULL, exc_ks);
+}
+
+
+void
+csg_rq_set_cycle (sql_comp_t * sc, table_source_t * rq_ts)
+{
+  cset_mode_t *csm = rq_ts->ts_csm;
+  if (-1 != csm->csm_bit)
+    {
+      if (rq_ts->ts_is_outer)
+	ts_set_cycle (sc, rq_ts, 1, (qn_input_fn *) list (3, cset_psog_cset_values, cset_psog_input, psog_outer_nulls));
+      else if (csm->csm_cset_scan_state)
+	ts_set_cycle (sc, rq_ts, 1, (qn_input_fn *) list (3, cset_psog_cset_values, cset_psog_input, psog_cset_scan_exceptions));
+      else
+	ts_set_cycle (sc, rq_ts, 1, (qn_input_fn *) list (2, cset_psog_cset_values, cset_psog_input));
+    }
+  else if (rq_ts->ts_is_outer)
+    ts_set_cycle (sc, rq_ts, 1, (qn_input_fn *) list (2, cset_psog_input, psog_outer_nulls));
+  else
+    ts_set_cycle (sc, rq_ts, 1, (qn_input_fn *) list (1, cset_psog_input));
+  {
+  }
+}
+
+
+void
 csg_extra_specs (sqlo_t * so, cset_t * cset, query_t * qr, table_source_t * model_ts)
 {
   cset_align_node_t *csa;
@@ -812,7 +874,7 @@ csg_extra_specs (sqlo_t * so, cset_t * cset, query_t * qr, table_source_t * mode
   key_source_t *model_ks = model_ts->ts_order_ks;
   csg_col_t *csgc_arr = so->so_top_ot->ot_csgc;
   csg_col_t *csgc;
-  int nth_rq = 0, n_in_cset = 0, inx, is_first = 1;
+  int nth_rq = 0, n_in_cset = 0, inx, is_first = 1, any_rq = 0;
   sql_comp_t *sc = so->so_sc;
   int is_rq;
   int n_bits = 0;
@@ -840,6 +902,8 @@ csg_extra_specs (sqlo_t * so, cset_t * cset, query_t * qr, table_source_t * mode
 	  csm = csm2;
 	  csm->csm_cset_bit_bytes = ALIGN_8 (n_in_cset + 1) / 8;
 	  csm->csm_reqd_ps = (iri_id_t *) box_copy ((caddr_t) csts->csts_reqd_ps);
+	  if (is_rq)
+	    any_rq = 1;
 	  csm->csm_mode = cc_new_instance_slot (sc->sc_cc);
 	  if (is_first)
 	    {
@@ -881,11 +945,18 @@ csg_extra_specs (sqlo_t * so, cset_t * cset, query_t * qr, table_source_t * mode
 	  if (!is_rq)
 	    {
 	      csm->csm_role = TS_CSET_SG;
+	      csm->csm_at_end = cc_new_instance_slot (sc->sc_cc);
 	      csg_cset_extra (so, ts, model_ts);
 	      ts->ts_set_card_bits = cc_new_sets_slot (sc->sc_cc);
 	      cset_ts = ts;
 	      csm->csm_exc_s = ssl_new_vec (sc->sc_cc, "exc_s", DV_IRI_ID);
 	      csm->csm_exc_s_row = cc_new_instance_slot (sc->sc_cc);
+	      if (CSQ_TABLE == sc->sc_csg_mode && !any_rq)
+		{
+		  /* if cset table is first, then need case for scan where s in rq and not in cset */
+		  csm->csm_cset_scan_state = cc_new_instance_slot (sc->sc_cc);
+		  ts->ts_branch_by_value = 1;
+		}
 	    }
 	  else
 	    {
@@ -917,6 +988,10 @@ csg_extra_specs (sqlo_t * so, cset_t * cset, query_t * qr, table_source_t * mode
 	      nth_rq++;
 	    }
 	  ks_set_search_params (NULL, NULL, ts->ts_order_ks);
+	  if (is_rq && 0 == csm->csm_bit && n_bits && CSQ_TABLE == sc->sc_csg_mode && cset_ts->ts_csm->csm_cset_scan_state)
+	    csg_rq_set_exc_scan (sc, ts, cset_ts);
+	  if (is_rq)
+	    csg_rq_set_cycle (sc, ts);
 	}
     }
   if (cset_ts)
@@ -1023,6 +1098,7 @@ csg_query (cset_t * cset, table_source_t * ts, int mode, caddr_t * o_mode, caddr
   THROW_CODE
   {
     qr_free (qr);
+    qr = NULL;
     cc_error = (caddr_t) THR_ATTR (THREAD_CURRENT_THREAD, TA_SQLC_ERROR);
     *err = cc_error;
   }
@@ -1066,9 +1142,6 @@ csts_free (cset_ts_t * csts)
 		TSCLR (ts_qf);
 		TSCLR (ts_branch_sets);
 		TSCLR (ts_branch_col);
-
-
-		TSCLR (ts_aq_state);
 	      }
 	  }
       }

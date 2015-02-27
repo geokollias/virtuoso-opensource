@@ -1018,6 +1018,8 @@ sqlo_is_group_linear (sqlo_t * so, op_table_t * from_ot)
 	    dbe_key_t *save_key = dfe->_.table.key;
 	    if (HR_REF == dfe->_.table.hash_role)
 	      return 0;
+	    if (dfe->_.table.ot->ot_table->tb_closest_cset)
+	      return 0;
 	    DO_SET (dbe_key_t *, key, &dfe->_.table.ot->ot_table->tb_keys)
 	    {
 	      dbe_column_t *col = (dbe_column_t *) key->key_parts->data;

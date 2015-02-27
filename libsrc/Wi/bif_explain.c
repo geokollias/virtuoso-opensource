@@ -1881,7 +1881,7 @@ node_print (data_source_t * node)
       else
 	stmt_printf (("s# %d ", node->src_sets));
     }
-  if (in == (qn_input_fn) table_source_input || in == (qn_input_fn) table_source_input_unique)
+  if (IS_TS (node))
     {
       ts_print ((table_source_t *) node);
     }

@@ -2814,9 +2814,14 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
       cpo.cpo_min_op = sp->sp_min_op;
       cpo.cpo_max_op = sp->sp_max_op;
       itc->itc_match_out = 0;
+      cpo.cpo_value_cb = ce_filter;
       if (cpo.cpo_min_op != CMP_NONE)
 	{
-	  if (CMP_HASH_RANGE == cpo.cpo_min_op)
+	  if (CMP_ORD_NOT_IN == cpo.cpo_min_op)
+	    {
+	      cpo.cpo_hash_min = 0;	/* checked up to here */
+	    }
+	  else if (CMP_HASH_RANGE == cpo.cpo_min_op)
 	    {
 	      caddr_t *inst = itc->itc_out_state;
 	      hash_range_spec_t *hrng = (hash_range_spec_t *) sp->sp_min_ssl;

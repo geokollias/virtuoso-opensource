@@ -1814,6 +1814,8 @@ itc_param_sort (key_source_t * ks, it_cursor_t * itc, int is_del_with_nulls)
   itc->itc_param_order = param_nos;
   if (IS_TS (ks->ks_ts) && (csm = ks->ks_ts->ts_csm))
     {
+      if (csm->csm_cset_scan_state)
+	QST_INT (inst, csm->csm_cset_scan_state) = CSET_SCAN_FIRST;
       if (csm->csm_posg_cset_pos)
 	goto general;
       itc_set_is_cset (itc, csm);
@@ -2819,6 +2821,9 @@ ts_cset_thread (table_source_t * ts, caddr_t * inst, caddr_t * cp_inst)
 {
   /* a qp thread for psog scan for o will set the step on the qp thread to either make a cset scan or scan psogg, depending on state of coord ts */
   cset_quad_t *csq = ts->ts_csq;
+  cset_mode_t *csm = ts->ts_csm;
+  if (csm && csm->csm_cset_scan_state)
+    QST_INT (inst, csm->csm_cset_scan_state) = CSET_SCAN_FIRST;
   if (CSQ_CSET_SCAN == csq->csq_mode || CSQ_CSET_SCAN_CSET == csq->csq_mode)
     {
       int step = QST_INT (inst, csq->csq_nth_step);

@@ -1695,10 +1695,10 @@ ts_add_cset (sql_comp_t * sc, df_elt_t * tb_dfe, table_source_t * ts)
   DO_HT (dbe_column_t *, col, ptrlong, ign, ht) csts->csts_reqd_ps[fill++] = col->col_cset_iri;
   END_DO_HT;
   n_slots = 3 + ht->ht_count * 10 + (n_opts * 12);
-  n_scalars = 2 * (ht->ht_count + n_opts);
+  n_scalars = 2 * (ht->ht_count + n_opts) + 2;
   csts->csts_scalar_ssls = (state_slot_t *) dk_alloc_box (sizeof (caddr_t) * n_scalars, DV_BIN);
   csts->csts_vec_ssls = (state_slot_t *) dk_alloc_box (sizeof (caddr_t) * n_slots, DV_BIN);
-  n_places = (ht->ht_count + 1) * 13 + (n_opts * 13);
+  n_places = (ht->ht_count + 1) * 16 + (n_opts * 13);
   csts->csts_qi_places = (ssl_index_t *) dk_alloc_box (sizeof (ssl_index_t) * n_places, DV_BIN);
   for (inx = 0; inx < n_slots; inx++)
     csts->csts_vec_ssls[inx] = ssl_new_vec (sc->sc_cc, "_cset_vec", DV_ANY);
@@ -1865,6 +1865,18 @@ ts_add_cset_posg (sql_comp_t * sc, df_elt_t * tb_dfe, table_source_t * ts)
     ts_add_cset_posg_psog (sc, tb_dfe, ts);
 }
 
+void
+ts_set_cycle (sql_comp_t * sc, table_source_t * ts, int n_nested, qn_input_fn * inputs)
+{
+  ts->src_gen.src_input = (qn_input_fn) table_source_cycle_input;
+  ts->ts_cycle_length = (int *) dk_alloc_box (n_nested * sizeof (int), DV_BIN);
+  ts->ts_cycle_length[0] = BOX_ELEMENTS (inputs);
+  ts->ts_step_at_end = cc_new_instance_slot (sc->sc_cc);
+  ts->ts_cycle_pos = (ssl_index_t *) dk_alloc_box (n_nested * sizeof (ssl_index_t), DV_BIN);
+  ts->ts_cycle_pos[0] = cc_new_instance_slot (sc->sc_cc);
+  ts->ts_step_input = inputs;
+}
+
 
 void
 ts_set_csq (sql_comp_t * sc, df_elt_t * tb_dfe, table_source_t * ts)
@@ -1876,6 +1888,17 @@ ts_set_csq (sql_comp_t * sc, df_elt_t * tb_dfe, table_source_t * ts)
   search_spec_t *sp = ks->ks_spec.ksp_spec_array;
   if (!enable_cset)
     return;
+  if ('S' == ((dbe_column_t *) key->key_parts->data)->col_name[0]
+      && key->key_parts->next && !key->key_parts->next->next && 'P' == ((dbe_column_t *) key->key_parts->next->data)->col_name[0])
+    {
+      /* the key is sp.  Rig the ts to add cset-implied ps after the ps recorded in sp */
+      NEW_VARZ (cset_quad_t, csq);
+      ts->ts_csq = csq;
+      csq->csq_mode = CSQ_SP;
+      csq->csq_last_p = cc_new_instance_slot (sc->sc_cc);
+      csq->csq_nth_set = cc_new_instance_slot (sc->sc_cc);
+      ts_set_cycle (sc, ts, 1, (qn_input_fn *) list (2, table_source_input, ts_sp_cset_p));
+    }
   if (!key->key_is_primary)
     {
       return;

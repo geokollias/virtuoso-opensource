@@ -2020,6 +2020,7 @@ extern int64 bdf_is_avail_mask;	/* all bits on except read aside flag which does
 #define CMP_NOT_LIKE 64
 #define CMP_HASH_RANGE 112	/* check hash no range and optionally do restricting hash join */
 #define CMP_HASH_RANGE_ONLY 112	/* in max op to indicate that only hash no range is checked */
+#define CMP_ORD_NOT_IN 40
 
 #define NUM_COMPARE(n1,n2) \
   (n1 < n2 ? DVC_LESS : (n1 == n2 ? DVC_MATCH : DVC_GREATER))

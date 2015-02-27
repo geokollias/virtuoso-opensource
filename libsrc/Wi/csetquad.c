@@ -29,6 +29,9 @@
 #include "sqlfn.h"
 #include "sqlcomp.h"
 #include "sqlopcod.h"
+#include "sqlpar.h"
+#include "sqlpfn.h"
+#include "sqlcmps.h"
 #include "security.h"
 #include "sqlbif.h"
 #include "sqltype.h"
@@ -37,7 +40,7 @@
 #include "mhash.h"
 #include "date.h"
 #include "arith.h"
-
+#include "sqlcmps.h"
 
 
 
@@ -644,12 +647,13 @@ ts_csq_end (table_source_t * ts, caddr_t * inst)
 	QST_INT (inst, csq->csq_nth_step) = 0;
       return;
     }
-  if (CSQ_CSET_SCAN_CSET == csq->csq_mode)
+  if (CSQ_CSET_SCAN_CSET == csq->csq_mode || CSQ_SP == csq->csq_mode)
     return;
   if (CSQ_QUAD == csq->csq_mode)
     {
       QST_INT (inst, csq->csq_nth_step) = CSQS_INIT;
       QST_INT (inst, csq->csq_last_p) = -1;
+      SRC_IN_STATE (ts, inst) = inst;
     }
   else
     {
@@ -783,4 +787,73 @@ ts_psog_scan (table_source_t * ts, caddr_t * inst, caddr_t * state)
 	    }
 	}
     }
+}
+
+
+void
+ts_sp_cset_p (table_source_t * ts, caddr_t * inst, caddr_t * state)
+{
+  key_source_t *ks = ts->ts_order_ks;
+  iri_id_t s;
+  it_cursor_t *itc = TS_ORDER_ITC (ts, inst);
+  data_col_t *s_dc = ITC_P_VEC (itc, 0);
+  cset_quad_t *csq = ts->ts_csq;
+  dk_set_t ssl_iter;
+  data_col_t *s_out = NULL, *p_out = NULL;
+  int batch_size = QST_INT (inst, ts->src_gen.src_batch_size), nth_set, nth_p;
+  if (state)
+    {
+      QST_INT (inst, csq->csq_nth_set) = itc->itc_first_set;
+      QST_INT (inst, csq->csq_last_p) = 0;
+    }
+  ssl_iter = ks->ks_out_slots;
+  DO_SET (dbe_column_t *, col, &ks->ks_out_cols)
+  {
+    if ('S' == col->col_name[0])
+      s_out = QST_BOX (data_col_t *, inst, ((state_slot_t *) ssl_iter->data)->ssl_index);
+    else if ('P' == col->col_name[0])
+      p_out = QST_BOX (data_col_t *, inst, ((state_slot_t *) ssl_iter->data)->ssl_index);
+    ssl_iter = ssl_iter->next;
+  }
+  END_DO_SET ();
+  if (!s_dc)
+    {
+      s = unbox_iri_id (itc->itc_search_params[0]);
+    }
+  nth_set = QST_INT (inst, csq->csq_nth_set);
+  nth_p = QST_INT (inst, csq->csq_last_p);
+  for (nth_set = nth_set; nth_set < itc->itc_n_sets; nth_set++)
+    {
+      uint64 rng;
+      if (s_dc)
+	s = ((iri_id_t *) s_dc->dc_values)[nth_set];
+      rng = IRI_RANGE (s);
+      if (rng)
+	{
+	  cset_t *cset = (cset_t *) gethash ((void *) rng, &id_to_cset);
+	  if (cset)
+	    {
+	      cset_p_t **ps = cset_p_array (cset);
+	      int n_ps = BOX_ELEMENTS (ps);
+	      for (nth_p = nth_p; nth_p < n_ps; nth_p++)
+		{
+		  if (s_out)
+		    dc_append_int64 (s_out, s);
+		  if (p_out)
+		    dc_append_int64 (p_out, ps[nth_p]->csetp_iri);
+		  qn_result (ts, inst, nth_set);
+		  if (batch_size == QST_INT (inst, ts->src_gen.src_out_fill))
+		    {
+		      QST_INT (inst, csq->csq_last_p) = nth_p + 1;
+		      QST_INT (inst, csq->csq_nth_set) = nth_set;
+		      SRC_IN_STATE (ts, inst) = inst;
+		      qn_ts_send_output ((data_source_t *) ts, inst, NULL);
+		      batch_size = QST_INT (inst, ts->src_gen.src_batch_size);
+		      ks_vec_new_results (ks, inst, itc);
+		    }
+		}
+	    }
+	}
+    }
+  ts_at_end (ts, inst);
 }

@@ -65,6 +65,7 @@ void hash_source_free (hash_source_t * hs);
 state_slot_t *ssl_copy (comp_context_t * cc, state_slot_t * org);
 
 state_slot_t *ssl_new_variable (comp_context_t * cc, const char *name, dtp_t dtp);
+state_slot_t *ssl_new_scalar (comp_context_t * cc, const char *name, dtp_t dtp);
 
 state_slot_t *ssl_new_parameter (comp_context_t * cc, const char *name);
 

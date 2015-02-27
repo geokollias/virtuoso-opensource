@@ -754,6 +754,19 @@ ssl_new_variable (comp_context_t * cc, const char *name, dtp_t dtp)
 
 
 state_slot_t *
+ssl_new_scalar (comp_context_t * cc, const char *name, dtp_t dtp)
+{
+  NEW_VARZ (state_slot_t, sl);
+
+  sl->ssl_index = cc_new_scalar_slot (cc);
+  sl->ssl_name = box_dv_uname_string (name);
+  sl->ssl_type = SSL_VARIABLE;
+  sl->ssl_dtp = dtp;
+  SSL_ADD_TO_QR (sl);
+  return sl;
+}
+
+state_slot_t *
 ssl_new_inst_variable (comp_context_t * cc, const char *name, dtp_t dtp)
 {
   NEW_VARZ (state_slot_t, sl);
@@ -1114,7 +1127,7 @@ ks_col_specs (key_source_t * ks, dbe_column_t * col, int rm_from_row_specs)
 }
 
 
-void
+int
 ks_set_search_params (comp_context_t * cc, comp_table_t * ct, key_source_t * ks)
 {
   int inx = 0;
@@ -1146,6 +1159,7 @@ ks_set_search_params (comp_context_t * cc, comp_table_t * ct, key_source_t * ks)
     }
   if (cc && inx >= MAX_SEARCH_PARAMS)
     sqlc_error (cc, "42000", "The number of predicates is too high");
+  return inx;
 }
 
 
