@@ -674,6 +674,7 @@ struct key_source_s
   bitf_t ks_is_deleting:1;
   bitf_t ks_is_vec_plh:1;
   bitf_t ks_is_proc_view:1;
+  bitf_t ks_is_cset_exc_scan:1;
   state_slot_t *ks_proc_set_ctr;
 /*    char 			ks_local_op; */
   struct setp_node_s *ks_setp;

@@ -960,6 +960,11 @@ itc_cset_exc_param_nos (it_cursor_t * itc)
   int inx, fill = 0;
   uint64 *bf;
   uint32 n_bf;
+  if (itc->itc_ks->ks_is_cset_exc_scan)
+    {
+      nos[0] = 0;
+      return 1;
+    }
   table_source_t *ts = itc->itc_ks->ks_ts;
   iri_id_t p = unbox_iri_id (itc->itc_search_params[0]);
   cset_t *cset = ts->ts_csm->csm_cset;
@@ -1029,6 +1034,7 @@ itc_cset_s_param_nos (it_cursor_t * itc, int n_values)
 #define PSOG_OWN_VALUES 2
 #define PSOG_OUTER_NULLS 3
 #define PSOG_SCAN_EXC 4		/* after cset ts, get s values not in cset ts scan */
+#define PSOG_PRE_EXC_SCAN 5
 
 void
 cset_psog_bits (table_source_t * ts, caddr_t * inst)
@@ -1175,6 +1181,24 @@ rq_ts_cset_ts (table_source_t * ts)
 
 #define CSET_LOWER(c) ((uint64)c->cset_id << CSET_RNG_SHIFT)
 
+
+void
+psog_exc_scan_sets (table_source_t * ts, caddr_t * inst, int init_out)
+{
+  cset_mode_t *csm = ts->ts_csm;
+  data_col_t *bits_dc = QST_BOX (data_col_t *, inst, csm->csm_exc_bits_out[0]->ssl_index);
+  int64 *bits = (int64 *) bits_dc->dc_values;
+  int *sets;
+  int fill = QST_INT (inst, ts->src_gen.src_out_fill), set;
+  sets = QST_BOX (int *, inst, ts->src_gen.src_sets);
+  for (set = init_out; set < fill; set++)
+    {
+      sets[set] = set - init_out;
+      bits[set] = 1L << csm->csm_bit;
+    }
+}
+
+
 void
 psog_cset_scan_exceptions (table_source_t * ts, caddr_t * inst, caddr_t * state)
 {
@@ -1182,16 +1206,29 @@ psog_cset_scan_exceptions (table_source_t * ts, caddr_t * inst, caddr_t * state)
   buffer_desc_t *buf;
   QNCAST (QI, qi, inst);
   int n_sets = QST_INT (inst, ts->src_gen.src_prev->src_out_fill);
+  int init_out = QST_INT (inst, ts->src_gen.src_out_fill);
   int scan_state, from_next, batch_size;
+  key_source_t *ks = ts->ts_order_ks;
   it_cursor_t *cset_itc;
   cset_mode_t *csm = ts->ts_csm;
+  data_col_t *s_out_dc = QST_BOX (data_col_t *, inst, ks->ks_spec.ksp_spec_array->sp_next->sp_min_ssl->ssl_index);
+  data_col_t *exc_s_dc = QST_BOX (data_col_t *, inst, csm->csm_exc_scan_exc_s->ssl_index);
   table_source_t *cset_ts = rq_ts_cset_ts (ts);
   cset_mode_t *cset_csm = cset_ts->ts_csm;
   it_cursor_t *itc = TS_ORDER_ITC (ts, inst);
   iri_id_t lower = 0, upper = 0;
-  key_source_t *ks = ts->ts_order_ks;
   key_source_t *exc_ks = ts->ts_csm->csm_exc_scan_ks;
   data_col_t *s_lookup_dc;
+  if (state && QST_INT (inst, ts->src_gen.src_out_fill))
+    {
+      /* send results so far, the scan of exc will be its own set of vectors */
+      QST_INT (inst, csm->csm_mode) = PSOG_PRE_EXC_SCAN;
+      SRC_IN_STATE (ts, inst) = inst;
+      qn_ts_send_output ((data_source_t *) ts, inst, NULL);
+      ks_vec_new_results (ks, inst, NULL);
+    }
+  if (!state && PSOG_PRE_EXC_SCAN == QST_INT (inst, csm->csm_mode))
+    state = inst;
 again:
   batch_size = QST_INT (inst, ts->src_gen.src_batch_size);
   if (state)
@@ -1207,7 +1244,6 @@ again:
 	}
       else
 	{
-	  data_col_t *exc_s_dc = QST_BOX (data_col_t *, inst, csm->csm_exc_scan_exc_s->ssl_index);
 	  s_lookup_dc = ITC_P_VEC (itc, 1);
 	  DC_CHECK_LEN (exc_s_dc, s_lookup_dc->dc_n_values - 1);
 	  memcpy_16 (exc_s_dc->dc_values, s_lookup_dc->dc_values, sizeof (iri_id_t) * s_lookup_dc->dc_n_values);
@@ -1234,11 +1270,15 @@ again:
 	upper = ((iri_id_t *) s_lookup_dc->dc_values)[s_lookup_dc->dc_n_values - 1];
       qst_set (inst, csm->csm_exc_scan_lower, box_iri_id (lower));
       qst_set (inst, csm->csm_exc_scan_upper, box_iri_id (upper));
+      dc_reset (s_out_dc);	/* the lookup s is also an ouit dc of this, reset */
+      itc_col_free (itc);
       ks_start_search (exc_ks, inst, inst, itc, &buf, ts, SM_READ);
       from_next = 0;
     }
   else
     {
+      init_out = 0;
+      dc_reset (s_out_dc);
       ITC_FAIL (itc)
       {
 	buf = page_reenter_excl (itc);
@@ -1260,13 +1300,17 @@ again:
 
   if (batch_size == itc->itc_n_results)
     {
+      psog_exc_scan_sets (ts, inst, 0);
       qn_ts_send_output ((data_source_t *) ts, inst, NULL);
       itc_vec_new_results (itc);
       state = NULL;
       goto again;
     }
   else
-    ts_at_end (ts, inst);
+    {
+      psog_exc_scan_sets (ts, inst, 0);
+      ts_at_end (ts, inst);
+    }
 }
 
 

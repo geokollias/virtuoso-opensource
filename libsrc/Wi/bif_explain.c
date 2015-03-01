@@ -746,6 +746,11 @@ sp_list_print (search_spec_t * sp)
 	  hrng_print (sp->sp_min_ssl, sp);
 	  goto next;
 	}
+      if (CMP_ORD_NOT_IN == sp->sp_min_op)
+	{
+	  stmt_printf (("ordered-not-in"));
+	  goto next;
+	}
       if (sp->sp_min_op != CMP_NONE)
 	{
 	  stmt_printf ((" %s ", cmp_op_text (sp->sp_min_op)));

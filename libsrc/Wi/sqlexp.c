@@ -1915,13 +1915,15 @@ cv_is_local_1 (code_vec_t cv, int is_cluster)
 
 
 void
-ht_merge (dk_hash_t * target, dk_hash_t * ht)
+ht_merge (dk_hash_t * target, dk_hash_t * ht, int free)
 {
   DO_HT (void *, k, void *, d, ht)
   {
     sethash (k, target, d);
   }
   END_DO_HT;
+  if (free)
+    hash_table_free (ht);
 }
 
 

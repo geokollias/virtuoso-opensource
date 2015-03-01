@@ -4853,12 +4853,26 @@ sqlg_ts_vec_cset (sql_comp_t * sc, table_source_t * ts)
   if (ts->ts_csm)
     {
       cset_mode_t *csm = ts->ts_csm;
+      key_source_t *ks = ts->ts_order_ks;
       ref_ssls (res, csm->csm_exc_bits_in);
       DO_BOX (state_slot_t *, ssl, inx, csm->csm_exc_bits_out) ASG_SSL (NULL, NULL, ssl);
       END_DO_BOX;
       REF_SSL (res, csm->csm_cset_o);
       ASG_SSL (res, all_res, csm->csm_rq_o);
       ASG_SSL (res, all_res, csm->csm_o_scan_mode);
+      if (csm->csm_exc_scan_ks)
+	{
+	  key_source_t *exc_ks = csm->csm_exc_scan_ks;
+	  state_slot_t *s_ssl = ks->ks_spec.ksp_spec_array->sp_next->sp_min_ssl;
+	  int n_out = ks->ks_v_out_map ? box_length (ks->ks_v_out_map) / sizeof (v_out_map_t) : 0;
+	  v_out_map_t *om = (v_out_map_t *) dk_alloc_box_zero ((1 + n_out) * sizeof (v_out_map_t), DV_BIN);
+	  exc_ks->ks_param_nos = ks->ks_param_nos;
+	  exc_ks->ks_v_out_map = om;
+	  memcpy (om, ks->ks_v_out_map, n_out * sizeof (v_out_map_t));
+	  om[n_out].om_cl =
+	      *cl_list_find (exc_ks->ks_key->key_row_var, ((dbe_column_t *) exc_ks->ks_key->key_parts->next->data)->col_id);
+	  om[n_out].om_ssl = s_ssl;
+	}
     }
   if (ts->ts_csts)
     {

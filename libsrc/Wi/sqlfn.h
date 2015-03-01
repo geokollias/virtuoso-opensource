@@ -1759,6 +1759,8 @@ void itc_cset_s_param_nos (it_cursor_t * itc, int n_values);
 void posg_special_o (table_source_t * ts, caddr_t * inst);
 void cset_psog_input (table_source_t * ts, caddr_t * inst, caddr_t * state);
 void csts_free (cset_ts_t * csts);
+void csm_free (cset_mode_t * csm);
+void csq_free (cset_quad_t * csq);
 
 int ts_at_end (table_source_t * ts, caddr_t * inst);
 void ts_top_oby_limit (table_source_t * ts, caddr_t * inst, it_cursor_t * itc);

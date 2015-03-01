@@ -807,29 +807,28 @@ csg_rq_set_exc_scan (sql_comp_t * sc, table_source_t * ts, table_source_t * cset
 {
   search_spec_t *s_row_sp;
   cset_mode_t *csm = ts->ts_csm;
+  key_source_t *ks = ts->ts_order_ks;
   key_source_t *exc_ks = (key_source_t *) dk_alloc (sizeof (key_source_t));
-  NEW_VARZ (search_spec_t, s_sp);
+  search_spec_t *s_sp;
   *exc_ks = *ts->ts_order_ks;
+  exc_ks->ks_spec.ksp_spec_array = sp_list_copy (ks->ks_spec.ksp_spec_array);
+  s_sp = exc_ks->ks_spec.ksp_spec_array->sp_next;
+  exc_ks->ks_is_cset_exc_scan = 1;
+  exc_ks->ks_vec_source = (state_slot_ref_t **) list (0);
+  exc_ks->ks_vec_cast = (state_slot_t **) list (0);
   csm->csm_cset_scan_state = cset_ts->ts_csm->csm_cset_scan_state;
   csm->csm_exc_scan_ks = exc_ks;
-  *s_sp = *ts->ts_order_ks->ks_spec.ksp_spec_array;
   exc_ks->ks_row_spec = sp_list_copy (exc_ks->ks_row_spec);
   exc_ks->ks_hash_spec = dk_set_copy (exc_ks->ks_hash_spec);
   if (exc_ks->ks_top_oby_spec)
     exc_ks->ks_top_oby_spec = sp_copy (exc_ks->ks_top_oby_spec);
-  if (s_sp->sp_next)
-    {
-      search_spec_t *g_sp = sp_copy (s_sp->sp_next);
-      g_sp->sp_next = exc_ks->ks_row_spec;
-      exc_ks->ks_row_spec = g_sp;
-    }
   s_sp->sp_next = NULL;
   s_sp->sp_min_op = CMP_GT;
   s_sp->sp_max_op = CMP_LT;
   s_sp->sp_min_ssl = csm->csm_exc_scan_lower = ssl_new_scalar (sc->sc_cc, "exc_lower", DV_IRI_ID);
   s_sp->sp_max_ssl = csm->csm_exc_scan_upper = ssl_new_scalar (sc->sc_cc, "exc_upper", DV_IRI_ID);
-  exc_ks->ks_spec.ksp_spec_array = s_sp;
   s_row_sp = sp_copy (s_sp);
+  s_row_sp->sp_cl = *cl_list_find (exc_ks->ks_key->key_row_var, s_sp->sp_cl.cl_col_id);
   s_row_sp->sp_next = exc_ks->ks_row_spec;
   exc_ks->ks_row_spec = s_row_sp;
   {
@@ -837,6 +836,7 @@ csg_rq_set_exc_scan (sql_comp_t * sc, table_source_t * ts, table_source_t * cset
     s_exc_sp->sp_min_op = CMP_ORD_NOT_IN;
     csm->csm_exc_scan_exc_s = s_exc_sp->sp_min_ssl = ssl_new_vec (sc->sc_cc, "exc_s_set", DV_IRI_ID);
     s_exc_sp->sp_next = exc_ks->ks_row_spec;
+    s_exc_sp->sp_cl = *cl_list_find (exc_ks->ks_key->key_row_var, s_sp->sp_cl.cl_col_id);
     exc_ks->ks_row_spec = s_exc_sp;
   }
   ks_set_search_params (NULL, NULL, exc_ks);
@@ -1152,6 +1152,25 @@ csts_free (cset_ts_t * csts)
   dk_mutex_destroy (&csts->csts_mtx);
   dk_free ((caddr_t) csts, sizeof (cset_ts_t));
 }
+
+
+void
+csm_free (cset_mode_t * csm)
+{
+  dk_free_box ((caddr_t) csm->csm_exc_bits_in);
+  dk_free_box ((caddr_t) csm->csm_exc_bits_out);
+  if (csm->csm_exc_scan_ks)
+    ks_free (csm->csm_exc_scan_ks);
+  dk_free ((caddr_t) csm, sizeof (cset_mode_t));
+}
+
+
+void
+csq_free (cset_quad_t * csq)
+{
+  dk_free ((caddr_t) csq, sizeof (cset_quad_t));
+}
+
 
 void
 csg_init ()

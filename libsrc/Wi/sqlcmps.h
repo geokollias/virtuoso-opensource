@@ -731,6 +731,7 @@ void qr_no_copy_ssls (query_t * qr, dk_hash_t * no_copy);
   }
 
 dk_hash_t *hash_table_copy (dk_hash_t * ht);
+void ht_merge (dk_hash_t * target, dk_hash_t * ht, int free);
 dk_set_t sslr_set_member (dk_set_t ssls, state_slot_t * param);
 void dk_set_replace (dk_set_t s, void *old, void *repl);
 sql_comp_t *sc_top_select_sc (sql_comp_t * sc);

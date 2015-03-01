@@ -1776,6 +1776,8 @@ itc_param_sort (key_source_t * ks, it_cursor_t * itc, int is_del_with_nulls)
   int n_params = 0, inx, was_sorted = 0, org_out_fill;
   if (ks->ks_from_temp_tree && SSL_TREE == ks->ks_from_temp_tree->ssl_type)
     n_params = 1;
+  else if (ks->ks_is_cset_exc_scan)
+    n_params = 1;
   else if (ks->ks_last_vec_param)
     {
       last_dc = QST_BOX (data_col_t *, inst, ks->ks_last_vec_param->ssl_index);
@@ -1821,7 +1823,7 @@ itc_param_sort (key_source_t * ks, it_cursor_t * itc, int is_del_with_nulls)
       itc_set_is_cset (itc, csm);
       if (itc->itc_is_cset)
 	{
-	  if (ITC_CSET_G == itc->itc_is_cset || ITC_CSET_SCAN == itc->itc_is_cset)
+	  if (ITC_CSET_G == itc->itc_is_cset || ITC_CSET_SCAN == itc->itc_is_cset || ks->ks_is_cset_exc_scan)
 	    goto general;
 	  itc_cset_s_param_nos (itc, n_params);
 	}

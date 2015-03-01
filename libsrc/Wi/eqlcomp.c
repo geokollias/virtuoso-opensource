@@ -1582,6 +1582,10 @@ ts_free (table_source_t * ts)
   dk_free_box ((caddr_t) ts->ts_sdfg_param_refs);
   if (ts->ts_csts)
     csts_free (ts->ts_csts);
+  if (ts->ts_csm)
+    csm_free (ts->ts_csm);
+  if (ts->ts_csq)
+    csq_free (ts->ts_csq);
 }
 
 

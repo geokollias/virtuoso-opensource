@@ -690,6 +690,7 @@ hash_table_copy (dk_hash_t * ht)
   return cp;
 }
 
+
 void
 cl_simple_ts_save (table_source_t * ts, dk_hash_t * local_refs, dk_hash_t * prev_refs, dk_hash_t * refs)
 {
@@ -935,15 +936,29 @@ sqlg_qn_env (sql_comp_t * sc, data_source_t * qn, dk_set_t qn_stack, dk_hash_t *
     }
   else if ((qn_input_fn) trans_node_input == qn->src_input && ((trans_node_t *) qn)->tn_inlined_step)
     {
+      dk_hash_t *local_refs;
       QNCAST (trans_node_t, tn, qn);
+      sqlg_qn_env (sc, qn_next (qn), qn_stack, refs);
       if (tn->tn_init)
-	sqlg_qn_env (sc, tn->tn_init, NULL, refs);
-      sqlg_qn_env (sc, tn->tn_inlined_step->qr_head_node, t_cons ((void *) qn, qn_stack), refs);
+	{
+	  local_refs = hash_table_allocate (11);
+	  sqlg_qn_env (sc, tn->tn_init, NULL, local_refs);
+	  ht_merge (refs, local_refs, 1);
+	}
+      local_refs = hash_table_allocate (11);
+      sqlg_qn_env (sc, tn->tn_inlined_step->qr_head_node, NULL, local_refs);
+      ht_merge (refs, local_refs, 1);
       if (tn->tn_complement)
 	{
 	  if (tn->tn_complement->tn_init)
-	    sqlg_qn_env (sc, tn->tn_complement->tn_init, NULL, refs);
-	  sqlg_qn_env (sc, tn->tn_complement->tn_inlined_step->qr_head_node, t_cons ((void *) qn, qn_stack), refs);
+	    {
+	      local_refs = hash_table_allocate (11);
+	      sqlg_qn_env (sc, tn->tn_complement->tn_init, NULL, local_refs);
+	      ht_merge (refs, local_refs, 1);
+	    }
+	  local_refs = hash_table_allocate (11);
+	  sqlg_qn_env (sc, tn->tn_complement->tn_inlined_step->qr_head_node, NULL, local_refs);
+	  ht_merge (refs, local_refs, 1);
 	}
     }
   else if ((qn_input_fn) union_node_input == qn->src_input)

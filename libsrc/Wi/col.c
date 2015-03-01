@@ -1298,7 +1298,7 @@ int
 cpo_ord_not_in (col_pos_t * cpo, iri_id_t s)
 {
   /* the min ssl is a dc of ordered iris and cpo hash min is the last checked.  True if s not in the array */
-  return 1;
+  return 0;
 }
 
 

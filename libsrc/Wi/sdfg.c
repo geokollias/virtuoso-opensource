@@ -284,7 +284,7 @@ void
 ts_sliced_reader (table_source_t * ts, caddr_t * inst, hash_area_t * ha)
 {
   /* processing high card partitioned gby results, thread per partition.  If ends in a oby or non partitioned gby, add up at the end. */
-  index_tree_t **slice_trees;
+  index_tree_t **slice_trees = NULL;
   QNCAST (QI, qi, inst);
   stage_node_t *stn = (stage_node_t *) qf_first_qn (ts->ts_qf, (qn_input_fn) stage_node_input);
   fun_ref_node_t *fref;
@@ -317,7 +317,7 @@ ts_sliced_reader (table_source_t * ts, caddr_t * inst, hash_area_t * ha)
 	  cha_next_superstep (ts, slice_inst, unbox (qst_get (inst, ts->ts_trans_read->trr_superstep)));
 	n_branches++;
       }
-    else if (inx < BOX_ELEMENTS (slice_trees) && slice_trees[inx] && slice_trees[inx] != tree)
+    else if (slice_trees && inx < BOX_ELEMENTS (slice_trees) && slice_trees[inx] && slice_trees[inx] != tree)
       {
 	/* need slice qi for reading a slice tree for which there is no qi now since the qi was not present on the last batch */
 	caddr_t *slice_inst = qf_slice_qi (stn->stn_qf, inst, 0);;
