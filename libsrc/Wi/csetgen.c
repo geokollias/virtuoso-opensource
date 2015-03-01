@@ -111,7 +111,7 @@ csg_should_add_spec (search_spec_t * sp)
 
 
 
-int
+void
 csg_dfe_add_spec (sqlo_t * so, df_elt_t * tb_dfe, search_spec_t * s_spec, ST * col_tree)
 {
   ST *s_exp;
@@ -532,10 +532,13 @@ csg_sp_set_col (sqlo_t * so, table_source_t * ts, search_spec_t * sp, int is_rq)
   for (inx = 0; inx < n_cols; inx++)
     {
       if (!is_rq && ref_col == csgc_arr[inx].csgc_col)
-	{			/* cset table, col is already right */
+	{
+	  /* cset table, col is already right */
 	  if (csgc_arr[inx].csgc_col->col_is_cset_opt)
 	    sp->sp_is_cset_opt = 1;
 	  sp->sp_ordinal = nth_in_cset;
+	  sp->sp_col = csgc_arr[inx].csgc_col;
+	  sp->sp_cl = *cl_list_find (ks->ks_key->key_row_var, sp->sp_col->col_id);
 	  return;
 	}
       if (csgc_arr[inx].csgc_ref_col == ref_col)
@@ -562,6 +565,21 @@ csg_sp_set_col (sqlo_t * so, table_source_t * ts, search_spec_t * sp, int is_rq)
     }
 }
 
+int
+sp_is_in_cset (sqlo_t * so, search_spec_t * sp)
+{
+  csg_col_t *csgc_arr = so->so_top_ot->ot_csgc;
+  int n_cols = box_length (csgc_arr) / sizeof (csg_col_t);
+  int inx;
+  dbe_column_t *ref_col = sp->sp_col;
+  for (inx = 0; inx < n_cols; inx++)
+    {
+      if (ref_col == csgc_arr[inx].csgc_col)
+	return 1;
+    }
+  return 0;
+}
+
 
 void
 csg_cset_extra (sqlo_t * so, table_source_t * ts, table_source_t * model_ts)
@@ -570,9 +588,10 @@ csg_cset_extra (sqlo_t * so, table_source_t * ts, table_source_t * model_ts)
   key_source_t *ks = ts->ts_order_ks;
   search_spec_t *sp = model_ks->ks_row_spec;
   for (sp = sp; sp; sp = sp->sp_next)
-    if (!csg_should_add_spec (sp))
+    if (!csg_should_add_spec (sp) && sp_is_in_cset (so, sp))
       csg_add_row_spec (so, ks, sp);
-  DO_SET (search_spec_t *, sp, &model_ks->ks_hash_spec) csg_add_row_spec (so, ks, sp);
+  DO_SET (search_spec_t *, sp, &model_ks->ks_hash_spec) if (sp_is_in_cset (so, sp))
+    csg_add_row_spec (so, ks, sp);
   END_DO_SET ();
   for (sp = ks->ks_row_spec; sp; sp = sp->sp_next)
     csg_sp_set_col (so, ts, sp, 0);

@@ -151,3 +151,5 @@ void csetp_bloom (cset_p_t * csetp, caddr_t * inst, uint64 ** bf_ret, uint32 * b
 #define CSQ_P 2
 #define CSQ_S 1
 #define CSQ_ 0
+
+cset_p_t **cset_p_array (cset_t * cset);

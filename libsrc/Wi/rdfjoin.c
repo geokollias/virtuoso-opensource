@@ -1134,7 +1134,7 @@ cset_psog_cset_values (table_source_t * ts, caddr_t * inst, caddr_t * state)
 		{
 		  out[out_fill++] = bits[sets[r]] & ~this_mask;
 		  if (o_dc)
-		    ssl_mv_nn (o_dc, cset_dc, sets[cset_sets[r]]);
+		    ssl_mv_nn (o_dc, cset_dc, cset_sets[r]);
 		  qn_result ((data_source_t *) ts, inst, set + r);
 		}
 	    }

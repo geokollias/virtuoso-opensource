@@ -303,6 +303,7 @@ ts_csq_new_cset (table_source_t * ts, caddr_t * inst)
 	}
       prev = &iter->next;
     }
+  ksp_cmp_func (&cs_ks->ks_spec, NULL);
   ks_set_search_params (NULL, NULL, cs_ks);
 }
 
