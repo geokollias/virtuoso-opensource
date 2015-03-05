@@ -50,24 +50,27 @@ itc_set_cset_bits (it_cursor_t * itc, int row, int val)
 }
 
 void
-itc_null_row (it_cursor_t * itc)
+itc_null_row (it_cursor_t * itc, iri_id_t s)
 {
   int inx;
-  table_source_t *ts = itc->itc_ks->ks_ts;
-  cset_mode_t *csm;
-  int nth_bit = csm->csm_bit;
   caddr_t *inst = itc->itc_out_state;
   v_out_map_t *om = itc->itc_v_out_map;
   int n_out = om ? box_length (om) / sizeof (v_out_map_t) : 0;
+  oid_t s_col_id = ((dbe_column_t *) itc->itc_insert_key->key_parts->data)->col_id;
   for (inx = 0; inx < n_out; inx++)
-    dc_append_null (QST_BOX (data_col_t *, inst, om[inx].om_ssl->ssl_index));
+    {
+      if (s_col_id == om[inx].om_cl.cl_col_id)
+	dc_append_int64 (QST_BOX (data_col_t *, inst, om[inx].om_ssl->ssl_index), s);
+      else
+	dc_append_null (QST_BOX (data_col_t *, inst, om[inx].om_ssl->ssl_index));
+    }
 }
 
 
 int
 itc_cset_unmatched_by_s (it_cursor_t * itc)
 {
-  /* some ranges have no matchwhen looking in cset by s */
+  /* some ranges have no matchwhen looking in cset by s.  If full batch, return 1, else 0 */
   int col_first = itc->itc_col_first_set;
   caddr_t *inst = itc->itc_out_state;
   table_source_t *ts = itc->itc_ks->ks_ts;
@@ -78,32 +81,38 @@ itc_cset_unmatched_by_s (it_cursor_t * itc)
   data_col_t *s_dc = ITC_P_VEC (itc, 0);
   int inx;
   cset_t *cset = itc->itc_insert_key->key_table->tb_cset;
-  cset_p_t *csp[100];
+  cset_p_t *csp;
+  uint64 *bfs[MAX_REQD_PS];
+  uint32 n_bfs[MAX_REQD_PS];
   int last_unmatched = itc->itc_last_cset_unmatched_set;
   for (inx = 0; inx < n_reqd; inx++)
     {
-      csp[inx] = gethash ((void *) reqd_ps[inx], &cset->cset_p);
-      if (!csp[inx] || !csp[inx]->csetp_n_bloom)
+      csp = gethash ((void *) reqd_ps[inx], &cset->cset_p);
+      if (!csp)
+	return 0;
+      csetp_bloom (csp, inst, &bfs[inx], &n_bfs[inx]);
+      if (!bfs[inx])
 	return 0;
     }
   for (inx = last_unmatched; inx < itc->itc_range_fill; inx++)
     {
       if (itc->itc_ranges[inx].r_first == itc->itc_ranges[inx].r_end)
 	{
-	  iri_id_t s = ((iri_id_t *) s_dc->dc_values)[itc->itc_param_order[inx + col_first]];
+	  iri_id_t s =
+	      s_dc ? ((iri_id_t *) s_dc->dc_values)[itc->itc_param_order[inx +
+		  col_first]] : unbox_iri_id (itc->itc_search_params[0]);
 	  uint64 h = 1, mask;
 	  MHASH_STEP_1 (h, s);
 	  mask = BF_MASK (h);
 	  for (nth_p = 0; nth_p < n_reqd; nth_p++)
 	    {
-	      uint64 *bf;
-	      uint32 n_bf;
-	      csetp_bloom (csp[inx], inst, &bf, &n_bf);
+	      uint64 *bf = bfs[inx];
+	      uint32 n_bf = n_bfs[inx];
 	      uint64 w = bf[BF_WORD (h, n_bf)];
 	      if (mask != (mask & w))
 		goto next_s;
 	    }
-	  itc_null_row (itc);
+	  itc_null_row (itc, s);
 	  itc_set_cset_bits (itc, itc->itc_n_results, 0);
 	  itc->itc_n_results++;
 	  qn_result ((data_source_t *) ts, itc->itc_out_state, col_first + inx);

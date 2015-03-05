@@ -724,6 +724,7 @@ void dbs_locate_free_bit (dbe_storage_t * dbs, dp_addr_t near_dp,
      void dk_set_append_1 (dk_set_t * res, void *item);
      void dbe_key_free (dbe_key_t * key);
      void dbe_key_layout (dbe_key_t * key, dbe_schema_t * sc);
+     int dbe_key_layout_1 (dbe_key_t * key);
 
 /* redundant and incorrect: long strhash (char * strp); */
 

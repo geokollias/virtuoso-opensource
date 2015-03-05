@@ -2809,6 +2809,61 @@ sel_has_top (ST * sel)
 }
 
 
+typedef struct cset_hash_save_s
+{
+  df_elt_t *chs_inx_dfe;
+  df_elt_t *chs_s_eq;
+} cset_hash_save_t;
+
+
+int
+pred_same_eq (ST * p1, ST * p2)
+{
+  return BOP_EQ == p1->type && BOP_EQ == p2->type
+      && box_equal (p1->_.bin_exp.left, p2->_.bin_exp.left) && box_equal (p1->_.bin_exp.left, p2->_.bin_exp.left);
+}
+
+
+void
+sqlo_cset_hash_pre (df_elt_t * tb_dfe, cset_hash_save_t * chs)
+{
+  /* if cset by index, unplace the index for time of trying hash */
+  df_elt_t *s_eq = NULL;
+  op_table_t *ot = tb_dfe->_.table.ot;
+  chs->chs_inx_dfe = NULL;
+  if (tb_dfe->_.table.ot->ot_table->tb_closest_cset && ot->ot_cset_inx_dfe && tb_dfe->dfe_prev == ot->ot_cset_inx_dfe)
+    {
+      df_elt_t *inx_dfe = tb_dfe->dfe_prev;
+      chs->chs_inx_dfe = inx_dfe;
+      DO_SET (df_elt_t *, pred, &tb_dfe->_.table.col_preds)
+      {
+	if (pred_same_eq (pred->dfe_tree, inx_dfe->_.table.ot->ot_cset_inx_s_eq->dfe_tree))
+	  {
+	    s_eq = pred;
+	    break;
+	  }
+      }
+      END_DO_SET ();
+      if (!s_eq)
+	SQL_GPF_T1 (top_sc->sc_cc, "cset by inx but no join between cset tb and rq tb for the index");
+      chs->chs_s_eq = s_eq;
+      t_set_delete (&tb_dfe->_.table.col_preds, s_eq);
+      dfe_unplace_in_middle (inx_dfe);
+    }
+}
+
+
+void
+sqlo_cset_no_hash (df_elt_t * tb_dfe, cset_hash_save_t * chs)
+{
+  /* if decided not to do hash with cset, put the possible cset inx dfe back */
+  if (!chs->chs_inx_dfe)
+    return;
+  t_set_push (&tb_dfe->_.table.col_preds, chs->chs_s_eq);
+  sqlo_place_dfe_after (tb_dfe->dfe_sqlo, LOC_LOCAL, tb_dfe->dfe_prev, chs->chs_inx_dfe);
+}
+
+
 int enable_dt_hash = 0;
 
 df_elt_t *
@@ -5681,9 +5736,13 @@ sqt_types_set (sql_type_t * left, sql_type_t * right)
 }
 
 
-void
+df_elt_t *
 sqlo_hash_filler (sqlo_t * so, df_elt_t * fill_dfe, dk_set_t preds, float *fill_unit, float *fill_arity, float *ov)
 {
+  op_table_t *fill_ot = fill_dfe->_.table.ot;
+  df_elt_t *inx_dfe = fill_ot->ot_cset_inx_dfe;
+  df_elt_t *prev_prev = fill_dfe->dfe_prev;
+  fill_ot->ot_cset_inx_dfe = NULL;
   fill_dfe->_.table.is_unique = 0;	/* the filler is not unique even if the ref is */
   fill_dfe->_.table.inx_preds = NULL;
   fill_dfe->_.table.col_preds = NULL;
@@ -5694,38 +5753,67 @@ sqlo_hash_filler (sqlo_t * so, df_elt_t * fill_dfe, dk_set_t preds, float *fill_
   fill_dfe->_.table.vdb_join_test = NULL;
   fill_dfe->dfe_next = NULL;
   fill_dfe->_.table.key = NULL;
+  prev_prev = fill_dfe->dfe_prev;
   sqlo_tb_col_preds (so, fill_dfe, preds, NULL);
-  dfe_unit_cost (fill_dfe, 1, fill_unit, fill_arity, ov);
+  if (fill_dfe->dfe_prev && fill_dfe->dfe_prev != prev_prev)
+    {
+      df_elt_t *cset_dt = sqlo_new_dfe (so, DFE_DT, NULL);
+      df_elt_t *f1 = fill_dfe->dfe_prev;
+      t_NEW_VARZ (op_table_t, fill_dt_ot);
+      t_NEW_VARZ (op_table_t, ot2);
+      *ot2 = *fill_dfe->_.table.ot;
+      ot2->ot_dfe = fill_dfe;
+      fill_dfe->_.table.ot = ot2;
+      cset_dt->_.sub.ot = fill_dt_ot;
+      fill_dt_ot->ot_dfe = cset_dt;
+      fill_dt_ot->ot_new_prefix = sqlo_new_prefix (so);
+      f1->dfe_super = cset_dt;
+      fill_dfe->dfe_super = cset_dt;
+      f1->dfe_prev = NULL;
+      cset_dt->_.sub.first = f1;
+      cset_dt->_.sub.last = fill_dfe;
+      cset_dt->_.sub.hash_role = HR_FILL;
+      cset_dt->dfe_super = so->so_this_dt->ot_work_dfe->_.sub.last;
+      f1->_.table.hash_role = 0;
+      fill_dfe->_.table.hash_role = 0;
+      fill_dfe = cset_dt;
+    }
+  dfe_list_cost (fill_dfe, fill_unit, fill_arity, ov, LOC_LOCAL);
+  fill_ot->ot_cset_inx_dfe = inx_dfe;
+  /* a cset table filler may be by index, adding a posg dfe in front */
+  return fill_dfe;
 }
 
 
 int enable_hash_fill_preds = 1;
 float hash_fill_filter_threshold = 0.7;
 
-void
+df_elt_t *
 sqlo_best_hash_filler (sqlo_t * so, df_elt_t * fill_dfe, int remote, dk_set_t * org_preds, dk_set_t * post_preds, float *fill_unit,
     float *fill_arity, float *ov)
 {
+  df_elt_t *new_filler;
   float best, ov1 = 0, ov2 = 0;
   if (remote != RHJ_LOCAL || enable_chash_join)
     {
-      sqlo_hash_filler (so, fill_dfe, *org_preds, fill_unit, fill_arity, &ov1);
+      new_filler = sqlo_hash_filler (so, fill_dfe, *org_preds, fill_unit, fill_arity, &ov1);
       *fill_unit += ov1;
-      return;
+      return new_filler;
     }
-  sqlo_hash_filler (so, fill_dfe, NULL, fill_unit, fill_arity, &ov1);
+  new_filler = sqlo_hash_filler (so, fill_dfe, NULL, fill_unit, fill_arity, &ov1);
   best = *fill_unit;
   if (enable_hash_fill_preds && *org_preds && (sqlo_max_mp_size == 0 || (THR_TMP_POOL)->mp_bytes < so->so_max_memory / 2))
     {
-      sqlo_hash_filler (so, fill_dfe, *org_preds, fill_unit, fill_arity, &ov2);
+      new_filler = sqlo_hash_filler (so, fill_dfe, *org_preds, fill_unit, fill_arity, &ov2);
       *fill_unit += ov2;
       if (*fill_unit < hash_fill_filter_threshold * best)
 	{
-	  return;
+	  return new_filler;
 	}
-      sqlo_hash_filler (so, fill_dfe, NULL, fill_unit, fill_arity, ov);
+      new_filler = sqlo_hash_filler (so, fill_dfe, NULL, fill_unit, fill_arity, ov);
       *post_preds = dk_set_conc (t_set_copy (*org_preds), *post_preds);
     }
+  return new_filler;
 }
 
 
@@ -5857,6 +5945,7 @@ sqlo_record_probes (sqlo_t * so, dk_set_t refs)
 int
 sqlo_try_hash (sqlo_t * so, df_elt_t * dfe, op_table_t * super_ot, float *score_ret)
 {
+  cset_hash_save_t chs;
   dk_set_t hash_pred_locus_refs = NULL;
   dk_set_t prev_probes = so->so_hash_probes;
   int remote = sqlo_try_remote_hash (so, dfe);
@@ -5889,10 +5978,9 @@ sqlo_try_hash (sqlo_t * so, df_elt_t * dfe, op_table_t * super_ot, float *score_
     return 0;
   if (ot->ot_table && ot->ot_table->tb_name && nc_strstr ((unsigned char *) ot->ot_table->tb_name, (unsigned char *) "IRI_RANK"))
     return 0;			/* iri ranks never by hash join */
+  sqlo_cset_hash_pre (dfe, &chs);
   DO_SET (df_elt_t *, pred, &preds)
   {
-    if (0 && pred->dfe_type == DFE_TEXT_PRED)
-      return 0;
     if (dfe_is_tb_only (pred, ot))
       t_set_push (&org_preds, (void *) pred);
     else if (DFE_BOP_PRED == pred->dfe_type && BOP_EQ == pred->_.bin.op)
@@ -5925,8 +6013,10 @@ sqlo_try_hash (sqlo_t * so, df_elt_t * dfe, op_table_t * super_ot, float *score_
   }
   END_DO_SET ();
   if (!hash_keys || !has_non_inv_key)
-    return 0;
-
+    {
+      sqlo_cset_no_hash (dfe, &chs);
+      return 0;
+    }
   if (!mode)
     {
       if (super_ot && ST_P (super_ot->ot_dt, SELECT_STMT) && !sqlo_is_postprocess (so, dfe->dfe_super, dfe))
@@ -5946,7 +6036,10 @@ sqlo_try_hash (sqlo_t * so, df_elt_t * dfe, op_table_t * super_ot, float *score_
 	    }
 	}
       if (ref_arity < 1)
-	return 0;
+	{
+	  sqlo_cset_no_hash (dfe, &chs);
+	  return 0;
+	}
     }
   text_pred_save = dfe->_.table.text_pred;
   dfe->_.table.text_pred = NULL;	/* if text pred on inner table of hash join, the filler will always do the text pred */
@@ -5972,7 +6065,7 @@ sqlo_try_hash (sqlo_t * so, df_elt_t * dfe, op_table_t * super_ot, float *score_
       fill_dfe->_.table.hash_role = HR_FILL;
       fill_dfe->_.table.is_hash_filler_unique = dfe->_.table.is_unique;
       sqlo_hash_fill_extract_or (so, super_ot, dfe, &org_preds);
-      sqlo_best_hash_filler (so, fill_dfe, remote, &org_preds, &post_preds, &fill_unit, &fill_arity, &ov);
+      fill_dfe = sqlo_best_hash_filler (so, fill_dfe, remote, &org_preds, &post_preds, &fill_unit, &fill_arity, &ov);
       fill_unit += sqlo_hash_ins_cost (dfe, fill_arity, hash_keys, &size_est);
     }
   sqlo_hash_fill_reuse (so, &fill_dfe, &fill_unit, &dfr);
@@ -5988,6 +6081,7 @@ sqlo_try_hash (sqlo_t * so, df_elt_t * dfe, op_table_t * super_ot, float *score_
 	    sqlo_check_col_pred_placed (dfe);
 	    dfe->_.table.text_pred = text_pred_save;
 	    dfe->_.table.hash_filler = NULL;
+	    sqlo_cset_no_hash (dfe, &chs);
 	    return 0;
 	  }
 	}
@@ -5997,14 +6091,20 @@ sqlo_try_hash (sqlo_t * so, df_elt_t * dfe, op_table_t * super_ot, float *score_
       float d;
       df_elt_t *prev_tb = dfe_prev_tb (dfe, &d, 1);
       if (!prev_tb)
-	return 0;
+	{
+	  sqlo_cset_no_hash (dfe, &chs);
+	  return 0;
+	}
       dfe->_.table.is_right_oj = 2;
       prev_tb->_.table.is_right_oj = 1;
     }
   if (RHJ_REMOTE == remote && DFE_TABLE == fill_dfe->dfe_type)
     {
       if (!sqlo_remote_hash_filler (so, fill_dfe, dfe))
-	return 0;
+	{
+	  sqlo_cset_no_hash (dfe, &chs);
+	  return 0;
+	}
       /* one more time to get the predicates' locus right */
       sqlo_tb_col_preds (so, fill_dfe, org_preds, NULL);
       dfe->_.table.single_locus = 1;
@@ -6023,10 +6123,11 @@ sqlo_try_hash (sqlo_t * so, df_elt_t * dfe, op_table_t * super_ot, float *score_
   dfe->_.table.hash_refs = hash_refs;
   if (DFE_TABLE == fill_dfe->dfe_type && !dfr)
     {
+      df_elt_t *last_fill = fill_dfe->dfe_next ? fill_dfe->dfe_next : fill_dfe;
       int old_mode = so->so_place_code_forr_cond;
       s_node_t *iter;
       df_elt_t *old_pt = so->so_gen_pt;
-      df_elt_t *fill_container = dfe_container (so, DFE_PRED_BODY, fill_dfe);
+      df_elt_t *fill_container = dfe_container (so, DFE_PRED_BODY, last_fill);
       so->so_gen_pt = fill_container->_.sub.first;
       so->so_place_code_forr_cond = 1;
       DO_SET_WRITABLE (df_elt_t *, h_key, iter, &hash_keys)
@@ -6675,6 +6776,8 @@ sqlo_dfe_is_leaf (sqlo_t * so, op_table_t * ot, df_elt_t * dfe)
 {
   /* depends on a single placed and no unplaced depends on this.  Also no existences cause looping exists will interfere with this. */
   int old = dfe->dfe_is_placed;
+  if (dfe->_.table.ot->ot_table->tb_closest_cset)
+    return 0;
   dfe->dfe_is_placed = DFE_PLACED;
   DO_SET (df_elt_t *, pred, &ot->ot_preds)
   {

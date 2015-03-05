@@ -748,6 +748,7 @@ void
 sqlo_cset_s_cost (df_elt_t * tb_dfe, df_elt_t * s_pred, df_elt_t * g_pred, index_choice_t * ic)
 {
   memzero (ic, sizeof (index_choice_t));
+  tb_dfe->dfe_unit = tb_dfe->dfe_arity = 0;
   dfe_table_cost_ic (tb_dfe, ic, 0);
 }
 
@@ -796,7 +797,7 @@ sqlo_copy_replace (ST * tree, ST * old_tree, ST * new_tree)
 void
 sqlo_cset_inx_g_eq (sqlo_t * so, df_elt_t * inx_dfe, df_elt_t * cset_dfe, df_elt_t * g_pred)
 {
-  /* if a set of triple paterns has a g in common and this ais a cset and is done by index on o then the o pattern needs to join with the g. Otherwise o index does not imply g */
+  /* if a set of triple patterns has a g in common and this ais a cset and is done by index on o then the o pattern needs to join with the g. Otherwise o index does not imply g */
   return;
   if (g_pred && PRED_IS_EQ (g_pred))
     return;
@@ -824,25 +825,42 @@ sqlo_place_cset_inx (sqlo_t * so, df_elt_t * cset_dfe, df_elt_t * o_col, df_elt_
   df_elt_t *p_const;
   op_table_t *inx_ot;
   caddr_t col_p;
+  cset_dfe->dfe_unit = cset_dfe->dfe_arity = 0;
   if (!o_col)
     {
       inx_dfe = cset_dfe->_.table.ot->ot_cset_inx_dfe;
       if (!inx_dfe)
 	return;
+      inx_dfe->dfe_unit = inx_dfe->dfe_arity = 0;
       if (inx_dfe == cset_dfe->dfe_prev)
 	{
-	  dfe_unplace_in_middle (inx_dfe);
-	  t_set_delete (&cset_dfe->_.table.col_preds, inx_dfe->_.table.ot->ot_cset_inx_s_eq);
+	  if (HR_FILL == cset_dfe->_.table.hash_role)
+	    {
+	      cset_dfe->dfe_prev = inx_dfe->dfe_prev;
+	      inx_dfe->dfe_next = inx_dfe->dfe_prev = NULL;
+	    }
+	  else
+	    dfe_unplace_in_middle (inx_dfe);
+	  t_set_delete_test (&cset_dfe->_.table.col_preds, inx_dfe->_.table.ot->ot_cset_inx_s_eq, (void_test_func_t) pred_same_eq);
 	}
       return;
     }
   col_p = t_box_iri_id (o_col->_.col.col->col_cset_iri);
   inx_dfe = sqlo_cset_inx_dfe (so, cset_dfe);
+  inx_dfe->dfe_unit = inx_dfe->dfe_arity = 0;
   if (inx_dfe != cset_dfe->dfe_prev)
     {
       if (inx_dfe->dfe_prev)
 	dfe_unplace_in_middle (inx_dfe);
-      sqlo_place_dfe_after (so, LOC_LOCAL, cset_dfe->dfe_prev, inx_dfe);
+      if (HR_FILL == cset_dfe->_.table.hash_role)
+	{
+	  /* a hash filler w 1 table has the filler dfe's prev pointing to the probe's prev */
+	  inx_dfe->dfe_prev = cset_dfe->dfe_prev;	/* the reverse link is not to here but to the ref. */
+	  inx_dfe->dfe_next = cset_dfe;
+	  cset_dfe->dfe_prev = inx_dfe;
+	}
+      else
+	sqlo_place_dfe_after (so, LOC_LOCAL, cset_dfe->dfe_prev, inx_dfe);
       t_set_pushnew (&cset_dfe->_.table.col_preds, inx_dfe->_.table.ot->ot_cset_inx_s_eq);
     }
   inx_ot = inx_dfe->_.table.ot;
@@ -872,9 +890,16 @@ sqlo_place_cset_inx (sqlo_t * so, df_elt_t * cset_dfe, df_elt_t * o_col, df_elt_
   if (g_pred)
     {
       df_elt_t *inx_g =
-	  sqlo_df (so, sqlo_copy_replace (g_pred->dfe_tree, t_listst (COL_DOTTED, cset_dfe->_.table.ot->ot_new_prefix,
+	  sqlo_df (so, sqlo_copy_replace (g_pred->dfe_tree, t_listst (3, COL_DOTTED, cset_dfe->_.table.ot->ot_new_prefix,
 		  t_box_string ("G")), t_listst (3, COL_DOTTED, inx_ot->ot_new_prefix, t_box_string ("G"))));
       t_set_push (&inx_dfe->_.table.col_preds, inx_g);
+    }
+  if (s_pred)
+    {
+      df_elt_t *inx_s =
+	  sqlo_df (so, sqlo_copy_replace (s_pred->dfe_tree, t_listst (3, COL_DOTTED, cset_dfe->_.table.ot->ot_new_prefix,
+		  t_box_string ("S")), t_listst (3, COL_DOTTED, inx_ot->ot_new_prefix, t_box_string ("S"))));
+      t_set_push (&inx_dfe->_.table.col_preds, inx_s);
     }
   /* the inx dfe must return the s.  I */
   t_set_pushnew (&inx_dfe->_.table.out_cols, (void *) inx_to_cset_pred->_.bin.right);
@@ -920,7 +945,7 @@ sqlo_cset_choose_index (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * col_preds, dk
   dbe_column_t *s_col = (dbe_column_t *) pk->key_parts->data;
   dbe_column_t *g_col = (dbe_column_t *) pk->key_parts->next->data;
   df_elt_t *s_pred = sqlo_key_part_best (s_col, tb_dfe->_.table.col_preds, 0);
-  df_elt_t *g_pred = sqlo_key_part_best (s_col, tb_dfe->_.table.col_preds, 0);
+  df_elt_t *g_pred = sqlo_key_part_best (g_col, tb_dfe->_.table.col_preds, 0);
   if (tb_dfe->_.table.key)
     return;
   opt_inx_name = sqlo_opt_value (ot->ot_opts, OPT_INDEX);
@@ -1008,6 +1033,12 @@ sqlo_cset_choose_index (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * col_preds, dk
       tb_dfe->_.table.inx_card = s_ic.ic_inx_card;
     }
   sqlo_place_cset_inx (so, tb_dfe, best_col, s_pred, g_pred);
+  if (!best_col)
+    {
+      tb_dfe->dfe_unit = s_ic.ic_unit;
+      tb_dfe->dfe_arity = s_ic.ic_arity;
+      tb_dfe->_.table.hit_spacing = s_ic.ic_spacing;
+    }
   tb_dfe->_.table.key = tb_dfe->_.table.ot->ot_table->tb_primary_key;
 }
 

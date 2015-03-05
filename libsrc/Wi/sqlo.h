@@ -1185,6 +1185,7 @@ state_slot_t **sqlc_compound_stmt (sql_comp_t * sc, ST * tree, dk_set_t ret_exps
 void dfe_table_set_by_best (df_elt_t * tb_dfe, index_choice_t * ic, float true_arity, dk_set_t * col_preds, dk_set_t * after_preds);
 void ts_set_csq (sql_comp_t * sc, df_elt_t * tb_dfe, table_source_t * ts);
 int qn_is_trans_init (table_source_t * ts);
+int pred_same_eq (ST * p1, ST * p2);
 void dfe_list_cost (df_elt_t * dfe, float *unit_ret, float *arity_ret, float *overhead_ret, locus_t * loc);
 dbe_column_t *dfe_cset_equiv_col (df_elt_t * dfe, df_elt_t * left_col);
 void sqlo_cset_choose_index (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * col_preds, dk_set_t * after_preds);

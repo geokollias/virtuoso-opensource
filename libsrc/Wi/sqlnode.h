@@ -859,6 +859,8 @@ typedef struct cset_mode_s
   state_slot_t *csm_exc_scan_exc_s;
 } cset_mode_t;
 
+#define MAX_REQD_PS 64
+
 /* csm_role */
 #define TS_CSET_PSOG 1
 #define TS_CSET_POSG 2

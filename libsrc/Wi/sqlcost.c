@@ -442,11 +442,13 @@ dfe_top_sel (df_elt_t * dfe, float card)
     return 0;
   for (next = dfe->dfe_next; next; next = next->dfe_next)
     {
+      df_elt_t *card_dfe;
       if ((DFE_TABLE == next->dfe_type && next->_.table.is_being_placed)
 	  || (DFE_DT == next->dfe_type && next->_.sub.is_being_placed))
 	break;
-      if (next->dfe_arity)
-	card_after *= next->dfe_arity;
+      card_dfe = (DFE_DT == next->dfe_type && next->_.sub.generated_dfe) ? next->_.sub.generated_dfe : next;
+      if (card_dfe->dfe_arity)
+	card_after *= card_dfe->dfe_arity;
     }
   if (dfe->_.table.join_test)
     {

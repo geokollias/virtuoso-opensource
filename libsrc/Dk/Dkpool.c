@@ -1224,6 +1224,24 @@ DBG_NAME (t_set_delete) (DBG_PARAMS dk_set_t * set, void *item)
 }
 
 
+int
+t_set_delete_test (DBG_PARAMS dk_set_t * set, void *item, void_test_func_t test)
+{
+  s_node_t *node = *set;
+  dk_set_t *previous = set;
+  while (node)
+    {
+      if (test (node->data, item))
+	{
+	  *previous = node->next;
+	  return 1;
+	}
+      previous = &(node->next);
+      node = node->next;
+    }
+  return 0;
+}
+
 dk_set_t
 DBG_NAME (t_set_copy) (DBG_PARAMS dk_set_t s)
 {
