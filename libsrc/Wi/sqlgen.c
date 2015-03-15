@@ -4674,6 +4674,25 @@ sqlg_is_subq_sel (data_source_t * qn)
 
 
 int
+sqlg_all_have_ts (dk_set_t terms)
+{
+  /* a union that has a branch that contains no ts cannot get partitioned setp in single */
+  if (CL_RUN_LOCAL != cl_run_local_only)
+    return 1;
+  DO_SET (data_source_t *, qn, &terms)
+  {
+    for (; qn; qn = qn_next (qn))
+      if (IS_TS (qn))
+	goto has_ts;
+    return 0;
+  has_ts:;
+  }
+  END_DO_SET ();
+  return 1;
+}
+
+
+int
 sqlg_union_fref (sql_comp_t * sc, fun_ref_node_t * fref, df_elt_t * dt_dfe, dk_set_t * terms_ret)
 {
   /* if the body of the fref is a  union subq followed by setp or an aggregate code vec, put the setp or cv in the branches */
@@ -4708,6 +4727,8 @@ sqlg_union_fref (sql_comp_t * sc, fun_ref_node_t * fref, df_elt_t * dt_dfe, dk_s
   if (next && !qn_tail_is_copiable (next))
     return 0;
   if (!cv_is_copiable (sqs->src_gen.src_after_code) || !cv_is_copiable (sqs->src_gen.src_pre_code) || !cv_is_copiable (post))
+    return 0;
+  if (!sqlg_all_have_ts (terms))
     return 0;
   sc->sc_cc->cc_query = uni_sqs->sqs_query;
   if (post)
@@ -6460,7 +6481,8 @@ sqlg_dt_query_1 (sqlo_t * so, df_elt_t * dt_dfe, query_t * ext_query, ST ** targ
     sqlc_error (so->so_sc->sc_cc, ".....", "Stack Overflow");
   if (DK_MEM_RESERVE)
     sqlc_error (so->so_sc->sc_cc, ".....", "Out of memory");
-  sc->sc_is_single_state = dt_dfe->_.sub.gby_hash_filler || !sqlg_is_multistate_gb (so);
+  sc->sc_is_single_state = !dt_dfe->_.sub.trans && (dt_dfe->_.sub.gby_hash_filler || !sqlg_is_multistate_gb (so));
+
   sc->sc_delay_colocate = 0;
   sc->sc_re_emit_code = 0;
   sqlg_qn_has_dfe ((data_source_t *) qr, dt_dfe);

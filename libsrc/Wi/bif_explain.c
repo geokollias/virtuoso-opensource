@@ -57,7 +57,7 @@
 #include "http.h"
 #include "mhash.h"
 
-extern int enable_qrc;		/* generate query plan comments and warnings */
+int32 enable_qrc;		/* generate query plan comments and warnings */
 #define MSG_MAX_LEN 100
 
 typedef struct qr_comment_s
@@ -4201,7 +4201,7 @@ qi_branch_stats (query_instance_t * qi, query_instance_t * branch, query_t * qr)
       data_source_t *qn2 = qn;
       while (qn2 && (IS_QN (qn2, fun_ref_node_input) || IS_QN (qn2, hash_fill_node_input)))
 	qn2 = ((fun_ref_node_t *) qn2)->fnr_select;
-      if (qn2 && !qn2->src_stat)
+      if (qn2 && !qn2->src_stat && !IS_QN (qn2, union_node_input))
 	return;
     }
   qnw.qnw_qi_from = branch;

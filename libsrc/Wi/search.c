@@ -3721,6 +3721,7 @@ itc_matches_on_page (it_cursor_t * itc, buffer_desc_t * buf, int *leaf_ctr_ret, 
   page_map_t *pm = buf->bd_content_map;
   dp_addr_t leaves[PAGE_DATA_SZ / 8];
   int leaf_fill = 0;
+  int have_leaf_match = 0;	/* true if key search spec gave match, (not lt) on a leaf */
   db_buf_t page = buf->bd_buffer;
   int have_left_leaf = 0, was_left_leaf = 0;
   int pos = itc->itc_map_pos;	/* itc is at leftmost match. Nothing at left of the itc */
@@ -3777,6 +3778,8 @@ itc_matches_on_page (it_cursor_t * itc, buffer_desc_t * buf, int *leaf_ctr_ret, 
 		  *alt_leaf_ret = leaf1;
 		  have_left_leaf = 0;
 		}
+	      if (DVC_MATCH == res)
+		have_leaf_match = 1;
 	      leaf_ctr++;
 	    }
 
@@ -3814,7 +3817,7 @@ itc_matches_on_page (it_cursor_t * itc, buffer_desc_t * buf, int *leaf_ctr_ret, 
       if (pos == pm->pm_count - 1)
 	*ends_with_match = 1;
     }
-  *leaf_ctr_ret = leaf_ctr;
+  *leaf_ctr_ret = (was_left_leaf && 1 == leaf_ctr) ? 0 : (1 == leaf_ctr && !have_leaf_match) ? 0 : leaf_ctr;	/* if the only leaf hit was the left dummy, can't tell if matched */
   if (row_ctr)
     *rows_per_bm = ctr / row_ctr;
   else

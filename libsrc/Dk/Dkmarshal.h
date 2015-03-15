@@ -46,6 +46,7 @@ void *read_object_boxing (dk_session_t * session);
 void init_readtable (void);
 void *PrpcReadObject (dk_session_t * session);
 macro_char_func *get_readtable (void);
+macro_char_func *get_rpcreadtable (void);
 void *scan_session (dk_session_t * session);
 void *scan_session_boxing (dk_session_t * session);
 void print_long (long l, dk_session_t * session);
@@ -67,7 +68,7 @@ void PrpcSetWriter (dtp_t dtp, ses_write_func f);
 int64 read_int (dk_session_t *session);
 extern ses_write_func int64_serialize_client_f;
 
-void *box_read_error (dk_session_t * session, dtp_t dtp);
+NORETURN void box_read_error (dk_session_t * session, dtp_t dtp);
 
 #define MAX_READ_STRING 0xfffffe /*3 byte len - 1 for the final 0, box_length returns correct len */
 #define MARSH_CHECK_LENGTH(length) \
@@ -96,6 +97,13 @@ void *box_read_error (dk_session_t * session, dtp_t dtp);
       return 0; /* dummy */ \
     }
 
+#define MARSH_KEEP_OBJ(s, obj) do { \
+  dk_set_push(&(s)->dks_pending_obj, obj); \
+  if (!(s)->dks_top_obj) (s)->dks_top_obj = obj; \
+} while (0)
+#define MARSH_POP_OBJ(s, obj) do { \
+  dk_set_pop(&(s)->dks_pending_obj); \
+} while (0)
 
 extern int (*box_flags_serial_test_hook) (dk_session_t * ses);
 

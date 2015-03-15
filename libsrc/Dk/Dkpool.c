@@ -114,7 +114,7 @@ mp_map_count_print (char * buf, size_t max)
     }
   END_DO_HT;
   mutex_leave (&mp_reg_mtx);
-  snprintf (buf, max, "%d maps in mps, %ld bytes, %Ld in use, %Ld max in use\n", ctr, sz, mp_large_in_use, mp_max_large_in_use);
+  snprintf (buf, max, "%d maps in mps, %Ld bytes, %Ld in use, %Ld max in use\n", ctr, (long long)sz, (long long)mp_large_in_use, (long long)mp_max_large_in_use);
 }
 
 #else
@@ -506,7 +506,7 @@ DBG_NAME (mp_box_string) (DBG_PARAMS mem_pool_t * mp, const char *str)
 }
 
 
-box_t
+caddr_t
 DBG_NAME (mp_box_dv_short_nchars) (DBG_PARAMS mem_pool_t * mp, const char *buf, size_t buf_len)
 {
   box_t box;
@@ -567,7 +567,7 @@ caddr_t DBG_NAME (mp_box_dv_uname_string) (DBG_PARAMS mem_pool_t * mp, const cha
 }
 
 
-box_t
+caddr_t
 DBG_NAME (mp_box_dv_uname_nchars) (DBG_PARAMS mem_pool_t * mp, const char *buf, size_t buf_len)
 {
   caddr_t box;
@@ -1542,7 +1542,7 @@ mp_by_address (uint64 ptr)
 	{
 	  if (ptr >= start && ptr < start + sz)
 	    {
-	      printf ("Address %p is %ld bytes inside map starting at %p of size %ld in mp %p\n", (void*)ptr, ptr - start, (void*)start, sz, mp);
+	      printf ("Address %p is %Ld bytes inside map starting at %p of size %Ld in mp %p\n", (void*)ptr, (long long)(ptr - start), (void*)start, (long long)sz, mp);
 	    }
 	}
       END_DO_HT;
@@ -1557,7 +1557,7 @@ mp_by_address (uint64 ptr)
 	  int64 start = rc->rc_items[inx2];
 	  if (ptr >= start && ptr < start + mm_sizes[inx])
 	    {
-	      printf ("Address %x is %ld bytes indes arc cached block start %p size %ld\n", (void*)ptr, ptr - start, (void*)start, mm_sizes[inx]);
+	      printf ("Address %x is %Ld bytes indes arc cached block start %p size %Ld\n", (void*)ptr, (long long)(ptr - start), (void*)start, (long long)(mm_sizes[inx]));
 	      return;
 	    }
 	}
@@ -1596,7 +1596,7 @@ mp_list_marks (int first, int n_print)
 			  if (n_printed >= first && n_printed < n_print + first)
 			    {
 			      int64 last_addr = ((long)inx << 32) + ((long)inx << 15) + (bit << 12);
-			      printf ("0x%p - 0x%p - %ld pages\n", (last_addr - first_addr) >> 12);
+			      printf ("0x%p - 0x%p = %Ld pages\n", (void *)last_addr, (void *)first_addr, (long long)((last_addr - first_addr) >> 12));
 			    }
 			  n_printed++;
 			  first_addr = 0;
@@ -2194,11 +2194,11 @@ caddr_t mp_box_string (mem_pool_t * mp, const char *str) { return dbg_mp_box_str
 #undef mp_box_substr
 caddr_t mp_box_substr (mem_pool_t * mp, ccaddr_t str, int n1, int n2) { return dbg_mp_box_substr (__FILE__, __LINE__, mp, str, n1, n2); }
 #undef mp_box_dv_short_nchars
-box_t mp_box_dv_short_nchars (mem_pool_t * mp, const char *str, size_t len) { return dbg_mp_box_dv_short_nchars (__FILE__, __LINE__, mp, str, len); }
+caddr_t mp_box_dv_short_nchars (mem_pool_t * mp, const char *str, size_t len) { return dbg_mp_box_dv_short_nchars (__FILE__, __LINE__, mp, str, len); }
 #undef mp_box_dv_uname_string
 caddr_t mp_box_dv_uname_string (mem_pool_t * mp, const char *str) { return dbg_mp_box_dv_uname_string (__FILE__, __LINE__, mp, str); }
 #undef mp_box_dv_uname_nchars
-box_t mp_box_dv_uname_nchars (mem_pool_t * mp, const char *str, size_t len) { return dbg_mp_box_dv_uname_nchars (__FILE__, __LINE__, mp, str, len); }
+caddr_t mp_box_dv_uname_nchars (mem_pool_t * mp, const char *str, size_t len) { return dbg_mp_box_dv_uname_nchars (__FILE__, __LINE__, mp, str, len); }
 #undef mp_box_copy
 caddr_t mp_box_copy (mem_pool_t * mp, caddr_t box) { return dbg_mp_box_copy (__FILE__, __LINE__, mp, box); }
 #undef mp_box_copy_tree

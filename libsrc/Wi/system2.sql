@@ -1344,7 +1344,7 @@ in check_plan int := 1, in plan_xpath varchar := null, in addp int := 0, in ref_
 
 
 create procedure
-qt_check (in file varchar, out message varchar, in add_test int := 0) returns int
+qt_check (in file varchar, out message varchar, in record_new integer := 0) returns int
 {
   declare xt, qr, xp_test, expl, da any;
   declare stat, msg, meta, data, r, check_order, cnt any;
@@ -1411,12 +1411,16 @@ qt_check (in file varchar, out message varchar, in add_test int := 0) returns in
 	}
       r := r + 1;
     }
+  if (plan_diff <> 0 and record_new = 1)
+    {
+      qt_record (file || '.new', qr, comment => message, check_order => check_order);
+    }
   return 1;
 }
 ;
 
 create procedure
-qt_check_dir (in dir varchar, in file_mask varchar := '%')
+qt_check_dir (in dir varchar, in file_mask varchar := '%', in record_new integer := 0)
 {
   declare ls, inx, f, msg, stat, file, report any;
   ls := sys_dirlist (dir, 1);
@@ -1425,7 +1429,7 @@ qt_check_dir (in dir varchar, in file_mask varchar := '%')
     {
       if (ls[inx] like '%.xml' and ls[inx] like file_mask)
 	{
-	  f := qt_check (dir || '/' || ls[inx], msg);
+	  f := qt_check (dir || '/' || ls[inx], msg, record_new);
 	  result (case f when 1 then 'PASSED: ' else '***FAILED: ' end,ls[inx], msg);
 	}
     }

@@ -440,11 +440,13 @@ dfe_top_sel (df_elt_t * dfe, float card)
     return 0;
   for (next = dfe->dfe_next; next; next = next->dfe_next)
     {
+      df_elt_t *card_dfe;
       if ((DFE_TABLE == next->dfe_type && next->_.table.is_being_placed)
 	  || (DFE_DT == next->dfe_type && next->_.sub.is_being_placed))
 	break;
-      if (next->dfe_arity)
-	card_after *= next->dfe_arity;
+      card_dfe = (DFE_DT == next->dfe_type && next->_.sub.generated_dfe) ? next->_.sub.generated_dfe : next;
+      if (card_dfe->dfe_arity)
+	card_after *= card_dfe->dfe_arity;
     }
   if (dfe->_.table.join_test)
     {
@@ -661,32 +663,32 @@ dfe_vec_inx_cost (df_elt_t * dfe, index_choice_t * ic, int64 sample)
   float sort_cost = 0, inx_cost;
   df_elt_t *prev_tb;
   float card_between = 1;
-  int eq_on_ordering = 0;
+  int eq_on_ordering = 0, slices;
+  ;
   int order, cl_colocated = 0;
   float spacing;
   dbe_key_t *key = dfe->_.table.key;
   float ref_card = 1;
+  float vec_sz, max_vec;
   if (HR_NONE != dfe->_.table.hash_role)
     return 8;			/* hash fillers and refs do not take this into account */
   order = dfe_n_in_order (dfe, NULL, &prev_tb, &card_between, &eq_on_ordering, &cl_colocated);
   ic->ic_in_order = order;
   ref_card = dfe->_.table.in_arity;
+  slices = key->key_partition ? key->key_partition->kpd_map->clm_distinct_slices : 1;
+  max_vec = dc_max_batch_sz_f / slices;
+  if (1 == slices && ref_card < enable_qp * dc_max_batch_sz_f && ref_card > dc_batch_sz * enable_qp)
+    max_vec = ref_card / enable_qp;
+  vec_sz = MIN (max_vec, ref_card);
+  vec_sz = MAX (1, vec_sz);
   if (!order)
     {
       float t_card;
-      int slices;
-      float vec_sz, max_vec;
       int64 key_card = dbe_key_count (dfe->_.table.key);
       if (ic->ic_leading_constants)
 	t_card = -1 != sample ? sample : key_card;
       else
 	t_card = key_card;
-      slices = key->key_partition ? key->key_partition->kpd_map->clm_distinct_slices : 1;
-      max_vec = dc_max_batch_sz_f / slices;
-      if (1 == slices && ref_card < enable_qp * dc_max_batch_sz_f && ref_card > dc_batch_sz * enable_qp)
-	max_vec = ref_card / enable_qp;
-      vec_sz = MIN (max_vec, ref_card);
-      vec_sz = MAX (1, vec_sz);
       spacing = t_card / vec_sz;
       dfe->_.table.hit_spacing = spacing;
       vec_sz = MIN (ref_card, max_vec);
@@ -717,6 +719,9 @@ dfe_vec_inx_cost (df_elt_t * dfe, index_choice_t * ic, int64 sample)
     dfe->_.table.is_cl_part_first = 0;
   ic->ic_spacing = dfe->_.table.hit_spacing;
   inx_cost = dfe_vec_index_unit (dfe, dfe->_.table.hit_spacing) + sort_cost;
+  /* if leading constant, spacing is narrow but there is still at least one lookup from top, hence add one full lookup divided by vec size */
+  if (ic->ic_leading_constants)
+    inx_cost += dbe_key_unit_cost (key) / vec_sz;
   dfe_cl_bottle_factor (dfe, &inx_cost);
   return inx_cost;
 }
@@ -2831,7 +2836,10 @@ sqlo_inx_sample_1 (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_el
 	  dk_free_tree (sc_key);
 	  itc_free (itc);
 	  sop->sop_res_from_ric_cache = 1;
-	  ic->ic_col_card_corr = col_predicted / (c / ic->ic_inx_card);
+	  if (!c)
+	    ic->ic_col_card_corr = 1;
+	  else
+	    ic->ic_col_card_corr = col_predicted / (c / ic->ic_inx_card);
 	  return c;
 	}
     sample_for_cols:;
@@ -2850,7 +2858,10 @@ sqlo_inx_sample_1 (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_el
       itc_free (itc);
       c = place->smp_card;
       ic->ic_inx_card = place->smp_inx_card;
-      ic->ic_col_card_corr = col_predicted / (c / ic->ic_inx_card);
+      if (!c)
+	ic->ic_col_card_corr = 1;
+      else
+	ic->ic_col_card_corr = col_predicted / (c / ic->ic_inx_card);
       return c;
     }
   if (sop)
@@ -2882,7 +2893,10 @@ sqlo_inx_sample_1 (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_el
     }
   c = res * row_sel;
   ic->ic_inx_card = res;
-  ic->ic_col_card_corr = col_predicted / (c / ic->ic_inx_card);
+  if (!c)
+    ic->ic_col_card_corr = 1;
+  else
+    ic->ic_col_card_corr = col_predicted / (c / ic->ic_inx_card);
   return c;
 }
 
@@ -2924,6 +2938,7 @@ sqlo_inx_inf_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_
   int is_first = 1;
   caddr_t org_o = *variable;
   int64 s, est = 0;
+  float inx_card = 0;
   int any_est = 0;
   ri_iterator_t *rit = ri_iterator (sub, ic->ic_inf_type, 1);
   rdf_sub_t *sub_iri;
@@ -2943,6 +2958,7 @@ sqlo_inx_inf_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_
       if (s >= 0)
 	{
 	  est += s;
+	  inx_card += ic->ic_inx_card;
 	  any_est = 1;
 	  if (sop.sop_res_from_ric_cache)
 	    {
@@ -2979,7 +2995,7 @@ sqlo_inx_inf_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_
     {
       if (any_est)
 	{
-	  ric_set_sample (sop.sop_ric, sc_key, est, ic->ic_inx_card);
+	  ric_set_sample (sop.sop_ric, sc_key, est, inx_card);
 	}
       else
 	dk_free_tree (sc_key);
@@ -2989,6 +3005,7 @@ sqlo_inx_inf_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_
   dk_free_box ((caddr_t) rit);
   *variable = org_o;
   ic->ic_n_lookups = sub->rs_n_subs;
+  ic->ic_inx_card = inx_card;
   return any_est ? est : -1;
 }
 
