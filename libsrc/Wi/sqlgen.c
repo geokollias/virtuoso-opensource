@@ -4023,6 +4023,8 @@ sqlg_may_parallelize (sql_comp_t * sc, data_source_t * qn)
 	goto no;
       if (IS_TS (ts))
 	{
+	  if (ts->ts_order_ks->ks_is_proc_view)
+	    goto no;
 	}
       if (IS_QN (ts, setp_node_input) && ((setp_node_t *) ts)->setp_distinct && enable_dfg < 2)
 	goto no;

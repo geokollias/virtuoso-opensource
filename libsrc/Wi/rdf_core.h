@@ -349,4 +349,20 @@ void rdf_g_sec_check (caddr_t * inst, iri_id_t * g, int n_g);
 #define SPLIT_MODE_TTL 0
 #define SPLIT_MODE_XML 1
 
+extern dk_mutex_t *rdf_obj_ft_rules_mtx;
+extern id_hash_t *rdf_obj_ft_rules_by_iids;
+
+typedef struct rdf_obj_ft_rule_iid_hkey_s
+{
+  iri_id_t hkey_g;
+  iri_id_t hkey_iid_p;
+} rdf_obj_ft_rule_iid_hkey_t;
+
+typedef struct rdf_obj_ft_rule_iri_hkey_s
+{
+  iri_id_t hkey_g;
+  caddr_t hkey_iri_p;
+} rdf_obj_ft_rule_iri_hkey_t;
+
+
 #endif

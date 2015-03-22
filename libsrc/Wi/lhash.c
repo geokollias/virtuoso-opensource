@@ -3682,7 +3682,7 @@ chash_merge (setp_node_t * setp, chash_t * cha, chash_t * delta, int n_to_go)
     {
       chash_t *de_p = CHA_PARTITION (delta, part);
       chash_page_t *chp = de_p->cha_init_page;
-      uint64 hash_no[PAGE_DATA_SZ / (2 * sizeof (uint64))];
+      uint64 hash_no[PAGE_DATA_SZ / sizeof (uint64)];
       for (chp = chp; chp; chp = chp->h.h.chp_next)
 	{
 	  int row;

@@ -5795,6 +5795,7 @@ sqlo_try_hash (sqlo_t * so, df_elt_t * dfe, op_table_t * super_ot, float *score_
 	  ptrlong top_cnt = sqlo_select_top_cnt (so, top_exp);
 	  if (top_cnt)
 	    {
+	      float prev_ref_arity = ref_arity;
 	      if (dfe->dfe_arity > 1)
 		{
 		  ref_arity = top_cnt;
@@ -5803,6 +5804,7 @@ sqlo_try_hash (sqlo_t * so, df_elt_t * dfe, op_table_t * super_ot, float *score_
 		{
 		  ref_arity = top_cnt / dfe->dfe_arity;
 		}
+	      ref_arity = MIN (prev_ref_arity, ref_arity);
 	    }
 	}
       if (ref_arity < 1)
