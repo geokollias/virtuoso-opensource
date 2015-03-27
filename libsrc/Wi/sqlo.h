@@ -706,6 +706,7 @@ typedef struct index_choice_s
   float ic_overhead;
   float ic_spacing;		/* this many rows between consecutive rows fetched on vectored index lookup. 1 means consecutive */
   float ic_in_list_sel;
+  float ic_top_sel;
   char ic_in_order;		/* vectored index lookup in order with the previous index lookup */
   char ic_is_cl_part_first;	/* preceded by a cluster partitioning step, qf or dfg stage */
   char ic_leading_constants;	/* this many leading constants used for sampling */

@@ -189,6 +189,8 @@ dfe_cs_row_cost (df_elt_t * dfe, float inx_card, float col_card)
 {
   dbe_key_t *key = dfe->_.table.key;
   float ref_cost = 0, cost;
+  if (dfe->_.table.top_pred)
+    inx_card *= dfe->_.table.top_sel;
   DO_SET (df_elt_t *, col, &dfe->_.table.out_cols)
   {
     int nth = dk_set_position (key->key_parts, col->_.col.col);
@@ -425,8 +427,63 @@ dfe_col_by_id (df_elt_t * dfe, oid_t col_id)
 }
 
 
-float
-dfe_top_sel (df_elt_t * dfe, float card)
+int
+dfe_top_order_correlated (df_elt_t * dfe)
+{
+  /* if desc order top k and the column is in asc order or close, the top k pushdown has no effect */
+  df_elt_t **top_pred = dfe->_.table.top_pred;
+  dbe_key_t *key = dfe->_.table.key;
+  df_elt_t **body, *call_dfe;
+  df_elt_t *col_dfe = NULL;
+  int len, oby_test = 0, inx;
+  body = dfe->_.table.top_pred;
+  body = (df_elt_t **) body[1];
+  len = BOX_ELEMENTS (body);
+  for (inx = len - 1; inx >= 0; inx--)
+    {
+      call_dfe = body[inx];
+      if (IS_BOX_POINTER (call_dfe) && DFE_CALL == call_dfe->dfe_type && !stricmp ("__topk", call_dfe->_.call.func_name)
+	  && 7 == BOX_ELEMENTS (call_dfe->_.call.args))
+	{
+	  col_dfe = call_dfe->_.call.args[0];
+	  if (st_is_call (col_dfe->dfe_tree, "__ro2sq", 1))
+	    {
+	      col_dfe = col_dfe->_.call.args[0];
+	      oby_test = 1;
+	    }
+	  goto found;
+	}
+    }
+  return 0;
+found:
+  if (CMP_GTE != unbox ((caddr_t) call_dfe->_.call.args[2]->dfe_tree))
+    return 0;
+  if (DFE_COLUMN != col_dfe->dfe_type)
+    return 0;
+  if (dfe->_.table.in_arity > 1)
+    return 0;
+  if (key_find_cl (key, col_dfe->_.col.col->col_id)->cl_is_asc)
+    return 1;
+
+  DO_SET (dbe_column_t *, part, &dfe->_.table.key->key_parts)
+  {
+    df_elt_t *lower = sqlo_key_part_best (part, dfe->_.table.col_preds, 0);
+    if (col_dfe->_.col.col == part)
+      {
+	if (!lower || !PRED_IS_EQ (lower))
+	  return 1;
+	if (!lower || !PRED_IS_EQ (lower))
+	  break;
+      }
+    if (!lower || !PRED_IS_EQ (lower))
+      break;
+  }
+  END_DO_SET ();
+  return 0;
+}
+
+void
+dfe_top_sel (df_elt_t * dfe, float card, index_choice_t * ic)
 {
   float min_out;
   df_elt_t *oby = dfe->_.table.ot->ot_super->ot_oby_dfe;
@@ -434,10 +491,10 @@ dfe_top_sel (df_elt_t * dfe, float card)
   float card_after = 1;
   float top = 100;
   if (!oby || !oby->_.setp.top_cnt)
-    return 0;
+    return;
   top = oby->_.setp.top_cnt;
   if (!dfe->_.table.top_pred)
-    return 0;
+    return;
   for (next = dfe->dfe_next; next; next = next->dfe_next)
     {
       df_elt_t *card_dfe;
@@ -456,12 +513,12 @@ dfe_top_sel (df_elt_t * dfe, float card)
     }
   card = dfe->_.table.in_arity * card;
   min_out = enable_qp * dc_batch_sz * card_after;
-  if (min_out > card)
+  if (min_out > card || dfe_top_order_correlated (dfe))
     {
-      dfe->_.table.top_sel = 1;
+      ic->ic_top_sel = dfe->_.table.top_sel = 1;
+      return;
     }
-  dfe->_.table.top_sel = MIN (0.9, min_out / card);
-  return 0;
+  ic->ic_top_sel = dfe->_.table.top_sel = MIN (0.9, min_out / card);
 }
 
 
@@ -2200,11 +2257,13 @@ dfe_text_cost (df_elt_t * dfe, float *u1, float *a1, int text_order_anyway)
   float text_key_cost;
   int64 ot_tbl_size = dfe_scan_card (dfe);
   dbe_key_t *text_key = tb_text_key (ot_tbl);
+  if (!ot_tbl_size)
+    ot_tbl_size = 1;		/* no /0 error */
   text_known = sqlo_text_estimate (dfe, &text_pred, &text_selectivity);
   if (text_pred)
     {
       if (text_known)
-	text_selectivity = text_selectivity / (ot_tbl_size | 1);
+	text_selectivity = text_selectivity / ot_tbl_size;
       else
 	text_selectivity = 0.001;
       n_text_hits = ot_tbl_size * text_selectivity;
@@ -4211,7 +4270,7 @@ sqlo_use_p_stat_2 (df_elt_t * dfe, float *inx_card, float *col_card, index_choic
 	rc = dfe_p_card (dfe, &rq, o_stat, ic, SO_O);
       else
 	rc = dfe_p_card (dfe, &rq, o_stat, ic, SO_S);
-      if (-1 == rc)
+      if (-1 == rc || !o_stat[1])
 	return 0;
       *inx_card = p_card / p_stat[1] / o_stat[1];
       return 1;
@@ -4698,7 +4757,7 @@ dfe_table_cost_ic_1 (df_elt_t * dfe, index_choice_t * ic, int inx_only)
 
   ic->ic_is_unique = dfe->_.table.is_unique = unique;
   if (dfe->_.table.top_pred)
-    dfe_top_sel (dfe, inx_arity);
+    dfe_top_sel (dfe, inx_arity, ic);
   if (key->key_is_bitmap)
     {
       col_cost *= 0.6;		/* cols packed closer together, more per page in bm inx */

@@ -6926,29 +6926,31 @@ rdf_make_long_of_typedsqlval_strings (caddr_t * qst, caddr_t strval, caddr_t dt_
 	sparql_construct2_triple (caddr_t * qst, caddr_t * err_ret, id_hash_t * ht, caddr_t * triple_op, caddr_t * vars,
 	caddr_t ** blank_iids_ptr)
     {
+      AUTO_POOL (100);
       caddr_t *triple;
       int fld_ctr, fld_count;
       int var_count = BOX_ELEMENTS (vars);
       ptrlong one = 1;
+      caddr_t temp_val = NULL;
       switch (BOX_ELEMENTS (triple_op))
 	{
 	case 8:
 	  fld_count = 4;
-	  triple = (caddr_t *) list (4, NULL, NULL, NULL, NULL);
+	  triple = (caddr_t *) ap_alloc_box (&ap, 4 * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
 	  break;
 	case 6:
 	  fld_count = 3;
-	  triple = (caddr_t *) list (3, NULL, NULL, NULL);
+	  triple = (caddr_t *) ap_alloc_box (&ap, 3 * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
 	  break;
 	default:
 	  goto bad_op;		/* see below */
 	}
+      memzero (triple, box_length (triple));
       for (fld_ctr = fld_count; fld_ctr--; /* no step */ )
 	{
 	  ptrlong op = unbox (triple_op[fld_ctr * 2]);
 	  caddr_t arg = triple_op[fld_ctr * 2 + 1];
 	  caddr_t val;
-	  int val_is_temp = 0;
 	  switch (op)
 	    {
 	    case 1:
@@ -7014,7 +7016,7 @@ rdf_make_long_of_typedsqlval_strings (caddr_t * qst, caddr_t strval, caddr_t dt_
 			  goto bad_op;
 		      }
 		    val = rdf_make_long_of_typedsqlval_strings (qst, strval, dt_iri, lang_str);
-		    val_is_temp = 1;
+		    temp_val = val;
 		  }
 		else
 		  val = arg;
@@ -7026,12 +7028,11 @@ rdf_make_long_of_typedsqlval_strings (caddr_t * qst, caddr_t strval, caddr_t dt_
 	  switch (DV_TYPE_OF (val))
 	    {
 	    case DV_DB_NULL:
-	      dk_free_tree ((caddr_t) triple);
 	      return;
 	    case DV_IRI_ID:
 	      if ((((iri_id_t *) val)[0] >= min_bnode_iri_id ()) && ((1 == fld_ctr) || (3 == fld_ctr)))
 		{
-		  dk_free_tree ((caddr_t) triple);
+		  dk_free_box (temp_val);
 		  sqlr_new_error ("RDF01", "SR658", "Bad variable value in CONSTRUCT: blank node can not be used as %s",
 		      ((1 == fld_ctr) ? "predicate" : "graph"));
 		}
@@ -7041,7 +7042,7 @@ rdf_make_long_of_typedsqlval_strings (caddr_t * qst, caddr_t strval, caddr_t dt_
 	    case DV_STRING:
 	      if (!(box_flags (val) & BF_IRI) && (2 != fld_ctr))
 		{
-		  dk_free_tree ((caddr_t) triple);
+		  dk_free_box (temp_val);
 		  sqlr_new_error ("RDF01", "SR658", "Bad variable value in CONSTRUCT: string can not be used as %s",
 		      ((0 == fld_ctr) ? "subject" : ((1 == fld_ctr) ? "predicate" : "graph")));
 		}
@@ -7049,22 +7050,23 @@ rdf_make_long_of_typedsqlval_strings (caddr_t * qst, caddr_t strval, caddr_t dt_
 	    default:
 	      if (2 != fld_ctr)
 		{
-		  dk_free_tree ((caddr_t) triple);
+		  dk_free_box (temp_val);
 		  sqlr_new_error ("RDF01", "SR658", "Bad variable value in CONSTRUCT: literals can not be used as %s",
 		      ((0 == fld_ctr) ? "subject" : ((1 == fld_ctr) ? "predicate" : "graph")));
 		}
 	      break;
 	    }
-	  if (val_is_temp)
-	    triple[fld_ctr] = val;
-	  else
-	    triple[fld_ctr] = box_copy_tree (val);
+	  triple[fld_ctr] = val;
 	}
-      id_hash_set (ht, (caddr_t) (&triple), (caddr_t) (&one));
+      if (!id_hash_get (ht, (caddr_t) & triple))
+	{
+	  triple = (caddr_t *) box_copy_tree ((caddr_t) triple);
+	  id_hash_set (ht, (caddr_t) (&triple), (caddr_t) (&one));
+	}
+      dk_free_box (temp_val);
       return;
     bad_op:
       dk_free_tree ((caddr_t) (blank_iids_ptr[0]));
-      dk_free_tree ((caddr_t) triple);
       blank_iids_ptr[0] = NULL;
       sqlr_new_error ("22023", "SR657", "Invalid opcode list in triple constructor");
     }

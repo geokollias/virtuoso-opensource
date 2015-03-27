@@ -3669,6 +3669,7 @@ dfe_table_set_by_best (df_elt_t * tb_dfe, index_choice_t * ic, float true_arity,
   tb_dfe->dfe_arity = true_arity != -1 ? true_arity : ic->ic_arity;
   tb_dfe->_.table.inx_card = ic->ic_inx_card;
   tb_dfe->_.table.hit_spacing = ic->ic_spacing;
+  tb_dfe->_.table.top_sel = ic->ic_top_sel;
   tb_dfe->_.table.is_cl_part_first = ic->ic_is_cl_part_first;
   tb_dfe->_.table.joins_pk = ic->ic_joins_pk;
   tb_dfe->_.table.in_order = ic->ic_in_order != 0;
@@ -4533,10 +4534,10 @@ sqlo_tb_col_preds (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t preds, dk_set_t nj_p
     so->so_context_dt = old_ctx;
   }
   END_DO_SET ();
+  sqlo_top_pred (so, tb_dfe->_.table.ot->ot_super, tb_dfe);
   sqlo_choose_index (so, tb_dfe, &merged_col_preds, &after_preds);
   sqlo_in_place_in_pred (so, tb_dfe, &merged_col_preds, &after_preds);
   sqlo_tb_order (so, tb_dfe, merged_col_preds);
-  sqlo_top_pred (so, tb_dfe->_.table.ot->ot_super, tb_dfe);
   if (after_preds)
     {
       tb_dfe->_.table.join_test = sqlo_and_list_body (so, tb_dfe->dfe_locus, tb_dfe, after_preds);

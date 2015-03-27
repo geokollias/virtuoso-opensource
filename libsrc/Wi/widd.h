@@ -377,6 +377,7 @@ struct dbe_col_loc_s
   row_ver_t cl_row_version_mask;	/* and with row version is true if this cl is compressed on that row. 0x00 if always on row */
   unsigned char cl_compression:4;
   unsigned char cl_comp_asc:1;	/* look for left to right for compression */
+  unsigned char cl_is_asc:1;	/* col tends to be ascending (in non 1st key part or dep, greater values tend to occur towards the end in key order */
   short cl_nth;			/* 0 based ordinal pos in key in layout order */
   short cl_fixed_len;
   short cl_pos[N_ROW_VERSIONS];

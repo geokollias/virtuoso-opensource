@@ -544,25 +544,30 @@ it_temp_allocate (dbe_storage_t * dbs)
   if (!tree)
     {
       int inx;
-      index_tree_t *tree = (index_tree_t *) dk_alloc_box_zero (sizeof (index_tree_t), DV_INDEX_TREE);
-      tree->it_ref_count = 1;
-      tree->it_maps = dk_alloc (sizeof (it_map_t) * IT_N_MAPS);
-      memset (tree->it_maps, 0, sizeof (it_map_t) * IT_N_MAPS);
-      for (inx = 0; inx < IT_N_MAPS; inx++)
-	{
-	  it_map_t *itm = &tree->it_maps[inx];
-	  dk_mutex_init (&itm->itm_mtx, MUTEX_TYPE_SHORT);
-	  hash_table_init (&itm->itm_remap, 11);
-	  dk_hash_set_rehash (&itm->itm_remap, space_rehash_threshold);
-	  hash_table_init (&itm->itm_dp_to_buf, 11);
-	  dk_hash_set_rehash (&itm->itm_dp_to_buf, space_rehash_threshold);
-	  hash_table_init (&itm->itm_locks, 11);
-	  dk_hash_set_rehash (&itm->itm_locks, space_rehash_threshold);
-	}
+      index_tree_t *tree;
+      WITH_TLSF (dk_base_tlsf)
+      {
+	tree = (index_tree_t *) dk_alloc_box_zero (sizeof (index_tree_t), DV_INDEX_TREE);
+	tree->it_ref_count = 1;
+	tree->it_maps = dk_alloc (sizeof (it_map_t) * IT_N_MAPS);
+	memset (tree->it_maps, 0, sizeof (it_map_t) * IT_N_MAPS);
+	for (inx = 0; inx < IT_N_MAPS; inx++)
+	  {
+	    it_map_t *itm = &tree->it_maps[inx];
+	    dk_mutex_init (&itm->itm_mtx, MUTEX_TYPE_SHORT);
+	    hash_table_init (&itm->itm_remap, 11);
+	    dk_hash_set_rehash (&itm->itm_remap, space_rehash_threshold);
+	    hash_table_init (&itm->itm_dp_to_buf, 11);
+	    dk_hash_set_rehash (&itm->itm_dp_to_buf, space_rehash_threshold);
+	    hash_table_init (&itm->itm_locks, 11);
+	    dk_hash_set_rehash (&itm->itm_locks, space_rehash_threshold);
+	  }
 
-      tree->it_storage = dbs;
-      tree->it_extent_map = dbs->dbs_extent_map;
-      it_temp_tree_active (tree);
+	tree->it_storage = dbs;
+	tree->it_extent_map = dbs->dbs_extent_map;
+	it_temp_tree_active (tree);
+      }
+      END_WITH_TLSF;
       return tree;
     }
   else

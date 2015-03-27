@@ -1312,8 +1312,10 @@ tn_results (trans_node_t * tn, caddr_t * inst)
 	  SRC_IN_STATE ((data_source_t *) tn, inst) = NULL;
 	  return;
 	}
+      if (!itcl->itcl_param_rows[nth])
+	continue;
       ts = (trans_set_t *) itcl->itcl_param_rows[nth][0];
-      if (!ts->ts_result)
+      if (!ts || !ts->ts_result)
 	{
 	  QST_INT (inst, tn->clb.clb_nth_set)++;
 	  continue;
@@ -1425,6 +1427,11 @@ trans_node_start (trans_node_t * tn, caddr_t * inst, caddr_t * state, int n_sets
     DO_BOX (state_slot_t *, ssl, inx, tn->tn_input)
     {
       in[inx] = t_full_box_copy_tree (qst_get (inst, ssl));
+      if (DV_DB_NULL == DV_TYPE_OF (in[inx]))
+	{
+	  cl_select_save_env ((table_source_t *) tn, itcl, inst, (cl_op_t *) NULL, nth);
+	  return;
+	}
     }
     END_DO_BOX;
     if (tn->tn_target)
@@ -1433,10 +1440,16 @@ trans_node_start (trans_node_t * tn, caddr_t * inst, caddr_t * state, int n_sets
 	DO_BOX (state_slot_t *, ssl, inx, tn->tn_target)
 	{
 	  target[inx] = t_full_box_copy_tree (qst_get (inst, ssl));
+	  if (DV_DB_NULL == DV_TYPE_OF (target[inx]))
+	    {
+	      cl_select_save_env ((table_source_t *) tn, itcl, inst, (cl_op_t *) NULL, nth);
+	      return;
+	    }
 	}
 	END_DO_BOX;
 	in = t_list (2, in, target);
       }
+
     place = (trans_set_t **) id_hash_get (sets, (caddr_t) & in);
     if (!place)
       {
