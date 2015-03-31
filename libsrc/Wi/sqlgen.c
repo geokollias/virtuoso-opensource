@@ -1791,7 +1791,6 @@ sqlg_hash_filler (sqlo_t * so, df_elt_t * tb_dfe, data_source_t * ts_src)
   ha->ha_allow_nulls = 0;
   ha->ha_op = HA_FILL;
   ha->ha_memcache_only = 0;
-  sqlg_setp_append (so, &ts_post, setp);
 
 #ifdef NEW_HASH
   if (shareable)
@@ -1803,6 +1802,12 @@ sqlg_hash_filler (sqlo_t * so, df_elt_t * tb_dfe, data_source_t * ts_src)
     fref->fnr_select = head;
     fref->fnr_select_nodes = sqlg_continue_list (head);
     fref->fnr_setp = setp;
+    sqlg_rdf_inf (tb_dfe, (data_source_t *) ts_src, &fref->fnr_select);
+    ts_post = fref->fnr_select;
+    while (qn_next (ts_post))
+      ts_post = qn_next (ts_post);
+
+    sqlg_setp_append (so, &ts_post, setp);
     setp->setp_fref = fref;
     if (setp->setp_cl_partition
 	|| (enable_par_fill && enable_par_fill < 3 && enable_chash_join && ha->ha_row_count > chash_min_parallel_fill_rows

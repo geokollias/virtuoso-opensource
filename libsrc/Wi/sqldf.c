@@ -5720,6 +5720,7 @@ sqlo_try_hash (sqlo_t * so, df_elt_t * dfe, op_table_t * super_ot, float *score_
 {
   dk_set_t hash_pred_locus_refs = NULL;
   dk_set_t prev_probes = so->so_hash_probes;
+  float inx_card_save = dfe->dfe_arity;
   int remote = sqlo_try_remote_hash (so, dfe);
   float ov = 0, size_est = 0;
   dk_set_t preds = dfe->_.table.ot->ot_is_outer ? dfe->_.table.ot->ot_join_preds : dfe->_.table.all_preds;
@@ -5851,6 +5852,7 @@ sqlo_try_hash (sqlo_t * so, df_elt_t * dfe, op_table_t * super_ot, float *score_
 	    sqlo_check_col_pred_placed (dfe);
 	    dfe->_.table.text_pred = text_pred_save;
 	    dfe->_.table.hash_filler = NULL;
+	    dfe->dfe_arity = inx_card_save;
 	    return 0;
 	  }
 	}
@@ -5860,14 +5862,21 @@ sqlo_try_hash (sqlo_t * so, df_elt_t * dfe, op_table_t * super_ot, float *score_
       float d;
       df_elt_t *prev_tb = dfe_prev_tb (dfe, &d, 1);
       if (!prev_tb)
-	return 0;
+	{
+	  dfe->dfe_arity = inx_card_save;
+
+	  return 0;
+	}
       dfe->_.table.is_right_oj = 2;
       prev_tb->_.table.is_right_oj = 1;
     }
   if (RHJ_REMOTE == remote && DFE_TABLE == fill_dfe->dfe_type)
     {
       if (!sqlo_remote_hash_filler (so, fill_dfe, dfe))
-	return 0;
+	{
+	  dfe->dfe_arity = inx_card_save;
+	  return 0;
+	}
       /* one more time to get the predicates' locus right */
       sqlo_tb_col_preds (so, fill_dfe, org_preds, NULL);
       dfe->_.table.single_locus = 1;

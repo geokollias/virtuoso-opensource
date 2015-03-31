@@ -2011,6 +2011,36 @@ ric_iri_has_subs (rdf_inf_ctx_t * ric, caddr_t iri, int mode)
   return sub && (sub->rs_sub || sub->rs_equiv);
 }
 
+int
+sqlg_inf_in_probe (df_elt_t * tb_dfe, data_source_t * ts, df_elt_t * inf_dfe, rdf_inf_pre_node_t * sas_o)
+{
+  if (IS_QN (ts, hash_source_input) && inf_dfe)
+    {
+      /* leading iterator only if column is a part of probe, else it is done in the build */
+      QNCAST (hash_source_t, hs, ts);
+      state_slot_t *ssl;
+      int inx;
+      if (sas_o)
+	{
+	  if ((qn_input_fn) trans_node_input == sas_o->src_gen.src_input)
+	    ssl = ((trans_node_t *) sas_o)->tn_output[0];
+	  else
+	    ssl = sas_o->ri_output;
+	}
+      else
+	ssl = inf_dfe->dfe_ssl;
+      if (!ssl)
+	return 0;
+      DO_BOX (state_slot_t *, in, inx, hs->hs_ref_slots) if (ssl == in)
+	return 0;
+      END_DO_BOX;
+      return 1;
+    }
+  return 0;
+}
+
+#define CK_PROBE(inf, sas_o)				\
+  if (sqlg_inf_in_probe  (tb_dfe, ts, inf, sas_o)) return;
 
 void
 sqlg_leading_subclass_inf (sqlo_t * so, data_source_t ** q_head, data_source_t * ts, df_elt_t * p_dfe, caddr_t p_const,
@@ -2025,6 +2055,7 @@ sqlg_leading_subclass_inf (sqlo_t * so, data_source_t ** q_head, data_source_t *
     return;			/* if p is neither specified nor extracted, then do nothing.  P must ve specified or extracted if a dfe is for inference */
   if (p_const && o_iri && !ric_iri_has_subs (ctx, o_iri, RI_SUBCLASS))
     return;
+  CK_PROBE (o_dfe, sas_o);
   ri = sqlg_rdf_inf_node (so->so_sc);
   qn_ins_before (tb_dfe->dfe_sqlo->so_sc, q_head, (data_source_t *) ts, (data_source_t *) ri);
   ri->ri_mode = RI_SUBCLASS;
@@ -2094,6 +2125,7 @@ sqlg_leading_subproperty_inf (sqlo_t * so, data_source_t ** q_head, data_source_
     return;			/* if p is neither specified nor extracted, then do nothing.  P must ve specified or extracted if a dfe is for inference */
   if (p_const && !ric_iri_has_subs (ctx, p_const, RI_SUBPROPERTY))
     return;
+  CK_PROBE (p_dfe, NULL);
   ri = sqlg_rdf_inf_node (so->so_sc);
   qn_ins_before (tb_dfe->dfe_sqlo->so_sc, q_head, (data_source_t *) ts, (data_source_t *) ri);
   ri->ri_mode = RI_SUBPROPERTY;
@@ -2234,6 +2266,8 @@ sqlg_leading_same_as (sqlo_t * so, data_source_t ** q_head, data_source_t * ts,
 {
   df_elt_t **in_list;
   rdf_inf_pre_node_t *ri;
+  CK_PROBE (RI_SAME_AS_S == (mode & 15) ? s_dfe : RI_SAME_AS_O == (mode & 15) ? o_dfe : RI_SAME_AS_P == (mode % 15) ? p_dfe : NULL,
+      NULL);
   if (1 /*!= cl_run_local_only */ )
     {
       sqlg_leading_multistate_same_as (so, q_head, ts, g_dfe, s_dfe, p_dfe, o_dfe, mode, ctx, tb_dfe, inxop_inx, ri_ret);

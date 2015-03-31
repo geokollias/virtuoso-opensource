@@ -1,5 +1,5 @@
 --
---  $Id: thttp.sql,v 1.24.6.1.4.1 2013/01/02 16:15:10 source Exp $
+--  $Id$
 --
 --  This file is part of the OpenLink Software Virtuoso Open-Source (VOS)
 --  project.
@@ -255,6 +255,7 @@ ECHO BOTH $IF $EQU $STATE OK "PASSED" "***FAILED";
 SET ARGV[$LIF] $+ $ARGV[$LIF] 1;
 ECHO BOTH ": new listen host defined on : " $U{HTTPPORT2} " : STATE=" $STATE " MESSAGE=" $MESSAGE "\n";
 
+VHOST_REMOVE ('localhost:$U{HTTPPORT1}','localhost:$U{HTTPPORT1}', '/DAV', 1) ;
 VHOST_DEFINE ('localhost:$U{HTTPPORT1}','localhost:$U{HTTPPORT1}', '/DAV', '/DAV/', 1, 1, 'def.html', 'DB.DBA.HP_AUTH_DAV_PROTOCOL', 'dav realm', 'DB.DBA.HP_SES_VARS_STORE', 'dba', 'dba', 'Basic', 1) ;
 ECHO BOTH $IF $EQU $STATE OK "PASSED" "***FAILED";
 SET ARGV[$LIF] $+ $ARGV[$LIF] 1;
@@ -342,6 +343,7 @@ ECHO BOTH ": DAV browse page not retrieved (wrong password) : STATE=" $STATE " M
 VHOST_REMOVE ('localhost:$U{HTTPPORT1}','localhost:$U{HTTPPORT1}', '/', 1);
 VHOST_REMOVE ('localhost:$U{HTTPPORT1}','localhost:$U{HTTPPORT1}', '/DAV', 1);
 VHOST_REMOVE ('localhost:$U{HTTPPORT2}','localhost:$U{HTTPPORT2}', '/', 1);
+VHOST_REMOVE ('localhost:$U{HTTPPORT2}','localhost:$U{HTTPPORT2}', '/DAV', 1);
 
 --- XXX: this is timing ????
 delay (2);
@@ -424,7 +426,7 @@ SET ARGV[$LIF] $+ $ARGV[$LIF] 1;
 ECHO BOTH ": Created new folder with admin account : STATE=" $STATE " MESSAGE=" $MESSAGE "\n";
 
 meth ('http://localhost:$U{HTTPPORT1}/user/', 'MKCOL', 'dav:dav', null);
-ECHO BOTH $IF $EQU $STATE 'HT405' "PASSED" "***FAILED";
+ECHO BOTH $IF $EQU $STATE 'HT409' "PASSED" "***FAILED";
 SET ARGV[$LIF] $+ $ARGV[$LIF] 1;
 ECHO BOTH ": Access to / denied with user account : STATE=" $STATE " MESSAGE=" $MESSAGE "\n";
 
@@ -493,6 +495,7 @@ SET ARGV[$LIF] $+ $ARGV[$LIF] 1;
 ECHO BOTH ": HTTP test string_session tmp file : STATE=" $STATE "  LAST="  $LAST[1] "\n";
 
 VHOST_REMOVE ('localhost:$U{HTTPPORT1}','localhost:$U{HTTPPORT1}', '/', 1);
+VHOST_REMOVE ('localhost:$U{HTTPPORT1}','localhost:$U{HTTPPORT1}', '/DAV', 1);
 
 select http_listen_host ('localhost:$U{HTTPPORT1}',2);
 ECHO BOTH $IF $EQU $LAST[1] 0 "PASSED" "***FAILED";

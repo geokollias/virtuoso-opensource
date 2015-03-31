@@ -436,6 +436,7 @@ dfe_top_order_correlated (df_elt_t * dfe)
   df_elt_t **body, *call_dfe;
   df_elt_t *col_dfe = NULL;
   int len, oby_test = 0, inx;
+  dbe_col_loc_t *cl;
   body = dfe->_.table.top_pred;
   body = (df_elt_t **) body[1];
   len = BOX_ELEMENTS (body);
@@ -462,7 +463,8 @@ found:
     return 0;
   if (dfe->_.table.in_arity > 1)
     return 0;
-  if (key_find_cl (key, col_dfe->_.col.col->col_id)->cl_is_asc)
+  cl = key_find_cl (key, col_dfe->_.col.col->col_id);
+  if (cl && cl->cl_is_asc)
     return 1;
 
   DO_SET (dbe_column_t *, part, &dfe->_.table.key->key_parts)
@@ -746,9 +748,10 @@ dfe_vec_inx_cost (df_elt_t * dfe, index_choice_t * ic, int64 sample)
 	t_card = -1 != sample ? sample : key_card;
       else
 	t_card = key_card;
-      spacing = t_card / vec_sz;
+      spacing = t_card / (MAX (1, vec_sz));
       dfe->_.table.hit_spacing = spacing;
       vec_sz = MIN (ref_card, max_vec);
+      vec_sz = MAX (1, vec_sz);
       sort_cost = lin_int (&li_dc_sort_cost, vec_sz);
     }
   else
@@ -778,7 +781,7 @@ dfe_vec_inx_cost (df_elt_t * dfe, index_choice_t * ic, int64 sample)
   inx_cost = dfe_vec_index_unit (dfe, dfe->_.table.hit_spacing) + sort_cost;
   /* if leading constant, spacing is narrow but there is still at least one lookup from top, hence add one full lookup divided by vec size */
   if (ic->ic_leading_constants)
-    inx_cost += dbe_key_unit_cost (key) / vec_sz;
+    inx_cost += dbe_key_unit_cost (key) / MAX (1, vec_sz);
   dfe_cl_bottle_factor (dfe, &inx_cost);
   return inx_cost;
 }
@@ -903,7 +906,7 @@ typedef struct fn_card_s
 
 fn_card_t fn_cards[] = { {"isiri_id", 1, 0.001},
 {"rdf_is_sub", 0.8, 0.01, FN_RESTR_ABS},
-{"__rgs_ack", 1, 0, 1},
+{"__rgs_ack", 0, 0, 1},		/* near always false, occurs inside a not, so sec cond always passes */
 {"__rgs_ack_cbk", 1, 0, 1},
 {NULL, 0, 0}
 };
@@ -934,7 +937,7 @@ sqlo_fn_pred_unit (df_elt_t * pred, float *u1, float *a1, df_elt_t * in_tb)
 		  if (in_tb->dfe_arity < card)
 		    *a1 = card;
 		  else
-		    *a1 = card / in_tb->dfe_arity;
+		    *a1 = card;
 		}
 	      else
 		*a1 = card;
