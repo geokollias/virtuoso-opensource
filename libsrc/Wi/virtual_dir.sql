@@ -1280,6 +1280,7 @@ DB.DBA.VHOST_DUMP_SQL (in lpath varchar, in vhost varchar := '*ini*', in lhost v
         http (concat ('\t lpath=>', SYS_SQL_VAL_PRINT (lpath), ',\n'), ses);
         http (concat ('\t ppath=>', SYS_SQL_VAL_PRINT (HP_PPATH), ',\n'), ses);
         http (concat ('\t is_dav=>', SYS_SQL_VAL_PRINT (HP_STORE_AS_DAV), ',\n'), ses);
+        http (concat ('\t is_brws=>', SYS_SQL_VAL_PRINT (HP_DIR_BROWSEABLE), ',\n'), ses);
 	if (HP_DEFAULT is not null)
         http (concat ('\t def_page=>', SYS_SQL_VAL_PRINT (HP_DEFAULT), ',\n'), ses);
 	if (HP_SECURITY is not null)

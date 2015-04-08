@@ -1349,6 +1349,8 @@ qt_check (in file varchar, out message varchar, in record_new integer := 0) retu
   declare xt, qr, xp_test, expl, da any;
   declare stat, msg, meta, data, r, check_order, cnt any;
   declare daseq, darnd, plan_diff int;
+  declare refs, idx any;
+
   plan_diff := 0;
   declare exit handler for sqlstate '*' {
     message := message || ' : ' || __SQL_MESSAGE;
@@ -1382,13 +1384,25 @@ qt_check (in file varchar, out message varchar, in record_new integer := 0) retu
     gvector_sort (data, 1, 0, 1);
   if (cnt <> length (data))
       message := message || ' : result count differs';
-  foreach (any c in data) do
+  refs := xpath_eval ('/test/result/row', xt, 0);
+  idx := 0;
+  foreach (any rr in refs) do
     {
-      declare i int;
-      for (i := 0; i < length (c); i := i + 1)
+      declare vals, c any;
+      declare dtps any;
+      declare i, l1, l2 int;
+      vals := xpath_eval ('./col/text()', rr, 0);
+      dtps := xpath_eval ('./col/@dtp', rr, 0);
+      c := data[idx];
+      l1 := length (c);
+      l2 := length (vals);
+      if (l1 <> l2)
+	message := message || sprintf (' : results at row %d have different number of columns', idx);
+      l1 := __min (l1, l2);
+      for (i := 0; i < l1; i := i + 1)
         {
 	  declare t any;
-	  t := cast (xpath_eval (sprintf ('string (/test/result/row[%d]/col[%d][@dtp=%d])', r + 1, i + 1, __tag(c[i])), xt) as varchar);
+	  t := cast (vals[i] as varchar);
 	  if (__tag(c[i]) in (191, 190))
 	    {
 	      declare delta float;
@@ -1403,13 +1417,17 @@ qt_check (in file varchar, out message varchar, in record_new integer := 0) retu
 		  return 0;
 		}
 	    }
-	  else if (t <>  cast (c[i] as varchar))
+	  else if (t <>  cast (c[i] as varchar) or cast (dtps[i] as int) <> __tag(c[i]))
 	    {
-	      message := message || sprintf (' : value at %d #%d %s <> %s', r + 1, i, t,  cast (c[i] as varchar));
+	      message := message || sprintf (' : value at %d #%d %s <> %s', idx + 1, i, t,  cast (c[i] as varchar));
 	      return 0;
 	    }
 	}
-      r := r + 1;
+      idx := idx + 1;
+    }
+  if (plan_diff <> 0 and record_new = 1)
+    {
+      qt_record (file || '.new', qr, comment => message, check_order => check_order);
     }
   if (plan_diff <> 0 and record_new = 1)
     {

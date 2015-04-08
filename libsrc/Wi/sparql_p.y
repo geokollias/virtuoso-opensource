@@ -1944,7 +1944,8 @@ spar_retcols		/* ::=  ( Expn+ )	*/
 
 spar_ret_agg_call	/* [Virt]	RetAggCall	 ::=  AggName '(', ( '*' | ( 'DISTINCT'? Var ) ) ')'	*/
 	: spar_agg_name spar_expn _RPAR	{ $$ = spar_make_funcall (sparp_arg, 1, $1, (SPART **)t_list (1, $2)); }
-	| spar_agg_name _STAR _RPAR	{ $$ = spar_make_funcall (sparp_arg, 1, $1, (SPART **)t_list (1, (ptrlong)1)); }
+	| spar_agg_name _STAR _RPAR	{ $$ = spar_make_funcall (sparp_arg, 1, $1, (SPART **)t_list (1, (ptrlong)_STAR)); }
+	| spar_agg_name DISTINCT_L _STAR _RPAR	{ $$ = spar_make_funcall (sparp_arg, DISTINCT_L, $1, (SPART **)t_list (1, (ptrlong)_STAR)); }
 	| spar_agg_name DISTINCT_L spar_expn _RPAR	{ $$ = spar_make_funcall (sparp_arg, DISTINCT_L, $1, (SPART **)t_list (1, $3)); }
 	| SAMPLE_L _LPAR spar_expn _RPAR	{
 		SPAR_ERROR_IF_UNSUPPORTED_SYNTAX (SSG_SD_SPARQL11_DRAFT, "SAMPLE aggregate function call");
@@ -2126,8 +2127,7 @@ spar_expn		/* [43]	Expn		 ::=  ConditionalOrExpn	( 'AS' ( VAR1 | VAR2 ) ) */
 	| _BANG spar_expn {		/* [51]*	UnaryExpn	 ::=   ('!'|'NOT'|'+'|'-')? PrimaryExpn */
 		SPAR_BIN_OP ($$, BOP_NOT, $2, NULL); }
 	| _PLUS	spar_expn	%prec MATH_UPLUS	{
-		SPAR_BIN_OP ($$, BOP_PLUS,
-		  spartlist (sparp_arg, 5, SPAR_LIT, (SPART *) t_box_num_nonull(0), uname_xmlschema_ns_uri_hash_integer, NULL, NULL), $2); }
+		SPAR_BIN_OP ($$, BOP_PLUS, SPAR_MAKE_INT_LITERAL (sparp_arg, 0), $2); }
 	| _MINUS spar_expn	%prec MATH_UMINUS	{
 		caddr_t *val_ptr = NULL;
 		if (DV_ARRAY_OF_POINTER == DV_TYPE_OF ($2)) {
@@ -2146,9 +2146,7 @@ spar_expn		/* [43]	Expn		 ::=  ConditionalOrExpn	( 'AS' ( VAR1 | VAR2 ) ) */
 		    else
 		      val_ptr = NULL; }
 		if (NULL == val_ptr)
-		  SPAR_BIN_OP ($$, BOP_MINUS,
-		    spartlist (sparp_arg, 5, SPAR_LIT, (SPART *) t_box_num_nonull(0), uname_xmlschema_ns_uri_hash_integer, NULL, NULL),
-		  $2 );
+		  SPAR_BIN_OP ($$, BOP_MINUS, SPAR_MAKE_INT_LITERAL (sparp_arg, 0), $2);
 		else
 		  $$ = $2; }
 	| _LPAR spar_expn _RPAR	{ $$ = $2; }	/* [58]	PrimaryExpn	 ::=  */
@@ -2385,7 +2383,7 @@ spar_expn_or_ggp			/* [Virt]	ExpnOrGgp	 ::=  Expn | GroupGraphPattern	*/
 	;
 
 spar_nonsigned_numeric_literal	/* [59]	NumericLiteral	 ::=  INTEGER | DECIMAL | DOUBLE	*/
-	: SPARQL_INTEGER	{ $$ = spartlist (sparp_arg, 5, SPAR_LIT, $1, uname_xmlschema_ns_uri_hash_integer, NULL, NULL); }
+	: SPARQL_INTEGER	{ $$ = SPAR_MAKE_INT_LITERAL (sparp_arg, unbox ($1)); }
 	| SPARQL_DECIMAL	{ $$ = spartlist (sparp_arg, 5, SPAR_LIT, ((caddr_t *)$1)[0], uname_xmlschema_ns_uri_hash_decimal, NULL, ((caddr_t *)$1)[1]); }
 	| SPARQL_DOUBLE		{ $$ = spartlist (sparp_arg, 5, SPAR_LIT, ((caddr_t *)$1)[0], uname_xmlschema_ns_uri_hash_double, NULL, ((caddr_t *)$1)[1]); }
 	| INF_L			{ double myZERO = 0.0;
@@ -2403,12 +2401,12 @@ spar_optsigned_numeric_literal	/* [Virt]	SignedNumericLiteral	 ::=  ( '+' | '-' 
 	;
 
 spar_integer_literal
-	: SPARQL_INTEGER	{ $$ = spartlist (sparp_arg, 5, SPAR_LIT, $1, uname_xmlschema_ns_uri_hash_integer, NULL, NULL); }
+	: SPARQL_INTEGER	{ $$ = SPAR_MAKE_INT_LITERAL (sparp_arg, unbox ($1)); }
 	;
 
 spar_optminus_integer_literal
-	: SPARQL_INTEGER	{ $$ = spartlist (sparp_arg, 5, SPAR_LIT, $1, uname_xmlschema_ns_uri_hash_integer, NULL, NULL); }
-	| MINUS_L SPARQL_INTEGER	{ $$ = spartlist (sparp_arg, 5, SPAR_LIT, t_box_num (-unbox($2)), uname_xmlschema_ns_uri_hash_integer, NULL, NULL); }
+	: SPARQL_INTEGER	{ $$ = SPAR_MAKE_INT_LITERAL (sparp_arg, unbox ($1)); }
+	| MINUS_L SPARQL_INTEGER	{ $$ = SPAR_MAKE_INT_LITERAL (sparp_arg, -unbox($2)); }
 	;
 
 spar_rdf_literal	/* [60]	RDFLiteral	 ::=  String ( LANGTAG | ( '^^' IRIref ) )?	*/
@@ -2418,8 +2416,8 @@ spar_rdf_literal	/* [60]	RDFLiteral	 ::=  String ( LANGTAG | ( '^^' IRIref ) )?	
 	;
 
 spar_boolean_literal	/* [61]	BooleanLiteral	 ::=  'true' | 'false'	*/
-	: true_L		{ $$ = SPAR_MAKE_BOOL_LITERAL(sparp_arg, 1); }
-	| false_L		{ $$ = SPAR_MAKE_BOOL_LITERAL(sparp_arg, 0); }
+	: true_L		{ $$ = SPAR_MAKE_EBV_LITERAL(sparp_arg, 1); }
+	| false_L		{ $$ = SPAR_MAKE_EBV_LITERAL(sparp_arg, 0); }
 	;
 
 spar_iriref_or_default_list_or_star

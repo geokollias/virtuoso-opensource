@@ -134,8 +134,9 @@ sparp_gp_trav_list_subquery_retval_names (sparp_t * sparp, SPART * curr, sparp_t
 
 typedef struct list_nonaggregate_retvals_s
 {
-  dk_set_t names;
-  ptrlong agg_found;
+  dk_set_t names;		/*!< List of variable names found */
+  ptrlong agg_found;		/*!< Flags whether any aggreagte is found in the searched expressions */
+  dk_set_t aggs_with_stars;	/*!< List of aggregate function calls with _STAR, like COUNT(*) or COUNT (DISTINCT *) */
 } list_nonaggregate_retvals_t;
 
 int
@@ -162,6 +163,8 @@ sparp_gp_trav_list_nonaggregate_retvals (sparp_t * sparp, SPART * curr, sparp_tr
       if (curr->_.funcall.agg_mode)
 	{
 	  ((list_nonaggregate_retvals_t *) (common_env))->agg_found = 1;
+	  if ((1 == BOX_ELEMENTS (curr->_.funcall.argtrees)) && ((SPART *) ((ptrlong) _STAR) == curr->_.funcall.argtrees[0]))
+	    t_set_push (&(((list_nonaggregate_retvals_t *) (common_env))->aggs_with_stars), curr);
 	  return SPAR_GPT_NODOWN;
 	}
       break;
@@ -217,8 +220,7 @@ sparp_expand_top_retvals (sparp_t * sparp, SPART * query, int safely_copy_all_va
   dk_set_t new_vars = NULL;
   SPART **retvals = query->_.req_top.retvals;
   sparp_preprocess_obys (sparp, query);
-  lnar.agg_found = 0;
-  lnar.names = NULL;
+  memset (&lnar, 0, sizeof (list_nonaggregate_retvals_t));
   if (IS_BOX_POINTER (retvals))
     {
 #if 0
@@ -258,16 +260,16 @@ sparp_expand_top_retvals (sparp_t * sparp, SPART * query, int safely_copy_all_va
 		spar_error (sparp,
 		    "Variable ?%.200s is used in the result set outside aggregate and not mentioned in GROUP BY clause", varname);
 	    }
-	  return;
 	}
-      while (NULL != lnar.names)
+      if (NULL == query->_.req_top.groupings)
 	{
-	  caddr_t varname = (caddr_t) t_set_pop (&(lnar.names));
-	  SPART *var = spar_make_variable (sparp, varname);
-	  t_set_push (&new_vars, var);
+	  DO_SET (caddr_t, varname, &(lnar.names))
+	  {
+	    SPART *var = spar_make_variable (sparp, varname);
+	    t_set_push (&new_vars, var);
+	  }
+	  END_DO_SET ()query->_.req_top.groupings = (SPART **) t_revlist_to_array_or_null (new_vars);
 	}
-      query->_.req_top.groupings = (SPART **) t_revlist_to_array_or_null (new_vars);
-      return;
     }
   {
     sparp_trav_state_t stss[SPARP_MAX_SYNTDEPTH + 2];
@@ -277,18 +279,38 @@ sparp_expand_top_retvals (sparp_t * sparp, SPART * query, int safely_copy_all_va
   }
   if (((SPART **) _STAR == retvals) && (NULL == lnar.names) && sparp->sparp_sg->sg_signal_void_variables)
     spar_error (sparp, "The list of return values contains '*' but the pattern does not contain variables");
-  while (NULL != binds_revlist)
+  while (NULL != lnar.aggs_with_stars)
     {
-      t_set_push (&new_vars, sparp_tree_full_copy (sparp, (SPART *) (t_set_pop (&binds_revlist)), query->_.req_top.pattern));
+      SPART *call = (SPART *) t_set_pop (&(lnar.aggs_with_stars));
+      dk_set_t args = NULL;
+      if ((NULL == lnar.names) && (NULL == binds_revlist))
+	t_set_push (&args, spar_make_literal_from_sql_box (sparp, (caddr_t) ((ptrlong) 1), SPAR_ML_SAFEST));
+      else
+	{
+	  DO_SET (caddr_t, varname, &(lnar.names))
+	  {
+	    t_set_push (&args, spar_make_variable (sparp, varname));
+	  }
+	  END_DO_SET ()DO_SET (SPART *, bind, &binds_revlist)
+	  {
+	    t_set_push (&args, sparp_tree_full_copy (sparp, bind, query->_.req_top.pattern));
+	  }
+	END_DO_SET ()}
+      call->_.funcall.argtrees =
+	  (SPART **) t_list (1, spar_make_funcall (sparp, 0, "SQLVAL::_STAR", (SPART **) t_list_to_array (args)));
     }
-  while (NULL != lnar.names)
-    {
-      caddr_t varname = (caddr_t) t_set_pop (&(lnar.names));
-      SPART *var = spar_make_variable (sparp, varname);
-      t_set_push (&new_vars, var);
-    }
-
-  if ((SPART **) _STAR == retvals)
+  if (IS_BOX_POINTER (retvals))
+    return;
+  DO_SET (SPART *, bind, &binds_revlist)
+  {
+    t_set_push (&new_vars, sparp_tree_full_copy (sparp, bind, query->_.req_top.pattern));
+  }
+  END_DO_SET ()DO_SET (caddr_t, varname, &(lnar.names))
+  {
+    SPART *var = spar_make_variable (sparp, varname);
+    t_set_push (&new_vars, var);
+  }
+  END_DO_SET ()if ((SPART **) _STAR == retvals)
     {
       if (NULL == new_vars)
 	{
@@ -836,7 +858,7 @@ sparp_gp_trav_cu_in_expns (sparp_t * sparp, SPART * curr, sparp_trav_state_t * s
 	if ((eq_l == eq_r) || (SPARP_EQUIV_MERGE_OK == sparp_equiv_merge (sparp, eq_l, eq_r)))
 	  {
 	    eq_l->e_replaces_filter |= SPART_VARR_EQ_VAR;
-	    sts_this->sts_curr_array[sts_this->sts_ofs_of_curr_in_array] = SPAR_MAKE_BOOL_LITERAL (sparp, 1);
+	    sts_this->sts_curr_array[sts_this->sts_ofs_of_curr_in_array] = SPAR_MAKE_EBV_LITERAL (sparp, 1);
 	    sparp->sparp_rewrite_dirty++;
 	  }
 	else
@@ -2929,8 +2951,8 @@ sparp_gp_trav_equiv_audit_inner_vars (sparp_t * sparp, SPART * curr, sparp_trav_
 	  sparp_equiv_t *recv = SPARP_EQUIV (sparp, recv_idx);
 	  if (recv->e_gp != gp)
 	    spar_audit_error (sparp,
-		"sparp_" "gp_trav_equiv_audit_inner_vars(): gp of recv eq is not parent of gp of curr eq, gp %s eq %# for %s",
-		gp->_.gp.selid, eq->e_own_idx, eq->e_varnames[0]);
+		"sparp_" "gp_trav_equiv_audit_inner_vars(): gp of recv eq is not parent of gp of curr eq, gp %s eq #%ld for %s",
+		gp->_.gp.selid, (long) (eq->e_own_idx), eq->e_varnames[0]);
 	}
 	END_DO_BOX_FAST;
       }
@@ -3061,21 +3083,21 @@ sparp_equiv_audit_gp (sparp_t * sparp, SPART * gp, int is_deprecated, sparp_equi
   SPARP_FOREACH_GP_EQUIV (sparp, gp, gp_eq_ctr, gp_eq)
   {
     if (gp_eq->e_gp != gp)
-      spar_audit_error (sparp, "sparp_" "equiv_audit_gp(): gp_eq->e_gp != gp, gp %s eq #%d for %s", gp->_.gp.selid,
-	  gp_eq->e_own_idx, gp_eq->e_varnames[0]);
+      spar_audit_error (sparp, "sparp_" "equiv_audit_gp(): gp_eq->e_gp != gp, gp %s eq #%ld for %s", gp->_.gp.selid,
+	  (long) (gp_eq->e_own_idx), gp_eq->e_varnames[0]);
     if (chk_eq == gp_eq)
       chk_eq = NULL;
     if (gp_eq->e_deprecated && !is_deprecated)
-      spar_audit_error (sparp, "sparp_" "equiv_audit_gp(): eq is deprecated, gp %s eq #%d for %s", gp->_.gp.selid, gp_eq->e_own_idx,
-	  gp_eq->e_varnames[0]);
+      spar_audit_error (sparp, "sparp_" "equiv_audit_gp(): eq is deprecated, gp %s eq #%ld for %s", gp->_.gp.selid,
+	  (long) (gp_eq->e_own_idx), gp_eq->e_varnames[0]);
     if (is_deprecated && !(gp_eq->e_deprecated))
-      spar_audit_error (sparp, "sparp_" "equiv_audit_gp(): eq is expected to be deprecated, gp %s eq #%d for %s", gp->_.gp.selid,
-	  gp_eq->e_own_idx, gp_eq->e_varnames[0]);
+      spar_audit_error (sparp, "sparp_" "equiv_audit_gp(): eq is expected to be deprecated, gp %s eq #%ld for %s", gp->_.gp.selid,
+	  (long) (gp_eq->e_own_idx), gp_eq->e_varnames[0]);
   }
   END_SPARP_FOREACH_GP_EQUIV;
   if (NULL != chk_eq)
-    spar_audit_error (sparp, "sparp_" "equiv_audit_gp(): no reference to chk_eq in gp, gp %s chk_eq #%d for %s", gp->_.gp.selid,
-	chk_eq->e_own_idx, chk_eq->e_varnames[0]);
+    spar_audit_error (sparp, "sparp_" "equiv_audit_gp(): no reference to chk_eq in gp, gp %s chk_eq #%ld for %s", gp->_.gp.selid,
+	(long) (chk_eq->e_own_idx), chk_eq->e_varnames[0]);
 }
 
 void
@@ -3100,16 +3122,16 @@ sparp_equiv_audit_all (sparp_t * sparp, int flags)
       if (NULL == eq)
 	continue;
       if (eq->e_own_idx != eq_ctr)
-	spar_audit_error (sparp, "sparp_" "equiv_audot_all(): wrong own index, eq #%d for %s has e_own_idx %d", eq_ctr,
-	    eq->e_varnames[0], eq->e_own_idx);
+	spar_audit_error (sparp, "sparp_" "equiv_audot_all(): wrong own index, eq #%d for %s has e_own_idx %ld", eq_ctr,
+	    eq->e_varnames[0], (long) (eq->e_own_idx));
       for (var_ctr = eq->e_var_count; var_ctr--; /*no step */ )
 	{
 	  SPART *var = eq->e_vars[var_ctr];
 	  if (var->_.var.equiv_idx != eq_ctr)
 	    spar_audit_error (sparp,
-		"sparp_" "equiv_audit_all(): var->_.var.equiv_idx != eq_ctr: eq #%d for %s, gp %s, var %s/%s/%s with equiv_idx %d",
+		"sparp_" "equiv_audit_all(): var->_.var.equiv_idx != eq_ctr: eq #%d for %s, gp %s, var %s/%s/%s with equiv_idx %ld",
 		eq_ctr, eq->e_varnames[0], eq->e_gp->_.gp.selid, var->_.var.selid, var->_.var.tabid, var->_.var.vname,
-		var->_.var.equiv_idx);
+		(long) (var->_.var.equiv_idx));
 	}
       gp = eq->e_gp;
       if (SPAR_GP != gp->type)
@@ -3124,27 +3146,28 @@ sparp_equiv_audit_all (sparp_t * sparp, int flags)
 	  SPART *var = eq->e_vars[var_ctr];
 	  if (var->_.var.equiv_idx != eq_ctr)
 	    spar_audit_error (sparp,
-		"sparp_" "equiv_audit_all(): var->_.var.equiv_idx != eq_ctr: eq #%d for %s, gp %s, var %s/%s/%s with equiv_idx %d",
-		eq_ctr, eq->e_varnames[0], var->_.var.selid, var->_.var.tabid, var->_.var.vname, var->_.var.equiv_idx);
+		"sparp_" "equiv_audit_all(): var->_.var.equiv_idx != eq_ctr: eq #%d for %s, gp %s, var %s/%s/%s with equiv_idx %ld",
+		eq_ctr, eq->e_varnames[0], gp->_.gp.selid, var->_.var.selid, var->_.var.tabid, var->_.var.vname,
+		(long) (var->_.var.equiv_idx));
 	  if (strcmp (var->_.var.selid, gp->_.gp.selid))
 	    spar_audit_error (sparp,
 		"sparp_"
-		"equiv_audit_all(): selid of var of eq differs from selid of gp of eq, gp %s, var %s/%s/%s with equiv_idx %d",
-		gp->_.gp.selid, var->_.var.selid, var->_.var.tabid, var->_.var.vname, var->_.var.equiv_idx);
+		"equiv_audit_all(): selid of var of eq differs from selid of gp of eq, gp %s, var %s/%s/%s with equiv_idx %ld",
+		gp->_.gp.selid, var->_.var.selid, var->_.var.tabid, var->_.var.vname, (long) (var->_.var.equiv_idx));
 	  if (SPART_VARNAME_IS_GLOB (var->_.var.vname))
 	    {
 	      count_of_global_vars++;
 	      if (!(var->_.var.rvr.rvrRestrictions & SPART_VARR_GLOBAL))
 		spar_audit_error (sparp,
 		    "sparp_"
-		    "equiv_audit_all(): varname is global, SPART_VARR_GLOBAL of var is not set, var %s/%s/%s with equiv_idx %d",
-		    gp->_.gp.selid, var->_.var.selid, var->_.var.tabid, var->_.var.vname, var->_.var.equiv_idx);
+		    "equiv_audit_all(): varname is global, SPART_VARR_GLOBAL of var is not set, var %s/%s/%s with equiv_idx %ld",
+		    var->_.var.selid, var->_.var.tabid, var->_.var.vname, (long) (var->_.var.equiv_idx));
 	    }
 	  else if (var->_.var.rvr.rvrRestrictions & SPART_VARR_GLOBAL)
 	    spar_audit_error (sparp,
 		"sparp_"
-		"equiv_audit_all(): varname is not global, SPART_VARR_GLOBAL of var is set, var %s/%s/%s with equiv_idx %d",
-		gp->_.gp.selid, var->_.var.selid, var->_.var.tabid, var->_.var.vname, var->_.var.equiv_idx);
+		"equiv_audit_all(): varname is not global, SPART_VARR_GLOBAL of var is set, var %s/%s/%s with equiv_idx %ld",
+		var->_.var.selid, var->_.var.tabid, var->_.var.vname, (long) (var->_.var.equiv_idx));
 	  if (NULL != var->_.var.tabid)
 	    {
 	      int var_tr_idx = var->_.var.tr_idx;
@@ -3169,13 +3192,13 @@ sparp_equiv_audit_all (sparp_t * sparp, int flags)
 		{
 		  if (var_tr_idx < SPART_TRIPLE_FIELDS_COUNT)
 		    spar_audit_error (sparp,
-			"sparp_" "equiv_audit_all(): var is in equiv but not in any triple of the group, var %s/%s#%d/%s",
-			var->_.var.selid, var->_.var.tabid, var->_.var.tr_idx, var->_.var.vname);
+			"sparp_" "equiv_audit_all(): var is in equiv but not in any triple of the group, var %s/%s#%ld/%s",
+			var->_.var.selid, var->_.var.tabid, (long) (var->_.var.tr_idx), var->_.var.vname);
 #if 0
 		  else
 		    spar_audit_error (sparp,
-			"sparp_" "equiv_audit_all(): var is in equiv but not in any triple of the group, var %s/%s#%d/%s",
-			var->_.var.selid, var->_.var.tabid, var->_.var.tr_idx, var->_.var.vname);
+			"sparp_" "equiv_audit_all(): var is in equiv but not in any triple of the group, var %s/%s#%ld/%s",
+			var->_.var.selid, var->_.var.tabid, (long) (var->_.var.tr_idx), var->_.var.vname);
 #endif
 		}
 	    }
@@ -3360,7 +3383,7 @@ bifsparqlopt_args_in_same_eq (sparp_t * sparp, int bif_opt_opcode, SPART * tree,
     {
     case BIF_OPT_SIMPLIFY:
       if (answer)
-	return SPAR_MAKE_BOOL_LITERAL (sparp, answer);
+	return SPAR_MAKE_EBV_LITERAL (sparp, answer);
       return spartlist (sparp, 3, BOP_EQ, arg0, arg1);
     case BIF_OPT_RET_TYPE:
       {
@@ -3389,7 +3412,7 @@ bifsparqlopt_arg_is_local_var (sparp_t * sparp, int bif_opt_opcode, SPART * tree
   switch (bif_opt_opcode)
     {
     case BIF_OPT_SIMPLIFY:
-      return SPAR_MAKE_BOOL_LITERAL (sparp, answer);
+      return SPAR_MAKE_EBV_LITERAL (sparp, answer);
     case BIF_OPT_RET_TYPE:
       {
 	rdf_val_range_t *rvr_ret = (rdf_val_range_t *) more;
@@ -3695,19 +3718,17 @@ sparp_calc_bop_of_fixed_vals (sparp_t * sparp, ptrlong bop_type, rdf_val_range_t
 		res_int = l_int % r_int;
 		break;
 	      }
-	    res_ret[0] =
-		spartlist (sparp, 5, SPAR_LIT, (SPART *) t_box_num_nonull (res_int), uname_xmlschema_ns_uri_hash_integer, NULL,
-		NULL);
+	    res_ret[0] = SPAR_MAKE_INT_LITERAL (sparp, res_int);
 	  }
 	return 1;		/* !!!TBD add arithmetics for other datatypes and their combinations */
       }
     }
   return 1;
 res_bool_true:
-  res_ret[0] = SPAR_MAKE_BOOL_LITERAL (sparp, 1);
+  res_ret[0] = SPAR_MAKE_EBV_LITERAL (sparp, 1);
   return 0;
 res_bool_false:
-  res_ret[0] = SPAR_MAKE_BOOL_LITERAL (sparp, 0);
+  res_ret[0] = SPAR_MAKE_EBV_LITERAL (sparp, 0);
   return 0;
 }
 
@@ -3731,7 +3752,7 @@ sparp_simplify_builtin (sparp_t * sparp, SPART * tree, int *trouble_ret)
 	rdf_val_range_t l_rvr;
 	sparp_get_expn_rvr (sparp, arg1, &l_rvr, 0);
 	if (l_rvr.rvrRestrictions & (SPART_VARR_CONFLICT | SPART_VARR_ALWAYS_NULL))
-	  goto res_bool_false;	/* see below */
+	  goto res_rb_bool_false;	/* see below */
 	for (argctr = new_argcount - 1; argctr > 0; argctr--)
 	  {
 	    SPART *r_arg = orig_args[argctr];
@@ -3746,7 +3767,7 @@ sparp_simplify_builtin (sparp_t * sparp, SPART * tree, int *trouble_ret)
 	      }
 	  }
 	if (2 > new_argcount)
-	  goto res_bool_false;	/* see below */
+	  goto res_rb_bool_false;	/* see below */
 	if (2 == new_argcount)
 	  {
 	    trouble_ret[0] = 0;
@@ -3781,6 +3802,30 @@ sparp_simplify_builtin (sparp_t * sparp, SPART * tree, int *trouble_ret)
       break;
     case SPAR_BIF_DAY:
       break;
+    case SPAR_BIF_EBV:
+      {
+	sparp_bool4way_t b4w_arg1 = sparp_cast_var_or_lit_to_bool4way (sparp, arg1);
+	if ('T' == b4w_arg1)
+	  goto res_rb_bool_true;	/* see below */
+	if ('F' == b4w_arg1)
+	  goto res_rb_bool_false;	/* see below */
+	break;
+      }
+    case SPAR_BIF_EBV_INT:
+      {
+	sparp_bool4way_t b4w_arg1 = sparp_cast_var_or_lit_to_bool4way (sparp, arg1);
+	if ('T' == b4w_arg1)
+	  {
+	    trouble_ret[0] = 0;
+	    return SPAR_MAKE_INT_LITERAL (sparp, 1);
+	  }
+	if ('F' == b4w_arg1)
+	  {
+	    trouble_ret[0] = 0;
+	    return SPAR_MAKE_INT_LITERAL (sparp, 0);
+	  }
+	break;
+      }
     case SPAR_BIF_ENCODE_FOR_URI:
       break;
     case SPAR_BIF_FLOOR:
@@ -3815,9 +3860,9 @@ sparp_simplify_builtin (sparp_t * sparp, SPART * tree, int *trouble_ret)
 	switch (SPART_TYPE (arg1))
 	  {
 	  case SPAR_QNAME:
-	    goto res_bool_false;	/* see below */
+	    goto res_rb_bool_false;	/* see below */
 	  case SPAR_LIT:
-	    goto res_bool_true;	/* see below */
+	    goto res_rb_bool_true;	/* see below */
 	  case SPAR_VARIABLE:
 	  case SPAR_BLANK_NODE_LABEL:
 	    if (arg1->_.var.rvr.rvrRestrictions & SPART_VARR_CONFLICT)
@@ -3825,9 +3870,9 @@ sparp_simplify_builtin (sparp_t * sparp, SPART * tree, int *trouble_ret)
 	    if (arg1->_.var.rvr.rvrRestrictions & SPART_VARR_NOT_NULL)
 	      {
 		if (arg1->_.var.rvr.rvrRestrictions & SPART_VARR_IS_LIT)
-		  goto res_bool_true;	/* see below */
+		  goto res_rb_bool_true;	/* see below */
 		else if (arg1->_.var.rvr.rvrRestrictions & SPART_VARR_IS_REF)
-		  goto res_bool_false;	/* see below */
+		  goto res_rb_bool_false;	/* see below */
 	      }
 	  }
 	goto trouble_now;	/* see below */
@@ -3839,9 +3884,9 @@ sparp_simplify_builtin (sparp_t * sparp, SPART * tree, int *trouble_ret)
 	switch (SPART_TYPE (arg1))
 	  {
 	  case SPAR_QNAME:
-	    goto res_bool_true;	/* see below */
+	    goto res_rb_bool_true;	/* see below */
 	  case SPAR_LIT:
-	    goto res_bool_false;	/* see below */
+	    goto res_rb_bool_false;	/* see below */
 	  case SPAR_VARIABLE:
 	  case SPAR_BLANK_NODE_LABEL:
 	    if (arg1->_.var.rvr.rvrRestrictions & SPART_VARR_CONFLICT)
@@ -3849,9 +3894,9 @@ sparp_simplify_builtin (sparp_t * sparp, SPART * tree, int *trouble_ret)
 	    if (arg1->_.var.rvr.rvrRestrictions & SPART_VARR_NOT_NULL)
 	      {
 		if (arg1->_.var.rvr.rvrRestrictions & SPART_VARR_IS_LIT)
-		  goto res_bool_false;	/* see below */
+		  goto res_rb_bool_false;	/* see below */
 		else if (arg1->_.var.rvr.rvrRestrictions & SPART_VARR_IS_REF)
-		  goto res_bool_true;	/* see below */
+		  goto res_rb_bool_true;	/* see below */
 	      }
 	  }
 	goto trouble_now;	/* see below */
@@ -3931,29 +3976,29 @@ sparp_simplify_builtin (sparp_t * sparp, SPART * tree, int *trouble_ret)
 	switch (SPART_TYPE (arg1))
 	  {
 	  case SPAR_QNAME:
-	    goto res_bool_true;	/* see below */
+	    goto res_rb_bool_true;	/* see below */
 	  case SPAR_LIT:
 	    {
 	      if (sparp_literal_is_xsd_valid (sparp, arg1->_.lit.val, arg1->_.lit.datatype, arg1->_.lit.language))
-		goto res_bool_true;	/* see below */
+		goto res_rb_bool_true;	/* see below */
 	      else
-		goto res_bool_false;	/* see below */
+		goto res_rb_bool_false;	/* see below */
 	    }
 	  case SPAR_VARIABLE:
 	  case SPAR_BLANK_NODE_LABEL:
 	    if (arg1->_.var.rvr.rvrRestrictions & SPART_VARR_CONFLICT)
-	      goto res_bool_true;	/* see below */
+	      goto res_rb_bool_true;	/* see below */
 	    if (arg1->_.var.rvr.rvrRestrictions & SPART_VARR_ALWAYS_NULL)
-	      goto res_bool_true;	/* see below */
+	      goto res_rb_bool_true;	/* see below */
 	    if (arg1->_.var.rvr.rvrRestrictions & SPART_VARR_IS_REF)
-	      goto res_bool_true;	/* see below */
+	      goto res_rb_bool_true;	/* see below */
 	    if (arg1->_.var.rvr.rvrRestrictions & SPART_VARR_FIXED)
 	      {
 		if (sparp_literal_is_xsd_valid (sparp, arg1->_.var.rvr.rvrFixedValue, arg1->_.var.rvr.rvrDatatype,
 			arg1->_.var.rvr.rvrLanguage))
-		  goto res_bool_true;	/* see below */
+		  goto res_rb_bool_true;	/* see below */
 		else
-		  goto res_bool_false;	/* see below */
+		  goto res_rb_bool_false;	/* see below */
 	      }
 	    break;
 	  default:
@@ -3971,12 +4016,12 @@ sparp_simplify_builtin (sparp_t * sparp, SPART * tree, int *trouble_ret)
 trouble_now:
   trouble_ret[0] = 1;
   return NULL;
-res_bool_true:
+res_rb_bool_true:
   trouble_ret[0] = 0;
-  return SPAR_MAKE_BOOL_LITERAL (sparp, 1);
-res_bool_false:
+  return SPAR_MAKE_EBV_LITERAL (sparp, 1);
+res_rb_bool_false:
   trouble_ret[0] = 0;
-  return SPAR_MAKE_BOOL_LITERAL (sparp, 0);
+  return SPAR_MAKE_EBV_LITERAL (sparp, 0);
 }
 
 int
@@ -4158,9 +4203,9 @@ sparp_gp_trav_simplify_expn_out (sparp_t * sparp, SPART * curr, sparp_trav_state
 
 b4w_res_done:
   if ('T' == b4w_res)
-    res = SPAR_MAKE_BOOL_LITERAL (sparp, 1);
+    res = SPAR_MAKE_EBV_LITERAL (sparp, 1);
   else if ('F' == b4w_res)
-    res = SPAR_MAKE_BOOL_LITERAL (sparp, 0);
+    res = SPAR_MAKE_EBV_LITERAL (sparp, 0);
   /*else if ('U' == b4w_res) res = (SPART *)t_NEW_DB_NULL; */
   else
     return 0;
@@ -7410,6 +7455,8 @@ sparp_gp_trav_add_graph_perm_read_filters (sparp_t * sparp, SPART * curr, sparp_
 {
   SPART **sources;
   int depth, membctr, membcount;
+  if ((NULL == sparp->sparp_gs_app_callback) && enable_g_in_sec)
+    return 0;
   if (SPAR_GP != SPART_TYPE (curr))
     return 0;
   if (SELECT_L == curr->_.gp.subtype)

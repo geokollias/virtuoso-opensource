@@ -1352,6 +1352,7 @@ tlsf_mdbg_init ()
 {
   dk_mutex_init (&mdbg_place_mtx, MUTEX_TYPE_SHORT);
   mdbg_tlsf = tlsf_new (1000000);
+  tlsf_fp = stderr;
   WITH_TLSF (mdbg_tlsf)
   {
     mdbg_place_to_id = id_hash_allocate (MDBG_HASH_SIZE, sizeof (mdbg_place_t), sizeof (uint32), mdbg_place_hash, mdbg_place_hash_cmp);

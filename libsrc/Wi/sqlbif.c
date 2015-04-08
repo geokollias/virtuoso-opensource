@@ -7872,6 +7872,8 @@ bif_sql_lex_analyze (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 #define SQL_SPLIT_TEXT_KEEP_EMPTY_STATEMENTS 0x2
 #define SQL_SPLIT_TEXT_VERBOSE 0x4
 
+extern dk_session_t *scn3split_ses_code;
+extern dk_session_t *scn3split_ses_tail;
 
 caddr_t
 sql_split_text (const char *str2, caddr_t * qst, int flags)
@@ -8943,21 +8945,58 @@ bif_one_of_these_match_op (caddr_t * qst, caddr_t item, caddr_t value, caddr_t *
   query_instance_t *qi = (query_instance_t *) qst;
   dtp_t item_dtp = DV_TYPE_OF (item);
   dtp_t val_dtp = DV_TYPE_OF (value);
-  if (IS_WIDE_STRING_DTP (item_dtp) && IS_STRING_DTP (val_dtp))
+  if (DV_RDF == item_dtp || DV_RDF_ID == item_dtp || DV_RDF == val_dtp || DV_RDF_ID == val_dtp)
+    return boxes_match (item, value);
+  if (IS_WIDE_STRING_DTP (item_dtp) || IS_WIDE_STRING_DTP (val_dtp))
     {
-      caddr_t wide = box_narrow_string_as_wide ((unsigned char *) value, NULL, 0, QST_CHARSET (qst), err_ret, 1);
-      if (*err_ret)
+      if (DV_STRING == val_dtp)
+	{
+	  caddr_t wide;
+	  if (BF_IRI & box_flags (value))
+	    return 0;		/* IRI vs non-IRI */
+	  if (BF_UTF8 & box_flags (value))
+	    wide = box_utf8_as_wide_char (value, NULL, box_length (value) - 1, 0);
+	  else
+	    wide = box_narrow_string_as_wide ((unsigned char *) value, NULL, 0, QST_CHARSET (qst), err_ret, 1);
+	  if (*err_ret)
+	    return 0;
+	  they_match = boxes_match (item, wide);
+	  dk_free_box (wide);
+	}
+      else if (DV_STRING == item_dtp)
+	{
+	  caddr_t wide;
+	  if (BF_IRI & box_flags (item))
+	    return 0;		/* IRI vs non-IRI */
+	  if (BF_UTF8 & box_flags (item))
+	    wide = box_utf8_as_wide_char (item, NULL, box_length (value) - 1, 0);
+	  else
+	    wide = box_narrow_string_as_wide ((unsigned char *) item, NULL, 0, QST_CHARSET (qst), err_ret, 1);
+	  if (*err_ret)
+	    return 0;
+	  they_match = boxes_match (wide, value);
+	  dk_free_box (wide);
+	}
+      else if (DV_UNAME == item_dtp || DV_UNAME == val_dtp)
 	return 0;
-      they_match = boxes_match (item, wide);
-      dk_free_box (wide);
+      else
+	return boxes_match (item, value);
     }
-  else if (IS_STRING_DTP (item_dtp) && IS_WIDE_STRING_DTP (val_dtp))
+  else if (DV_UNAME == item_dtp || DV_UNAME == val_dtp)
     {
-      caddr_t wide = box_narrow_string_as_wide ((unsigned char *) item, NULL, 0, QST_CHARSET (qst), err_ret, 1);
-      if (*err_ret)
+      size_t len;
+      if ((DV_STRING == item_dtp) && !(BF_IRI & box_flags (item)))
 	return 0;
-      they_match = boxes_match (wide, value);
-      dk_free_box (wide);
+      if ((DV_STRING == val_dtp) && !(BF_IRI & box_flags (value)))
+	return 0;
+      if (!IS_STRING_DTP (val_dtp) || !IS_STRING_DTP (item_dtp))
+	return 0;
+      len = box_length (value);
+      if (len != box_length (item))
+	return 0;
+      if (memcmp (item, value, len - 1))
+	return 0;
+      return 1;
     }
   else if (item_dtp != val_dtp && item_dtp != DV_DB_NULL && val_dtp != DV_DB_NULL)
     {
@@ -8996,7 +9035,6 @@ bif_one_of_these (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   caddr_t item = bif_arg (qst, args, 0, me);
   int inx;
   caddr_t value;
-  dtp_t val_dtp;
   int they_match;
   for (inx = 1; inx < n_args; inx++)
     {

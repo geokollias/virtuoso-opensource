@@ -47,6 +47,7 @@
 #define TN_RUN 3
 #define TN_CUTOFF 4
 #define TN_RESULTS 5
+int tn_trace;
 
 #define TN_LIMIT_DECL \
   mem_pool_t * mp = THR_TMP_POOL; \
@@ -815,7 +816,12 @@ tst_next_states (trans_node_t * tn, caddr_t * inst, trans_set_t * ts, trans_stat
   {
     trans_state_t *rel;
     caddr_t related = (!tn->tn_data && !tn->tn_end_flag) ? (caddr_t) related_tuple : related_tuple[0];
-
+    if (tn_trace)
+      {
+	pbox (tst->tst_value);
+	printf ("related to %s ", tn->tn_is_primary ? "fwd" : "bwd");
+	pbox (related);
+      }
     if (tn->tn_distinct && id_hash_get (ts->ts_traversed, (caddr_t) & related))
       continue;
     if (tn->tn_no_cycles && path_member (tst, related))

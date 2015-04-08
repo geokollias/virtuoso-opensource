@@ -487,7 +487,7 @@ found:
 void
 dfe_top_sel (df_elt_t * dfe, float card, index_choice_t * ic)
 {
-  float min_out;
+  float min_out, n_batches, per_batch;
   df_elt_t *oby = dfe->_.table.ot->ot_super->ot_oby_dfe;
   df_elt_t *next;
   float card_after = 1;
@@ -514,13 +514,15 @@ dfe_top_sel (df_elt_t * dfe, float card, index_choice_t * ic)
       card_after *= p_arity;
     }
   card = dfe->_.table.in_arity * card;
-  min_out = enable_qp * dc_batch_sz * card_after;
-  if (min_out > card || dfe_top_order_correlated (dfe))
+  min_out = enable_qp * dc_batch_sz;
+  per_batch = min_out * card_after;
+  n_batches = MAX (1, top / per_batch);
+  if (1 == n_batches || dfe_top_order_correlated (dfe))
     {
       ic->ic_top_sel = dfe->_.table.top_sel = 1;
       return;
     }
-  ic->ic_top_sel = dfe->_.table.top_sel = MIN (0.9, min_out / card);
+  ic->ic_top_sel = dfe->_.table.top_sel = MIN (0.9, (n_batches * min_out) / card);
 }
 
 
@@ -549,6 +551,8 @@ dfe_n_in_order (df_elt_t * dfe, df_elt_t * prev_tb, df_elt_t ** prev_ret, float 
       return 0;
     }
   *cl_colocated = dfe_cl_colocated (prev_tb, dfe);
+  if (!prev_tb->_.table.key)
+    return 0;
   c1 = dfe_lead_const (prev_tb);
   c2 = dfe_lead_const (dfe);
   n1 = prev_tb->_.table.key->key_n_significant;

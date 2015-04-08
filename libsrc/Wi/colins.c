@@ -616,11 +616,13 @@ int dbf_ins_no_distincts;
 extern int dbf_rq_slice_only;
 extern client_connection_t *rfwd_cli;
 
-//#define RQ_CHECK_TEXT "select count (*) from rdf_quad a table option (index rdf_quad) where not exists (select 1 from rq_rows b table option (loop) where a.g = b.g and a.p = b.p and a.o = b.o and a.s = b.s)"
+//#define RQ_CHECK_TEXT "select count (*) from rdf_quad a table option (index rdf_quad) where not exists (select 1 from rq_rows b table option (loop) where a.g = b.g and a.p = b.p and a.o = b.o and a.s = b.s)"/
 //#define RQ_CHECK_TEXT "select count (*)  from rdf_quad a table option (index rdf_quad_op, index_only, no cluster) where not exists (select 1 from rdf_quad b table option (loop, index rdf_quad_op, index_only, no cluster) where  a.p = b.p and a.o = b.o )"
-#define RQ_CHECK_TEXT "select count (*) from rdf_quad a table option (loop, index rdf_quad_pogs, no cluster) where not exists (select 1 from rdf_quad b table option (loop, index rdf_quad_pogs, no cluster)  where a.g = b.g and a.p = b.p and a.o = b.o and a.s = b.s)"
+//#define RQ_CHECK_TEXT "select count (*) from rdf_quad a table option (loop, index rdf_quad_pogs, no cluster) where not exists (select 1 from rdf_quad b table option (loop, index rdf_quad_pogs, no cluster)  where a.g = b.g and a.p = b.p and a.o = b.o and a.s = b.s)"
 //#define RQ_CHECK_TEXT "select count (*)  from rdf_quad a table option (index rdf_quad_gs, index_only, no cluster) where not exists (select 1 from rdf_quad b table option (loop, index rdf_quad_gs, index_only, no cluster) where  a.g = b.g and a.s = b.s )"
+//#define RQ_CHECK_TEXT "select count (*) from post_tag a where not exists (select 1 from  post_tag b  table option (loop) where a.pst_tagid = b.pst_tagid and a.pst_postid = b.pst_postid)"
 //#define RQ_CHECK_TEXT "select 0, count (s), count (p), count (o), count (g) from rdf_quad table option (index rdf_quad) where p =  #i292339462 and s > #ib390000000"
+#define RQ_CHECK_TEXT "select count (*) from post_tag where idn (pst_postid) > 100714751188136"
 
 #define RQ_RANGE_CHECK_TEXT_1 "select count (*) from rdf_quad a table option (loop, index rdf_quad_pogs, no cluster) where not exists (select 1 from rdf_quad b table option (loop, index rdf_quad_pogs, no cluster)  where a.g = b.g and a.p = b.p and a.o = b.o and a.s = b.s) and p = ? and o >= ? and o <= ?"
 #define RQ_RANGE_CHECK_TEXT_2 "select count (*) from rdf_quad a table option (loop, index rdf_quad_pogs, no cluster) where not exists (select 1 from rdf_quad b table option (loop, index rdf_quad_pogs, no cluster)  where a.g = b.g and a.p = b.p and a.o = b.o and a.s = b.s) and p >= ? and p <= ?"
@@ -1512,6 +1514,8 @@ ceic_int_value (ce_ins_ctx_t * ceic, int nth, dtp_t * dtp_ret)
       return *(int32 *) val;
     }
   *dtp_ret = DV_TYPE_OF (val);
+  if (DV_DB_NULL == *dtp_ret)
+    bing ();
   return unbox_iri_int64 (val);
 }
 
@@ -4762,7 +4766,7 @@ itc_col_vec_insert (it_cursor_t * itc, insert_node_t * ins)
 	{
 	  if (strstr (itc->itc_insert_key->key_name, "POGS"))
 	    itc_pogs_seg_check (itc, buf);
-	  else if (strstr (itc->itc_insert_key->key_name, "k_p2"))
+	  else if (strstr (itc->itc_insert_key->key_name, "post_tag"))
 	    itc_gs_seg_check (itc, buf);
 	}
       if (col_ins_error)
