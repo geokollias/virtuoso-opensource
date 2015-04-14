@@ -1555,7 +1555,7 @@ sort_read_vec_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
   ptrlong top = unbox (qst_get (inst, setp->setp_top));
   ptrlong skip = 0;
   ptrlong fill;
-  int set, n_sets = QST_INT (inst, ts->src_gen.src_prev->src_out_fill);
+  int set, n_sets = ts->src_gen.src_prev ? QST_INT (inst, ts->src_gen.src_prev->src_out_fill) : qi->qi_n_sets;
   if (setp->setp_top_skip)
     {
       if (!SSL_IS_VEC_OR_REF (setp->setp_top_skip))

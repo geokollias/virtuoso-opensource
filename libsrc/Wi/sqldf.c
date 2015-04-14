@@ -1220,9 +1220,9 @@ dfe_is_setp_key (df_elt_t * setp, df_elt_t * dfe)
 int enable_gb_dep = 1;
 
 void
-sqlo_mark_gb_dep (sqlo_t * so, df_elt_t * dfe)
+sqlo_mark_gb_dep (sqlo_t * so, df_elt_t * dfe, df_elt_t * exp_dfe)
 {
-  /* if an exp is placed before a group by but is used after the group by then add it to the dependent of the gby */
+  /* if an exp is placed before a group by but is used after the group by then add it to the dependent of the gby.  The exp can be defd in a pred body of a ts or such.  If so, the dfe is the defining top level dfe and the exp_dfe is the exp.  If the exp is top level these are the same.  */
   df_elt_t *next;
   so->so_mark_gb_dep = 0;
   if (!enable_gb_dep)
@@ -1233,13 +1233,14 @@ sqlo_mark_gb_dep (sqlo_t * so, df_elt_t * dfe)
     case DFE_ORDER:
     case DFE_TABLE:
     case DFE_DT:
-      return;
+      if (dfe == exp_dfe)
+	return;
     }
 
   for (next = dfe->dfe_next; next; next = next->dfe_next)
     {
       if (DFE_GROUP == next->dfe_type && !next->_.setp.is_being_placed && !dfe_is_setp_key (next, dfe))
-	t_set_pushnew (&next->_.setp.gb_dependent, (void *) dfe);
+	t_set_pushnew (&next->_.setp.gb_dependent, (void *) exp_dfe);
     }
   /* it can be that a dt being placed has a having that has an invariant.  If so, the invariant goes a level above and the grup by is not directly after it.  So then start from the ghen pt and goup to the placed and get all the setps on the way and add the dfe as dep to them */
   dfe_latest (so, 1, &dfe, 1);
@@ -1290,7 +1291,7 @@ sqlo_place_dfe_after (sqlo_t * so, locus_t * loc, df_elt_t * after_this, df_elt_
     so->so_gen_pt = dfe;
   sqlo_dfe_type (so, dfe);
   if (so->so_mark_gb_dep)
-    sqlo_mark_gb_dep (so, dfe);
+    sqlo_mark_gb_dep (so, dfe, dfe);
   sqlo_check_outside_dt (so, dfe);
 }
 
@@ -1586,9 +1587,13 @@ sqlo_hash_fill_dt_place_col (df_elt_t * dt_dfe, df_elt_t * col)
   if (!is_out_dfe)
     dt_dfe->_.sub.dt_out = (df_elt_t **) t_box_append_1 ((caddr_t) out, (caddr_t) ref_dfe);
   if (!is_name)
-    tree->_.select_stmt.selection =
-	(caddr_t *) t_box_append_1 ((caddr_t) tree->_.select_stmt.selection, (caddr_t) t_listst (5, BOP_AS, ref_dfe->dfe_tree, NULL,
-	    t_box_string (tmp), NULL, NULL));
+    {
+      if (tree == dt_dfe->_.sub.ot->ot_dt)
+	tree = dt_dfe->dfe_tree = (ST *) t_box_copy_tree ((caddr_t) tree);
+      tree->_.select_stmt.selection =
+	  (caddr_t *) t_box_append_1 ((caddr_t) tree->_.select_stmt.selection, (caddr_t) t_listst (5, BOP_AS, ref_dfe->dfe_tree,
+	      NULL, t_box_string (tmp), NULL, NULL));
+    }
 }
 
 
@@ -2247,7 +2252,7 @@ sqlo_place_exp (sqlo_t * so, df_elt_t * super, df_elt_t * dfe)
 		{
 		  dfe_loc_result (placed->dfe_locus, super, dfe);
 		}
-	      sqlo_mark_gb_dep (so, placed);
+	      sqlo_mark_gb_dep (so, placed, dfe);
 	      return placed;
 	    }
 	}

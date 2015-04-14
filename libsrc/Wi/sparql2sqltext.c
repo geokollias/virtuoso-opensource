@@ -5585,13 +5585,23 @@ ssg_print_valmoded_scalar_expn (spar_sqlgen_t * ssg, SPART * tree, ssg_valmode_t
 	}
       if (SSG_VALMODE_DATATYPE == needed)
 	{
+	  ptrlong tree_restr_bits = sparp_restr_bits_of_expn (ssg->ssg_sparp, tree);
+	  int need_check_for_null = !(tree_restr_bits & SPART_VARR_NOT_NULL);
+	  if (need_check_for_null)
+	    {
+	      ssg_puts (" CASE WHEN (");
+	      ssg_print_scalar_expn (ssg, tree, native, NULL_ASNAME);
+	      ssg_puts (" IS NULL) THEN NULL ELSE");
+	    }
 	  ssg_print_box_as_sql_atom (ssg, uname_xmlschema_ns_uri_hash_boolean, SQL_ATOM_UNAME_ALLOWED);
-	  return;
+	  if (need_check_for_null)
+	    ssg_puts (" END");
+	  goto print_asname;	/* see below */
 	}
       if (SSG_VALMODE_LANGUAGE == needed)
 	{
 	  ssg_puts_with_comment (" NULL", "lang of bool");
-	  return;
+	  goto print_asname;	/* see below */
 	}
       native = SSG_VALMODE_LONG;
     }
@@ -5715,6 +5725,14 @@ use_standard_template:
   else
     ssg_print_tmpl (ssg, native, tmpl, NULL, NULL, tree, asname);
   return;
+
+print_asname:
+  if (IS_BOX_POINTER (asname))
+    {
+      ssg_puts_with_comment (" AS", "valmoded scalar");
+      ssg_putchar (' ');
+      ssg_prin_id (ssg, asname);
+    }
 }
 
 caddr_t
@@ -7399,61 +7417,25 @@ ssg_print_equiv_retval_expn (spar_sqlgen_t * ssg, SPART * gp, sparp_equiv_t * eq
 	if (!(flags & SSG_RETVAL_FROM_JOIN_MEMBER))
 	  goto try_write_null;	/* see below */
 	memb_len = BOX_ELEMENTS_INT (gp->_.gp.members);
-	if (!(SPART_VARR_NOT_NULL & eq->e_rvr.rvrRestrictions) && (1 < BOX_ELEMENTS (eq->e_subvalue_idxs)))
-	  {			/* Special case for coalesce as a result of full outer join like two VALUES with UNBOUNDs for same variable in bug 16670 */
-	    int sub_is_first_coalesce_arg = 1;
-	    sub_flags = (SSG_RETVAL_FROM_GOOD_SELECTED |
-		(flags & (SSG_RETVAL_OPTIONAL_MAKES_NULLABLE | SSG_RETVAL_MUST_PRINT_SOMETHING | SSG_RETVAL_FROM_ANY_SELECTED |
-			SSG_RETVAL_CAN_PRINT_NULL)));
-	    ssg_puts (" COALESCE (");
-	    ssg->ssg_indent++;
-	    ssg_newline (0);
-	    for (memb_ctr = 0; memb_ctr < memb_len; memb_ctr++)
-	      {
-		int final_sub_flags = sub_flags;
-		gp_member = gp->_.gp.members[memb_ctr];
-		if (SPAR_GP != gp_member->type)
-		  continue;
-		subval = sparp_equiv_get_subvalue_ro (ssg->ssg_equivs, ssg->ssg_equiv_count, gp_member, eq);
-		if (NULL == subval)
-		  continue;
-		if (OPTIONAL_L == gp_member->_.gp.subtype)
-		  final_sub_flags |= SSG_RETVAL_OPTIONAL_MAKES_NULLABLE;
-		if (sub_is_first_coalesce_arg)
-		  sub_is_first_coalesce_arg = 0;
-		else
-		  {
-		    ssg_putchar (',');
-		    ssg_newline (0);
-		  }
-		printed = ssg_print_equiv_retval_expn (ssg, gp_member, subval, final_sub_flags, needed, asname);	/*#2 */
-	      }
-	    ssg_putchar (')');
-	    ssg->ssg_indent--;
-	    goto write_assuffix;	/* see below */
-	  }
-	do
+	if (2 == memb_len)
 	  {			/* Special case for coalesce as a result of value that may come from more than one optional, bug 16064 */
-	    SPART *gp_first_member;
+	    SPART *gp_first_member = gp->_.gp.members[0];
 	    sparp_equiv_t *first_subval;
-	    if (2 != memb_len)
-	      break;
-	    gp_first_member = gp->_.gp.members[0];
 	    if (SPAR_GP != gp_first_member->type)
-	      break;
+	      goto print_plain_sub;
 	    gp_member = gp->_.gp.members[1];
 	    if (SPAR_GP != gp_member->type)
-	      break;
+	      goto print_plain_sub;
 	    if (OPTIONAL_L != gp_member->_.gp.subtype)
-	      break;
+	      goto print_plain_sub;
 	    subval = sparp_equiv_get_subvalue_ro (ssg->ssg_equivs, ssg->ssg_equiv_count, gp_member, eq);
 	    if (NULL == subval)
-	      break;
+	      goto print_plain_sub;
 	    first_subval = sparp_equiv_get_subvalue_ro (ssg->ssg_equivs, ssg->ssg_equiv_count, gp_first_member, eq);
 	    if (NULL == first_subval)
-	      break;
+	      goto print_plain_sub;
 	    if (first_subval->e_rvr.rvrRestrictions & SPART_VARR_NOT_NULL)
-	      break;
+	      goto print_plain_sub;
 	    ssg_puts (" COALESCE (");
 	    ssg->ssg_indent++;
 	    ssg_newline (0);
@@ -7468,7 +7450,7 @@ ssg_print_equiv_retval_expn (spar_sqlgen_t * ssg, SPART * gp, sparp_equiv_t * eq
 	    ssg->ssg_indent--;
 	    goto write_assuffix;	/* see below */
 	  }
-	while (0);
+      print_plain_sub:
 	for (memb_ctr = 0; memb_ctr < memb_len; memb_ctr++)
 	  {
 	    gp_member = gp->_.gp.members[memb_ctr];
@@ -7979,15 +7961,7 @@ ghost variable can be used as a sample variable only in absence of plain vars */
       sample_var->_.var.rvr.rvrRestrictions &= ~restrs_not_filtered_in_subqs;
       if (SPART_VARR_FIXED & restrs_not_filtered_in_subqs)
 	{
-	  SPART *rval, *bop;
-	  if ((DV_STRING == DV_TYPE_OF (eq->e_rvr.rvrFixedValue)) && (NULL != eq->e_rvr.rvrDatatype)
-	      && (rb_uname_to_flags_of_parseable_datatype (eq->e_rvr.rvrDatatype) & RDF_TYPE_PARSEABLE))
-	    rval =
-		spartlist (ssg->ssg_sparp, 5, SPAR_LIT, eq->e_rvr.rvrFixedValue, eq->e_rvr.rvrDatatype, eq->e_rvr.rvrLanguage,
-		eq->e_rvr.rvrFixedValue);
-	  else
-	    rval = (SPART *) (eq->e_rvr.rvrFixedValue);
-	  bop = spartlist (ssg->ssg_sparp, 3, BOP_EQ, sample_var, rval);
+	  SPART *bop = spartlist (ssg->ssg_sparp, 3, BOP_EQ, sample_var, eq->e_rvr.rvrFixedValue);
 	  ssg_print_where_or_and (ssg, "value of equiv class, fixed by replaced filter");
 	  ssg_print_bop_bool_expn (ssg, bop, " = ", " equ (", 1, SSG_VALMODE_BOOL);
 	}
@@ -8280,7 +8254,8 @@ print_sub_eq_sub:
 	  caddr_t sub2_selid = sub2_gp->_.gp.selid;
 	  ssg_valmode_t sub_native, sub2_native, common_native;
 	  SPART *left_sub_gp = NULL;
-	  int col_ctr, col_count, is_good, sub_is_nullable_inline, sub2_is_nullable_inline;
+	  int col_ctr, col_count, is_good;
+	  const char *sub_is_nullable_inline, *sub2_is_nullable_inline;
 	  if (!print_inner_filter_conds && (sub_gp == sub2_gp))
 	    continue;
 	  if (!print_cross_join_conds && (sub_gp != sub2_gp))
@@ -8334,14 +8309,18 @@ print_sub_eq_sub:
 	    ssg_puts_comment ("note SSG_VALMODE_LONG:");
 	  col_count = ((IS_BOX_POINTER (common_native)) ? common_native->qmfColumnCount : 1);
 	  ssg_print_where_or_and (ssg, "two retvals belong to same equiv");
-	  sub_is_nullable_inline = (
-	      (VALUES_L == sub_gp->_.gp.subtype) ?
+	  sub_is_nullable_inline = NULL;
+	  if ((VALUES_L == sub_gp->_.gp.subtype) &&
 	      (sub_gp->_.gp.subquery->_.binv.counters_of_unbound[sparp_find_binv_rset_pos_of_varname (ssg->ssg_sparp, sub_gp,
-			  sub_gp->_.gp.subquery, sub_eq->e_varnames[0])]) : ((OPTIONAL_L == sub2_gp->_.gp.subtype)
-		  && !(sub_eq->e_rvr.rvrRestrictions & SPART_VARR_NOT_NULL)) /* This case is for Bug16064 */ );
-	  sub2_is_nullable_inline = ((VALUES_L == sub2_gp->_.gp.subtype)
-	      && (sub2_gp->_.gp.subquery->_.binv.counters_of_unbound[sparp_find_binv_rset_pos_of_varname (ssg->ssg_sparp, sub2_gp,
-			  sub2_gp->_.gp.subquery, sub2_eq->e_varnames[0])]));
+			  sub_gp->_.gp.subquery, sub_eq->e_varnames[0])]))
+	    sub_is_nullable_inline = "nullable in left hand VALUES";
+	  else if ((OPTIONAL_L == sub2_gp->_.gp.subtype) && (sub_eq->e_nested_bindings == sub_eq->e_nested_optionals) && (0 == sub_eq->e_gspo_uses) && (0 == sub_eq->e_subquery_uses))	/* This case is for Bug16064 */
+	    sub_is_nullable_inline = "same nullable in both left hand and right hand OPTIONALs";
+	  sub2_is_nullable_inline = NULL;
+	  if ((VALUES_L == sub2_gp->_.gp.subtype) &&
+	      (sub2_gp->_.gp.subquery->_.binv.counters_of_unbound[sparp_find_binv_rset_pos_of_varname (ssg->ssg_sparp, sub2_gp,
+			  sub2_gp->_.gp.subquery, sub2_eq->e_varnames[0])]))
+	    sub2_is_nullable_inline = "nullable in right hand VALUES";
 	  if (sub_is_nullable_inline || sub2_is_nullable_inline)
 	    {
 	      ssg_puts (" (");
@@ -8350,7 +8329,7 @@ print_sub_eq_sub:
 		{
 		  ssg_print_equiv_retval_expn (ssg, sub_gp, sub_eq, SSG_RETVAL_FROM_GOOD_SELECTED | SSG_RETVAL_MUST_PRINT_SOMETHING,
 		      SSG_VALMODE_LONG, NULL_ASNAME);
-		  ssg_puts (" IS NULL ");
+		  ssg_puts_with_comment3 (" IS NULL ", "", sub_is_nullable_inline, "");
 		}
 	      if (sub_is_nullable_inline && sub2_is_nullable_inline)
 		ssg_puts (" OR ");
@@ -8358,7 +8337,7 @@ print_sub_eq_sub:
 		{
 		  ssg_print_equiv_retval_expn (ssg, sub2_gp, sub2_eq,
 		      SSG_RETVAL_FROM_GOOD_SELECTED | SSG_RETVAL_MUST_PRINT_SOMETHING, SSG_VALMODE_LONG, NULL_ASNAME);
-		  ssg_puts (" IS NULL ");
+		  ssg_puts_with_comment3 (" IS NULL ", "", sub2_is_nullable_inline, "");
 		}
 	      ssg_puts (" OR (");
 	      ssg->ssg_indent++;

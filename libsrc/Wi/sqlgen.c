@@ -561,8 +561,8 @@ sqlg_ks_vec (sqlo_t * so, df_elt_t * tb_dfe, key_source_t * ks)
 int enable_cl_fref_union = 1;
 int enable_row_ranges = 1;
 
-#define SP_IS_LOWER(sp) (CMP_GT == sp->sp_min_op || CMP_GTE == sp->sp_min_op)
-#define SP_IS_UPPER(sp) (CMP_LT == sp->sp_max_op || CMP_LTE == sp->sp_max_op)
+#define SP_IS_LOWER(sp) ((CMP_GT == sp->sp_min_op || CMP_GTE == sp->sp_min_op) && CMP_NONE == sp->sp_max_op)
+#define SP_IS_UPPER(sp) ((CMP_LT == sp->sp_max_op || CMP_LTE == sp->sp_max_op) && CMP_NONE == sp->sp_min_op)
 
 void
 sqlg_ks_row_ranges (key_source_t * ks)
@@ -7030,6 +7030,8 @@ dfe_unit_col_loci (df_elt_t * dfe)
 		}
 		END_DO_BOX;
 	      }
+	    if (dfe->dfe_tree && dfe->dfe_tree != dfe->_.sub.ot->ot_dt)
+	      dfe->_.sub.ot->ot_dt = dfe->dfe_tree;
 	    if (dfe->_.sub.hash_filler_of)
 	      t_set_pushfirst (&dfe->dfe_sqlo->so_hash_fillers, (void *) dfe);
 	    if (dfe->_.sub.hash_filler)

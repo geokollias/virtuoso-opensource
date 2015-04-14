@@ -1835,6 +1835,8 @@ sqlc_expand_remote_cursor (sql_comp_t * sc, ST * tree)
 	return 0;
       if (sqlo_opt_value (t1->_.table.opts, OPT_INDEX_ONLY))
 	return 0;
+      if (sch_view_def (wi_inst.wi_schema, tb->tb_name))
+	return 0;
       rt = find_remote_table (tb->tb_name, 0);
       if (!rt && !tb->tb_primary_key->key_partition && !tb->tb_primary_key->key_is_col)
 	return 0;

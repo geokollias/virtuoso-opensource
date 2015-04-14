@@ -677,6 +677,74 @@ tn_fetchable (trans_node_t * tn, caddr_t * inst, caddr_t value)
 
 
 void
+ts_pprint (trans_state_t * tst)
+{
+  for (tst = tst; tst; tst = tst->tst_prev)
+    {
+      dbg_print_box (tst->tst_value, stdout);
+      if (tst->tst_data)
+	dbg_print_box (tst->tst_data, stdout);
+      printf ("-> ");
+    }
+  printf ("\n");
+}
+
+
+trans_state_t *
+pv_path (trans_state_t * tst)
+{
+  trans_state_t *ntst, *prev_n = NULL;
+  while (tst)
+    {
+      ntst = (trans_state_t *) t_alloc (sizeof (trans_state_t));
+      *ntst = *tst;
+      ntst->tst_prev = prev_n;
+      prev_n = ntst;
+      tst = tst->tst_prev;
+    }
+  return ntst;
+}
+
+
+
+
+void
+tn_pv_1 (trans_set_t * ts, trans_state_t * tst, int level, dk_set_t * res)
+{
+  dk_set_t *place;
+  if (!level)
+    {
+      if (box_equal (tst->tst_value, ts->ts_value))
+	{
+	  t_set_push (res, pv_path (tst));
+	}
+      return;
+    }
+  place = (dk_set_t) id_hash_get (ts->ts_traversed, (caddr_t) & tst->tst_value);
+  DO_SET (trans_state_t *, prev, place)
+  {
+    trans_state_t link = *prev;
+    link.tst_prev = tst;
+    tn_pv_1 (ts, &link, level - 1, res);
+  }
+  END_DO_SET ();
+}
+
+
+
+dk_set_t
+ts_path_variants (trans_set_t * ts, trans_state_t * tst)
+{
+  /* return a list of all paths from start of ts to this tst with as many steps as the path to ttst */
+  dk_set_t res = NULL;
+  trans_state_t link = *tst;
+  link.tst_prev = NULL;
+  tn_pv_1 (ts, &link, tst->tst_depth, &res);
+  return res;
+}
+
+
+void
 ts_new_result (trans_node_t * tn, caddr_t * inst, trans_set_t * ts, trans_state_t * tst)
 {
   if (tn->tn_path_ctr)
@@ -729,7 +797,7 @@ tn_merge_path (trans_node_t * tn, caddr_t * inst, trans_set_t * ts, trans_state_
       /* if there is step data, present the steps as lr.  So the step data of the rl path gets shifted one towards the start of the path. */
       rl = tn_rl_shifted_copy (rl, NULL);
     }
-  else
+  else if (tn->tn_distinct)
     {
       if (tn->tn_is_primary)
 	lr = lr->tst_prev;
@@ -757,19 +825,45 @@ ts_check_target (trans_node_t * tn, caddr_t * inst, trans_set_t * ts, trans_stat
   dk_set_t complements;
   if (ts->ts_target_ts)
     {
+      dk_set_t variants = NULL;
       dk_set_t *place;
       if ((place = (dk_set_t *) id_hash_get (ts->ts_target_ts->ts_traversed, (caddr_t) & tst->tst_value)))
 	{
 	  if (tn->tn_distinct)
-	    complements = t_CONS ((void *) *place, NULL);
+	    {
+	      variants = t_CONS (tst, NULL);
+	      complements = t_CONS ((void *) *place, NULL);
+	    }
 	  else
-	    complements = *place;
-	  DO_SET (trans_state_t *, complement, &complements)
+	    {
+	      variants = ts_path_variants (ts, tst);
+	      complements = *place;
+	    }
+	  DO_SET (trans_state_t *, v, &variants)
 	  {
-	    if (tn->tn_is_primary)
-	      tn_merge_path (tn, inst, ts, complement, tst);
-	    else
-	      tn_merge_path (tn, inst, ts->ts_target_ts, tst, complement);
+	    DO_SET (trans_state_t *, complement, &complements)
+	    {
+	      if (tn->tn_distinct)
+		{
+		  if (tn->tn_is_primary)
+		    tn_merge_path (tn, inst, ts, complement, v);
+		  else
+		    tn_merge_path (tn, inst, ts->ts_target_ts, v, complement);
+		}
+	      else
+		{
+		  dk_set_t c_variants = ts_path_variants (ts->ts_target_ts, complement);
+		  DO_SET (dk_set_t, c, &c_variants)
+		  {
+		    if (tn->tn_is_primary)
+		      tn_merge_path (tn, inst, ts, c, v);
+		    else
+		      tn_merge_path (tn, inst, ts->ts_target_ts, v, c);
+		  }
+		  END_DO_SET ();
+		}
+	    }
+	    END_DO_SET ();
 	  }
 	  END_DO_SET ();
 	  return 1;
@@ -781,7 +875,17 @@ ts_check_target (trans_node_t * tn, caddr_t * inst, trans_set_t * ts, trans_stat
     {
       if (box_equal (ts->ts_target, tst->tst_value))
 	{
-	  ts_new_result (tn, inst, ts, tst);
+	  if (tn->tn_distinct)
+	    ts_new_result (tn, inst, ts, tst);
+	  else
+	    {
+	      dk_set_t variants = ts_path_variants (ts, tst);
+	      DO_SET (trans_state_t *, v, &variants)
+	      {
+		ts_new_result (tn, inst, ts, v);
+	      }
+	      END_DO_SET ();
+	    }
 	  return 1;
 	}
       return 0;
@@ -849,10 +953,13 @@ tst_next_states (trans_node_t * tn, caddr_t * inst, trans_set_t * ts, trans_stat
       {
 	dk_set_t *set_place = (dk_set_t *) id_hash_get (ts->ts_traversed, (caddr_t) & related);
 	if (set_place)
-	  t_set_push (set_place, (void *) rel);
+	  {
+	    t_set_push (set_place, (void *) tst);
+	    continue;		/* this place is already reached and continued by other means */
+	  }
 	else
 	  {
-	    dk_set_t f = t_CONS (rel, NULL);
+	    dk_set_t f = t_CONS (tst, NULL);
 	    t_id_hash_set (ts->ts_traversed, (caddr_t) & rel->tst_value, (caddr_t) & f);
 	  }
       }
@@ -1503,7 +1610,7 @@ trans_node_start (trans_node_t * tn, caddr_t * inst, caddr_t * state, int n_sets
 	  t_id_hash_set (ts->ts_traversed, (caddr_t) & tst->tst_value, (caddr_t) & tst);
 	else if (tn->tn_complement)
 	  {
-	    dk_set_t f = t_CONS (tst, NULL);
+	    dk_set_t f = NULL;
 	    t_id_hash_set (ts->ts_traversed, (caddr_t) & tst->tst_value, (caddr_t) & f);
 	  }
       }

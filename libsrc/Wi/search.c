@@ -3407,6 +3407,7 @@ itc_n_p_matches_in_col (it_cursor_t * itc, caddr_t * data_col, int *first, int *
 void
 itc_row_col_stat (it_cursor_t * itc, buffer_desc_t * buf, int *is_leaf)
 {
+  int64 ppos;
   int n_data = 1;
   db_buf_t row = BUF_ROW (buf, itc->itc_map_pos);
   dbe_key_t *key = itc->itc_insert_key;
@@ -3414,6 +3415,12 @@ itc_row_col_stat (it_cursor_t * itc, buffer_desc_t * buf, int *is_leaf)
   int len_limit = -1, first_match = 0;
   if (!kv || KV_LEFT_DUMMY == kv)
     return;
+  ppos = itc->itc_page + (int64) itc->itc_map_pos << 32;
+  if (!itc->itc_st.visited)
+    itc->itc_st.visited = hash_table_allocate (203);
+  if (gethash ((void *) ppos, itc->itc_st.visited))
+    return;
+  sethash ((void *) ppos, itc->itc_st.visited, (void *) 1);
   if (!*is_leaf)
     {
       *is_leaf = 1;
@@ -3774,13 +3781,6 @@ itc_matches_on_page (it_cursor_t * itc, buffer_desc_t * buf, int *leaf_ctr_ret, 
 	      leaves[leaf_fill++] = leaf1;
 	      if (leaf_fill > 1000)
 		bing ();
-	      if (have_left_leaf)
-		{
-		  /* prefer giving the next to leftmost instead of leftmost leaf if leftmost is left dummy.
-		   * The leftmost branch can be empty because the leaf with the left dummy never can get deleted */
-		  *alt_leaf_ret = leaf1;
-		  have_left_leaf = 0;
-		}
 	      if (DVC_MATCH == res)
 		have_leaf_match = 1;
 	      leaf_ctr++;
@@ -3820,6 +3820,15 @@ itc_matches_on_page (it_cursor_t * itc, buffer_desc_t * buf, int *leaf_ctr_ret, 
       if (pos == pm->pm_count - 1)
 	*ends_with_match = 1;
     }
+  if (have_left_leaf && leaf_ctr > 2)
+    {
+      /* prefer giving the next to leftmost instead of leftmost leaf if leftmost is left dummy.
+       * The leftmost branch can be empty because the leaf with the left dummy never can get deleted *
+       * But if just 2, the 2nd will contain the end and will miss the 1st.   */
+      *alt_leaf_ret = leaves[1];
+      have_left_leaf = 0;
+    }
+
   *leaf_ctr_ret = (was_left_leaf && 1 == leaf_ctr) ? 0 : (1 == leaf_ctr && !have_leaf_match) ? 0 : leaf_ctr;	/* if the only leaf hit was the left dummy, can't tell if matched */
   if (row_ctr)
     *rows_per_bm = ctr / row_ctr;
@@ -3929,7 +3938,7 @@ make_est:
   if (leaf_ctr)
     {
       any_leaf_match = 1;
-      if (1 == leaf_ctr && -1 == level_of_single_leaf_match)
+      if (1 == leaf_ctr && -1 == level_of_single_leaf_match && !leaf_estimate)
 	level_of_single_leaf_match = level;
     }
   if (leaf_estimate)
@@ -4104,12 +4113,12 @@ itc_local_sample (it_cursor_t * itc)
       res = itc_sample_1 (itc, &buf, &n_leaves, -1);
       itc_page_leave (itc, buf);
       if (n_leaves < 2 || 1 == dbf_max_itc_samples)
-	return res;
+	goto return_res;
       if (itc->itc_row_specs)
 	{
 	  float row_sel = itc_row_selectivity (itc, res);
 	  if (row_sel > 0.1 && row_sel < 0.9)
-	    return res;
+	    goto return_res;
 	}
       else
 	max_samples = MIN (max_samples, 5);
@@ -4121,7 +4130,10 @@ itc_local_sample (it_cursor_t * itc)
   itc_page_leave (itc, buf);
 
   if (!n_leaves)
-    return samples[0];
+    {
+      res = samples[0];
+      goto return_res;
+    }
 regular:
   {
     int angle, step = 248, offset = 5;
@@ -4155,7 +4167,14 @@ regular:
   if (CL_RUN_SINGLE_CLUSTER == cl_run_local_only && itc->itc_insert_key->key_partition
       && itc->itc_insert_key->key_partition->kpd_map != clm_replicated)
     mean *= key_n_partitions (itc->itc_insert_key);
-  return ((int64) mean);
+  res = ((int64) mean);
+return_res:
+  if (itc->itc_st.visited)
+    {
+      hash_table_free (itc->itc_st.visited);
+      itc->itc_st.visited = NULL;
+    }
+  return res;
 }
 
 int enable_exact_p_stat = 0;

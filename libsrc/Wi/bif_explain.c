@@ -2656,7 +2656,9 @@ ssl_print_xml (state_slot_t * ssl, dk_session_t * s)
 		&err_ret);
 	    if (!err_ret && strval)
 	      {
-		ses_sprintf (s, "<ssl constant='" EXPLAIN_LINE_MAX_STR_FORMAT "' />", strval);
+		SES_PRINT (s, "<ssl constant='");
+		dks_esc_write (s, strval, MIN (strlen (strval), EXPLAIN_LINE_MAX), CHARSET_UTF8, CHARSET_UTF8, DKS_ESC_PTEXT);
+		SES_PRINT (s, "' />");
 	      }
 	    else
 	      SES_PRINT (s, "<ssl constant='' />");
