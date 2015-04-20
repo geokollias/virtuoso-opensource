@@ -3221,6 +3221,101 @@ col_min_max_trunc (caddr_t val)
     }
 }
 
+int32 enable_sample_hist = 1;
+
+caddr_t *
+cs_hist (col_stat_t * cs, dbe_column_t * col, int64 est, it_cursor_t * itc)
+{
+  caddr_t *arr;
+  int64 card = cs->cs_distinct->ht_count;
+  if (est < 100000 || card < 2 || !enable_sample_hist)
+    return NULL;
+  if (card > 10000)
+    card = 10000;
+  switch (dtp_canonical[col->col_sqt.sqt_col_dtp])
+    {
+    case DV_LONG_INT:
+    case DV_SINGLE_FLOAT:
+    case DV_DOUBLE_FLOAT:
+    case DV_NUMERIC:
+    case DV_DATETIME:
+    case DV_ANY:
+    case DV_STRING:
+      arr = (caddr_t *) dk_alloc_box_zero (sizeof (caddr_t) * card * 2, DV_ARRAY_OF_POINTER);
+      return arr;
+    }
+  return NULL;
+}
+
+
+int
+box_sort_cmp (const void *s1, const void *s2)
+{
+  ccaddr_t sc1 = (caddr_t) * (caddr_t *) s1;
+  ccaddr_t sc2 = (caddr_t) * (caddr_t *) s2;
+  int rc = 0x7 & cmp_boxes_safe (sc1, sc2, NULL, NULL);
+  return DVC_LESS == rc ? -1 : DVC_GREATER == rc ? 1 : 0;
+}
+
+
+void
+cs_set_hist (col_stat_t * cs, dbe_column_t * col, caddr_t * hist, int64 est, it_cursor_t * itc, int keep_cs)
+{
+  dk_set_t buckets = NULL;
+  int64 cnt = 0;
+  int64 prev_cnt = 0;
+  float mpy = (float) est / cs->cs_n_values;
+  int len = BOX_ELEMENTS (hist), inx, prev_inx = 0;
+  int n_buckets = MIN (len / 2, 20);
+  int bsize, bcnt = 0;
+  if (CL_RUN_SINGLE_CLUSTER == cl_run_local_only)
+    mpy *= key_n_partitions (itc->itc_insert_key);
+  /* if not all items in distinct are in the sortted array, scale up the count */
+  if (len / 2 < cs->cs_distinct->ht_count)
+    mpy *= (float) cs->cs_distinct->ht_count / (len / 2);
+  qsort (hist, len / 2, sizeof (caddr_t) * 2, box_sort_cmp);
+  for (inx = 0; inx < len; inx += 2)
+    cnt += ((ptrlong *) hist)[inx + 1];
+  bsize = cnt / n_buckets;
+  for (inx = 0; inx < len; inx += 2)
+    {
+      ptrlong c = ((ptrlong *) hist)[inx + 1];
+      bcnt += c;
+      if (bcnt >= bsize)
+	{
+	  dk_set_push (&buckets, list (2, box_num (mpy * prev_cnt), box_copy_tree (hist[prev_inx])));
+	  prev_cnt += bcnt;
+	  prev_inx = inx;
+	  bcnt = 0;
+	}
+      hist[inx + 1] = NULL;
+    }
+  if (bcnt)
+    dk_set_push (&buckets, list (2, box_num (prev_cnt * mpy), box_copy_tree (hist[prev_inx])));
+  col->col_hist = list_to_array (dk_set_nreverse (buckets));
+  if (!keep_cs)
+    dk_free_tree ((caddr_t) hist);
+}
+
+
+void
+key_set_asc_col (dbe_key_t * key, dbe_column_t * col, col_stat_t * cs)
+{
+  int fl = 0;
+  dbe_col_loc_t *cl;
+  cl = key_find_cl (key, col->col_id);
+  if (!cl)
+    return;
+
+  if (cs->cs_n_values < 10000)
+    fl = 0;
+  else if (cs->cs_n_sample_asc / 2 > cs->cs_n_sample_desc)
+    fl = CL_ASC;
+  else if (cs->cs_n_sample_desc / 2 > cs->cs_n_sample_asc)
+    fl = CL_DESC;
+  cl->cl_is_asc = fl;
+}
+
 
 void
 itc_col_stat_free (it_cursor_t * itc, int upd_col, float est)
@@ -3240,8 +3335,9 @@ itc_col_stat_free (it_cursor_t * itc, int upd_col, float est)
     {
       boxint min = 0, max = 0;
       caddr_t minb = NULL, maxb = NULL;
-      int is_first = 1;
+      int is_first = 1, keep_cs = 0;
       int is_int = DV_LONG_INT == col->col_sqt.sqt_dtp || DV_INT64 == col->col_sqt.sqt_dtp;
+      caddr_t *hist = NULL;
       if (upd_col && (0 == stricmp (col->col_name, "P") || 0 == stricmp (col->col_name, "G")))
 	{
 	  col->col_stat = cs;
@@ -3249,9 +3345,18 @@ itc_col_stat_free (it_cursor_t * itc, int upd_col, float est)
 	}
       else
 	{
+	  int fill = 0;
+	  hist = cs_hist (cs, col, est, itc);
 	  id_hash_iterator (&hit, cs->cs_distinct);
 	  while (hit_next (&hit, (caddr_t *) & data, (caddr_t *) & count))
 	    {
+	      int in_hist = 0;
+	      if (hist && fill < BOX_ELEMENTS (hist) - 1)
+		{
+		  hist[fill++] = *data;
+		  hist[fill++] = (caddr_t) CS_N_VALUES (*count);
+		  in_hist = 1;
+		}
 	      if (is_int)
 		{
 		  boxint d = unbox (*data);
@@ -3267,13 +3372,12 @@ itc_col_stat_free (it_cursor_t * itc, int upd_col, float est)
 		      if (d < min)
 			min = d;
 		    }
-		  dk_free_tree (*data);
 		}
 	      else
 		{
 		  if (is_first)
 		    {
-		      minb = *data;
+		      minb = box_copy_tree (*data);
 		      maxb = box_copy_tree (minb);
 		      is_first = 0;
 		    }
@@ -3283,7 +3387,7 @@ itc_col_stat_free (it_cursor_t * itc, int upd_col, float est)
 		      if (DVC_LESS == (~DVC_NOORDER & low_rc))
 			{
 			  dk_free_tree (minb);
-			  minb = *data;
+			  minb = box_copy_tree (*data);
 			}
 		      else
 			{
@@ -3291,17 +3395,20 @@ itc_col_stat_free (it_cursor_t * itc, int upd_col, float est)
 			  if (DVC_GREATER == (~DVC_NOORDER & high_rc))
 			    {
 			      dk_free_tree (maxb);
-			      maxb = *data;
+			      maxb = box_copy_tree (*data);
 			    }
-			  else
-			    dk_free_tree (*data);
 			}
 		    }
 		}
+	      if (!in_hist || keep_cs)
+		dk_free_tree (*data);
 	    }
+	  if (hist)
+	    cs_set_hist (cs, col, hist, est, itc, keep_cs);
 	}
       if (upd_col)
 	{
+	  key_set_asc_col (key, col, cs);
 	  if (key && !key->key_distinct)
 	    {
 	      col->col_count = cs->cs_n_values / (float) itc->itc_st.n_sample_rows * est;
@@ -3327,7 +3434,7 @@ itc_col_stat_free (it_cursor_t * itc, int upd_col, float est)
 		  if (col->col_n_distinct > max - min && !col_is_leading (col))
 		    col->col_n_distinct = MAX (1, max - min);
 		}
-	      if (!is_int)
+	      if (!is_int && !hist)
 		{
 		  col->col_min = col_min_max_trunc (minb);
 		  col->col_max = col_min_max_trunc (maxb);
@@ -3348,6 +3455,7 @@ itc_col_stat_free (it_cursor_t * itc, int upd_col, float est)
   hash_table_free (itc->itc_st.cols);
   itc->itc_st.cols = NULL;
 }
+
 
 void
 cs_new_page (dk_hash_t * cols)
@@ -3409,6 +3517,7 @@ itc_row_col_stat (it_cursor_t * itc, buffer_desc_t * buf, int *is_leaf)
 {
   int64 ppos;
   int n_data = 1;
+  int is_to_right = itc->itc_st.is_to_right;
   db_buf_t row = BUF_ROW (buf, itc->itc_map_pos);
   dbe_key_t *key = itc->itc_insert_key;
   key_ver_t kv = IE_KEY_VERSION (row);
@@ -3437,6 +3546,7 @@ itc_row_col_stat (it_cursor_t * itc, buffer_desc_t * buf, int *is_leaf)
     int len, is_data = 0;
     ptrlong *place;
     dbe_col_loc_t *cl;
+    itc->itc_st.is_to_right = is_to_right;
     if (key->key_is_col)
       cl = cl_list_find (key->key_row_var, col->col_id);
     else
@@ -3513,21 +3623,39 @@ itc_row_col_stat (it_cursor_t * itc, buffer_desc_t * buf, int *is_leaf)
 	      {
 		col_stat->cs_n_values++;
 		col_stat->cs_len += len;
-	      }
-	    place = (ptrlong *) id_hash_get (col_stat->cs_distinct, (caddr_t) & data);
-	    if (place)
-	      {
-		if (!(CS_IN_SAMPLE & *place))
-		  *place += CS_IN_SAMPLE | CS_SAMPLE_INC | 1;
+		if (itc->itc_st.is_to_right && col_stat->cs_prev)
+		  {
+		    int rc = cmp_boxes_safe (col_stat->cs_prev, data, NULL, NULL);
+		    if (DVC_LESS == rc)
+		      {
+			col_stat->cs_n_asc++;
+			if (2 == itc->itc_st.is_to_right)
+			  col_stat->cs_n_sample_asc++;
+		      }
+		    else if (DVC_GREATER == rc)
+		      {
+			col_stat->cs_n_desc++;
+			if (2 == itc->itc_st.is_to_right)
+			  col_stat->cs_n_sample_desc++;
+		      }
+		  }
+		itc->itc_st.is_to_right = 1;
+		col_stat->cs_prev = data;
+		place = (ptrlong *) id_hash_get (col_stat->cs_distinct, (caddr_t) & data);
+		if (place)
+		  {
+		    if (!(CS_IN_SAMPLE & *place))
+		      *place += CS_IN_SAMPLE | CS_SAMPLE_INC | 1;
+		    else
+		      (*place)++;
+		    dk_free_tree (data);
+		  }
 		else
-		  (*place)++;
-		dk_free_tree (data);
-	      }
-	    else
-	      {
-		uint64 one = CS_IN_SAMPLE | CS_SAMPLE_INC | 1;
-		id_hash_set (col_stat->cs_distinct, (caddr_t) & data, (caddr_t) & one);
-		/*if (THREAD_CURRENT_THREAD->thr_tlsf->tlsf_total_mapped < 4000000 && tlsf_check (THREAD_CURRENT_THREAD->thr_tlsf, 0)) GPF_T1 ("corrupt"); */
+		  {
+		    uint64 one = CS_IN_SAMPLE | CS_SAMPLE_INC | 1;
+		    id_hash_set (col_stat->cs_distinct, (caddr_t) & data, (caddr_t) & one);
+		    /*if (THREAD_CURRENT_THREAD->thr_tlsf->tlsf_total_mapped < 4000000 && tlsf_check (THREAD_CURRENT_THREAD->thr_tlsf, 0)) GPF_T1 ("corrupt"); */
+		  }
 	      }
 	  }
 	if (data_col)
@@ -3601,6 +3729,7 @@ itc_page_col_stat (it_cursor_t * itc, buffer_desc_t * buf)
       {
 	itc->itc_map_pos = map_pos;
 	itc_row_col_stat (itc, buf, &is_leaf);
+	itc->itc_st.is_to_right = 1;
       }
       END_DO_ROWS;
     }
@@ -4094,6 +4223,7 @@ itc_local_sample (it_cursor_t * itc)
   dbe_table_t *tb = key->key_table;
   int n_samples, max_samples = key->key_partition && key->key_partition->kpd_map->clm_is_elastic ? 3 : MAX_SAMPLES;
   max_samples = MIN (max_samples, dbf_max_itc_samples);
+  itc->itc_st.is_to_right = 0;
   if (itc->itc_geo_op)
     max_samples = MAX_SAMPLES;	/* geo is not sampled in all partitions and not doing many angles will easily give 0 */
   itc->itc_st.n_rows_sampled = 0;
@@ -4139,6 +4269,7 @@ regular:
     int angle, step = 248, offset = 5;
     for (;;)
       {
+	itc->itc_st.is_to_right = 0;
 	for (angle = step + offset; angle < 1000; angle += step)
 	  {
 	    itc->itc_random_search = RANDOM_SEARCH_ON;
@@ -4156,6 +4287,7 @@ regular:
 	    samples[n_samples++] = sample;
 	    if (n_samples >= max_samples)
 	      break;
+	    itc->itc_st.is_to_right = 2;
 	  }
 	samples_stddev (samples, n_samples, &mean, &stddev);
 	if (n_samples > MAX (3, max_samples - 2) || stddev < mean / 3)

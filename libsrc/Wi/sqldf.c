@@ -3390,7 +3390,7 @@ sqlo_not_eq_with_any (sqlo_t * so, dk_set_t args, df_elt_t * right)
 
 
 df_elt_t *
-sqlo_merge_dfe (sqlo_t * so, df_elt_t * pred, dk_set_t merge_with, int allow_contr)
+sqlo_merge_dfe (sqlo_t * so, df_elt_t * pred, dk_set_t merge_with, int allow_contr, df_elt_t * tb_dfe)
 {
   int inx;
   /* return max, min, eq of the right sides of pred and of the preds in merge_with *
@@ -3399,6 +3399,14 @@ sqlo_merge_dfe (sqlo_t * so, df_elt_t * pred, dk_set_t merge_with, int allow_con
   dk_set_t args = NULL;
   df_elt_t *cnst = NULL;
   df_elt_t *dfe = NULL;
+  op_table_t *ot = so->so_this_dt;
+  if (!ot->ot_eq_hash)
+    {
+      ot->ot_eq_hash = ot->ot_placed_eq_hash;
+      sqlo_init_eqs (so, so->so_this_dt, NULL, 1, tb_dfe->_.table.all_preds);
+      if (!ot->ot_placed_eq_hash)
+	ot->ot_placed_eq_hash = ot->ot_eq_hash;
+    }
   merge_with = t_cons ((void *) pred, merge_with);
   DO_SET (df_elt_t *, merge, &merge_with)
   {
@@ -3432,7 +3440,7 @@ sqlo_merge_dfe (sqlo_t * so, df_elt_t * pred, dk_set_t merge_with, int allow_con
 }
 
 dk_set_t
-sqlo_merge_col_preds (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t col_preds, dk_set_t * to_place)
+sqlo_merge_col_preds_1 (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t col_preds, dk_set_t * to_place)
 {
   /* equalities of same col */
   df_elt_t *merge_dfe;
@@ -3459,7 +3467,7 @@ sqlo_merge_col_preds (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t col_preds, dk_set
 	}
 	END_DO_SET ();
       }
-    if (merged_with && (merge_dfe = sqlo_merge_dfe (so, pred, merged_with, !tb_dfe->_.table.ot->ot_is_outer)))
+    if (merged_with && (merge_dfe = sqlo_merge_dfe (so, pred, merged_with, !tb_dfe->_.table.ot->ot_is_outer, tb_dfe)))
       {
 	df_elt_t *new_pred = sqlo_new_dfe (so, DFE_BOP_PRED, NULL);
 	t_set_push (&merged, (void *) pred);
@@ -3480,6 +3488,19 @@ sqlo_merge_col_preds (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t col_preds, dk_set
   return res;
 }
 
+
+dk_set_t
+sqlo_merge_col_preds (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t col_preds, dk_set_t * to_place)
+{
+  /* make a bubble of eqs that contains eqs that are in fact based on placed equalities, not equalities being checked or still to be checked */
+  op_table_t *ot = so->so_this_dt;
+  id_hash_t *prev_eqs = ot->ot_eq_hash;
+  dk_set_t res;
+  ot->ot_eq_hash = NULL;
+  res = sqlo_merge_col_preds_1 (so, tb_dfe, col_preds, to_place);
+  ot->ot_eq_hash = prev_eqs;
+  return res;
+}
 
 
 #define dfe_is_upper(dfe) (dfe->_.bin.op == BOP_LT || dfe->_.bin.op == BOP_LTE)
@@ -5646,6 +5667,34 @@ sqlo_check_col_pred_placed (df_elt_t * tb_dfe)
 }
 
 
+int
+st_is_vec_ssl (ST * tree, void *cd)
+{
+  QNCAST (sqlo_t, so, cd);
+  if (so->so_ret_flag)
+    return 1;
+  if (ST_P (tree, COL_DOTTED))
+    {
+      df_elt_t *dfe = sqlo_df_elt (so, tree);
+      if (dfe && DFE_CONST == dfe->dfe_type && dfe->dfe_ssl && SSL_VEC == dfe->dfe_ssl->ssl_type)
+	so->so_ret_flag = 1;
+
+      return 1;
+    }
+  return 0;
+}
+
+
+int
+dfe_depends_on_vec_code (sqlo_t * so, df_elt_t * pred)
+{
+  /* a hash build side is single state, so should not depend on vec ssls of an enclosing proc context */
+  so->so_ret_flag = 0;
+  sqlo_map_st (pred->dfe_tree, st_is_vec_ssl, so);
+  return so->so_ret_flag;
+}
+
+
 void
 sqlo_hash_fill_dt_new_preds (sqlo_t * so, op_table_t * ot, df_elt_t * dfe, dk_set_t * post_preds)
 {
@@ -5763,7 +5812,11 @@ sqlo_try_hash (sqlo_t * so, df_elt_t * dfe, op_table_t * super_ot, float *score_
     if (0 && pred->dfe_type == DFE_TEXT_PRED)
       return 0;
     if (dfe_is_tb_only (pred, ot))
-      t_set_push (&org_preds, (void *) pred);
+      {
+	if (dfe_depends_on_vec_code (so, pred))
+	  return 0;
+	t_set_push (&org_preds, (void *) pred);
+      }
     else if (DFE_BOP_PRED == pred->dfe_type && BOP_EQ == pred->_.bin.op)
       {
 	df_elt_t *left = pred->_.bin.left;
@@ -6036,7 +6089,7 @@ sqlo_try_in_loop (sqlo_t * so, op_table_t * ot, df_elt_t * tb_dfe, df_elt_t ** s
     return;
   if (sqlo_max_mp_size > 0 && (THR_TMP_POOL)->mp_bytes > (so->so_max_memory / 3 * 2))
     return;
-  if (DFE_TABLE != tb_dfe->dfe_type || IS_BOX_POINTER (tb_dfe->dfe_super->dfe_locus))
+  if (DFE_TABLE != tb_dfe->dfe_type || IS_BOX_POINTER (tb_dfe->dfe_super->dfe_locus) || tb_dfe->_.table.in_arity != 1)
     return;			/* if not a table or a table in a pss through dt.  For pass through ,let the remote decide */
   DO_SET (df_elt_t *, pred, &tb_dfe->_.table.all_preds)
   {
@@ -7283,6 +7336,8 @@ sqlo_layout_lim (sqlo_t * so, op_table_t * ot, int is_top)
       changed = 1;
     }
   sqlo_layout_1 (so, ot, is_top);
+  if (ot->ot_placed_eq_hash)
+    sqlo_clear_eqs (ot->ot_placed_eq_hash);
   if (changed)
     {
       ot->ot_layouts_tried = ot->ot_tried_at_cutoff;
@@ -7627,7 +7682,7 @@ sqlo_layout (sqlo_t * so, op_table_t * ot, int is_top, df_elt_t * super)
     }
   else
     ot->ot_work_dfe->dfe_locus = sqlo_dt_locus (so, ot, super ? super->dfe_locus : LOC_LOCAL);
-  sqlo_init_eqs (so, ot, NULL);
+  sqlo_init_eqs (so, ot, NULL, 0, NULL);
   if (SQLO_LAY_TOP == is_top)
     so->so_vdb_top = dfe_container (so, DFE_DT, NULL);
   so->so_best_score = -1;

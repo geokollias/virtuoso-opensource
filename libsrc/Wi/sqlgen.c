@@ -5712,6 +5712,22 @@ sqlg_simple_fun_ref (sqlo_t * so, data_source_t ** head, df_elt_t * tb_dfe, dk_s
 }
 
 
+int
+dfe_is_oby_key (sqlo_t * so, df_elt_t * oby, df_elt_t * out_dfe)
+{
+  int inx;
+  DO_BOX (ST *, spec, inx, oby->_.setp.specs)
+  {
+    ST *exp = spec->_.o_spec.col;
+    df_elt_t *dfe = sqlo_df_elt (so, exp);
+    if (dfe == out_dfe)
+      return 1;
+  }
+  END_DO_BOX;
+  return 0;
+}
+
+
 data_source_t *
 sqlg_oby_node (sqlo_t * so, data_source_t ** head, df_elt_t * oby, df_elt_t * dt_dfe, dk_set_t pre_code)
 {
@@ -5722,7 +5738,14 @@ sqlg_oby_node (sqlo_t * so, data_source_t ** head, df_elt_t * oby, df_elt_t * dt
   if (oby->_.setp.is_late_proj)
     {
       dk_set_t dep = NULL;
-      ssl_out = (state_slot_t **) t_list_to_array (oby->_.setp.late_proj);
+      dk_set_t out_cols = oby->_.setp.late_proj;
+      DO_BOX (df_elt_t *, out_dfe, inx, dt_dfe->_.sub.dt_out)
+      {
+	if (dfe_is_oby_key (so, oby, out_dfe))
+	  t_set_push (&out_cols, out_dfe);
+      }
+      END_DO_BOX;
+      ssl_out = (state_slot_t **) t_list_to_array (out_cols);
       DO_BOX (df_elt_t *, exp, inx, ssl_out)
       {
 	ssl_out[inx] = scalar_exp_generate (sc, exp->dfe_tree, &pre_code);

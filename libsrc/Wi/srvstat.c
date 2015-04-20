@@ -419,6 +419,7 @@ int cl_no_auto_remove;
 extern int dbf_log_fsync;
 extern int dbf_assert_on_malformed_data;
 extern int dbf_max_itc_samples;
+extern int32 enable_sample_hist;
 
 extern int32 c_pcre_match_limit;
 extern int32 c_pcre_match_limit_recursion;
@@ -1894,6 +1895,7 @@ stat_desc_t dbf_descs[] = {
   {"tn_at_card_cutoff", (long *) &tn_at_card_cutoff, NULL},
   {"tn_card_cutoff", (long *) &tn_card_cutoff, NULL},
   {"dbf_max_itc_samples", (long *) &dbf_max_itc_samples, SD_INT32},
+  {"enable_sample_hist", &enable_sample_hist, SD_INT32},
   {"enable_mt_ft_inx", (long *) &enable_mt_ft_inx, SD_INT32},
   {"disable_rdf_init", (long *) &disable_rdf_init, SD_INT32},
   {"enable_rdf_trig", (long *) &enable_rdf_trig, SD_INT32},

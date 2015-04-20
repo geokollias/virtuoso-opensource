@@ -1492,7 +1492,17 @@ dbe_col_load_stat_hist (client_connection_t * cli, query_instance_t * caller, db
   lc_free (lc_hist);
   dk_free_tree ((box_t) col->col_hist);
   if (dk_set_length (hist_set))
-    col->col_hist = (caddr_t *) list_to_array (dk_set_nreverse (hist_set));
+    {
+      int n_hist;
+      caddr_t **hist;
+      col->col_hist = (caddr_t *) list_to_array (dk_set_nreverse (hist_set));
+      hist = (caddr_t **) col->col_hist;
+      n_hist = BOX_ELEMENTS (hist);
+      if (DVC_GREATER == cmp_boxes (col->col_min, hist[0][1], NULL, NULL))
+	col->col_min = box_copy_tree (hist[0][1]);
+      if (DVC_LESS == cmp_boxes (col->col_max, hist[n_hist - 1][1], NULL, NULL))
+	col->col_max = box_copy_tree (hist[n_hist - 1][1]);
+    }
   else
     col->col_hist = NULL;
 }

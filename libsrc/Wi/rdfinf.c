@@ -1406,6 +1406,19 @@ bif_rdf_inf_clear (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 }
 
 caddr_t
+bif_sample_cache_clear (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  sec_check_dba ((query_instance_t *) qst, "rdf_inf_clear");
+  DO_IDHASH (caddr_t, name, rdf_inf_ctx_t *, ric, rdf_name_to_ric)
+  {
+    id_hash_clear (ric->ric_samples);
+  }
+  END_DO_IDHASH;
+  return NULL;
+}
+
+
+caddr_t
 bif_rdf_inf_is_loaded (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   caddr_t ctx_name = bif_string_arg (qst, args, 0, "rdf_inf_is_loaded");
@@ -1752,6 +1765,7 @@ rdf_inf_init ()
   bif_define ("rdf_is_sub", bif_rdf_is_sub);
   bif_define ("rdf_inf_dump", bif_rdf_inf_dump);
   bif_define ("tn_cache_clear", bif_tn_cache_clear);
+  bif_define ("sample_cache_clear", bif_sample_cache_clear);
   dk_mem_hooks (DV_RI_ITERATOR, box_non_copiable, rit_free, 0);
   empty_ric = ric_allocate (box_dv_short_string ("__ empty"));
   sas_init ();

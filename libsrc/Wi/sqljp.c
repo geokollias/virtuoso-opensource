@@ -1236,9 +1236,9 @@ sqlo_dt_eqs (sqlo_t * so, df_elt_t * dfe)
   op_table_t *ot = dfe->_.sub.ot;
   op_table_t *s_ot;
   while (sqlo_unq_exists (so, dfe));
-  sqlo_init_eqs (so, ot, NULL);
+  sqlo_init_eqs (so, ot, NULL, 0, NULL);
   for (s_ot = ot->ot_super; s_ot; s_ot = s_ot->ot_super)
-    sqlo_init_eqs (so, dfe->_.sub.ot, s_ot->ot_preds);
+    sqlo_init_eqs (so, dfe->_.sub.ot, s_ot->ot_preds, 0, NULL);
   DO_SET (df_elt_t *, pred, &ot->ot_preds)
   {
     sqlo_pred_tree_eqs (so, pred);

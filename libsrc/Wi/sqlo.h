@@ -122,6 +122,7 @@ typedef struct op_table_s
 
   dk_set_t ot_invariant_preds;
   id_hash_t *ot_eq_hash;	/* eq group of things, use for eq transitivity */
+  id_hash_t *ot_placed_eq_hash;	/* eq cols, only counting placed ones */
   ST *ot_trans;			/* if transitive dt, trans opts */
   df_elt_t *ot_first_dfe;	/* first dfe in current plan, one of ot from dfes */
   dk_set_t ot_hash_fillers;	/* all fillers of currently placed.  anywhere in the plan. Can look up for reuse.  In top ot only */
@@ -385,6 +386,7 @@ struct df_elt_s
       bitf_t is_not:1;		/* for a like or equals, means the pred is negated */
       bitf_t is_used:1;		/* during dfe table cost, whether already counted */
       bitf_t is_pk_fk_ref:1;	/* If part of a multipart pk ref to a multipart fk in the table in dfe table cost */
+      bitf_t rng_by_hist:1;
     } bin;
     struct
     {
@@ -594,7 +596,7 @@ struct sqlo_s
   char so_mark_gb_dep;
   char so_placed_outside_dt;
   char so_no_dt_cache;
-
+  char so_ret_flag;		/* aux, used for misc status return */
 
   st_lit_state_t *so_stl;	/* if gathering literals for use as params */
 };
@@ -710,6 +712,7 @@ typedef struct index_choice_s
   char ic_in_order;		/* vectored index lookup in order with the previous index lookup */
   char ic_is_cl_part_first;	/* preceded by a cluster partitioning step, qf or dfg stage */
   char ic_leading_constants;	/* this many leading constants used for sampling */
+  char ic_sampled_col_preds;	/* n conds on dep part of sample */
   char ic_is_unique;
   char ic_not_applicable;
   char ic_no_dep_sample;
@@ -901,7 +904,9 @@ void dfe_top_discount (df_elt_t * dfe, float *u1, float *a1);
 
 
 /* sqloinx.c */
-void sqlo_init_eqs (sqlo_t * so, op_table_t * ot, dk_set_t preds);
+void sqlo_init_eqs (sqlo_t * so, op_table_t * ot, dk_set_t preds, int placed_only, dk_set_t except);
+void sqlo_clear_eqs (id_hash_t * eqs);
+
 void sqlo_find_inx_intersect (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t col_preds, float best);
 int sqlo_is_col_eq (op_table_t * ot, df_elt_t * col, df_elt_t * val);
 void sqlo_place_inx_int_join (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t group, dk_set_t * after_preds);
@@ -1140,7 +1145,7 @@ df_elt_t *dfe_container (sqlo_t * so, int type, df_elt_t * super);
 float dfe_hash_fill_cond_card (df_elt_t * tb_dfe);
 float sqlo_hash_ins_cost (df_elt_t * dfe, float card, dk_set_t cols, float *size_ret);
 float sqlo_hash_ref_cost (df_elt_t * dfe, float hash_card);
-
+df_elt_t *dfe_left_col (df_elt_t * tb_dfe, df_elt_t * pred);
 #define SQK_MAX_CHARS 2000
 void dfe_cc_list_key (dk_set_t list, char *str, int *fill, int space);
 void so_ensure_subq_cache (sqlo_t * so);

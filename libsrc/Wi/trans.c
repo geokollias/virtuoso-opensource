@@ -379,9 +379,10 @@ tn_inlined_exec (trans_node_t * tn, caddr_t * inst, caddr_t * value, int is_exec
 int
 subq_set_no (query_t * qr, caddr_t * inst)
 {
+  QNCAST (QI, qi, inst);
   if (!qr->qr_select_node->sel_set_no)
     return 0;
-  return unbox (qst_get (inst, qr->qr_select_node->sel_set_no));
+  return qst_vec_get_int64 (inst, qr->qr_select_node->sel_set_no, qi->qi_set);
 }
 
 
@@ -723,7 +724,7 @@ tn_pv_1 (trans_set_t * ts, trans_state_t * tst, int level, dk_set_t * res)
   place = (dk_set_t) id_hash_get (ts->ts_traversed, (caddr_t) & tst->tst_value);
   DO_SET (trans_state_t *, prev, place)
   {
-    trans_state_t link = *prev;
+    trans_state_t link = *(prev->tst_prev);
     link.tst_prev = tst;
     tn_pv_1 (ts, &link, level - 1, res);
   }
@@ -954,12 +955,12 @@ tst_next_states (trans_node_t * tn, caddr_t * inst, trans_set_t * ts, trans_stat
 	dk_set_t *set_place = (dk_set_t *) id_hash_get (ts->ts_traversed, (caddr_t) & related);
 	if (set_place)
 	  {
-	    t_set_push (set_place, (void *) tst);
+	    t_set_push (set_place, (void *) rel);
 	    continue;		/* this place is already reached and continued by other means */
 	  }
 	else
 	  {
-	    dk_set_t f = t_CONS (tst, NULL);
+	    dk_set_t f = t_CONS (rel, NULL);
 	    t_id_hash_set (ts->ts_traversed, (caddr_t) & rel->tst_value, (caddr_t) & f);
 	  }
       }
@@ -977,9 +978,18 @@ tst_next_states (trans_node_t * tn, caddr_t * inst, trans_set_t * ts, trans_stat
 	  t_set_push (new_ret, (void *) rel);
 	continue;
       }
-    if (ts_check_target (tn, inst, ts, rel))
-      continue;
-
+    if (tn->tn_distinct || tn->tn_exists)
+      {
+	if (ts_check_target (tn, inst, ts, rel))
+	  {
+	    if (tn->tn_exists)
+	      {
+		*new_ret = NULL;
+		return;
+	      }
+	    continue;
+	  }
+      }
     if (!ts->ts_max_depth || rel->tst_depth < ts->ts_max_depth)
       t_set_push (new_ret, (void *) rel);
     if (tn->tn_min_depth && rel->tst_depth < unbox (qst_get (inst, tn->tn_min_depth)))
@@ -997,7 +1007,7 @@ ts_advance (trans_node_t * tn, caddr_t * inst, trans_set_t * ts)
   QNCAST (QI, qi, inst);
   int64 card_co = TN_CARD_CO (qi->qi_client);
   dk_set_t next = NULL;
-  if (tn->tn_shortest_only && (ts->ts_result || (ts->ts_target_ts && ts->ts_target_ts->ts_result)))
+  if ((tn->tn_shortest_only || tn->tn_exists) && (ts->ts_result || (ts->ts_target_ts && ts->ts_target_ts->ts_result)))
     {
       ts->ts_new = NULL;
       return;
@@ -1011,9 +1021,19 @@ ts_advance (trans_node_t * tn, caddr_t * inst, trans_set_t * ts)
   DO_SET (trans_state_t *, tst, &ts->ts_new)
   {
     tst_next_states (tn, inst, ts, tst, &next);
+    if (tn->tn_exists && (ts->ts_result || (ts->ts_target_ts && ts->ts_target_ts->ts_result)))
+      return;
   }
   END_DO_SET ();
   ts->ts_new = next;
+  if (tn->tn_complement && (!tn->tn_distinct && !tn->tn_exists))
+    {
+      DO_SET (trans_state_t *, tst, &ts->ts_new)
+      {
+	ts_check_target (tn, inst, ts, tst);
+      }
+      END_DO_SET ();
+    }
 }
 
 
@@ -1024,8 +1044,11 @@ tn_count (trans_node_t * tn, caddr_t * inst, int *new_ret)
   id_hash_t *sets = QST_BOX (id_hash_t *, inst, tn->tn_input_sets);
   DO_IDHASH (caddr_t, in, trans_set_t *, ts, sets)
   {
+    int n_new = dk_set_length (ts->ts_new);
     ctr += ts->ts_traversed->ht_count;
-    new_ctr += dk_set_length (ts->ts_new);
+    new_ctr += n_new;
+    if (!n_new && ts->ts_target_ts)
+      ts->ts_target_ts->ts_new = NULL;
   }
   END_DO_IDHASH;
   *new_ret = new_ctr;
@@ -1112,22 +1135,11 @@ tn_advance_pair (trans_node_t * tn, caddr_t * inst)
   trans_node_t *tn2 = tn->tn_complement, *adv = NULL;
   tn_count (tn, inst, &new1);
   tn_count (tn2, inst, &new2);
-  if (!new1 && !new2)
+  if (!new1 || !new2)
     return 0;
-  if (!new1)
-    adv = tn2;
-  else if (!new2)
-    adv = tn;
-  else
-    adv = new1 > new2 ? tn2 : tn;
+  adv = new1 > new2 ? tn2 : tn;
   rc = tn_advance (adv, inst);
   tn_dec_depth (adv == tn ? tn2 : tn, inst);
-  if (!rc)
-    {
-      rc = tn_advance (adv == tn ? tn2 : tn, inst);
-      tn_dec_depth (adv, inst);
-      return rc;
-    }
   return rc;
 }
 
@@ -1480,7 +1492,7 @@ tn_reset (trans_node_t * tn, caddr_t * inst, int n_sets)
   QST_BOX (id_hash_t *, inst, tn->tn_input_sets) = sets;
   rel = (id_hash_t *) box_dv_dict_hashtable (61);
   rel->ht_free_hook = ht_free_no_content;
-  id_hash_set_rehash_pct (rel, 300);
+  id_hash_set_rehash_pct (rel, 100);
   qst_set (inst, tn->tn_relation, (caddr_t) rel);
   QST_INT (inst, tn->clb.clb_nth_set) = -1;
   QST_INT (inst, tn->tn_nth_cache_result) = 0;
@@ -1513,7 +1525,7 @@ trans_node_start (trans_node_t * tn, caddr_t * inst, caddr_t * state, int n_sets
       QST_BOX (id_hash_t *, inst, tn->tn_input_sets) = sets;
       rel = (id_hash_t *) box_dv_dict_hashtable (1231);
       rel->ht_free_hook = ht_free_no_content;
-      id_hash_set_rehash_pct (rel, 150);
+      id_hash_set_rehash_pct (rel, 100);
       qst_set (inst, tn->tn_relation, (caddr_t) rel);
       SRC_IN_STATE ((data_source_t *) tn, inst) = inst;
       QST_INT (inst, tn->clb.clb_nth_set) = -1;
@@ -1572,7 +1584,7 @@ trans_node_start (trans_node_t * tn, caddr_t * inst, caddr_t * state, int n_sets
 	if (tn->tn_distinct || tn->tn_complement)
 	  {
 	    ts->ts_traversed = t_id_hash_allocate (61, sizeof (caddr_t), sizeof (caddr_t), treehash, treehashcmp);
-	    id_hash_set_rehash_pct (ts->ts_traversed, 200);
+	    id_hash_set_rehash_pct (ts->ts_traversed, 100);
 	  }
 	if (tn->tn_max_depth)
 	  ts->ts_max_depth = unbox (qst_get (inst, tn->tn_max_depth));

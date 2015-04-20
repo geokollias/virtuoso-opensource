@@ -1054,6 +1054,7 @@ struct it_cursor_s
   struct
   {
     char mode;
+    char is_to_right;		/* true if this is to the right of prev sample */
     int sample_size;		/* stop random search after this many rows */
     int n_sample_rows;		/* count of rows retrieved in random traversal */
     int segs_sampled;

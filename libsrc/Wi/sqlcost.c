@@ -464,7 +464,7 @@ found:
   if (dfe->_.table.in_arity > 1)
     return 0;
   cl = key_find_cl (key, col_dfe->_.col.col->col_id);
-  if (cl && cl->cl_is_asc)
+  if (cl && CL_ASC == cl->cl_is_asc)
     return 1;
 
   DO_SET (dbe_column_t *, part, &dfe->_.table.key->key_parts)
@@ -715,6 +715,7 @@ dfe_cl_bottle_factor (df_elt_t * dfe, float *unit_ret)
 
 
 int enable_vec_cost = 1;
+extern int32 enable_sample_hist;
 extern int32 enable_dyn_batch_sz;
 #define dc_max_batch_sz_f (enable_dyn_batch_sz ? dc_max_batch_sz : dc_batch_sz)
 
@@ -1117,7 +1118,6 @@ sqlo_eq_cost (dbe_column_t * left_col, df_elt_t * right, df_elt_t * lower, float
   else if (DFE_IS_CONST (right) && left_col->col_hist)
     {				/* the boundary is constant and there is a column histogram */
       int inx, n_level_buckets = 0;
-
       DO_BOX (caddr_t *, bucket, inx, ((caddr_t **) left_col->col_hist))
       {
 	if (DVC_MATCH == cmp_boxes ((caddr_t) right->dfe_tree, bucket[1], left_col->col_collation, left_col->col_collation))
@@ -1350,7 +1350,8 @@ sqlo_pred_unit_1 (df_elt_t * lower, df_elt_t * upper, df_elt_t * in_tb, float *u
 	  else if (DFE_IS_CONST (lower->_.bin.right) && left_col->col_hist)
 	    {			/* lower boundary is a constant and there's a col histogram */
 	      int inx;
-
+	      lower->_.bin.rng_by_hist = 1;
+	      *a1 = 0.95;
 	      DO_BOX (caddr_t *, bucket, inx, ((caddr_t **) left_col->col_hist))
 	      {
 		if (DVC_GREATER == cmp_boxes ((caddr_t) lower->_.bin.right->dfe_tree, bucket[1],
@@ -1375,7 +1376,8 @@ sqlo_pred_unit_1 (df_elt_t * lower, df_elt_t * upper, df_elt_t * in_tb, float *u
 	  else if (DFE_IS_CONST (lower->_.bin.right) && left_col->col_hist)
 	    {			/* upper boundary is a constant and there's a col histogram */
 	      int inx;
-
+	      lower->_.bin.rng_by_hist = 1;
+	      *a1 = 0.95;
 	      DO_BOX (caddr_t *, bucket, inx, ((caddr_t **) left_col->col_hist))
 	      {
 		if (DVC_LESS == cmp_boxes ((caddr_t) lower->_.bin.right->dfe_tree, bucket[1],
@@ -2807,6 +2809,7 @@ sqlo_inx_sample_1 (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_el
   dk_set_t added_cols = NULL;
   float row_sel = 1;
   itc_clear_stats (itc);
+  ic->ic_sampled_col_preds = 0;
   if (sop)
     sop->sop_res_from_ric_cache = 0;
   ITC_INIT (itc, key->key_fragments[0]->kf_it, NULL);
@@ -2859,6 +2862,7 @@ sqlo_inx_sample_1 (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_el
 	    res = dfe_const_to_spec (cp, NULL, key, &row_specs[inx], itc, &v_fill);
 	    if (KS_CAST_OK != res)
 	      continue;
+	    ic->ic_sampled_col_preds++;
 	    *prev_sp = &row_specs[inx];
 	    col_predicted *= cp->dfe_arity;
 	    if (key->key_is_col)
@@ -3498,6 +3502,12 @@ dfe_range_card (df_elt_t * tb_dfe, df_elt_t * lower, df_elt_t * upper, float *ca
 {
   dbe_table_t *tb = tb_dfe->_.table.ot->ot_table;
   if (!enable_range_card)
+    return 0;
+  if ((lower && lower->_.bin.rng_by_hist) || (upper && upper->_.bin.rng_by_hist))
+    return 0;
+  if (lower && !DFE_IS_CONST (lower->_.bin.right))
+    return 0;
+  if (upper && !DFE_IS_CONST (upper->_.bin.right))
     return 0;
   DO_SET (dbe_key_t *, key, &tb->tb_keys)
   {
@@ -4494,12 +4504,62 @@ dfe_rq_col_pos (df_elt_t * dfe, char cn, int must_have)
 
 
 int
+dfe_col_is_indexable (df_elt_t * tb_dfe, df_elt_t * col_dfe)
+{
+  /* if can sample col by index do not sample by dep */
+  dbe_table_t *tb = tb_dfe->_.table.ot->ot_table;
+  dbe_column_t *col = col_dfe->_.col.col;
+  DO_SET (dbe_key_t *, key, &tb->tb_keys)
+  {
+    if (col == (dbe_column_t *) key->key_parts->data)
+      return 1;
+  }
+  END_DO_SET ();
+  return 0;
+}
+
+
+int
 dfe_sample_dep_only (df_elt_t * dfe, float col_card)
 {
   if (tb_is_rdf_quad (dfe->_.table.ot->ot_table))
     return 0;
   if (sqlo_sample_dep_cols && dfe->_.table.col_preds && 1 != col_card)
-    return 1;
+    {
+      /* if cols are by histogram, may not need to sample deps */
+      int n_hist = 0, n_no_hist = 0, n_const = 0, n_indexable = 0;
+      DO_SET (df_elt_t *, cp, &dfe->_.table.col_preds)
+      {
+	df_elt_t *left_col;
+	int op;
+	if (1 == cp->_.bin.is_in_list)
+	  continue;
+	if (cp->_.bin.right && !DFE_IS_CONST (cp->_.bin.right))
+	  continue;
+	n_const++;
+	left_col = dfe_left_col (dfe, cp);
+	if (!left_col)
+	  continue;
+	op = cp->_.bin.op;
+	if (dfe_col_is_indexable (dfe, left_col))
+	  {
+	    n_indexable++;
+	    continue;
+	  }
+	if (!(BOP_LT == op || BOP_LTE == op || BOP_GT == op || BOP_GTE == op))
+	  continue;
+	if (cp->_.bin.rng_by_hist)
+	  n_hist++;
+	else
+	  n_no_hist++;
+      }
+      END_DO_SET ();
+      if (n_const == n_indexable)
+	return 0;
+      if (n_const == n_hist + n_indexable && enable_sample_hist)
+	return 0;
+      return 1;
+    }
   return 0;
 }
 
@@ -4710,6 +4770,7 @@ dfe_table_cost_ic_1 (df_elt_t * dfe, index_choice_t * ic, int inx_only)
       }
   }
   END_DO_SET ();
+  ic->ic_sampled_col_preds = 0;
   ic->ic_is_unique = unique;
   ic->ic_inx_card = inx_arity;
   ic->ic_col_card = col_arity;
@@ -4723,7 +4784,7 @@ dfe_table_cost_ic_1 (df_elt_t * dfe, index_choice_t * ic, int inx_only)
     {
       p_stat = 2;
       ic->ic_inx_card = inx_arity;
-      ic->ic_leading_constants = dfe->_.table.is_arity_sure = inx_const_fill * 2 + (0 != p_stat);
+      ic->ic_leading_constants = dfe->_.table.is_arity_sure = inx_const_fill * 2 + (0 != p_stat) + ic->ic_sampled_col_preds;
     }
   else if (unique && !ic->ic_ric)
     {
@@ -5184,7 +5245,7 @@ dfe_exp_card (sqlo_t * so, df_elt_t * dfe)
       if (dfe->_.col.card)
 	return dfe->_.col.card;
       if (dfe->_.col.col)
-	return dfe->_.col.col->col_n_distinct;
+	return MAX (1, dfe->_.col.col->col_n_distinct);	/* if unset, is -1 */
       return 1000;
     case DFE_BOP:
       return dfe_exp_card (so, dfe->_.bin.left) * dfe_exp_card (so, dfe->_.bin.right);

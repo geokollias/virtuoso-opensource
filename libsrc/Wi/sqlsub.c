@@ -175,7 +175,7 @@ sqlo_exp_subq_implied_eqs (sqlo_t * so, df_elt_t * dfe)
 void
 sqlo_implied_eqs_1 (sqlo_t * so, op_table_t * ot)
 {
-  sqlo_init_eqs (so, ot, ot->ot_preds);
+  sqlo_init_eqs (so, ot, ot->ot_preds, 0, NULL);
   DO_SET (df_elt_t *, pred, &ot->ot_preds)
   {
     if (DFE_EXISTS == pred->dfe_type)

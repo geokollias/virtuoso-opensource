@@ -265,7 +265,19 @@ sqlo_col_eq (op_table_t * ot, df_elt_t * col, df_elt_t * val)
 
 
 void
-sqlo_init_eqs (sqlo_t * so, op_table_t * ot, dk_set_t preds)
+sqlo_clear_eqs (id_hash_t * eqs)
+{
+  id_hash_iterator_t hit;
+  dk_set_t *place;
+  void **ign;
+  id_hash_iterator (&hit, eqs);
+  while (hit_next (&hit, &ign, &place))
+    *place = NULL;
+}
+
+
+void
+sqlo_init_eqs (sqlo_t * so, op_table_t * ot, dk_set_t preds, int placed_only, dk_set_t except)
 {
   if (!preds && !ot->ot_from_dfes)
     return;
@@ -273,6 +285,8 @@ sqlo_init_eqs (sqlo_t * so, op_table_t * ot, dk_set_t preds)
     preds = ot->ot_preds;
   DO_SET (df_elt_t *, pred, &preds)
   {
+    if ((placed_only && !pred->dfe_is_placed) || dk_set_member (except, pred))
+      continue;
     if (DFE_BOP_PRED == pred->dfe_type && BOP_EQ == pred->_.bin.op)
       {
 	df_elt_t *left = pred->_.bin.left;
