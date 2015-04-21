@@ -4669,6 +4669,7 @@ bif_col_set_samples (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   dk_set_t cols;
   ITC_INIT (itc, NULL, NULL);
   memzero (&itc->itc_st, sizeof (itc->itc_st));
+  itc->itc_insert_key = tb->tb_primary_key;
   itc->itc_st.cols = hash_table_allocate (31);
   if (!tb)
     sqlr_new_error ("42000", "CSNTB", "No table %s", tb_name);

@@ -13258,7 +13258,7 @@ bif_exec_done (int64 k)
   mutex_leave (&bif_exec_pending_mtx);
 }
 
-extern int enable_qrc;
+extern int32 enable_qrc;
 
 caddr_t
 bif_exec (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)

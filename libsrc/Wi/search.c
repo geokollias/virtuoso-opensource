@@ -3640,7 +3640,6 @@ itc_row_col_stat (it_cursor_t * itc, buffer_desc_t * buf, int *is_leaf)
 		      }
 		  }
 		itc->itc_st.is_to_right = 1;
-		col_stat->cs_prev = data;
 		place = (ptrlong *) id_hash_get (col_stat->cs_distinct, (caddr_t) & data);
 		if (place)
 		  {
@@ -3648,15 +3647,20 @@ itc_row_col_stat (it_cursor_t * itc, buffer_desc_t * buf, int *is_leaf)
 		      *place += CS_IN_SAMPLE | CS_SAMPLE_INC | 1;
 		    else
 		      (*place)++;
+		    /* the value is in the ht, use this as the cs prev and free the eq value */
+		    col_stat->cs_prev = ((caddr_t *) place)[-1];
 		    dk_free_tree (data);
 		  }
 		else
 		  {
 		    uint64 one = CS_IN_SAMPLE | CS_SAMPLE_INC | 1;
 		    id_hash_set (col_stat->cs_distinct, (caddr_t) & data, (caddr_t) & one);
+		    col_stat->cs_prev = data;
 		    /*if (THREAD_CURRENT_THREAD->thr_tlsf->tlsf_total_mapped < 4000000 && tlsf_check (THREAD_CURRENT_THREAD->thr_tlsf, 0)) GPF_T1 ("corrupt"); */
 		  }
 	      }
+	    else
+	      dk_free_box (data);
 	  }
 	if (data_col)
 	  {

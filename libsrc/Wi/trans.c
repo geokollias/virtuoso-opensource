@@ -863,6 +863,8 @@ ts_check_target (trans_node_t * tn, caddr_t * inst, trans_set_t * ts, trans_stat
 		  }
 		  END_DO_SET ();
 		}
+	      if (!tn->tn_distinct)
+		break;		/* if many paths to complement, c_variants returns them all, so not breaking here would get the complements squared */
 	    }
 	    END_DO_SET ();
 	  }

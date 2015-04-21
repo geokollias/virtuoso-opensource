@@ -17,7 +17,7 @@
 
 id_hash_t *qr_cache;
 dk_mutex_t qrc_mtx;
-int enable_qrc = 0;
+int32 enable_qrc = 0;
 long tc_qrc_hit;
 long tc_qrc_miss;
 long tc_qrc_recompile;
