@@ -386,6 +386,38 @@ cl_cli ()
 }
 
 
+
+#define CL_INIT_BATCH_SIZE 1
+
+void
+cl_select_save_env (table_source_t * ts, itc_cluster_t * itcl, caddr_t * inst, cl_op_t * clo, int nth)
+{
+  caddr_t **array = (caddr_t **) itcl->itcl_param_rows;
+  caddr_t *row;
+  int n_save;
+  if (!array)
+    {
+      itcl->itcl_param_rows = (cl_op_t ***) (array =
+	  (caddr_t **) mp_alloc_box_ni (itcl->itcl_pool, CL_INIT_BATCH_SIZE * sizeof (caddr_t), DV_ARRAY_OF_POINTER));
+    }
+  else if (BOX_ELEMENTS (array) <= nth)
+    {
+      if (!IS_QN (ts, trans_node_input))
+	GPF_T1 ("vectored cl does not pass through here");
+      else
+	{
+	  caddr_t new_array =
+	      mp_alloc_box_ni (itcl->itcl_pool, MIN (dc_max_batch_sz, nth * 2) * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
+	  memcpy (new_array, array, box_length (array));
+	  itcl->itcl_param_rows = (cl_op_t ***) (array = (caddr_t **) new_array);
+	}
+    }
+  n_save = 0;
+  row = (caddr_t *) mp_alloc_box_ni (itcl->itcl_pool, sizeof (caddr_t) * (1 + n_save), DV_ARRAY_OF_POINTER);
+  row[0] = (caddr_t) clo;
+  array[nth] = row;
+}
+
 itc_cluster_t *
 itcl_allocate (lock_trx_t * lt, caddr_t * inst)
 {
@@ -589,35 +621,6 @@ qf_select_node_input (qf_select_node_t * qfs, caddr_t * inst, caddr_t * state)
 }
 
 #define CL_INIT_BATCH_SIZE 1
-
-void
-cl_select_save_env (table_source_t * ts, itc_cluster_t * itcl, caddr_t * inst, cl_op_t * clo, int nth)
-{
-  caddr_t **array = (caddr_t **) itcl->itcl_param_rows;
-  caddr_t *row;
-  int n_save;
-  if (!array)
-    {
-      itcl->itcl_param_rows = (cl_op_t ***) (array =
-	  (caddr_t **) mp_alloc_box_ni (itcl->itcl_pool, CL_INIT_BATCH_SIZE * sizeof (caddr_t), DV_ARRAY_OF_POINTER));
-    }
-  else if (BOX_ELEMENTS (array) <= nth)
-    {
-      if (!IS_QN (ts, trans_node_input))
-	GPF_T1 ("vectored cl does not pass through here");
-      else
-	{
-	  caddr_t new_array =
-	      mp_alloc_box_ni (itcl->itcl_pool, MAX ((ts->clb.clb_batch_size), (nth + 1)) * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
-	  memcpy (new_array, array, box_length (array));
-	  itcl->itcl_param_rows = (cl_op_t ***) (array = (caddr_t **) new_array);
-	}
-    }
-  n_save = 0;
-  row = (caddr_t *) mp_alloc_box_ni (itcl->itcl_pool, sizeof (caddr_t) * (1 + n_save), DV_ARRAY_OF_POINTER);
-  row[0] = (caddr_t) clo;
-  array[nth] = row;
-}
 
 void
 cl_node_init (table_source_t * ts, caddr_t * inst)

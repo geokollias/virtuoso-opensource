@@ -708,29 +708,30 @@ pv_path (trans_state_t * tst)
 
 
 
-
 void
-tn_pv_1 (trans_set_t * ts, trans_state_t * tst, int level, dk_set_t * res)
+tn_pv_1 (trans_set_t * ts, trans_state_t * tst, trans_state_t * from, int level, dk_set_t * res)
 {
+  trans_state_t link;
   dk_set_t *place;
   if (!level)
     {
       if (box_equal (tst->tst_value, ts->ts_value))
 	{
-	  t_set_push (res, pv_path (tst));
+	  link = *tst;
+	  link.tst_prev = from;
+	  t_set_push (res, pv_path (&link));
 	}
       return;
     }
   place = (dk_set_t) id_hash_get (ts->ts_traversed, (caddr_t) & tst->tst_value);
   DO_SET (trans_state_t *, prev, place)
   {
-    trans_state_t link = *(prev->tst_prev);
-    link.tst_prev = tst;
-    tn_pv_1 (ts, &link, level - 1, res);
+    trans_state_t link = *prev;
+    link.tst_prev = from;
+    tn_pv_1 (ts, prev->tst_prev, &link, level - 1, res);
   }
   END_DO_SET ();
 }
-
 
 
 dk_set_t
@@ -738,9 +739,7 @@ ts_path_variants (trans_set_t * ts, trans_state_t * tst)
 {
   /* return a list of all paths from start of ts to this tst with as many steps as the path to ttst */
   dk_set_t res = NULL;
-  trans_state_t link = *tst;
-  link.tst_prev = NULL;
-  tn_pv_1 (ts, &link, tst->tst_depth, &res);
+  tn_pv_1 (ts, tst, NULL, tst->tst_depth, &res);
   return res;
 }
 

@@ -99,7 +99,10 @@ name (col_pos_t * cpo, db_buf_t ce_first, int n_values, int n_bytes)
 	    dc_set_null (dc, fill++);
 	  else
 	    {
-	      f = LONG_REF_NA (val + 1);
+	      if (DV_SHORT_INT == ((dtp_t *) val)[0])
+		f = ((signed char *) val)[1];
+	      else
+		f = LONG_REF_NA (val + 1);
 	      ((int32 *) values)[fill++] = f;
 	    }
 	  END_TEST;
