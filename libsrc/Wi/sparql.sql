@@ -1409,10 +1409,12 @@ create function DB.DBA.RDF_MAKE_OBJ_OF_SQLVAL (in v any) returns any array
   t := __tag (v);
   if (not (t in (126, __tag of varchar, __tag of UNAME, __tag of nvarchar, __tag of XML, __tag of rdf_box)))
     return v;
+  if (__tag of UNAME = t)
+    return __i2id (v);
+  if (isstring (v) and bit_and (__box_flags (v), 1))
+    return __i2id (v);
   if (__tag of nvarchar = t)
     v := charset_recode (v, '_WIDE_', 'UTF-8');
-  else if (t in (126, __tag of UNAME))
-    v := cast (v as varchar);
   return DB.DBA.RDF_OBJ_ADD (257, v, 257);
 }
 ;
@@ -1424,9 +1426,13 @@ create function DB.DBA.RDF_MAKE_OBJ_OF_SQLVAL_FT (in v any, in g_iid IRI_ID, in 
   t := __tag (v);
   if (not (t in (126, __tag of varchar, __tag of UNAME, __tag of nvarchar, __tag of XML, __tag of rdf_box)))
     return v;
+  if (__tag of UNAME = t)
+    return __i2id (v);
+  if (isstring (v) and bit_and (__box_flags (v), 1))
+    return __i2id (v);
   if (__tag of nvarchar = t)
     v := charset_recode (v, '_WIDE_', 'UTF-8');
-  else if (t in (126, __tag of UNAME))
+  else if (t = 126)
     v := cast (v as varchar);
   if (not __rdf_obj_ft_rule_check (g_iid, p_iid))
     ro_id_dict := null;
@@ -1463,7 +1469,7 @@ retry_unrdf:
     }
   if (__tag of nvarchar = t)
     v := charset_recode (v, '_WIDE_', 'UTF-8');
-  else if (__tag of UNAME = t or 126 = t)
+  else if (126 = t)
     v := cast (v as varchar);
   if (dt_iid is not null)
     dt_twobyte := DB.DBA.RDF_TWOBYTE_OF_DATATYPE (dt_iid);
@@ -1670,12 +1676,12 @@ create function DB.DBA.RDF_OBJ_OF_LONG (in longobj any) returns any
 	}
       if (__tag of nvarchar = t or t = 226)
         longobj := charset_recode (longobj, '_WIDE_', 'UTF-8');
-      else if (t in (126, __tag of UNAME))
+      else if (t = 126)
         longobj := cast (longobj as varchar);
-      else if (bit_and (1, __box_flags (longobj)))
-        return iri_to_id (longobj);
       else if (__tag of UNAME = t)
-        return iri_to_id (longobj);
+        return __i2id (longobj);
+      else if (bit_and (1, __box_flags (longobj)))
+        return __i2id (longobj);
       return DB.DBA.RDF_OBJ_ADD (257, longobj, 257);
     }
   if (0 = rdf_box_needs_digest (longobj))
@@ -1694,12 +1700,14 @@ create function DB.DBA.RDF_OBJ_OF_SQLVAL (in v any) returns any array
         return DB.DBA.RDF_OBJ_ADD (257, v, 257);
       return v;
     }
+  if (__tag of UNAME = t)
+    return __i2id (v);
+  if (isstring (v) and bit_and (__box_flags (v), 1))
+    return __i2id (v);
   if (__tag of nvarchar = t)
     v := charset_recode (v, '_WIDE_', 'UTF-8');
-  else if (t in (126, __tag of UNAME))
+  else if (t = 126)
     v := cast (v as varchar);
-  else if (bit_and (1, __box_flags (v)))
-    return iri_to_id (v);
   return DB.DBA.RDF_OBJ_ADD (257, v, 257);
 }
 ;
@@ -1714,12 +1722,14 @@ create function DB.DBA.RDF_MAKE_LONG_OF_SQLVAL (in v any) returns any
   t := __tag (v);
   if (not (t in (126, __tag of varchar, __tag of UNAME, __tag of nvarchar, __tag of XML)))
     return v;
+  if (__tag of UNAME = t)
+    return __i2id (v);
+  if (isstring (v) and bit_and (__box_flags (v), 1))
+    return __i2id (v);
   if (__tag of nvarchar = t)
     v := charset_recode (v, '_WIDE_', 'UTF-8');
-  else if (__tag of UNAME = t or 126 = t)
+  else if (126 = t)
     v := cast (v as varchar);
-  else if (bit_and (1, __box_flags (v)))
-    return iri_to_id (v);
   res := rdf_box (v, 257, 257, 0, 1);
   return res;
 }
@@ -2017,12 +2027,14 @@ create function DB.DBA.RDF_LONG_OF_SQLVAL (in v varchar) returns any
   t := __tag (v);
   if (not (t in (126, __tag of varchar, __tag of UNAME, __tag of nvarchar)))
     return v;
+  if (__tag of UNAME = t)
+    return __i2id (v);
+  if (isstring (v) and bit_and (__box_flags (v), 1))
+    return __i2id (v);
   if (__tag of nvarchar = t)
     v := charset_recode (v, '_WIDE_', 'UTF-8');
-  else if (t in (126, __tag of UNAME))
+  else if (t = 126)
     v := cast (v as varchar);
-  else if ((t = __tag of varchar) and (1 = __box_flags (v)))
-    return iri_to_id (v);
 --  if ((t = __tag of varchar) and (v like 'http://%'))
 --    {
 --     -- dbg_obj_princ ('DB.DBA.RDF_LONG_OF_SQLVAL (', v, '): no box flag, suspicious value');
@@ -2079,7 +2091,13 @@ create function DB.DBA.RDF_LANGUAGE_OF_SQLVAL (in v any, in dflt varchar := '') 
 badtype:
   signal ('RDFXX', sprintf ('Unknown language in DB.DBA.RDF_LANGUAGE_OF_SQLVAL, bad id %d', twobyte));
     }
-  return case (isiri_id (v)) when 0 then dflt else null end;
+  if (__tag of UNAME = t)
+    return null;
+  if (isstring (v) and bit_and (__box_flags (v), 1))
+    return null;
+  if (isiri_id (v))
+    return null;
+  return dflt;
 --  t := __tag (v);
 --  if (not (t in (__tag of varchar, __tag of UNAME, __tag of nvarchar)))
 --    return NULL;
@@ -2143,6 +2161,8 @@ create function DB.DBA.RDF_IS_LITERAL (in v any) returns any
     return 0;
   if ((__tag of varchar = __tag (v)) and bit_and (1, __box_flags (v)))
     return 0;
+  if (v is null)
+    return 0;
   return 1;
 }
 ;
@@ -2151,18 +2171,20 @@ create function DB.DBA.RDF_IS_LITERAL (in v any) returns any
 -- Partial emulation of XQuery Core Function Library (temporary, to be deleted soon)
 
 --!AWK PUBLIC
-create function DB.DBA."http://www.w3.org/2001/XMLSchema#boolean" (in strg any) returns integer
+create function DB.DBA."http://www.w3.org/2001/XMLSchema#boolean" (in strg any) returns any
 {
+  declare res integer;
   if (isstring (strg))
     {
       if (('true' = strg) or ('1' = strg))
-        return 1;
-      if (('false' = strg) or ('0' = strg))
-        return 0;
+        res := 1;
+      else if (('false' = strg) or ('0' = strg))
+        res := 0;
+      else
+        return NULL;
+      return sparql_ebv_of_sqlval (res);
     }
-  if (isinteger (strg))
-    return case (strg) when 0 then 0 else 1 end;
-  return NULL;
+  return sparql_ebv_of_sqlval (strg);
 }
 ;
 
@@ -2577,8 +2599,13 @@ create procedure DB.DBA.RDF_QUAD_L_RDB2RDF (in g_iid varchar, in s_iid varchar, 
 	}
       if (__tag of nvarchar = t or t = 226)
         o_val := charset_recode (o_val, '_WIDE_', 'UTF-8');
-      else if (t in (126, __tag of UNAME))
+      else if (t = 126)
         o_val := cast (o_val as varchar);
+      else if (t = __tag of UNAME)
+        {
+          o_val := iri_to_id (o_val);
+          goto o_val_done;
+        }
       else if (bit_and (1, __box_flags (o_val)))
         {
           o_val := iri_to_id (o_val);
@@ -17191,6 +17218,15 @@ DB.DBA.RDF_QUAD_FT_UPGRADE ()
 --#ENDIF
 DB.DBA.RDF_CREATE_SPARQL_ROLES ()
 ;
+
+create aggregate VT_WORD_STRING_ID_AGG (in word_string varchar) returns any
+  from vt_word_string_id_init, vt_word_string_id_acc, vt_word_string_id_final
+;
+
+create aggregate VT_WORD_STRING_RO_ID_AGG (in word_string varchar) returns any
+  from vt_word_string_id_init, vt_word_string_id_acc, vt_word_string_ro_id_final
+;
+
 
 -- loading subclass inference ctxs
 

@@ -68,6 +68,8 @@ typedef struct sql_compile_state_s	/* serialized in parse_sem */
   sql_tree_t *scs_parse_tree;
   sql_tree_t *scs_global_trans;
   char *scs_sql_text;
+  char scs_any_param;
+  int scs_bin_op_serial;
   int scs_param_inx;
   int scs_sqlp_have_infoschema_views;
   char *scs_inside_view;
@@ -101,11 +103,14 @@ typedef struct sql_compile_state_s	/* serialized in parse_sem */
 #define global_trans		global_scs->scs_global_trans
 #define sqlc_sql_text		global_scs->scs_sql_text
 #define param_inx		global_scs->scs_param_inx
+#define any_param		global_scs->scs_any_param
 #define sqlp_have_infoschema_views	global_scs->scs_sqlp_have_infoschema_views
 #define inside_view global_scs->scs_inside_view
 #define sqlg_count_qr_global_refs global_scs->scs_count_qr_global_refs
 #define sqlc_inside_sem global_scs->scs_inside_sem
 #define sqlc_current_sc global_scs->scs_current_sc
+#define sqlp_bin_op_serial global_scs->scs_bin_op_serial
+
 
 #define SET_SCS(scs) \
   THREAD_CURRENT_THREAD->thr_sql_scs = (void*)scs

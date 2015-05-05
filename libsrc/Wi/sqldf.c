@@ -265,7 +265,7 @@ sqlo_is_tautology (ST * tree)
       dtp_t l_dtp = DV_TYPE_OF (l);
       dtp_t r_dtp = DV_TYPE_OF (r);
       if (DV_LONG_INT == l_dtp && DV_LONG_INT == r_dtp)
-	return unbox (l) == unbox (r);
+	return unbox ((caddr_t) l) == unbox ((caddr_t) r);
       return 2;
     }
   return 2;
@@ -932,7 +932,7 @@ sqlo_df (sqlo_t * so, ST * tree)
 	      if (inx >= 2 && inx < n_args - 1 && DV_STRINGP (arg) && 0 == stricmp ((char *) arg, "index")
 		  && DFE_COLUMN == col_dfe->dfe_type)
 		{
-		  tb_ext_inx_t *tie = tb_find_tie (ot->ot_table, col_dfe->_.col.col, args[inx + 1]);
+		  tb_ext_inx_t *tie = tb_find_tie (ot->ot_table, col_dfe->_.col.col, (caddr_t) args[inx + 1]);
 		  if (!tie)
 		    sqlc_new_error (so->so_sc->sc_cc, "22000", "NTTIE", "Table %s doe not have extension index %s",
 			ot->ot_table->tb_name, DV_STRINGP (args[inx + 1]) ? args[inx + 1] : "<bad name>");
@@ -1109,6 +1109,8 @@ sqlo_df (sqlo_t * so, ST * tree)
 		stl->stl_lit_dfes = (df_elt_t **) t_alloc_box (sizeof (caddr_t) * stl->stl_tree_to_lit->ht_count, DV_BIN);
 		memzero (stl->stl_lit_dfes, box_length (stl->stl_lit_dfes));
 	      }
+	    if (tree->_.lit_param.nth - 1 >= BOX_ELEMENTS (stl->stl_lit_dfes))
+	      SQL_GPF_T1 (top_sc->sc_cc, "out of range lit param no");
 	    dfe->dfe_nth_param = tree->_.lit_param.nth;
 	    stl->stl_lit_dfes[dfe->dfe_nth_param - 1] = dfe;
 	  }
@@ -1869,10 +1871,10 @@ pred_body_defines (df_elt_t ** pred, df_elt_t * defd)
 	  if (DFE_BOP_PRED == dfe->dfe_type)
 	    return 0;
 	  if (dfe_defines (dfe, defd))
-	    return defd;
+	    return NULL != defd;
 	}
     }
-  return NULL;
+  return 0;
 }
 
 
@@ -1937,7 +1939,7 @@ dfe_defines (df_elt_t * defining, df_elt_t * defd)
       if (pred_body_defines (defining->_.table.join_test, defd))
 	return NULL != defining;
       if (pred_body_defines (defining->_.table.top_pred, defd))
-	return defining;
+	return NULL != defining;
     }
   return 0;
 }
@@ -3214,6 +3216,9 @@ sqlo_trans_dt_2_way (sqlo_t * so, df_elt_t * dfe, dk_set_t preds, ptrlong * in_p
 }
 
 
+dk_set_t sqlo_uniques (sqlo_t * so, dk_set_t cols, dk_set_t join_preds);
+
+
 void
 sqlo_place_trans_dt (sqlo_t * so, df_elt_t * dfe, dk_set_t preds)
 {
@@ -3247,7 +3252,7 @@ sqlo_place_trans_dt (sqlo_t * so, df_elt_t * dfe, dk_set_t preds)
 	dk_set_t rhs = in_pair->next;
 	ST *pred;
 	df_elt_t *rhs_dfe, *pred_dfe;
-	ST *all_eq = t_listst (3, CALL_STMT, t_sqlp_box_id_upcase ("__all_eq"), t_list_to_array (rhs));
+	ST *all_eq = t_listst (3, CALL_STMT, t_sqlp_box_id_upcase ("__all_eq"), t_list_to_array (sqlo_uniques (so, rhs, preds)));
 	rhs_dfe = sqlo_df (so, all_eq);
 	sqlo_place_exp (so, dfe->dfe_super, rhs_dfe);
 	t_set_push (&tl->tl_params, rhs_dfe);
@@ -3280,7 +3285,7 @@ sqlo_place_trans_dt (sqlo_t * so, df_elt_t * dfe, dk_set_t preds)
 	dk_set_t rhs = in_pair->next;
 	ST *pred;
 	df_elt_t *rhs_dfe, *pred_dfe;
-	ST *all_eq = t_listst (3, CALL_STMT, t_sqlp_box_id_upcase ("__all_eq"), t_list_to_array (rhs));
+	ST *all_eq = t_listst (3, CALL_STMT, t_sqlp_box_id_upcase ("__all_eq"), t_list_to_array (sqlo_uniques (so, rhs, preds)));
 	rhs_dfe = sqlo_df (so, all_eq);
 	sqlo_place_exp (so, dfe->dfe_super, rhs_dfe);
 	t_set_push (&tl->tl_params, rhs_dfe);
@@ -3386,6 +3391,35 @@ sqlo_not_eq_with_any (sqlo_t * so, dk_set_t args, df_elt_t * right)
   }
   END_DO_SET ();
   return 1;
+}
+
+
+dk_set_t
+sqlo_uniques (sqlo_t * so, dk_set_t cols, dk_set_t join_preds)
+{
+  /* given a list of columns, keep one from each eq set.  The eq sets are the eqs that are in effect based on what is placed so far */
+  op_table_t *ot = so->so_this_dt;
+  id_hash_t *prev_eqs = ot->ot_eq_hash;
+  dk_set_t res = NULL, dfes = NULL;
+  if (!cols || !cols->next)
+    return cols;
+  ot->ot_eq_hash = NULL;
+  ot->ot_eq_hash = ot->ot_placed_eq_hash;
+  sqlo_init_eqs (so, so->so_this_dt, NULL, 1, join_preds);
+  if (!ot->ot_placed_eq_hash)
+    ot->ot_placed_eq_hash = ot->ot_eq_hash;
+  DO_SET (ST *, st, &cols)
+  {
+    df_elt_t *dfe = sqlo_df (so, st);
+    if (sqlo_not_eq_with_any (so, dfes, dfe))
+      {
+	t_set_push (&dfes, (void *) dfe);
+	t_set_push (&res, st);
+      }
+  }
+  END_DO_SET ();
+  ot->ot_eq_hash = prev_eqs;
+  return res;
 }
 
 

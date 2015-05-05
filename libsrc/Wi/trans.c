@@ -1821,7 +1821,6 @@ sqlg_leading_multistate_same_as (sqlo_t * so, data_source_t ** q_head, data_sour
   tn->tn_output =
       (state_slot_t **) list (1, ssl_new_variable (tb_dfe->dfe_sqlo->so_sc->sc_cc,
 	  ssl_inf_name ( /*RI_SAME_AS_P == mode ? p_dfe : */ RI_SAME_AS_O == mode ? o_dfe : s_dfe), DV_IRI_ID));
-  tn->tn_output[0]->ssl_sqt.sqt_non_null = 1;
   if (!g_dfe)
     ;
   else if ((in_list = sqlo_in_list (g_dfe, NULL, NULL)))
@@ -1838,6 +1837,9 @@ sqlg_leading_multistate_same_as (sqlo_t * so, data_source_t ** q_head, data_sour
     tn->tn_sas_g = (state_slot_t **) list (1, g_dfe->_.bin.right->dfe_ssl);
 
   tn->tn_input = (state_slot_t **) list (1, sqlg_sas_input_ssl (sc, s_dfe, p_dfe, o_dfe, tn->tn_output[0], mode));
+  tn->tn_output[0]->ssl_sqt.sqt_dtp = tn->tn_input[0]->ssl_sqt.sqt_dtp;
+  tn->tn_output[0]->ssl_sqt.sqt_non_null = tn->tn_input[0]->ssl_sqt.sqt_non_null;
+  ssl_set_dc_type (tn->tn_output[0]);
   sqlg_rdf_ts_replace_ssl ((table_source_t *) ts, tn->tn_input[0], tn->tn_output[0], 0, inxop_inx);
   tn->tn_is_pre_iter = 1;
   tn->tn_distinct = 1;

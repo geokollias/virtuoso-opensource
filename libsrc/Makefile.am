@@ -19,7 +19,7 @@
 #  
 #  
 
-SUBDIRS = util zlib odbcsdk Dk Thread langfunc Wi plugin Tidy Xml.new JDBCDriverType4
+SUBDIRS = util zlib odbcsdk Dk Thread langfunc Wi plugin Tidy Xml.new JDBCDriverType4 snappy
 
 noinst_HEADERS = Dk.h libutil.h
 

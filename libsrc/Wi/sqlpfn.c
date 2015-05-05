@@ -2478,7 +2478,6 @@ _br_cstm (caddr_t stmt)
 }
 #endif
 
-long sqlp_bin_op_serial = 0;
 
 
 ST *

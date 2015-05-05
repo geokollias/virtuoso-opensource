@@ -405,7 +405,7 @@ jp_fanout (join_plan_t * jp)
 	return jp->jp_fanout = (p_stat[0] / o_card) * misc_card;
       if (is_s && is_o)
 	return (p_stat[0] / s_card / o_card) * misc_card;
-      return jp->jp_fanout = p_stat[0];
+      return jp->jp_fanout = p_stat[0] * misc_card;
     }
   else if (DFE_TABLE == jp->jp_tb_dfe->dfe_type)
     {
@@ -1802,7 +1802,9 @@ sqlo_hash_fill_join (sqlo_t * so, df_elt_t * hash_ref_tb, df_elt_t ** fill_ret, 
       }
       END_DO_BOX;
       sel = t_box_copy_tree ((caddr_t) sel);
+      NO_LIT_PARS;
       sqlo_scope (so, &sel);
+      RESTORE_LIT_PARS;
       fill_dfe = sqlo_df (so, sel);
       fill_ot = fill_dfe->_.sub.ot;
       fill_ot->ot_dfe = fill_dfe;

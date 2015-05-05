@@ -250,6 +250,7 @@ sqlc_trans_funcs (sql_comp_t * sc, ST * tree, state_slot_t * ret, dk_set_t * cod
 void
 sqlc_call_exp (sql_comp_t * sc, dk_set_t * code, state_slot_t * ret, ST * tree)
 {
+  int no_stl_in_first = 0;
   caddr_t *kwds = NULL;
   ST **act_params = tree->_.call.params;
   ST *ret_param = BOX_ELEMENTS (tree) > 3 ? tree->_.call.ret_param : NULL;
@@ -288,6 +289,8 @@ sqlc_call_exp (sql_comp_t * sc, dk_set_t * code, state_slot_t * ret, ST * tree)
       state_slot_t *cache = ssl_new_inst_variable (sc->sc_cc, "cache", DV_ARRAY_OF_POINTER);
       ((ptrlong *) (act_params[n_params - 1]))[0] = cache->ssl_index;
     }
+  if (13 == func_len && !stricmp (func, "chash_in_init"))
+    no_stl_in_first = 4;
   if (ret_param)
     params = (state_slot_t **) t_alloc_box ((n_params + 1) * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
   else
@@ -295,6 +298,8 @@ sqlc_call_exp (sql_comp_t * sc, dk_set_t * code, state_slot_t * ret, ST * tree)
 
   DO_BOX (ST *, par, inx, act_params)
   {
+    if (sc->sc_stl && inx < no_stl_in_first)
+      sc->sc_no_lit_param = 1;
     if (ST_P (par, KWD_PARAM))
       {
 	if (!kwds)
@@ -309,6 +314,7 @@ sqlc_call_exp (sql_comp_t * sc, dk_set_t * code, state_slot_t * ret, ST * tree)
       params[inx + (ret_param ? 1 : 0)] = scalar_exp_generate (sc, par, code);
   }
   END_DO_BOX;
+  sc->sc_no_lit_param = 0;
   if (ret_param)
     {
       params[0] = scalar_exp_generate (sc, ret_param, code);

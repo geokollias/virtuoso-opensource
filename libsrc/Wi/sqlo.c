@@ -39,12 +39,6 @@
 #include "remote.h"
 
 
-#define NO_LIT_PARS \
-  { st_lit_state_t * __save_stl = so->so_stl; so->so_stl = NULL;
-
-#define RESTORE_LIT_PARS \
-  so->so_stl = __save_stl; }
-
 #define CHECK_OBSERVER(tree_ptr) \
    if (ST_P (*(tree_ptr), COL_DOTTED)) \
      { \
@@ -2737,7 +2731,9 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
       sqlo_replace_as_exps (&(texp->_.table_exp.having), so->so_scope);
       sqlo_scope (so, &(texp->_.table_exp.having));
       sqlo_replace_as_exps ((ST **) & (texp->_.table_exp.order_by), so->so_scope);
+      NO_LIT_PARS;
       sqlo_scope_array (so, texp->_.table_exp.order_by);
+      RESTORE_LIT_PARS;
 
       sco->sco_fun_refs_allowed = 0;
       sqlo_replace_as_exps ((ST **) & (texp->_.table_exp.group_by), so->so_scope);
@@ -3174,6 +3170,31 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
 	return tree;
       }
 
+      extern int enable_qrc;
+
+      int sqlo_func_no_lit_params (sqlo_t * so, caddr_t call_name)
+      {
+	if (!enable_qrc)
+	  return 1;
+	switch (call_name[0])
+	  {
+	  case 't':
+	  case 'T':
+	    return !strnicmp ("t_", call_name, 2);
+	  case '_':
+	    if (!strnicmp ("__ssl", call_name, 5))
+	      {
+		so->so_stl->stl_explicit_params = 1;
+		return 1;
+	      }
+	    return !strnicmp ("__tn_", call_name, 5);
+
+
+	  default:
+	    return 0;
+	  }
+      }
+
 
       void sqlo_scope (sqlo_t * so, ST ** ptree)
       {
@@ -3274,6 +3295,7 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
 	    break;
 	  case CALL_STMT:
 	    {
+	      st_lit_state_t *save;
 	      int inx;
 	      ST *res;
 	      char *call_name = tree->_.call.name;
@@ -3293,11 +3315,15 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
 		      !casemode_strcmp (call_name, "DB.DBA.SPARQL_DELETE_DICT_CONTENT") ||
 		      !casemode_strcmp (call_name, "DB.DBA.SPARUL_LOAD") || !casemode_strcmp (call_name, "DB.DBA.SPARUL_CLEAR")))
 		so->so_sc->sc_cc->cc_query->qr_lock_mode = PL_EXCLUSIVE;
+	      save = so->so_stl;
+	      if (sqlo_func_no_lit_params (so, call_name))
+		so->so_stl = NULL;
 	      _DO_BOX (inx, tree->_.call.params)
 	      {
 		sqlo_scope (so, &(tree->_.call.params[inx]));
 	      }
 	      END_DO_BOX;
+	      so->so_stl = save;
 	      res = sinv_check_inverses (tree, sqlc_client ());
 	      if (call_name == uname_one_of_these)
 		res = sqlo_iri_in_opt (so, tree);

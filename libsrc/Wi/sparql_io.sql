@@ -1082,6 +1082,13 @@ create procedure DB.DBA.SPARQL_RESULTS_XML_WRITE_ROW (inout ses any, in mdta any
 		    _name), ses);
 	    }
 	  sql_val := __rdf_sqlval_of_obj (_val, 1);
+          if (dt = 'http://www.w3.org/2001/XMLSchema#boolean')
+            {
+              if (sql_val)
+                sql_val := 'true';
+              else
+                sql_val := 'false';
+            }
 	  if (isentity (sql_val))
 	    is_xml_lit := 1;
 	  if (__tag (sql_val) = __tag of varchar) -- UTF-8 value kept in a DV_STRING box

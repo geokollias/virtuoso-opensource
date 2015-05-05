@@ -3043,6 +3043,8 @@ sqlo_inx_inf_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_
 	  if (any_est && sop.sop_res_from_ric_cache)
 	    {
 	      dk_free_box ((caddr_t) rit);
+	      if (sc_key && super_sop->sop_sc_key_ret)
+		*super_sop->sop_sc_key_ret = box_copy_tree (sc_key);
 	      dk_free_tree (sc_key);
 	      *variable = org_o;
 	      ic->ic_n_lookups = sub->rs_n_subs;
@@ -3065,6 +3067,8 @@ sqlo_inx_inf_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_
     }
   if (sc_key)
     {
+      if (sc_key && super_sop->sop_sc_key_ret)
+	*super_sop->sop_sc_key_ret = box_copy_tree (sc_key);
       if (any_est)
 	{
 	  ric_set_sample (sop.sop_ric, sc_key, est, inx_card);
@@ -3451,21 +3455,33 @@ sqlo_inx_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_elt_
 	      && (o_const = dfe_iri_const (o_dfe)) && (sub = ric_iri_to_sub (ctx, o_const, RI_SUBCLASS, 0)) && sub->rs_sub)
 	    {
 	      /* the p is rdfstype and o given.  See about counts of subcs */
+	      if (tb_dfe->dfe_sqlo->so_stl)
+		sop.sop_sc_key_ret = &sc_key;
 	      ic->ic_inf_type = RI_SUBCLASS;
 	      ic->ic_inf_dfe = o_dfe;
 	      c = sqlo_inx_inf_sample (tb_dfe, key, lowers, uppers, n_parts, ctx, sub, (caddr_t *) & o_dfe->dfe_tree, ic, &sop);
+	      free_sc_key = sc_key;
 	    }
 	  else if (p_const && (sub = ric_iri_to_sub (ctx, p_const, RI_SUBPROPERTY, 0)) && sub->rs_sub)
 	    {
 	      /* the p is given and has subproperties */
+
+	      if (tb_dfe->dfe_sqlo->so_stl)
+		sop.sop_sc_key_ret = &sc_key;
 	      ic->ic_inf_dfe = p_dfe;
 	      ic->ic_inf_type = RI_SUBPROPERTY;
 	      c = sqlo_inx_inf_sample (tb_dfe, key, lowers, uppers, n_parts, ctx, sub, (caddr_t *) & p_dfe->dfe_tree, ic, &sop);
+	      free_sc_key = sc_key;
 	    }
 	  else
 	    {
+	      sop.sop_sc_key_ret = &sc_key;
 	      ic->ic_n_lookups = 1;
 	      c = sqlo_inx_sample_1 (tb_dfe, key, lowers, uppers, n_parts, &sop, ic);
+	      if (!sop.sop_res_from_ric_cache && c >= 0 && sop.sop_ric)
+		ric_set_sample (sop.sop_ric, sc_key, c, ic->ic_inx_card);
+	      else
+		free_sc_key = sc_key;
 	    }
 	}
       dk_free_box (o_const);
@@ -4250,6 +4266,7 @@ sqlo_use_p_stat_2 (df_elt_t * dfe, float *inx_card, float *col_card, index_choic
 	  else
 	    s_card = p_stat[2];
 	}
+      s_card = MAX (1, s_card);
       if (col2 == &rq.rq_s || RQ_CONST_EQ == rq.rq_o.rqp_op)
 	*inx_card = (p_card / s_card) / MAX (1, o_sel);
       else
@@ -4263,9 +4280,10 @@ sqlo_use_p_stat_2 (df_elt_t * dfe, float *inx_card, float *col_card, index_choic
     }
   if (RQ_CONST_EQ == rq.rq_s.rqp_op && RQ_BOUND_EQ == rq.rq_o.rqp_op)
     {
-      float s_sel = p_card / rq_sample (dfe, &rq, ic);
+      float rq_smp = rq_sample (dfe, &rq, ic);
+      float s_sel = p_card / MAX (rq_smp, 1);
       float o_card;
-      if (s_sel < 0)
+      if (s_sel < 0 || rq_smp <= 0)
 	return 0;
       if (col2 == &rq.rq_o)
 	o_card = p_stat[1];
@@ -4277,6 +4295,7 @@ sqlo_use_p_stat_2 (df_elt_t * dfe, float *inx_card, float *col_card, index_choic
 	  else
 	    o_card = p_stat[2];
 	}
+      o_card = MAX (1, o_card);
       *inx_card = (p_card / o_card) / s_sel;
       if (is_unq)
 	*inx_card = MIN (1, *inx_card);

@@ -107,7 +107,11 @@ typedef struct ol_backup_context_s
   dk_hash_t *known;
 
   int octx_disable_increment;
+  int octx_flags;
 } ol_backup_context_t;
+
+/* octx_flags */
+#define OCTX_SNAPPY 1
 
 
 extern ol_backup_ctx_t bp_ctx;

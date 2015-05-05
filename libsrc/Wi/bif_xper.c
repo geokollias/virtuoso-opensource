@@ -2458,7 +2458,7 @@ xper_entity_t *DBG_NAME (xper_entity) (DBG_PARAMS query_instance_t * qi, caddr_t
 	  dk_free_box (uri);
 	  sqlr_new_error ("42000", "XE024", "Unable to convert packed XML serialized data into an persistent XML entity");
 	}
-      if (bh->bh_ask_from_client)
+      if (bh->bh_ask_from_client || BH_FROM_CLUSTER (bh))
 	{
 	  bcfi_reset (&bcfi, bh, qi->qi_client);
 	  source_type = 'C';
@@ -2478,7 +2478,7 @@ xper_entity_t *DBG_NAME (xper_entity) (DBG_PARAMS query_instance_t * qi, caddr_t
     {
       blob_handle_t *bh = (blob_handle_t *) source_arg;
       source_is_wide = 1;
-      if (bh->bh_ask_from_client)
+      if (bh->bh_ask_from_client || BH_FROM_CLUSTER (bh))
 	{
 	  bcfi_reset (&bcfi, bh, qi->qi_client);
 	  source_type = 'C';

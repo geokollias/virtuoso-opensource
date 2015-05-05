@@ -32,6 +32,12 @@ typedef struct qc_key_s
 
 
 
+ST *
+sqlc_top_tree (sql_comp_t * sc, ST * tree)
+{
+  return sc->sc_super && sc->sc_super->sc_top_tree ? sc->sc_super->sc_top_tree : tree;
+}
+
 
 uint32
 qck_hash (caddr_t e)
@@ -174,9 +180,15 @@ sqlo_init_lit_params (sql_comp_t * sc, sqlo_t * so)
     return;
   if (sc->sc_super)
     {
+      ST *top_tree = sc->sc_super->sc_top_tree;
       query_t *top_qr = top_sc->sc_cc->cc_query;
-      return;
       if (top_qr->qr_proc_name || top_qr->qr_trig_event)
+	return;
+      if (top_tree->type != CALL_STMT)
+	return;
+      if (st_is_call (top_tree, "set_row_count", 1))
+	return;
+      if (top_tree->_.call.name && strcasestr (top_tree->_.call.name, "sparul"))
 	return;
     }
   t_NEW_VARZ (st_lit_state_t, stl);
@@ -480,6 +492,7 @@ void
 qrc_lookup (sql_comp_t * sc, ST * tree)
 {
   query_t *qr1 = NULL, *one_qr = NULL, *best_qr;
+  ST *top_tree = sqlc_top_tree (sc, tree);
   qc_data_t **place;
   qc_data_t *qcd;
   qc_key_t k;
@@ -491,10 +504,10 @@ qrc_lookup (sql_comp_t * sc, ST * tree)
       sc->sc_so->so_stl = sc->sc_stl = NULL;
       return;
     }
-  k.qck_hash = sql_tree_hash_tpl (tree);
-  k.qck_tree = tree;
+  k.qck_hash = sql_tree_hash_tpl (top_tree);
+  k.qck_tree = top_tree;
   stl->stl_hash = k.qck_hash;
-  stl->stl_tree = tree;
+  stl->stl_tree = top_tree;
   qrc_set_lit_params (sc, qr1);
   mutex_enter (&qrc_mtx);
   place = (qc_data_t **) id_hash_get (qr_cache, (caddr_t) & k);
@@ -537,6 +550,8 @@ qrc_lookup (sql_comp_t * sc, ST * tree)
       return;
     }
   TC (tc_qrc_hit);
+  if (sc->sc_super)
+    sc->sc_super->sc_cc->cc_query = best_qr;
   sc->sc_cc->cc_query = best_qr;
   ctx = (jmp_buf_splice *) THR_ATTR (THREAD_CURRENT_THREAD, CATCH_LISP_ERROR);
   longjmp_splice (ctx, QRC_FOUND);
@@ -800,8 +815,8 @@ qrc_status ()
   qc_data_t **pqcd, *qcd;
   qc_key_t *qck;
   trset_printf
-      ("Query cache:  %Ld hits %Ld misses %Ld hit but new plan made due to different cardinalities  %Ld recompile\n%d query templates",
-      tc_qrc_miss, tc_qrc_miss, tc_qrc_plan_miss, tc_qrc_recompile, qr_cache->ht_count);
+      ("Query cache:  %Ld hits %Ld misses %Ld hit but new plan made due to different cardinalities  %Ld recompile\n%d query templates\n",
+      tc_qrc_hit, tc_qrc_miss, tc_qrc_plan_miss, tc_qrc_recompile, qr_cache->ht_count);
   mutex_enter (&qrc_mtx);
   id_hash_iterator (&hit, qr_cache);
   while (hit_next (&hit, (caddr_t *) & qck, (caddr_t *) & pqcd))

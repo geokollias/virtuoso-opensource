@@ -827,7 +827,6 @@ typedef struct sql_tree_s
   else st->_.select_stmt.top->_.top.all_distinct = f; \
 }
 
-extern long sqlp_bin_op_serial;
 
 #define IS_ARITM_BOP(opq) \
 	((opq) == BOP_PLUS || \

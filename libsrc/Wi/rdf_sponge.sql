@@ -2067,9 +2067,10 @@ create function DB.DBA.RDF_SPONGE_UP_1 (in graph_iri varchar, in options any, in
   get_enforce_acls := get_keyword_ucase ('get:enforce-acls', options);
   if (get_enforce_acls = 'yes' and DB.DBA.SPONGING_ALLOWED() = 0)
   {
+    if (get_keyword ('rdf_sponge_debug', options) is not null)
+      dbg_printf ('SPONGING_ALLOWED disallowed sponging of %s', graph_iri);
     if (get_keyword_ucase ('get:error-recovery', options, 'signal') = 'signal')
       signal ('RDFZZ', 'RDF_SPONGE_UP_1: Use of the Sponger is denied for the current user');
-    -- dbg_printf ('RDF_SPONGE_UP_1: Use of the Sponger is denied for the current user');
     return null;
   }
 
@@ -2103,7 +2104,8 @@ create function DB.DBA.RDF_SPONGE_UP_1 (in graph_iri varchar, in options any, in
           perms := DB.DBA.RDF_GRAPH_USER_PERMS_GET (dest, case (uid) when -1 then http_nobody_uid() else uid end);
           if (not bit_and (perms, 1) and 0 = sys_stat ('enable_g_in_sec'))
             {
-               -- dbg_obj_princ (dest, ' graph is OK as it is but not returned from RDF_SPONGE_UP_1 due to lack of read permission for user ', uid);
+	       if (get_keyword ('rdf_sponge_debug', options) is not null)
+                 dbg_obj_princ (dest, ' graph is OK as it is but not returned from RDF_SPONGE_UP_1 due to lack of read permission for user ', uid);
                return null;
             }
           res_graph_iri := local_iri;
@@ -2129,10 +2131,11 @@ create function DB.DBA.RDF_SPONGE_UP_1 (in graph_iri varchar, in options any, in
       perms := DB.DBA.RDF_GRAPH_USER_PERMS_GET (dest, case (uid) when -1 then http_nobody_uid() else uid end);
       if (not bit_and (perms, 4) and 0 = sys_stat ('enable_g_in_sec'))
         {
+           if (get_keyword ('rdf_sponge_debug', options) is not null)
+             dbg_obj_princ (res_graph_iri, ' graph is not sponged by RDF_SPONGE_UP_1 due to lack of sponge permission for user ', uid);
            if (get_keyword_ucase ('get:error-recovery', options, 'signal') = 'signal')
              signal ('RDFZZ', sprintf (
                'The graph <%.500s> is not sponged by RDF_SPONGE_UP_1 due to lack of sponge permission for user %d', dest, case (uid) when -1 then http_nobody_uid() else uid end ) );
-           -- dbg_obj_princ (res_graph_iri, ' graph is not sponged by RDF_SPONGE_UP_1 due to lack of sponge permission for user ', uid);
            return null;
         }
     }

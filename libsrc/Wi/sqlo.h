@@ -1119,6 +1119,14 @@ caddr_t sqlo_rdf_obj_const_value (ST * tree, caddr_t * val_ret, caddr_t * lang_r
 
 /* qrc */
 
+#define NO_LIT_PARS \
+  { st_lit_state_t * __save_stl = so->so_stl; so->so_stl = NULL;
+
+#define RESTORE_LIT_PARS \
+  so->so_stl = __save_stl; }
+
+
+
 #define OT_NO(pref) \
   atoi ('d' == pref[0] ? pref + 2 : pref + 1)
 

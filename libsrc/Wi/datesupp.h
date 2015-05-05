@@ -47,10 +47,11 @@
 #define GREG_YMD_IS_POST_JULIAN_PROLEPTIC_GREG(year,month,day) \
   ((year == GREG_YEAR) && ((month == GREG_MONTH) && (day <= GREG_LAST_JULIAN_DAY_AS_PROLEPTIC_GREG) &&  (day > GREG_LAST_JULIAN_DAY)))
 
-int32 date2num (const int year, const int month, const int day);
-void num2date (int32 julian_days, int *year, int *month, int *day);
-int ymd_valid_p (const int year, const int month, const int day);
-int date2weekday (const int year, const int month, const int day);
+typedef int32 jday_t;
+jday_t date2num (int year, int month, int day);
+void num2date (jday_t julian_days, int *year, int *month, int *day);
+int ymd_valid_p (int year, int month, int day);
+int date2weekday (int year, int month, int day);
 void dt_now (caddr_t dt);
 void dt_now_tz (caddr_t dt);
 void time_t_to_dt (time_t tim, long fraction, char *dt);
@@ -155,5 +156,8 @@ extern int rb_type__xsd_gMonth;
 extern int rb_type__xsd_gMonthDay;
 extern int rb_type__xsd_gYear;
 extern int rb_type__xsd_gYearMonth;
+extern int rb_type__xsd_date;
+extern int rb_type__xsd_dateTime;
+extern int rb_type__xsd_time;
 
 #endif /* _DATESUPP_H */

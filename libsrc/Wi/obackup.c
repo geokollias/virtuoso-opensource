@@ -62,6 +62,9 @@
 
 //#define OBACKUP_TRACE
 
+int32 backup_snappy;
+
+
 typedef struct ob_err_ctx_s
 {
   int oc_inx;
@@ -271,7 +274,7 @@ static void ctx_clear_backup_files (ol_backup_context_t * ctx);
 
 int ol_backup_page (it_cursor_t * itc, buffer_desc_t * buf, ol_backup_context_t * ctx);
 caddr_t compressed_buffer (buffer_desc_t * buf);
-int uncompress_buffer (caddr_t compr, unsigned char *page_buf);
+int uncompress_buffer (caddr_t compr, unsigned char *page_buf, ol_backup_context_t * ctx);
 
 dk_hash_t *
 hash_reverse (dk_hash_t * hash)
@@ -299,8 +302,18 @@ ol_write_header (ol_backup_context_t * ctx)
   if (ctx->octx_is_tail)
     return;
   /* prefix */
-  print_long ((long) strlen (ctx->octx_file_prefix), ctx->octx_file);
-  session_buffered_write (ctx->octx_file, ctx->octx_file_prefix, strlen (ctx->octx_file_prefix));
+  if (ctx->octx_flags)
+    {
+      print_long (0, ctx->octx_file);
+      print_long (ctx->octx_flags, ctx->octx_file);
+      print_long ((long) strlen (ctx->octx_file_prefix), ctx->octx_file);
+      session_buffered_write (ctx->octx_file, ctx->octx_file_prefix, strlen (ctx->octx_file_prefix));
+    }
+  else
+    {
+      print_long ((long) strlen (ctx->octx_file_prefix), ctx->octx_file);
+      session_buffered_write (ctx->octx_file, ctx->octx_file_prefix, strlen (ctx->octx_file_prefix));
+    }
 
   /* timestamp */
   print_long (ctx->octx_timestamp, ctx->octx_file);
@@ -1079,6 +1092,8 @@ ol_backup (const char *prefix, long pages, long timeout, caddr_t * backup_path_a
 
   time (&db_bp_date);
   dir_first_page = 0;
+  if (backup_snappy)
+    ctx->octx_flags |= OCTX_SNAPPY;
   CATCH_WRITE_FAIL (ctx->octx_file)
   {
     ol_write_header (ctx);
@@ -1601,7 +1616,11 @@ read_backup_header (ol_backup_context_t * ctx, char **header)
   /* prefix */
 
   len = read_long (ctx->octx_file);
-
+  if (!len)
+    {
+      ctx->octx_flags = read_long (ctx->octx_file);
+      len = read_long (ctx->octx_file);
+    }
   if ((len == -1) || (len >= FILEN_BUFSIZ))
     {
       log_error ("Backup file %s is corrupted", ctx->octx_curr_file);
@@ -1703,7 +1722,7 @@ insert_page (ol_backup_context_t * ctx, dp_addr_t page_dp)
 
   /* session_buffered_read (ctx->octx_file, page_buf, PAGE_SZ); */
 
-  if (!compr_buf || (Z_OK != uncompress_buffer (compr_buf, page_buf)))
+  if (!compr_buf || (Z_OK != uncompress_buffer (compr_buf, page_buf, ctx)))
     log_error ("Could not recover page %ld from backup file %s", page_dp, ctx->octx_curr_file);
 
   buf.bd_page = buf.bd_physical_page = page_dp;
@@ -1977,6 +1996,14 @@ compressed_buffer (buffer_desc_t * buf)
   int comprLen = PAGE_SZ;
   Byte comp[PAGE_SZ * 2];
   caddr_t ret_box;
+  if (backup_snappy)
+    {
+      size_t dest_sz;
+      snappy_compress (buf->bd_buffer, PAGE_SZ, comp, &dest_sz);
+      ret_box = dk_alloc_box (dest_sz, DV_BIN);
+      memcpy_16 (ret_box, comp, dest_sz);
+      return ret_box;
+    }
 
   c_stream.zalloc = (alloc_func) 0;
   c_stream.zfree = (free_func) 0;
@@ -2019,12 +2046,22 @@ compressed_buffer (buffer_desc_t * buf)
 }
 
 int
-uncompress_buffer (caddr_t compr, unsigned char *page_buf)
+uncompress_buffer (caddr_t compr, unsigned char *page_buf, ol_backup_context_t * ctx)
 {
   int err;
   z_stream d_stream;		/* decompression stream */
   int compr_len = box_length (compr);
+  if ((OCTX_SNAPPY & ctx->octx_flags))
+    {
+      int rc;
+      size_t dest_size;
+      snappy_uncompressed_length (compr, compr_len, &dest_size);
+      if (PAGE_SZ != dest_size)
+	return -1;
+      rc = snappy_uncompress (compr, compr_len, page_buf);
 
+      return 0;
+    }
   d_stream.zalloc = (alloc_func) 0;
   d_stream.zfree = (free_func) 0;
   d_stream.opaque = (voidpf) 0;

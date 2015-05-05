@@ -52,6 +52,7 @@
 #include "sqlo.h"
 #include "rdfinf.h"
 #include "rdf_core.h"
+#include "mhash.h"
 
 #ifndef WIN32
 # include <pwd.h>
@@ -109,6 +110,7 @@ int cls_rollback_no_finish_if_thread;
 long tc_page_fill_hash_overflow;
 extern long tc_part_hash_join;
 long tc_key_sample_reset;
+uint64 tc_sample_clocks;
 long tc_pl_moved_in_reentry;
 long tc_enter_transiting_bm_inx;
 long tc_geo_delete_retry, tc_geo_delete_missed;
@@ -215,6 +217,7 @@ extern int enable_g_in_sec;
 extern int64 rdf_ctx_max_mem;
 extern int64 rdf_ctx_in_use;
 extern int sqlo_max_layouts;
+extern int enable_initial_plan;
 extern int32 sqlo_compiler_exceeds_run_factor;
 extern int enable_mem_hash_join;
 extern int32 enable_qrc;
@@ -488,6 +491,8 @@ long sparql_max_mem_in_use = 0;
 
 extern int rdf_create_graph_keywords;
 extern int rdf_query_graph_keywords;
+
+extern int timezoneless_datetimes;
 
 static long thr_cli_running;
 static long thr_cli_waiting;
@@ -1406,6 +1411,7 @@ int32 enable_mt_ft_inx = 1;
 int32 disable_rdf_init = 0;
 extern int32 enable_pg_card;
 long vdb_attach_autocommit = 1;
+extern int32 backup_snappy;
 static long my_thread_num_total;
 static long my_thread_num_wait;
 static long my_thread_num_dead;
@@ -1495,6 +1501,7 @@ stat_desc_t stat_descs[] = {
   {"tc_page_fill_hash_overflow", &tc_page_fill_hash_overflow, NULL},
   {"tc_autocompact_split", &tc_autocompact_split, NULL},
   {"tc_key_sample_reset", &tc_key_sample_reset, NULL},
+  {"tc_sample_clocks", &tc_sample_clocks},
   {"tc_part_hash_join", &tc_part_hash_join, NULL},
   {"tc_pl_moved_in_reentry", &tc_pl_moved_in_reentry, NULL},
   {"tc_enter_transiting_bm_inx", &tc_enter_transiting_bm_inx, NULL},
@@ -1744,6 +1751,7 @@ stat_desc_t stat_descs[] = {
   {"disable_rdf_init", (long *) &disable_rdf_init, SD_INT32},
 
   /* backup vars */
+  {"backup_snappy", &backup_snappy, SD_INT32},
   {"backup_prefix_name", NULL, &my_bp_prefix},
   {"backup_file_index", (long *) &bp_ctx.db_bp_num, NULL},
   {"backup_dir_index", (long *) &bp_ctx.db_bp_index, NULL},
@@ -1799,6 +1807,7 @@ stat_desc_t dbf_descs[] = {
   {"rdf_ctx_in_use", &rdf_ctx_in_use},
   {"enable_mem_hash_join", (long *) &enable_mem_hash_join, SD_INT32},
   {"sqlo_max_layouts", &sqlo_max_layouts, SD_INT32},
+  {"enable_initial_plan", &enable_initial_plan, SD_INT32},
   {"sqlo_compiler_exceeds_run_factor", &sqlo_compiler_exceeds_run_factor, SD_INT32},
   {"enable_hash_merge", (long *) &enable_hash_merge, SD_INT32},
   {"enable_hash_fill_join", (long *) &enable_hash_fill_join, SD_INT32},
@@ -1922,6 +1931,7 @@ stat_desc_t dbf_descs[] = {
   {"pcre_match_limit_recursion", &c_pcre_match_limit_recursion, SD_INT32},
   {"pcre_max_cache_sz", &pcre_max_cache_sz, SD_INT32},
   {"enable_qrc", &enable_qrc, SD_INT32},
+  {"timezoneless_datetimes", &timezoneless_datetimes, SD_INT32},
   {NULL, NULL, NULL}
 };
 
@@ -4907,6 +4917,155 @@ bif_key_em_check (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   return list_to_array (dk_set_nreverse (l));
 }
 
+
+caddr_t
+bif_ws_save (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  int bp_inx, b_inx;
+  dk_session_t *ses = dk_session_allocate (SESCLASS_TCPIP);
+  int fd = fd_open ("virt.ws", OPEN_FLAGS | O_TRUNC);
+  tcpses_set_fd (ses->dks_session, fd);
+  CATCH_WRITE_FAIL (ses)
+  {
+    DO_BOX (buffer_pool_t *, bp, bp_inx, wi_inst.wi_bps)
+    {
+      for (b_inx = 0; b_inx < bp->bp_n_bufs; b_inx++)
+	{
+	  buffer_desc_t *buf = &bp->bp_bufs[b_inx];
+	  index_tree_t *tree = buf->bd_tree;
+	  if (tree)
+	    {
+	      if (!tree->it_key || KI_TEMP == tree->it_key->key_id || !buf->bd_storage)
+		continue;
+	      print_int (tree->it_key->key_id, ses);
+	      print_int (buf->bd_page, ses);
+	      print_object (buf->bd_storage->dbs_name, ses, NULL, NULL);
+	    }
+	}
+    }
+    END_DO_BOX;
+    session_flush (ses);
+  }
+  END_WRITE_FAIL (ses);
+  fd_close (fd, "virt.ws");
+  PrpcSessionFree (ses);
+  return NULL;
+}
+
+typedef struct _ra_key_s
+{
+  dbe_key_t *rk_key;
+  dbe_storage_t *rk_dbs;
+} ra_key_t;
+
+
+rk_hash (ra_key_t * rk)
+{
+  uint64 h = 1;
+  MHASH_STEP (h, (ptrlong) rk->rk_key);
+  MHASH_STEP (h, (ptrlong) rk->rk_dbs);
+  return (uint32) h;
+}
+
+
+int
+rk_cmp (ra_key_t * r1, ra_key_t * r2)
+{
+  return r1->rk_key == r2->rk_key && r1->rk_dbs == r2->rk_dbs;
+}
+
+
+void
+rk_read (ra_key_t * rk, ra_req_t ** rap, int is_last)
+{
+  dp_addr_t phys, dp;
+  ra_req_t *ra = *rap;
+  it_cursor_t itc_auto;
+  int inx, ra_fill = ra->ra_fill;
+  it_cursor_t *itc = &itc_auto;
+  dbe_storage_t *dbs = rk->rk_dbs;
+  ITC_INIT (itc, NULL, NULL);
+  itc_from (itc, rk->rk_key, DBS_ELASTIC == dbs->dbs_type ? dbs->dbs_slice : QI_NO_SLICE);
+
+  ra->ra_fill = 0;
+  for (inx = 0; inx < ra_fill; inx++)
+    {
+      ITC_IN_KNOWN_MAP (itc, ra->ra_dp[inx]);
+      if (!DBS_PAGE_IN_RANGE (itc->itc_tree->it_storage, ra->ra_dp[inx])
+	  || dbs_may_be_free (itc->itc_tree->it_storage, ra->ra_dp[inx]) || 0 == ra->ra_dp[inx])
+	{
+	  ITC_LEAVE_MAP_NC (itc);
+	  continue;
+	}
+      IT_DP_REMAP (itc->itc_tree, ra->ra_dp[inx], phys);
+      if (DP_DELETED == phys)
+	{
+	  ITC_LEAVE_MAP_NC (itc);
+	  continue;
+	}
+      ITC_LEAVE_MAP_NC (itc);
+      ra->ra_dp[ra->ra_fill++] = ra->ra_dp[inx];
+    }
+  itc_read_ahead_blob (itc, ra, 0);
+  if (!is_last)
+    *rap = dk_alloc_box_zero (sizeof (ra_req_t), DV_BIN);
+}
+
+caddr_t
+bif_ws_restore (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  id_hash_iterator_t hit;
+  dk_session_t *ses = dk_session_allocate (SESCLASS_TCPIP);
+  mem_pool_t *mp = mem_pool_alloc ();
+  int fd = fd_open ("virt.ws", OPEN_FLAGS);
+  ra_req_t **place, *ra;
+  ra_key_t *rkp;
+  tcpses_set_fd (ses->dks_session, fd);
+  MP_START ();
+  {
+    id_hash_t *ht = t_id_hash_allocate (1001, sizeof (ra_key_t), sizeof (caddr_t), rk_hash, rk_cmp);
+    CATCH_READ_FAIL (ses)
+    {
+      for (;;)
+	{
+	  ra_key_t rk;
+	  int key_id = read_boxint (ses);
+	  dp_addr_t dp = read_boxint (ses);
+	  caddr_t dbsn = scan_session_boxing (ses);
+	  rk.rk_dbs = wd_storage (wi_inst.wi_master_wd, dbsn, 0);
+	  dk_free_box (dbsn);
+	  if (!rk.rk_dbs)
+	    continue;
+	  rk.rk_key = sch_id_to_key (wi_inst.wi_schema, key_id);
+	  if (!rk.rk_key)
+	    continue;
+	  place = id_hash_get (ht, (caddr_t) & rk);
+	  if (!place)
+	    {
+	      ra = (ra_req_t *) dk_alloc_box (sizeof (ra_req_t), DV_BIN);
+	      memzero (ra, sizeof (ra_req_t));
+	      id_hash_set (ht, (caddr_t) & rk, (caddr_t) & ra);
+	    }
+	  else
+	    ra = *place;
+	  ra->ra_dp[ra->ra_fill++] = dp;
+	  if (RA_MAX_BATCH == ra->ra_fill)
+	    rk_read (&rk, place, 0);
+	}
+    }
+    END_READ_FAIL (ses);
+    id_hash_iterator (&hit, ht);
+    while (hit_next (&hit, &rkp, &place))
+      rk_read (rkp, place, 1);
+  }
+  MP_DONE ();
+  fd_close (fd, "virt.ws");
+  PrpcSessionFree (ses);
+  mp_free (mp);
+  return NULL;
+}
+
+
 void
 bif_status_init (void)
 {
@@ -4949,4 +5108,6 @@ bif_status_init (void)
   bif_define ("_sys_real_cv_size", bif_real_cv_size);
 #endif
   bif_define ("key_em_check", bif_key_em_check);
+  bif_define ("ws_save", bif_ws_save);
+  bif_define ("ws_restore", bif_ws_restore);
 }

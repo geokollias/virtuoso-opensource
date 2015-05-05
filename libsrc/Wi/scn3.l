@@ -456,6 +456,7 @@ EXEC[ \t]+SQL		{ sqlp_bin_op_serial = 0; BEGIN SQL;  }
   char tmp[20];
   snprintf (tmp, sizeof (tmp), ":%d", atoi (yytext+1)); /* This sprintf(atoi()) is needed to normalize, say, ':012' into ':12' */
   yylval->box = t_sym_string (tmp);
+  any_param = 1;
   RETURN_CODE (PARAMETER_L);
 }
 
@@ -463,6 +464,7 @@ EXEC[ \t]+SQL		{ sqlp_bin_op_serial = 0; BEGIN SQL;  }
   char tmp[20];
   snprintf (tmp, sizeof (tmp), ":%d", param_inx++);
   yylval->box = t_sym_string (tmp);
+  any_param = 1;
   RETURN_CODE (PARAMETER_L);
 }
 <SQL>[-+*/,.\!]	TOK(yytext[0])
@@ -532,6 +534,7 @@ EXEC[ \t]+SQL		{ sqlp_bin_op_serial = 0; BEGIN SQL;  }
 	/* parameters */
 <SQL>":"[A-Za-z][A-Za-z0-9_]* {
   yylval->strval = t_sym_string (yytext);
+  any_param = 1;
   RETURN_CODE (NAMED_PARAMETER);
 }
 

@@ -1869,7 +1869,8 @@ sqlg_hash_filler_dt (sqlo_t * so, df_elt_t * dt_dfe, subq_source_t * sqs)
 	  dt_dfe->_.sub.gby_hash_filler = 0;
 	  return sqlg_hash_filler_dt (so, dt_dfe, sqs);
 	}
-      setp->setp_cl_partition = dt_dfe->_.sub.hash_filler_of->_.table.ot->ot_hash_filler = setp;
+      setp->setp_cl_partition = 0;
+      dt_dfe->_.sub.hash_filler_of->_.table.ot->ot_hash_filler = setp;
       setp->setp_is_gb_build = SETP_GBB;
       setp->setp_no_bloom = 1;
       if (2 == dt_dfe->_.sub.hash_filler_of->_.table.is_right_oj || setp->setp_partitioned)
@@ -3839,7 +3840,7 @@ sqlg_is_multistate_gb (sqlo_t * so)
       }
       END_DO_SET ();
     }
-  if (param_inx)
+  if (param_inx || any_param)
     return 1;			/* any parametrized with ? is multistate */
   if ((pars = sc->sc_cc->cc_query->qr_parms))
     {
@@ -4200,24 +4201,30 @@ sqlg_top_distinct (sql_comp_t * sc, table_source_t * ts)
 #define SDFG_PART_HS 2		/* because needs partitioned hash join, e.g. hash right oj */
 #define SDFG_POST_SDFG 3	/* because previous fref was partitioned and running over the results straight from the group by partitions */
 #define SDFG_STREAMING 4
+#define SDFG_NO_PAR 5
+
 
 int
 sqlg_sdfg_group (df_elt_t * dt_dfe, data_source_t * qn)
 {
   /* use a partitioned group by in single server? */
+  int no_dfg = 0, starts_w_dfg_ts = 0;
   for (qn = qn; qn; qn = qn_next (qn))
     {
       if (IS_QN (qn, setp_node_input))
 	{
 	  QNCAST (setp_node_t, setp, qn);
+	  if (CL_RUN_LOCAL == cl_run_local_only && dt_dfe->_.sub.hash_filler_of && HA_GROUP == setp->setp_ha->ha_op)
+	    return 0;		/* a group by in hash build on single server will not be partitioned */
+
 	  if (setp->setp_any_distinct_gos)
-	    return 1;
+	    return no_dfg ? SDFG_NO_PAR : 1;
 	  if (setp->setp_is_streaming)
 	    return SDFG_STREAMING;
 	  if (setp->setp_any_user_aggregate_gos || setp->setp_distinct)
-	    return SDFG_HIGH_CARD_GBY;
+	    return no_dfg ? SDFG_NO_PAR : SDFG_HIGH_CARD_GBY;
 	  if (setp->setp_ha && HA_GROUP == setp->setp_ha->ha_op && setp_is_high_card (setp))
-	    return SDFG_HIGH_CARD_GBY;
+	    return no_dfg ? 0 : SDFG_HIGH_CARD_GBY;
 	  if (setp->setp_ha && HA_FILL == setp->setp_ha->ha_op && setp->setp_cl_partition)
 	    return SDFG_PART_HS;
 	}
@@ -4228,6 +4235,22 @@ sqlg_sdfg_group (df_elt_t * dt_dfe, data_source_t * qn)
 	    return SDFG_PART_HS;
 	  if (hs->hs_roj || HS_CL_PART == hs->hs_cl_partition)
 	    return SDFG_PART_HS;
+	}
+      if (IS_RTS (qn))
+	{
+	  if (!starts_w_dfg_ts)
+	    no_dfg = 1;
+	}
+      if (IS_TS (qn))
+	{
+	  QNCAST (table_source_t, ts, qn);
+	  if (ts->ts_fs && !starts_w_dfg_ts)
+	    no_dfg = 1;
+	  else
+	    {
+	      no_dfg = 0;
+	      starts_w_dfg_ts = 1;
+	    }
 	}
     }
   return 0;
@@ -4367,6 +4390,8 @@ sqlg_parallel_ts_seq (sql_comp_t * sc, df_elt_t * dt_dfe, table_source_t * ts, f
   else
     {
       is_sdfg = sqlg_sdfg_group (dt_dfe, (data_source_t *) ts);
+      if (SDFG_NO_PAR == is_sdfg)
+	return;			/* some combinations like file ts w no sdfg support  and gby w distinct do not parallelize */
       if (SDFG_STREAMING == is_sdfg)
 	{
 	  is_sdfg = 0;
@@ -5095,6 +5120,7 @@ sqlg_make_sort_nodes (sqlo_t * so, data_source_t ** head, ST ** order_by,
   int is_grouping_sets = (is_gb && (BOX_ELEMENTS (group_by) > 1));
   ST *gs_top = 0;
   NEW_VARZ (fun_ref_node_t, fref_node);
+  sc->sc_no_lit_param = 1;
   sc->sc_fref = fref_node;
   SQL_NODE_INIT_NO_ALLOC (fun_ref_node_t, fref_node, fun_ref_node_input, fun_ref_free);
 
@@ -5542,6 +5568,7 @@ sqlg_make_sort_nodes (sqlo_t * so, data_source_t ** head, ST ** order_by,
   fref_node->fnr_setps = setps_set;
   if (is_grouping_sets || !fref_node->fnr_setp->setp_is_streaming)
     sqlg_place_fref (sc, head, fref_node, tb_dfe);
+  sc->sc_no_lit_param = 0;
 }
 
 
@@ -5735,6 +5762,7 @@ sqlg_oby_node (sqlo_t * so, data_source_t ** head, df_elt_t * oby, df_elt_t * dt
   ST *tree = dt_dfe->dfe_tree;
   state_slot_t **ssl_out;
   int inx;
+  sc->sc_no_lit_param = 1;
   if (oby->_.setp.is_late_proj)
     {
       dk_set_t dep = NULL;
@@ -7182,6 +7210,7 @@ sqlg_lit_params (sql_comp_t * sc)
       snprintf (str, sizeof (str), ":lp%d", dfe->dfe_nth_param);
       ssl = ssl_new_parameter (sc->sc_cc, str);
       dk_set_push (&qr->qr_parms, (void *) ssl);
+      ssl->ssl_is_lit_param = 1;
       ssl->ssl_qr_global = 1;
       ssl->ssl_sqt.sqt_dtp = DV_TYPE_OF (dfe->dfe_tree);
       ssl->ssl_constant = box_copy_tree (dfe->dfe_tree);

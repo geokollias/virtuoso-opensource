@@ -1173,6 +1173,8 @@ pl_finalize_page (page_lock_t * pl, it_cursor_t * itc)
 	  pl_release (pl, lt, NULL);
 	  return;
 	}
+      if (131 == pl->pl_page)
+	bing ();
       ITC_IN_KNOWN_MAP (itc, pl->pl_page);
       page_wait_access (itc, pl->pl_page, NULL, &buf, PA_WRITE, RWG_WAIT_KEY);
       /* when free remap we do same as on deleted */

@@ -511,7 +511,7 @@ file_mtime_to_dt (const char *name, char *dt)
 	  DT_SET_MINUTE (dt, stUTC.wMinute);
 	  DT_SET_SECOND (dt, stUTC.wSecond);
 	  DT_SET_FRACTION (dt, stUTC.wMilliseconds * 1000);
-	  DT_SET_TZ (dt, dt_local_tz);
+	  DT_SET_TZ (dt, dt_local_tz_for_logs);
 	  DT_SET_DT_TYPE (dt, DT_TYPE_DATETIME);
 	  time_set = 1;
 	}
@@ -1715,7 +1715,10 @@ http_date_to_dt (const char *http_date, char *dt)
 	DT_SET_TZ (dt, tz_min);
       }
   if (timezoneless_datetimes == DT_TZL_PREFER)
-    DT_SET_TZL (dt, 1);
+    {
+      DT_SET_TZ (dt, 0);
+      DT_SET_TZL (dt, 1);
+    }
   DT_AUDIT_FIELDS (dt);
   return 1;
 }
@@ -1783,7 +1786,11 @@ dt_local_tzmin_for_parts (int year, int month, int day, int hour, int minute, in
   tt = mktime (&tm);
   if ((time_t) - 1 == tt)
     return dt_local_tz_for_weird_dates;	/* fallback for weird dates --- better than nothing */
+#if defined(HAVE_GMTIME_R)
   gmtm = *(struct tm *) gmtime_r (&tt, &temp);
+#else
+  gmtm = *(struct tm *) gmtime (&tt);
+#endif
   if (gmtm.tm_yday != tm.tm_yday)
     {
       if ((gmtm.tm_year < tm.tm_year) || ((gmtm.tm_year == tm.tm_year) && (gmtm.tm_yday < tm.tm_yday)))

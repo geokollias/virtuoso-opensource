@@ -926,6 +926,7 @@ sql_stmt_comp (sql_comp_t * sc, ST ** ptree)
       break;
 
     case CALL_STMT:
+      sc->sc_top_tree = tree;
       if (enable_vec && param_inx)
 	sc->sc_cc->cc_query->qr_proc_vectored = QR_VEC_STMT;
       tree = sqlo_udt_check_method_call (sc->sc_so, sc, tree);
@@ -2113,6 +2114,13 @@ sqlc_subquery_1 (sql_comp_t * super_sc, predicate_t * super_pred, ST ** ptree, i
   THROW_CODE
   {
     caddr_t cc_error = NULL;
+    if (QRC_FOUND == reset_code)
+      {
+	jmp_buf_splice *ctx;
+	POP_CATCH;
+	ctx = (jmp_buf_splice *) THR_ATTR (THREAD_CURRENT_THREAD, CATCH_LISP_ERROR);
+	longjmp_splice (ctx, QRC_FOUND);
+      }
     if (qr && qr->qr_proc_name)
       query_free (qr);
     else

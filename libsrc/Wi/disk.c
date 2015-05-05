@@ -240,7 +240,7 @@ dbs_allocate (char *name, char type)
   dk_set_push (&wi_inst.wi_storage, (void *) dbs);
   if (DBS_TEMP != type && wi_inst.wi_master_wd)
     dk_set_push (&wi_inst.wi_master_wd->wd_storage, (void *) dbs);
-  dbs->dbs_name = box_string (name);
+  dbs->dbs_name = box_dv_short_string (name);
   dbs->dbs_page_mtx = mutex_allocate ();
   mutex_option (dbs->dbs_page_mtx, "dbs", NULL, NULL);
   dbs->dbs_file_mtx = mutex_allocate ();

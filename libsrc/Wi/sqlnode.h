@@ -117,6 +117,7 @@ struct data_source_s
     bitf_t		ssl_is_observer:1; \
     bitf_t		ssl_is_callret:1; \
     bitf_t		ssl_not_freeable:1;				\
+  bitf_t	ssl_is_lit_param:1; \
     bitf_t		ssl_qr_global:1; /* value either aggregating or invariant across qr */ \
   bitf_t	ssl_always_vec:1; \
   bitf_t	ssl_vec_param:2; /* in vectored proc in/inout/out */	\

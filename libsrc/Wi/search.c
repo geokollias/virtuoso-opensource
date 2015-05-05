@@ -1215,7 +1215,6 @@ itc_sample_row_check (it_cursor_t * itc, buffer_desc_t * buf)
   if (itc->itc_insert_key && itc->itc_insert_key->key_is_bitmap && !itc->itc_no_bitmap)
     return DVC_LESS;
 #endif
-
   if (IE_KEY_VERSION (itc->itc_row_data) == itc->itc_insert_key->key_version)
     itc->itc_row_key = itc->itc_insert_key;
   else
@@ -4211,6 +4210,8 @@ samples_stddev (int64 * samples, int n_samples, float *mean_ret, float *stddev_r
 }
 
 
+uint64 tc_sample_clocks;
+
 #define MAX_SAMPLES 20
 int dbf_max_itc_samples = MAX_SAMPLES;
 #define SAMPLES_LIMIT (MIN (MAX_SAMPLES, dbf_max_itc_samples))
@@ -4219,6 +4220,7 @@ int64
 itc_local_sample (it_cursor_t * itc)
 {
   int64 res;
+  uint64 clk = rdtsc ();
   buffer_desc_t *buf;
   float mean, stddev;
   int64 samples[MAX_SAMPLES];
@@ -4310,6 +4312,7 @@ return_res:
       hash_table_free (itc->itc_st.visited);
       itc->itc_st.visited = NULL;
     }
+  tc_sample_clocks += rdtsc () - clk;
   return res;
 }
 

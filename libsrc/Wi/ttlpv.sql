@@ -830,22 +830,39 @@ create procedure DB.DBA.RDF_MAKE_S_O_FROM_PARTS_AND_FLAGS_C (inout s any array, 
       declare parsed any array;
     parsed := __xqf_str_parse_to_rdf_box (o, o_type, 1);
       if (parsed is not null)
-	return parsed;
+        {
+          if (__tag of rdf_box = __tag (parsed))
+            {
+              if (257 = rdf_box_type (parsed))
+                {
+                  tid := rdf_cache_id ('t', o_type);
+                  if (tid = 0)
+                    {
+                      if (is_local)
+                        tid := rdf_rl_type_id (o_type);
+                      else
+                        tid := rdf_type_id (o_type);
+                    }
+                  rdf_box_set_type (parsed, tid);
+                }
+            }
+          return parsed;
+        }
       else
-	{
-	tid := rdf_cache_id ('t', o_type);
-	  if (tid = 0)
-	    {
-	      if (is_local)
-	        tid := rdf_rl_type_id (o_type);
-	      else
-	        tid := rdf_type_id (o_type);
-	    }
-	rb := rdf_box (o, tid, 257, 0, 1);
-	  if (is_text and 246 = __tag (o))
-	    rdf_box_set_is_text (o, 1);
-	return rb;
-	}
+        {
+          tid := rdf_cache_id ('t', o_type);
+          if (tid = 0)
+            {
+              if (is_local)
+                tid := rdf_rl_type_id (o_type);
+              else
+                tid := rdf_type_id (o_type);
+            }
+          rb := rdf_box (o, tid, 257, 0, 1);
+          if (is_text and 246 = __tag (o))
+            rdf_box_set_is_text (o, 1);
+          return rb;
+        }
     }
   else if (4 = o_flags)
     {

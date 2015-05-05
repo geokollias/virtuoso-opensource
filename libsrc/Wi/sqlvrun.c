@@ -3318,8 +3318,15 @@ ts_must_split_sdfg (table_source_t * ts)
     {
       if (IS_STN (qn))
 	return 1;
+      if (IS_RTS (qn))
+	return 1;
       if (IS_TS (qn))
-	return 0;
+	{
+	  QNCAST (table_source_t, ts, qn);
+	  if (ts->ts_fs)
+	    return 1;
+	  return 0;
+	}
     }
   return 1;
 }
@@ -4222,7 +4229,7 @@ ts_aq_result (table_source_t * ts, caddr_t * inst)
     }
   if (!ts->ts_agg_node)
     return;
-  if (IS_QN (ts->ts_agg_node, fun_ref_node_input))
+  if (IS_QN (ts->ts_agg_node, fun_ref_node_input) || IS_QN (ts->ts_agg_node, hash_fill_node_input))
     {
       QNCAST (fun_ref_node_t, fref, ts->ts_agg_node);
       int n_sets = QST_INT (inst, fnr_skip_hash_fillers (fref)->src_out_fill);
