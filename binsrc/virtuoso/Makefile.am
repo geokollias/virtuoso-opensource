@@ -62,6 +62,7 @@ server_libs = \
 	$(top_builddir)/libsrc/langfunc/liblangfunc.la \
 	$(top_builddir)/libsrc/Tidy/libtidy.la \
 	$(top_builddir)/libsrc/util/libutil.la \
+	$(top_builddir)/libsrc/snappy/libsnappy.la \
 	$(LIBMONO) \
 	@srvrlibs@ \
 	@LIBS@
@@ -106,6 +107,7 @@ libvirtuoso_iodbc_t_la_LIBADD = \
 	@iodbc_LDFLAGS@ \
 	@LIBS@
 
+nodist_EXTRA_virtuoso_t_SOURCES = dummy.cxx
 virtuoso_t_SOURCES = $(virtuoso_iodbc_t_SOURCES)
 virtuoso_t_CFLAGS = $(virtuoso_iodbc_t_CFLAGS)
 virtuoso_t_LDADD = \
@@ -114,6 +116,7 @@ virtuoso_t_LDADD = \
 	$(server_libs) \
 	@LIBS@
 
+#nodist_EXTRA_libvirtuoso_t_la_SOURCES = dummy.cxx
 libvirtuoso_t_la_SOURCES = $(libvirtuoso_iodbc_t_la_SOURCES)
 libvirtuoso_t_la_CFLAGS  = $(libvirtuoso_iodbc_t_la_CFLAGS)
 libvirtuoso_t_la_LDFLAGS = $(libvirtuoso_iodbc_t_la_LDFLAGS)

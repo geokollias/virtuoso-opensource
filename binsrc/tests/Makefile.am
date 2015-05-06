@@ -51,6 +51,7 @@ server_libs = \
 	$(top_builddir)/libsrc/langfunc/liblangfunc.la \
 	$(top_builddir)/libsrc/Tidy/libtidy.la \
 	$(top_builddir)/libsrc/util/libutil.la \
+	$(top_builddir)/libsrc/snappy/libsnappy.la \
 	@srvrlibs@ 
 
 client_libs = \
@@ -61,6 +62,7 @@ client_libs = \
 	@clntlibs@
 
 
+nodist_EXTRA_M2_SOURCES = dummy.cxx
 M2_SOURCES = chil.c
 M2_LDADD = \
         $(top_builddir)/libsrc/Wi/libwi.la \
