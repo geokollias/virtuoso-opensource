@@ -59,6 +59,7 @@ CLEANFILES = \
 	sql_code_javavm.c sql_code_clr.c sql_code_xslt.c \
 	virtuoso.db virtuoso.ini virtuoso.log virtuoso.pxa virtuoso.tdb
 
+nodist_EXTRA_virtuoso_sample_t_SOURCES = dummy.cxx
 virtuoso_sample_t_SOURCES = bif_sample.c
 
 virtuoso_sample_t_CFLAGS  = $(base_cflags)

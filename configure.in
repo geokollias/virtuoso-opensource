@@ -310,7 +310,6 @@ AC_PROG_CXX
 AC_REQUIRE_CPP
 AC_PROG_CC_C_O 			dnl this was AC_MINUS_C_MINUS_O
 AC_LANG_C
-#AC_LANG_CPLUSPLUS
 AC_PROG_LD
 AC_SUBST(LD)
 
@@ -2778,6 +2777,7 @@ AC_CONFIG_FILES([
 	libsrc/Wi/Makefile
 	libsrc/Xml.new/Makefile
 	libsrc/zlib/Makefile
+	libsrc/snappy/Makefile
 	appsrc/Makefile
 	appsrc/ODS-Framework/Makefile
 	appsrc/ODS-Addressbook/Makefile
