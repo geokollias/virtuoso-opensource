@@ -4285,7 +4285,7 @@ key_col_insert (it_cursor_t * itc, row_delta_t * rd)
 	  itc->itc_ranges[0].r_first = itc->itc_ranges[0].r_end = r;
 	}
     }
-  !!itc_col_ins_registered (itc, buf);
+  ! !itc_col_ins_registered (itc, buf);
   itc->itc_vec_rds = (row_delta_t **) list (1, (caddr_t) rd);
   itc_col_insert_rows (itc, buf, 0);
   dk_free_box ((caddr_t) itc->itc_vec_rds);

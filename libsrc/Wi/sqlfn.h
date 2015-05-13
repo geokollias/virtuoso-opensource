@@ -374,7 +374,7 @@ extern server_lock_t server_lock;
 
 void plh_free (placeholder_t * plh);
 
-EXE_EXPORT (caddr_t, srv_make_new_error, (const char *code, const char *virt_code, const char *msg,...));
+EXE_EXPORT (caddr_t, srv_make_new_error, (const char *code, const char *virt_code, const char *msg, ...));
 #ifndef _USRDLL
 #ifdef __GNUC__
 caddr_t srv_make_new_error (const char *code, const char *virt_code, const char *msg, ...) __attribute__ ((format (printf, 3, 4)));
@@ -672,7 +672,7 @@ void ssl_alias (state_slot_t * alias, state_slot_t * real);
 void ssl_copy_types (state_slot_t * to, state_slot_t * from);
 
 EXE_EXPORT (caddr_t, qr_rec_exec, (query_t * qr, client_connection_t * cli, local_cursor_t ** lc_ret, query_instance_t * caller,
-	stmt_options_t * opts, long n_pars,...));
+	stmt_options_t * opts, long n_pars, ...));
 
 EXE_EXPORT (caddr_t, lc_nth_col, (local_cursor_t * lc, int n));
 

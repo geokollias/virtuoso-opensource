@@ -8201,20 +8201,6 @@ sqlo_unique_rows (sql_comp_t * sc, op_table_t * top_ot, ST * tree)
 void
 sqlo_need_rdf_sec (sqlo_t * so, ST * tree)
 {
-#ifdef RDF_SECURITY_CLO
-  char *q_name = "g_ctx_query";
-  client_connection_t *cli;
-  ST *texp = NULL;
-  if (!enable_g_in_sec)
-    return;
-  if (ST_P (tree, SELECT_STMT) && BOX_ELEMENTS (tree) >= 5 && ST_P (tree->_.select_stmt.table_exp, TABLE_EXP))
-    texp = tree->_.select_stmt.table_exp;
-  cli = sqlc_client ();
-  if (!cli->cli_user || G_ID_DBA != cli->cli_user->usr_g_id
-      || id_hash_get (cli->cli_globals, (caddr_t) & q_name)
-      || (texp && sqlo_opt_value (ST_OPT (texp, caddr_t *, _.table_exp.opts), OPT_G_SEC)))
-    so->so_sc->sc_gen_rdf_rd_sec = 1;
-#endif
 }
 
 

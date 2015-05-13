@@ -110,7 +110,7 @@ int cls_rollback_no_finish_if_thread;
 long tc_page_fill_hash_overflow;
 extern long tc_part_hash_join;
 long tc_key_sample_reset;
-uint64 tc_sample_clocks;
+extern uint64 tc_sample_clocks;
 long tc_pl_moved_in_reentry;
 long tc_enter_transiting_bm_inx;
 long tc_geo_delete_retry, tc_geo_delete_missed;

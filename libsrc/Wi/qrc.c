@@ -606,6 +606,7 @@ qcd_add_if_new (qc_data_t * qcd, query_t * new_qr, qce_sample_t ** samples)
     qcd->qcd_queries = (query_t **) box_append_1 ((caddr_t) qcd->qcd_queries, (caddr_t) new_qr);
   else
     dk_set_push (&qcd->qcd_to_add, (void *) new_qr);
+  qcd_unref (qcd, 1);
   mutex_leave (&qrc_mtx);
   return 1;
 }
