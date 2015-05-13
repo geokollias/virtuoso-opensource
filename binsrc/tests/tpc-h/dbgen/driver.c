@@ -766,6 +766,16 @@ main (int ac, char **av)
 			pr_drange (ORDER_LINE, minrow, rowcnt, upd_num + 1);
 			upd_num++;
 			}
+		if (gzfds)
+		  {
+		    fd_list_t * itm = gzfds;
+		    while (itm)
+		      {
+			close_file (itm->fp);
+			itm = itm->next;
+		      }
+		    gzfds = NULL;
+		  }	  
 
 		exit (0);
 		}

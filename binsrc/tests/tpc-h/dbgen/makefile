@@ -116,7 +116,7 @@ LDFLAGS = -O
 #  Windows NT
 OBJ     = .o
 EXE     =
-LIBS    = -lm -lz
+LIBS    = -L$(HOME)/lib -lm -lz
 #
 # NO CHANGES SHOULD BE NECESSARY BELOW THIS LINE
 ###############
