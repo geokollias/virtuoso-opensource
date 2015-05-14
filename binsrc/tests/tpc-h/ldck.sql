@@ -21,7 +21,7 @@ select count(*) from PARTSUPP;
 ECHOLN BOTH $IF $GTE $LAST[1] $* 800000 $U{SCALE} "PASSED" "***FAILED" ": PARTSUPP table is filled properly. Should be at least " $* 800000 $U{SCALE};
 
 select count(*) from LINEITEM;
-ECHOLN BOTH $IF $GTE $LAST[1] $* 6000000 $U{SCALE} "PASSED" "***FAILED" ": LINEITEM table is filled properly. Should be at least " $* 6000000 $U{SCALE};
+ECHOLN BOTH $IF $GTE $LAST[1] $* 5900000 $U{SCALE} "PASSED" "***FAILED" ": LINEITEM table is filled properly. Should be at least " $* 6000000 $U{SCALE};
 
 select count(*) from ORDERS;
 ECHOLN BOTH $IF $GTE $LAST[1] $* 1500000 $U{SCALE} "PASSED" "***FAILED" ": ORDERS table is filled properly. Should be at least " $* 1500000 $U{SCALE};

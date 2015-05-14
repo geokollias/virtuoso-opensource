@@ -40,7 +40,7 @@ CREATE TABLE PART (
     P_COMMENT     VARCHAR(23) NOT NULL,
     PRIMARY KEY   (P_PARTKEY)
     )
-alter index PART on PART partition (P_PARTKEY int (0hexffff00))
+alter index PART on PART partition (P_PARTKEY int (0hexffff000))
 ;
 
 CREATE TABLE SUPPLIER (
@@ -53,7 +53,7 @@ CREATE TABLE SUPPLIER (
     S_COMMENT     VARCHAR(101) NOT NULL,
     PRIMARY KEY   (S_SUPPKEY)
     )
-alter index SUPPLIER on SUPPLIER partition (S_SUPPKEY int (0hexffff00))
+alter index SUPPLIER on SUPPLIER partition (S_SUPPKEY int (0hexffff000))
 ;
 
 CREATE TABLE PARTSUPP (
@@ -64,7 +64,7 @@ CREATE TABLE PARTSUPP (
     PS_COMMENT     VARCHAR (199) NOT NULL,
     PRIMARY KEY    (PS_PARTKEY, PS_SUPPKEY)
     )
-alter index PARTSUPP on PARTSUPP partition (PS_PARTKEY int (0hexffff00))
+alter index PARTSUPP on PARTSUPP partition (PS_PARTKEY int (0hexffff000))
 ;
 
 CREATE TABLE CUSTOMER (
@@ -78,11 +78,11 @@ CREATE TABLE CUSTOMER (
     C_COMMENT     VARCHAR(117) NOT NULL,
     PRIMARY KEY   (C_CUSTKEY)
     )
-alter index CUSTOMER on CUSTOMER partition (C_CUSTKEY int (0hexffff00))
+alter index CUSTOMER on CUSTOMER partition (C_CUSTKEY int (0hexffff000))
 ;
 
 CREATE TABLE ORDERS (
-    O_ORDERKEY       INTEGER NOT NULL,
+    O_ORDERKEY       bigint NOT NULL,
     O_CUSTKEY        INTEGER NOT NULL,
     O_ORDERSTATUS    CHAR(1) NOT NULL,
     O_TOTALPRICE     double precision NOT NULL,
@@ -93,11 +93,11 @@ CREATE TABLE ORDERS (
     O_COMMENT        VARCHAR(79) NOT NULL,
     PRIMARY KEY      (O_ORDERKEY)
     )
-alter index ORDERS on ORDERS partition (O_ORDERKEY int (0hexffff00))
+alter index ORDERS on ORDERS partition (O_ORDERKEY int (0hexffff000))
 ;
 
 CREATE TABLE LINEITEM (
-    L_ORDERKEY    INTEGER NOT NULL,
+    L_ORDERKEY    bigint NOT NULL,
     L_PARTKEY     INTEGER NOT NULL,
     L_SUPPKEY     INTEGER NOT NULL,
     L_LINENUMBER  INTEGER NOT NULL,
@@ -115,14 +115,14 @@ CREATE TABLE LINEITEM (
     L_COMMENT      VARCHAR(44) NOT NULL,
     PRIMARY KEY    (L_ORDERKEY, L_LINENUMBER)
     )
-alter index LINEITEM on LINEITEM partition (L_ORDERKEY int (0hexffff00))
+alter index LINEITEM on LINEITEM partition (L_ORDERKEY int (0hexffff000))
 ;
 
 
 
 
 
-CREATE INDEX O_CK ON ORDERS (O_CUSTKEY) partition (O_custkey int (0hexffff00));
+CREATE INDEX O_CK ON ORDERS (O_CUSTKEY) partition (O_custkey int (0hexffff000));
 
 
 

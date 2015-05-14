@@ -60,8 +60,8 @@ do
     do
 	q=`expr $q + 1`
 	etext="rf_metric ($SEQ, $q, $stream, $CLI)"
-	#echo $etext
-	$ISQL $DSN dba dba EXEC="$etext" >> $LOGFILE.$EXT 
+	echo $etext
+	isql $DSN dba dba "EXEC=$etext" >> $LOGFILE.$EXT 
 	if test $STATUS -ne 0
 	then
 	    LOG "***FAILED: " $seq, $q, $STREAM " AT "$DSN

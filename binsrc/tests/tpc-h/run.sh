@@ -116,6 +116,8 @@ waitAll ()
       done
 }
 
+umask 000
+
 # decide witch server options set to use based on the server's name
 
     DBGEN_PROG=dbgen
@@ -123,26 +125,6 @@ waitAll ()
     LOAD_TBL_PROG=load_tbl
 
 
-    if [ "x$CLUSTER_RUN" = "xNO" ] 
-    then
-	DSN[1]=$DSN
-	clusters=1
-    else
-	if [ ! -f $CLUSTER_CONF ]
-	then
-	    ECHO "Missing "$CLUSTER_CONF" Please create! Exiting ..."
-	    ECHO "Format:"
-	    ECHO "DSN1"
-	    ECHO "DSN2"
-	    ECHO "..."
-	    exit 0
-	else
-	    echo
-	    ECHO "CLUSTER CONFIG:"
-	    PARSE_CONF $CLUSTER_CONF
-	    ECHO "PASSED: "$CLUSTER_CONF" is OK."
-	fi
-    fi
 
     BANNER "STARTED run.sh"
 
@@ -175,7 +157,8 @@ waitAll ()
     do
 	q_num=`expr $q_num + 1`
 	./$QGEN_PROG -s $SCALE $q_num > qset_0_"$q_num".sql
-	$ISQL $DSN dba dba EXEC="prepare_qs ($seq, $q_num, 0)" > /dev/null
+	chmod 777 qset_0_"$q_num".sql
+	$ISQL $DSN dba dba EXEC="prepare_qs ('$TESTDIR/', $seq, $q_num, 0)" > /dev/null
 	if [ "x$CLUSTER_RUN" = "xYES" ]
 	then
 	    ./$LOAD_TBL_PROG $DSN[1] dba dba -C qset_0_"$q_num".sql
@@ -192,7 +175,8 @@ waitAll ()
 	do
 	    q_num=`expr $q_num + 1`
 	    ./$QGEN_PROG -s $SCALE -p $q_count $q_num > qset_"$q_count"_"$q_num".sql
-	    $ISQL $DSN dba dba EXEC="prepare_qs ($seq, $q_num, $q_count)" > /dev/null
+	    chmod 777 qset_"$q_count"_"$q_num".sql
+	    $ISQL $DSN dba dba EXEC="prepare_qs ('$TESTDIR/', $seq, $q_num, $q_count)" > /dev/null
 	done    
     done    
 
@@ -206,7 +190,7 @@ waitAll ()
     $ISQL $DSN dba dba EXEC="rf_metric ($seq, 24, 0, $THREADS)" >> $LOGFILE
     ECHO "PASSED: FINISH STREAM 0 RUN #$seq AT "$DSN "`date \"+%m/%d/%Y %H:%M:%S\"`"
 
-    RUN $ISQL $DSN[1] PROMPT=OFF ERRORS=STDOUT 'EXEC="POWER_SIZE ($SCALE, $seq);"'  >> $LOGFILE 
+    RUN $ISQL $DSN PROMPT=OFF ERRORS=STDOUT 'EXEC="POWER_SIZE ($SCALE, $seq);"'  >> $LOGFILE 
     if test $STATUS -ne 0
     then
 	LOG "***ABORTED: POWER_SIZE"
@@ -215,7 +199,7 @@ waitAll ()
 	LOG "PASSED: POWER SIZE"
     fi
 
-    RUN $ISQL $DSN[1] PROMPT=OFF ERRORS=STDOUT 'EXEC="print_power_test_results ($SCALE, $seq);"' 
+    isql $DSN PROMPT=OFF ERRORS=STDOUT "EXEC=print_power_test_results ('$TESTDIR/', $SCALE, $seq)" 
     if test $STATUS -ne 0
     then
 	LOG "***ABORTED: PRINT_POWER_TEST_RESULTS"
@@ -250,7 +234,7 @@ waitAll ()
 	$TESTDIR/run_one_client.sh $ISQL $DSN $cli_no $seq $THREADS $LOGFILE 0 $THREADS &
 	cli_no=`expr $cli_no + 1`
     done    
-    $TESTDIR/run_rf.sh $ISQL $DSN 0 $seq $THREADS $LOGFILE 0 $THREADS &
+    $TESTDIR/run_rf.sh isql $DSN 0 $seq $THREADS $LOGFILE 0 $THREADS &
 
     wait
     waitAll run_one_client
@@ -259,7 +243,7 @@ waitAll ()
     BANNER "FINISH TPC-H QUERYES"
     done # END LOOP
 
-    RUN $ISQL $DSN[1] PROMPT=OFF ERRORS=STDOUT 'EXEC="check_results ($LOOPS, $THREADS);"' 
+    RUN $ISQL $DSN PROMPT=OFF ERRORS=STDOUT 'EXEC="check_results ($LOOPS, $THREADS);"' 
     if test $STATUS -ne 0
     then
 	LOG "***ABORTED: CHECK RESULTS"
@@ -270,75 +254,12 @@ waitAll ()
 
     cd ..
 
-    cl=0
-    while [ "$cl" -lt "$clusters" ]
-    do
-	cl=`expr $cl + 1`
-
-	RUN $ISQL ${DSN[$cl]} '"EXEC=select top 20 "*" from sys_d_stat where reads > 1000 order by reads desc;"' 
-	if test $STATUS -ne 0
-	then
-	    LOG "***ABORTED: SELECT TOP 20 * FROM SYS_D_STAT AT:" ${DSN[$cl]}
-	    exit 3
-	else
-	    LOG "PASSED: SELECT TOP 20 * FROM SYS_D_STAT AT DSN="${DSN[$cl]}
-	    $ISQL ${DSN[$cl]} EXEC="select top 20 * from sys_d_stat order by reads desc;" >> $STATUS_FILE
-	    $ISQL ${DSN[$cl]} EXEC="select top 10 * from sys_k_stat order by write_wait - - landing_wait desc;" >> $STATUS_FILE
-	    $ISQL ${DSN[$cl]} EXEC="select getrusage ()[0] - -  getrusage ()[1] as total_cpu, getrusage()[1] as sys_cpu;" >> $STATUS_FILE
-	fi
-
-	RUN $ISQL ${DSN[$cl]} '"EXEC=select top 20 "*" from sys_k_stat order by write_wait desc;"'
-	if test $STATUS -ne 0
-	then
-	    LOG "***ABORTED: SELECT TOP 20 * FROM SYS_K_STAT AT:" ${DSN[$cl]}
-	    exit 3
-	else
-	    LOG "PASSED: SELECT TOP 20 * FROM SYS_K_STAT AT DSN="${DSN[$cl]}
-	    $ISQL ${DSN[$cl]}  EXEC="select top 20 * from sys_k_stat order by write_wait desc;" >> $STATUS_FILE
-	fi
-
-	RUN $ISQL ${DSN[$cl]}  '"EXEC=select top 20 "*" from sys_l_stat order by waits desc;"' 
-	if test $STATUS -ne 0
-	then
-	    LOG "***ABORTED: SELECT TOP 20 * FROM SYS_L_STAT AT:" ${DSN[$cl]}
-	    exit 3
-	else
-	    LOG "PASSED: SELECT TOP 20 * FROM SYS_L_STAT AT DSN="${DSN[$cl]}
-	    $ISQL ${DSN[$cl]}  EXEC="select top 20 * from sys_l_stat order by waits desc;" >> $STATUS_FILE
-	fi
-
-	RUN $ISQL ${DSN[$cl]} '"EXEC=tc_stat ();"'
-	if test $STATUS -ne 0
-	then
-	    LOG "***ABORTED: TC_STAT AT:" ${DSN[$cl]}
-	    exit 3
-	else
-	    LOG "PASSED: TC_STAT AT DSN="${DSN[$cl]}
-	    $ISQL ${DSN[$cl]} EXEC="tc_stat ();" >> $STATUS_FILE
-	fi
-
-	RUN $ISQL ${DSN[$cl]} '"EXEC=select status();"' ERRORS=STDOUT
-	if test $STATUS -ne 0
-	then
-	    LOG "***ABORTED: STATUS AT:" ${DSN[$cl]}
-	    exit 3
-	else
-	    LOG "PASSED: STATUS ON FINISH DSN="${DSN[$cl]}
-	    $ISQL ${DSN[$cl]} PROMPT=OFF ERRORS=STDOUT EXEC="status ();" >> $STATUS_FILE
-	fi
-
-	if [ "x$CLUSTER_RUN" = "xYES" ]
-	then
-	    $ISQL ${DSN[$cl]} PROMPT=OFF ERRORS=STDOUT EXEC="select get_log ();" >> $TEMP_LOG
-	fi
-    done
-
     seq=0
     while [ "$seq" -lt "$LOOPS" ]
     do
     seq=`expr $seq + 1`	
 
-    RUN $ISQL $DSN[1] PROMPT=OFF ERRORS=STDOUT 'EXEC="print_stream_results ($SCALE, $THREADS, $seq);"' 
+    isql $DSN PROMPT=OFF ERRORS=STDOUT "EXEC=print_stream_results ('$TESTDIR/', $SCALE, $THREADS, $seq)" 
     if test $STATUS -ne 0
     then
 	LOG "***ABORTED: PRINT STREAM RESULTS"

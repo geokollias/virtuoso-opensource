@@ -19,11 +19,11 @@ create procedure end_q (in _seq integer, in _q_no integer, in _stream integer)
   where query = _q_no and run = _seq and stream = _stream;
 }; 
 
-create procedure prepare_qs (in _seq integer, in _q_no integer, in _stream integer, in n_cli int := 0)
+create procedure prepare_qs (in tdir any, in _seq integer, in _q_no integer, in _stream integer, in n_cli int := 0)
 {
    declare _q_text, _q_name, prepare_15, final_15 any;
    declare split, len any;
-   _q_text := file_to_string ('dbgen/qset_' || cast (_stream as varchar) || '_' || cast (_q_no as varchar) || '.sql');
+   _q_text := file_to_string (tdir || 'dbgen/qset_' || cast (_stream as varchar) || '_' || cast (_q_no as varchar) || '.sql');
    split := sql_split_text (_q_text);
    len := length (split);
    _q_name := atoi (split[len-1]);
@@ -36,7 +36,7 @@ create procedure prepare_qs (in _seq integer, in _q_no integer, in _stream integ
        prepare_15 := '\n' || split[0] || ';\n';
        final_15 := '\n' || split[2] || ';\n';
      }
-   string_to_file ('dbgen/qset_' || cast (_stream as varchar) || '_' || cast (_q_no as varchar) || '.sql', 
+   string_to_file (tdir || 'dbgen/qset_' || cast (_stream as varchar) || '_' || cast (_q_no as varchar) || '.sql', 
        sprintf ('-- %d\nstart_q(%d,%d,%d);\n%s%s;%s\nend_q(%d,%d,%d);\n', 
        _q_name, _seq, _q_name, _stream, prepare_15, _q_text, final_15, _seq, _q_name, _stream), -2);
 }
@@ -46,19 +46,20 @@ create procedure rf_metric (in _seq integer, in _q_no integer, in _stream intege
 {
    declare _q_text, _q_name, _b_time, _e_time, resul_time, prepare_15, final_15, nth any;
    declare stat, msg, data, meta any;
-
-   nth :=  ((_seq - 1) * (n_cli + 1)) + _stream + 1; -- for rf1 & rf2
+  declare tdir varchar;
+  tdir := '';
+   nth :=  ((_seq - 1) * (n_cli + 1)) + _stream + 1;
    if (_q_no = 23) 
      {
        start_q (_seq, _q_no, _stream);
-       resul_time := RF1 ('dbgen', nth); 
+       resul_time := RF1 (tdir || 'dbgen', nth); 
        end_q (_seq, _q_no, _stream);
        return;
      };
    if (_q_no = 24) 
      { 
        start_q (_seq, _q_no, _stream);
-       resul_time := RF2 ('dbgen', nth); 
+       resul_time := RF2 (tdir || 'dbgen', nth); 
        end_q (_seq, _q_no, _stream);
        return;
      };
@@ -68,6 +69,8 @@ create procedure rf_metric (in _seq integer, in _q_no integer, in _stream intege
 create procedure rf1 (in dir varchar, in nth int, in no_pk int := 0, in rb int := 0, in qp int := null)
 {
   declare _b_time any;
+  if (1 <> sys_stat ('cl_run_local_only'))
+    return cl_rf1 (dir, nth, no_pk, rb, qp);
   _b_time := msec_time();
   if (qp is not null)
     __dbf_set ('enable_qp', qp);
@@ -97,6 +100,8 @@ create procedure del_batch (in d_orderkey int)
 create procedure rf2 (in dir varchar, in nth int)
 {
   declare cnt int;
+  if (1 <> sys_stat ('cl_run_local_only'))
+    return cl_rf2 (dir, nth);
   declare _b_time any;
   _b_time := msec_time();
   cnt := (select count (del_batch (d_orderkey)) from delete_f table option (from sprintf ('%s/delete.%d', dir, nth)));
@@ -122,7 +127,7 @@ create procedure power_size (in _scale integer, in seq int)
 }
 ;
 
-create procedure print_power_test_results (in _scale integer, in _run int)
+create procedure print_power_test_results (in tdir any, in _scale integer, in _run int)
 {
    declare ps float;
    declare report any;
@@ -141,7 +146,7 @@ create procedure print_power_test_results (in _scale integer, in _run int)
 -- report := report || 'RF2:' || cast (ri2 as varchar) || ' sec.\n\n';
    report := report || '\nVirt-H POWER: ' || cast (ps as varchar) || ' \n\n';
 
-   string_to_file ('power_test_results.txt', report, -2);
+   string_to_file (tdir || 'power_test_results.txt', report, -2);
 }
 ;
 
@@ -200,7 +205,7 @@ create procedure get_log ()
 
    result_names (text);
 
-   _file := file_rlo ('virtuoso.log');
+   _file := file_rlo (server_root () || '/virtuoso.log');
 
    while (1)
      {
@@ -214,19 +219,19 @@ _finish:;
 }
 ;
 
-create procedure print_stream_results (in scale integer, in streams integer, in seq integer)
+create procedure print_stream_results (in tdir any, in scale integer, in streams integer, in seq integer)
 {
    declare _all, report, throughput, query_per_hour, _load_res any;
    declare t1, t2, t3 any;
 
-   _all := file_to_string ('run.output');
+   _all := file_to_string (tdir || 'run.output');
    _all := split_and_decode (_all, 0, '\0\0\n');
 
    if (file_stat ('load.output') = 0)
      _load_res := null;
    else  
      {
-       _load_res := file_to_string ('load.output');
+       _load_res := file_to_string (tdir || 'load.output');
        _load_res := split_and_decode (_load_res, 0, '\0\0\n');
      }
 
@@ -379,7 +384,7 @@ create procedure print_stream_results (in scale integer, in streams integer, in 
 
 
    report := report || '\n';
-   string_to_file (sprintf ('report%d.txt', seq), report, -2);
+   string_to_file (sprintf (tdir || 'report%d.txt', seq), report, -2);
 }
 ;
 
@@ -486,7 +491,7 @@ create procedure get_start_load (in _mode integer, in _all any)
   if (_mode = 1)
     _what := 'LOADING TPC-H DATA ';
   else
-    _what := 'FINISHED LOADING TPC-H DATA';
+    _what := 'FINISHED LOADING TPC-H DATA ';
 
    for (declare x any, x := 0; x < length (_all); x := x + 1)
       {

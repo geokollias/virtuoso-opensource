@@ -26,6 +26,7 @@
 
 LOGFILE=`pwd`/load.output
 export LOGFILE
+tpchdir=`dirname $0`
 
 SCALE=${1-1}
 #THREADS=${2-1}
@@ -83,34 +84,34 @@ fi
 
 LOG "=  LOADING TPC-H DATA " "`date \"+%m/%d/%Y %H:%M:%S\"`"
 
-RUN $ISQL $DSN PROMPT=OFF ERRORS=STDOUT < schema.sql
+RUN $ISQL $DSN PROMPT=OFF ERRORS=STDOUT < $tpchdir/schema.sql
 if test $STATUS -ne 0
 then
     LOG "***ABORTED: schema.sql"
     exit 3
 fi
 
-RUN $ISQL $DSN PROMPT=OFF ERRORS=STDOUT < ldschema.sql
+RUN $ISQL $DSN PROMPT=OFF ERRORS=STDOUT < $tpchdir/ldschema.sql
 if test $STATUS -ne 0
 then
     LOG "***ABORTED: ldschema.sql"
     exit 3
 fi
 
-RUN $ISQL $DSN PROMPT=OFF ERRORS=STDOUT < tpc-h.sql
+RUN $ISQL $DSN PROMPT=OFF ERRORS=STDOUT < $tpchdir/tpc-h.sql
 if test $STATUS -ne 0
 then
     LOG "***ABORTED: tpc-h.sql"
     exit 3
 fi
 
-RUN $ISQL $DSN PROMPT=OFF ERRORS=STDOUT < ldfile.sql
+RUN $ISQL $DSN PROMPT=OFF ERRORS=STDOUT < $tpchdir/ldfile.sql
 if test $STATUS -ne 0
 then
     LOG "***ABORTED: ldfile.sql"
     exit 3
 fi
-RUN $ISQL $DSN PROMPT=OFF ERRORS=STDOUT < ld.sql
+RUN $ISQL $DSN PROMPT=OFF ERRORS=STDOUT < $tpchdir/ld.sql
 if test $STATUS -ne 0
 then
     LOG "***ABORTED: ld.sql"
@@ -119,7 +120,7 @@ fi
 
 LOG "=  FINISHED LOADING TPC-H DATA " "`date \"+%m/%d/%Y %H:%M:%S\"`"
 
-RUN $ISQL $DSN PROMPT=OFF ERRORS=STDOUT -u SCALE=$SCALE < ldck.sql
+RUN $ISQL $DSN PROMPT=OFF ERRORS=STDOUT -u SCALE=$SCALE < $tpchdir/ldck.sql
 if test $STATUS -ne 0
 then
     LOG "***ABORTED: ldck.sql"

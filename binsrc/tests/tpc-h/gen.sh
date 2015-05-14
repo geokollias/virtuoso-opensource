@@ -14,7 +14,7 @@ if [ ! -x $DBGEN_PROG ]
 then
     LOG "No "$DBGEN_PROG" executable compiled. Exiting"
     CHECK_LOG
-    BANNER "COMPLETED (load.sh)"
+    BANNER "COMPLETED (gen.sh)"
     exit 0
 else
     LOG "The "$DBGEN_PROG" is OK."
