@@ -2951,6 +2951,8 @@ create procedure WS.WS."/!sparql/" (inout path varchar, inout params any, inout 
   if ('' <> def_qry)
     qtxt := 1;
   def_max := atoi (coalesce (virtuoso_ini_item_value ('SPARQL', 'ResultSetMaxRows'), '-1'));
+  if (def_max > maxrows)
+    maxrows := def_max;
 
   -- Get the max values as specified by the client but always stick to the system-wide max if there is any
   if (not connection_get ('SPARQL/MaxQueryExecutionTime') is null)
