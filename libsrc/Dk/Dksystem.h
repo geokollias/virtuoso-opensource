@@ -220,6 +220,9 @@ char *strtok_r ();
 # define DK_INLINE
 #endif
 
+#if (GCC_VERSION >= 3004) || defined (__clang__)
+#define ENABLE_GCC 1
+#endif
 
 /*
  *  Mac OS X Universal build (Mac OS X 10.4U)

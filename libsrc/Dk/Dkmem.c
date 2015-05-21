@@ -28,9 +28,6 @@
 #include "Dk/Dksystem.h"
 #include "Dksimd.h"
 
-#undef ENABLE_GCC
-
-
 void
 memzero (void* ptr, int len)
 {

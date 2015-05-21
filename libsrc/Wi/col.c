@@ -40,9 +40,6 @@
 #include "sqlbif.h"
 #include "mhash.h"
 
-#undef ENABLE_GCC
-
-
 #define IS_64(n) \
   (!((n) >= (int64) INT32_MIN && (n) <= (int64) INT32_MAX))
 
