@@ -337,6 +337,9 @@ long vt_batch_size_limit = 1000000L;
 /* flags for simulated exceptions */
 long dbf_no_disk = 0;
 long dbf_log_no_disk;
+extern int32 dbf_log_always;
+extern int32 dbf_no_raw_exit;
+extern int32 dbf_no_atomic;
 long dbf_2pc_prepare_wait;	/* wait this many msec between prepare and commit */
 long dbf_2pc_wait;		/* wait this many msec after each 2pc message or log write */
 long dbf_branch_transact_wait;	/* wait this many msec onn cluster branch before doing rollback, prepare or commit */
@@ -1433,7 +1436,9 @@ extern long slow_malloc_debug;
 #endif
 
 extern int32 enable_qrc;
+extern int32 enable_qr_comment;
 extern int32 enable_rdf_trig;
+extern int32 enable_sslr_check;
 
 
 stat_desc_t stat_descs[] = {
@@ -1785,6 +1790,9 @@ stat_desc_t dbf_descs[] = {
   {"dbf_2pc_wait", &dbf_2pc_wait, NULL},
   {"dbf_branch_transact_wait", &dbf_branch_transact_wait, NULL},
   {"dbf_log_no_disk", &dbf_log_no_disk, NULL},
+  {"dbf_log_always", &dbf_log_always, SD_INT32},
+  {"dbf_no_atomic", &dbf_no_atomic, SD_INT32},
+  {"dbf_no_raw_exit", &dbf_no_raw_exit, SD_INT32},
   {"txn_after_image_limit", &txn_after_image_limit, NULL},
   {"dbf_clop_enter_wait", &dbf_clop_enter_wait, NULL},
   {"dbf_cl_skip_wait_notify", &dbf_cl_skip_wait_notify, NULL},
@@ -1864,6 +1872,7 @@ stat_desc_t dbf_descs[] = {
   {"dbf_col_ins_dbg_log", (long *) &dbf_col_ins_dbg_log, SD_INT32},
   {"dbf_col_del_leaf", (long *) &dbf_col_del_leaf, SD_INT32},
   {"enable_pogs_check", (long *) &enable_pogs_check, SD_INT32},
+  {"enable_sslr_check", (long *) &enable_sslr_check, SD_INT32},
   {"chash_space_avail", (long *) &chash_space_avail},
   {"chash_per_query_pct", (long *) &chash_per_query_pct, SD_INT32},
   {"enable_chash_gb", (long *) &enable_chash_gb, SD_INT32},
@@ -1930,7 +1939,7 @@ stat_desc_t dbf_descs[] = {
   {"pcre_match_limit", &c_pcre_match_limit, SD_INT32},
   {"pcre_match_limit_recursion", &c_pcre_match_limit_recursion, SD_INT32},
   {"pcre_max_cache_sz", &pcre_max_cache_sz, SD_INT32},
-  {"enable_qrc", &enable_qrc, SD_INT32},
+  {"enable_qr_comment", &enable_qr_comment, SD_INT32},
   {"timezoneless_datetimes", &timezoneless_datetimes, SD_INT32},
   {NULL, NULL, NULL}
 };

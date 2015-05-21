@@ -53,3 +53,4 @@ export PATH CDPATH CVSROOT CVSIGNORE UDBCINI LD_LIBRARY_PATH HOME ODBCINI JDK1 J
 [ -s .profile.sysdep ] && . .profile.sysdep
 
 umask 022
+export TOP=/1d1/v7fasttrack

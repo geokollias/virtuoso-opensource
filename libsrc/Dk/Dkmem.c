@@ -28,11 +28,13 @@
 #include "Dk/Dksystem.h"
 #include "Dksimd.h"
 
+#undef ENABLE_GCC
+
 
 void
 memzero (void* ptr, int len)
 {
-#if defined(__GNUC__)
+#if defined(ENABLE_GCC)
   unsigned int i;
   union {
     v4sf_t	v4;
@@ -54,7 +56,7 @@ memzero (void* ptr, int len)
 void
 memset_16 (void* ptr, unsigned char fill, int len)
 {
-#if defined(__GNUC__)
+#if defined(ENABLE_GCC)
   unsigned int i;
   union {
     v4sf_t	v4;
@@ -80,7 +82,7 @@ void
 int_fill (int * ptr, int n, int len)
 {
   unsigned int inx = 0;
-#if defined(__GNUC__)
+#if defined(ENABLE_GCC)
   if (len > 8)
     {
       union {
@@ -101,7 +103,7 @@ void
 int64_fill (int64 * ptr, int64 n, int len)
 {
   unsigned int inx = 0;
-#if defined(__GNUC__)
+#if defined(ENABLE_GCC)
   if (len > 4)
     {
       union {
@@ -122,7 +124,7 @@ void
 int64_fill_nt (int64 * ptr, int64 n, int len)
 {
   unsigned int inx = 0;
-#if defined(__GNUC__)
+#if defined(ENABLE_GCC)
   if (len > 4)
     {
       union {
@@ -149,7 +151,7 @@ void
 int_asc_fill (int * ptr, int len, int start)
 {
   unsigned int inx = 0;
-#if defined(__GNUC__)
+#if defined(ENABLE_GCC)
   if (len > 8)
     {
       union {
@@ -186,7 +188,7 @@ int_asc_fill (int * ptr, int len, int start)
 void
 memcpy_16 (void * t, const void * s, size_t len)
 {
-#if defined(__GNUC__)
+#if defined(ENABLE_GCC)
   char * target = (char*)t, *source = (char *)s;
   caddr_t end = target + (len & ~0xf);
   while (target < end)
@@ -220,7 +222,7 @@ memcpy_16 (void * t, const void * s, size_t len)
 void
 memcpy_16_nt (void * t, const void * s, size_t len)
 {
-#if defined(__GNUC__)
+#if defined(ENABLE_GCC)
   char * target = (char*)t, *source = (char *)s;
   caddr_t end = target + (len & ~0xf);
   while (target < end)
@@ -253,7 +255,7 @@ memcpy_16_nt (void * t, const void * s, size_t len)
 void
 memmove_16 (void * t, const void * s, size_t len)
 {
-#if defined(__GNUC__)
+#if defined(ENABLE_GCC)
   char * target = (char*)t, *source = (char *)s;
   caddr_t end;
   if (target > source && target < source + len)
@@ -321,7 +323,7 @@ unsigned  int64 rdtsc()
 {
 #ifdef SOLARIS
   return gethrtime ();
-#elif defined (__GNUC__)
+#elif __GNUC__
   uint32 lo, hi;
   __asm__ __volatile__ (      // serialize
 			"xorl %%eax,%%eax \n        cpuid"

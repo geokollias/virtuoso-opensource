@@ -184,7 +184,7 @@ sqlo_init_lit_params (sql_comp_t * sc, sqlo_t * so)
       query_t *top_qr = top_sc->sc_cc->cc_query;
       if (top_qr->qr_proc_name || top_qr->qr_trig_event)
 	return;
-      if (top_tree->type != CALL_STMT)
+      if (!top_tree || top_tree->type != CALL_STMT)
 	return;
       if (st_is_call (top_tree, "set_row_count", 1))
 	return;

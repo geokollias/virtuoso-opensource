@@ -6194,8 +6194,9 @@ ssg_print_scalar_expn (spar_sqlgen_t * ssg, SPART * tree, ssg_valmode_t needed, 
 	      native = sparp_lit_native_valmode (tree);
 	    if (SSG_VALMODE_NUM == native)
 	      ssg_print_literal_as_sqlval (ssg, NULL, tree);
-	    else if ((uname_xmlschema_ns_uri_hash_dayTimeDuration == tree->_.lit.datatype) &&
-		sparp_literal_is_xsd_valid (ssg->ssg_sparp, tree->_.lit.val, tree->_.lit.datatype, tree->_.lit.language))
+	    else if (((RDF_TYPE_PARSEABLE_TO_NUMERIC | RDF_TYPE_PARSEABLE_TO_DTDURATION) &
+		    rb_uname_to_flags_of_parseable_datatype (tree->_.lit.datatype))
+		&& sparp_literal_is_xsd_valid (ssg->ssg_sparp, tree->_.lit.val, tree->_.lit.datatype, tree->_.lit.language))
 	      {
 		const char *p_name;
 		long desc_idx;
@@ -8308,7 +8309,7 @@ print_sub_eq_sub:
 	      if (sub_is_nullable_inline)
 		{
 		  ssg_print_equiv_retval_expn (ssg, sub_gp, sub_eq, SSG_RETVAL_FROM_GOOD_SELECTED | SSG_RETVAL_MUST_PRINT_SOMETHING,
-		      SSG_VALMODE_LONG, NULL_ASNAME);
+		      SSG_VALMODE_AUTO, NULL_ASNAME);
 		  ssg_puts_with_comment3 (" IS NULL ", "", sub_is_nullable_inline, "");
 		}
 	      if (sub_is_nullable_inline && sub2_is_nullable_inline)
@@ -8316,7 +8317,7 @@ print_sub_eq_sub:
 	      if (sub2_is_nullable_inline)
 		{
 		  ssg_print_equiv_retval_expn (ssg, sub2_gp, sub2_eq,
-		      SSG_RETVAL_FROM_GOOD_SELECTED | SSG_RETVAL_MUST_PRINT_SOMETHING, SSG_VALMODE_LONG, NULL_ASNAME);
+		      SSG_RETVAL_FROM_GOOD_SELECTED | SSG_RETVAL_MUST_PRINT_SOMETHING, SSG_VALMODE_AUTO, NULL_ASNAME);
 		  ssg_puts_with_comment3 (" IS NULL ", "", sub2_is_nullable_inline, "");
 		}
 	      ssg_puts (" OR (");

@@ -534,7 +534,7 @@ clib_vec_read_into_slots (cll_in_box_t * clib, caddr_t * inst, dk_set_t slots)
 
 
 int clib_trap_qf;
-int clib_trap_col;
+int clib_trap_col = -1;
 
 
 

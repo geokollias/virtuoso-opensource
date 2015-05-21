@@ -1008,9 +1008,9 @@ cl_local_deletes (delete_node_t * del, caddr_t * inst, caddr_t * part_inst)
     ITC_START_SEARCH_PARS (itc);
     DO_BOX (state_slot_t *, ssl, inx2, ik->ik_del_slots)
     {
-      data_col_t *source_dc = QST_BOX (data_col_t *, inst, ik->ik_del_slots[inx2]->ssl_index);
-      dc_val_cast_t f = ik->ik_del_cast_func[inx2];
       char is_vec = SSL_IS_VEC_OR_REF (ssl);
+      data_col_t *source_dc = is_vec ? QST_BOX (data_col_t *, inst, ik->ik_del_slots[inx2]->ssl_index) : NULL;
+      dc_val_cast_t f = ik->ik_del_cast_func[inx2];
       if (!f && is_vec && DV_ANY != source_dc->dc_dtp && ik->ik_del_cast[inx2] && DV_ANY == ik->ik_del_cast[inx2]->ssl_sqt.sqt_dtp)
 	f = vc_to_any (source_dc->dc_dtp);
 
@@ -1073,11 +1073,13 @@ cl_local_deletes (delete_node_t * del, caddr_t * inst, caddr_t * part_inst)
 }
 
 
+iri_id_t del_trap_iri;
+
 void
 dbg_del_check (data_col_t * source_dc, int source_row)
 {
   caddr_t box = dc_box (source_dc, source_row);
-  if (DV_IRI_ID == DV_TYPE_OF (box) && 7000064 == *(long *) box)
+  if (DV_IRI_ID == DV_TYPE_OF (box) && del_trap_iri == *(long *) box)
     bing ();
   dk_free_tree (box);
 }
@@ -1112,8 +1114,8 @@ delete_node_vec_run (delete_node_t * del, caddr_t * inst, caddr_t * state, int i
       continue;
     DO_BOX (state_slot_t *, ssl, inx2, ik->ik_del_slots)
     {
-      data_col_t *source_dc = QST_BOX (data_col_t *, inst, ssl->ssl_index);
       char is_vec = SSL_IS_VEC_OR_REF (ssl);
+      data_col_t *source_dc = is_vec ? QST_BOX (data_col_t *, inst, ssl->ssl_index) : NULL;
       int elt_sz = is_vec ? dc_elt_size (source_dc) : -1;
       dc_val_cast_t f = ik->ik_del_cast_func[inx2];
       data_col_t *target_dc = NULL;
@@ -1154,7 +1156,8 @@ delete_node_vec_run (delete_node_t * del, caddr_t * inst, caddr_t * state, int i
 		dc_append_null (target_dc);
 	      else
 		{
-		  /*dbg_del_check (source_dc, source_row); */
+		  if (del_trap_iri)
+		    dbg_del_check (source_dc, source_row);
 		  if (f)
 		    {
 		      f (target_dc, source_dc, source_row, &err);

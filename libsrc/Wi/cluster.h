@@ -536,6 +536,7 @@ typedef struct cl_req_group_s
   bitf_t clrg_no_txn:1;		/* for clrg call, do not enlist */
   bitf_t clrg_retriable:2;
   bitf_t clrg_best_effort:1;
+  bitf_t clrg_is_flood:1;	/* sample req w/o partition, to all slices */
   char clrg_keep_dbg_reply;
   char clrg_cm_control;		/* send ops with this ored to cm_enlist, e.g. cm_control, cm_start_atomic */
   short clrg_dbg_qf;
@@ -1224,7 +1225,9 @@ int dfg_fetch_qr (uint64 qf_id, query_t ** qr_ret, cl_thread_t * clt);
 int dfg_fetch_qr_local (uint64 qf_id, query_t ** qr_ret, cl_thread_t * clt);
 void qf_assign_id (query_frag_t * qf);
 stage_node_t **stn_array (dk_set_t nodes, int n_stages);
-client_connection_t *cl_cli ();
+client_connection_t *cl_cli_1 (int must_have);
+#define cl_cli() cl_cli_1 (1)
+
 void clib_add_local_error (cll_in_box_t * clib, caddr_t err);
 void basket_delete (basket_t * head, basket_t ** elt_ret);
 void da_add_enlist (db_activity_t * da, int host, int change);

@@ -1455,10 +1455,10 @@ sparp_equiv_connect_outer_to_inner (sparp_t * sparp, sparp_equiv_t * outer, spar
 {
   int i_ctr, i_count;
   int o_listed_in_i = 0;
-#ifdef DEBUG
   int o_ctr, o_count;
   int i_listed_in_o = 0;
   o_count = BOX_ELEMENTS_0 (outer->e_subvalue_idxs);
+#ifdef DEBUG
   for (o_ctr = o_count; o_ctr--; /* no step */ )
     {
       if (outer->e_subvalue_idxs[o_ctr] == inner->e_own_idx)
@@ -1491,12 +1491,24 @@ sparp_equiv_connect_outer_to_inner (sparp_t * sparp, sparp_equiv_t * outer, spar
 #endif
   if (!add_if_missing)
     return 0;
-  outer->e_subvalue_idxs = (ptrlong *) t_list_concat_tail ((caddr_t) (outer->e_subvalue_idxs), 1, (ptrlong) (inner->e_own_idx));
+  if ((OPTIONAL_L == inner->e_gp->_.gp.subtype) || (0 == o_count))
+    outer->e_subvalue_idxs = (ptrlong *) t_list_concat_tail ((caddr_t) (outer->e_subvalue_idxs), 1, (ptrlong) (inner->e_own_idx));
+  else
+    {
+      for (o_ctr = o_count; o_ctr--; /* no step */ )
+	{
+	  if (OPTIONAL_L != SPARP_EQUIV (sparp, outer->e_subvalue_idxs[o_ctr])->e_gp->_.gp.subtype)
+	    break;
+	}
+      outer->e_subvalue_idxs =
+	  (ptrlong *) t_list_insert_before_nth ((caddr_t) (outer->e_subvalue_idxs), (caddr_t) ((ptrlong) (inner->e_own_idx)),
+	  o_ctr + 1);
+    }
   inner->e_receiver_idxs = (ptrlong *) t_list_concat_tail ((caddr_t) (inner->e_receiver_idxs), 1, (ptrlong) (outer->e_own_idx));
   if (SPARP_EQ_IS_ASSIGNED_LOCALLY (inner))
     {
       outer->e_nested_bindings += 1;
-      if (OPTIONAL_L == inner->e_gp->_.gp.subtype)
+      if (SPARP_EQ_RETURNS_LIKE_OPTIONAL (sparp, inner))
 	outer->e_nested_optionals += 1;
     }
   return 1;
@@ -1545,7 +1557,7 @@ sparp_equiv_disconnect_outer_from_inner (sparp_t * sparp, sparp_equiv_t * outer,
   if (SPARP_EQ_IS_ASSIGNED_LOCALLY (inner))
     {
       outer->e_nested_bindings -= 1;
-      if (OPTIONAL_L == inner->e_gp->_.gp.subtype)
+      if (SPARP_EQ_RETURNS_LIKE_OPTIONAL (sparp, inner))
 	outer->e_nested_optionals -= 1;
     }
   return 1;
@@ -1901,7 +1913,7 @@ sparp_equiv_merge (sparp_t * sparp, sparp_equiv_t * pri, sparp_equiv_t * sec)
     if (!SPARP_EQ_IS_ASSIGNED_LOCALLY (sub_eq))
       continue;
     pri->e_nested_bindings += 1;
-    if (OPTIONAL_L == sub_eq->e_gp->_.gp.subtype)
+    if (SPARP_EQ_RETURNS_LIKE_OPTIONAL (sparp, sub_eq))
       pri->e_nested_optionals += 1;
   }
   END_DO_BOX_FAST;

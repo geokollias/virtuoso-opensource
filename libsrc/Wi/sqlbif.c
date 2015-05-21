@@ -5536,7 +5536,7 @@ bif_lcase (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     return (NEW_DB_NULL);
   if (DV_WIDESTRINGP (str))
     {
-      len = box_length (str) / sizeof (wchar_t);
+      len = box_length (str) / sizeof (wchar_t) - 1;
       res = dk_alloc_box ((len + 1) * sizeof (wchar_t), DV_WIDE);
       for (i = 0; i < len; i++)
 	((wchar_t *) res)[i] = (wchar_t) unicode3_getlcase ((unichar) ((wchar_t *) str)[i]);
@@ -5568,7 +5568,7 @@ bif_ucase (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     return (NEW_DB_NULL);
   if (DV_WIDESTRINGP (str))
     {
-      len = box_length (str) / sizeof (wchar_t);
+      len = box_length (str) / sizeof (wchar_t) - 1;
       res = dk_alloc_box ((len + 1) * sizeof (wchar_t), DV_WIDE);
       for (i = 0; i < len; i++)
 	((wchar_t *) res)[i] = (wchar_t) unicode3_getucase ((unichar) ((wchar_t *) str)[i]);
@@ -5600,7 +5600,7 @@ bif_remove_unicode3_accents (caddr_t * qst, caddr_t * err_ret, state_slot_t ** a
     return (NEW_DB_NULL);
   if (DV_WIDESTRINGP (str))
     {
-      len = box_length (str) / sizeof (wchar_t);
+      len = box_length (str) / sizeof (wchar_t) - 1;
       res = dk_alloc_box ((len + 1) * sizeof (wchar_t), DV_WIDE);
       for (i = 0; i < len; i++)
 	((wchar_t *) res)[i] = (wchar_t) unicode3_getbasechar ((unichar) ((wchar_t *) str)[i]);
@@ -10686,6 +10686,8 @@ bif_lisp_read (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 }
 
 
+int32 dbf_no_raw_exit;
+
 caddr_t
 bif_raw_exit (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
@@ -10698,6 +10700,8 @@ bif_raw_exit (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     return 0;
   if (qi->qi_client && qi->qi_client->cli_session)
     session_flush (qi->qi_client->cli_session);
+  if (dbf_no_raw_exit)
+    sqlr_new_error ("NOREX", "NOREX", "raw_exit called when raw_exit disabled");
   if (!f && !atomic)
     IN_CPT (((query_instance_t *) qst)->qi_trx);	/* not during checkpoint */
   call_exit (0);
@@ -11912,6 +11916,8 @@ bif_repl_is_raw (caddr_t * inst, caddr_t * err_ret, state_slot_t ** args)
   return box_num (qi->qi_trx->lt_repl_is_raw);
 }
 
+int32 dbf_log_always = 0;
+
 
 caddr_t
 bif_log_enable (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
@@ -11923,6 +11929,7 @@ bif_log_enable (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   long old_value;
   int in_atomic = 4 & flag;
   flag &= 3;
+  flag |= dbf_log_always;
   old_value = (((REPL_NO_LOG == qi->qi_trx->lt_replicate) ? 0 : 1) |	/* not || */
       (qi->qi_client->cli_row_autocommit ? 2 : 0));
 
@@ -16488,7 +16495,7 @@ sql_bif_init (void)
   bif_define_ex ("atoi", bif_atoi, BMD_RET_TYPE, &bt_integer, BMD_MIN_ARGCOUNT, 1, BMD_MAX_ARGCOUNT, 1, BMD_IS_PURE, BMD_DONE);
   bif_define_ex ("dtoi", bif_dtoi, BMD_RET_TYPE, &bt_any_box, BMD_MIN_ARGCOUNT, 1, BMD_MAX_ARGCOUNT, 1, BMD_IS_PURE, BMD_DONE);
   bif_define_ex ("mod", bif_mod, BMD_RET_TYPE, &bt_integer, BMD_MIN_ARGCOUNT, 2, BMD_MAX_ARGCOUNT, 2, BMD_IS_PURE, BMD_DONE);
-  bif_define_ex ("abs", bif_abs, BMD_ALIAS, "rdf_abs_impl", BMD_RET_TYPE, &bt_integer, BMD_MIN_ARGCOUNT, 1, BMD_MAX_ARGCOUNT, 1,
+  bif_define_ex ("abs", bif_abs, BMD_ALIAS, "rdf_abs_impl", BMD_RET_TYPE, &bt_any, BMD_MIN_ARGCOUNT, 1, BMD_MAX_ARGCOUNT, 1,
       BMD_IS_PURE, BMD_DONE);
   bif_define_ex ("sign", bif_sign, BMD_RET_TYPE, &bt_double, BMD_MIN_ARGCOUNT, 1, BMD_MAX_ARGCOUNT, 1, BMD_IS_PURE, BMD_DONE);
   bif_define_ex ("acos", bif_acos, BMD_RET_TYPE, &bt_double, BMD_MIN_ARGCOUNT, 1, BMD_MAX_ARGCOUNT, 1, BMD_IS_PURE, BMD_DONE);

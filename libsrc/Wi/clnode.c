@@ -365,23 +365,26 @@ qi_n_cl_aq_threads (query_instance_t * qi)
   return MAX (0, enable_qp - 1);
 }
 
+
 client_connection_t *
-cl_cli ()
+cl_cli_1 (int must_have)
 {
   /* the cli that belongs to the thread */
   du_thread_t *self;
-  dk_session_t *ses = IMMEDIATE_CLIENT;
+  dk_session_t *ses;
   client_connection_t *cli;
+  cli = ((client_connection_t *) THR_ATTR (THREAD_CURRENT_THREAD, TA_SQLC_CURRENT_CLIENT));
+  if (cli)
+    return cli;
+  ses = IMMEDIATE_CLIENT;
   if (ses)
     return DKS_DB_DATA (ses);
   self = THREAD_CURRENT_THREAD;
   cli = (client_connection_t *) THR_ATTR (self, TA_IMMEDIATE_CLIENT);
   if (cli)
     return cli;
-  cli = ((client_connection_t *) THR_ATTR (THREAD_CURRENT_THREAD, TA_SQLC_CURRENT_CLIENT));
-  if (cli)
-    return cli;
-  GPF_T1 ("the thread is not associated to a cli");
+  if (must_have)
+    GPF_T1 ("the thread is not associated to a cli");
   return NULL;
 }
 

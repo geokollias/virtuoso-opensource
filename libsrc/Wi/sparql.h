@@ -877,8 +877,12 @@ The search for associated macro lib is disabled if the statement contains CREATE
    (SPAR_LIT == (tree)->type) || (SPAR_QNAME == (tree)->type)/* || (SPAR_QNAME_NS == (tree)->type)*/ )
 
 #define SPAR_LIT_VAL(tree) \
-  ((DV_ARRAY_OF_POINTER != DV_TYPE_OF (tree)) ? ((caddr_t)(tree)) : \
+  ((DV_ARRAY_OF_POINTER != DV_TYPE_OF ((caddr_t)(tree))) ? ((caddr_t)(tree)) : \
    (SPAR_LIT == (tree)->type) ? (tree)->_.lit.val : NULL )
+
+#define SPAR_LIT_DATATYPE(tree) \
+  ((DV_ARRAY_OF_POINTER != DV_TYPE_OF ((caddr_t)(tree))) ? ((caddr_t)(tree)) : \
+   (SPAR_LIT == (tree)->type) ? (tree)->_.lit.datatype : NULL )
 
 #define SPAR_LIT_OR_QNAME_VAL(tree) \
   ((DV_ARRAY_OF_POINTER != DV_TYPE_OF (tree)) ? ((caddr_t)(tree)) : \

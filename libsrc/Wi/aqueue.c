@@ -267,7 +267,7 @@ aqt_allocate ()
 void
 aqr_call_w_ctx (aq_request_t * aqr)
 {
-  client_connection_t *cli = GET_IMMEDIATE_CLIENT_OR_NULL;
+  client_connection_t *cli = cl_cli ();
   async_queue_t *aq = aqr->aqr_aq;
   aq_request_t *old_aqr = cli->cli_aqr;
   int old_nt = cli->cli_non_txn_insert;
@@ -331,7 +331,7 @@ aq_request (async_queue_t * aq, aq_func_t f, caddr_t args)
     aqt = aqt_allocate ();
   if (!aqt && !aq->aq_do_self_if_would_wait && 2 != aq->aq_need_own_thread)
     {
-      client_connection_t *cli = GET_IMMEDIATE_CLIENT_OR_NULL;
+      client_connection_t *cli = cl_cli ();
       mutex_leave (aq->aq_mtx);
       dbg_printf (("aq execution on requesting thread\n"));
       if (cli->cli_clt || aq->aq_need_own_thread)
@@ -936,7 +936,7 @@ aq_sql_func (caddr_t * av, caddr_t * err_ret)
   caddr_t *args = (caddr_t *) av;
   caddr_t fn = args[0];
   caddr_t *params = (caddr_t *) args[1];
-  client_connection_t *cli = GET_IMMEDIATE_CLIENT_OR_NULL;
+  client_connection_t *cli = cl_cli ();
   caddr_t full_name = sch_full_proc_name (wi_inst.wi_schema, fn,
       cli_qual (cli), CLI_OWNER (cli));
   query_t *proc = full_name ? sch_proc_def (wi_inst.wi_schema, full_name) : NULL;

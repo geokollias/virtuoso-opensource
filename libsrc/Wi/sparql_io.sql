@@ -24,7 +24,7 @@
 --!AWK PUBLIC
 create procedure DB.DBA.SPARQL_RSET_XML_WRITE_NS (inout ses any)
 {
-  --http ('<?xml version="1.0" encoding="UTF-8"?>\n', ses);
+  http ('<?xml version="1.1" ?>\n', ses);
   http ('<sparql xmlns="http://www.w3.org/2005/sparql-results#" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.w3.org/2001/sw/DataAccess/rf1/result2.xsd">', ses);
 }
 ;
@@ -1437,9 +1437,9 @@ create procedure DB.DBA.SPARQL_RESULTS_JAVASCRIPT_HTML_WRITE (inout ses any, ino
                 --}
               --else
                 --http_value (val, 0, ses);
-	    }
-	  else if (pure_html and __tag of rdf_box = __tag (val))
-	      http_rdf_object (val, ses, 1);
+            }
+          else if (pure_html and __tag of rdf_box = __tag (val))
+            http_rdf_object (val, ses, 1);
           else
             {
               http_escape (__rdf_strsqlval (val), esc_mode, ses, 1, 1);
@@ -1456,7 +1456,7 @@ end_of_val_print: ;
 create procedure DB.DBA.SPARQL_RESULTS_JSON_WRITE_BINDING (inout ses any, in colname varchar, inout val any)
 {
   http(' "', ses);
-  http_escape (colname, 11, ses, 0, 1);
+  http_escape (colname, 14, ses, 0, 1);
   http('": { ', ses);
   if (isiri_id (val))
     {
@@ -1465,7 +1465,7 @@ create procedure DB.DBA.SPARQL_RESULTS_JSON_WRITE_BINDING (inout ses any, in col
       else
         {
           http ('"type": "uri", "value": "', ses);
-          http_escape (id_to_iri (val), 11, ses, 1, 1);
+          http_escape (id_to_iri (val), 14, ses, 1, 1);
         }
     }
   else if (__tag of rdf_box = __tag (val))
@@ -1481,7 +1481,7 @@ create procedure DB.DBA.SPARQL_RESULTS_JSON_WRITE_BINDING (inout ses any, in col
             res := coalesce ((select RDT_QNAME from DB.DBA.RDF_DATATYPE where RDT_TWOBYTE = typ));
           else
             res := cast (__xsd_type (dat) as varchar);
-          http_escape (res, 11, ses, 1, 1);
+          http_escape (res, 14, ses, 1, 1);
           http ('", "value": "', ses);
           dat := __rdf_strsqlval (dat);
         }
@@ -1489,19 +1489,19 @@ create procedure DB.DBA.SPARQL_RESULTS_JSON_WRITE_BINDING (inout ses any, in col
         {
           http ('"type": "typed-literal", "datatype": "', ses);
           res := coalesce ((select RDT_QNAME from DB.DBA.RDF_DATATYPE where RDT_TWOBYTE = typ));
-          http_escape (res, 11, ses, 1, 1);
+          http_escape (res, 14, ses, 1, 1);
           http ('", "value": "', ses);
         }
       else if (257 <> rdf_box_lang (val))
         {
           http ('"type": "literal", "xml:lang": "', ses);
           res := coalesce ((select RL_ID from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = rdf_box_lang (val)));
-          http_escape (res, 11, ses, 1, 1);
+          http_escape (res, 14, ses, 1, 1);
           http ('", "value": "', ses);
         }
       else
         http ('"type": "literal", "value": "', ses);
-      http_escape (dat, 11, ses, 1, 1);
+      http_escape (dat, 14, ses, 1, 1);
     }
   else if (__tag of varchar = __tag (val))
     {
@@ -1512,13 +1512,13 @@ create procedure DB.DBA.SPARQL_RESULTS_JSON_WRITE_BINDING (inout ses any, in col
           else
             {
               http ('"type": "uri", "value": "', ses);
-              http_escape (val, 11, ses, 1, 1);
+              http_escape (val, 14, ses, 1, 1);
             }
         }
       else
         {
           http ('"type": "literal", "value": "', ses);
-          http_escape (val, 11, ses, 1, 1);
+          http_escape (val, 14, ses, 1, 1);
         }
     }
   else if (__tag of UNAME = __tag (val))
@@ -1528,30 +1528,30 @@ create procedure DB.DBA.SPARQL_RESULTS_JSON_WRITE_BINDING (inout ses any, in col
       else
         {
           http ('"type": "uri", "value": "', ses);
-          http_escape (val, 11, ses, 1, 1);
+          http_escape (val, 14, ses, 1, 1);
         }
     }
   else if (__tag of varbinary = __tag (val))
     {
       http ('"type": "literal", "value": "', ses);
-      http_escape (val, 11, ses, 0, 0);
+      http_escape (val, 14, ses, 0, 0);
     }
   else if (185 = __tag (val))
     {
       http ('"type": "literal", "value": "', ses);
-      http_escape (cast (val as varchar), 11, ses, 1, 1);
+      http_escape (cast (val as varchar), 14, ses, 1, 1);
     }
   else if (230 = __tag (val))
     {
       http ('"type": "literal", "value": "', ses);
-      http_escape (serialize_to_UTF8_xml (val), 11, ses, 1, 1);
+      http_escape (serialize_to_UTF8_xml (val), 14, ses, 1, 1);
     }
   else
     {
       http ('"type": "typed-literal", "datatype": "', ses);
-      http_escape (cast (__xsd_type (val) as varchar), 11, ses, 1, 1);
+      http_escape (cast (__xsd_type (val) as varchar), 14, ses, 1, 1);
       http ('", "value": "', ses);
-      http_escape (__rdf_strsqlval (val), 11, ses, 1, 1);
+      http_escape (__rdf_strsqlval (val), 14, ses, 1, 1);
     }
   http ('" }', ses);
 }
@@ -1569,7 +1569,7 @@ create procedure DB.DBA.SPARQL_RESULTS_JSON_WRITE (inout ses any, inout metas an
         http(', "', ses);
       else
         http('"', ses);
-      http_escape (metas[0][varctr][0], 11, ses, 0, 1);
+      http_escape (metas[0][varctr][0], 14, ses, 0, 1);
       http('"', ses);
     }
   http ('] },\n  "results": { "distinct": false, "ordered": true, "bindings": [', ses);

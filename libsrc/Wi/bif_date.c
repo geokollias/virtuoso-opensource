@@ -1038,6 +1038,20 @@ bif_curdatetime (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 }
 
 caddr_t
+bif_curdatetime_tz (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  long fract = 0;
+  caddr_t res = dk_alloc_box (DT_LENGTH, DV_DATETIME);
+  dt_now_tz (res);
+  if (args && BOX_ELEMENTS (args) > 0)
+    {
+      fract = (long) bif_long_arg (qst, args, 0, "curdatetime_tz");
+      DT_SET_FRACTION (res, fract);
+    }
+  return res;
+}
+
+caddr_t
 bif_curdatetimeoffset (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   long fract = 0;
@@ -1251,6 +1265,7 @@ bif_date_init ()
   bif_define_ex ("curdate", bif_curdate, BMD_ALIAS, "current_date", BMD_RET_TYPE, &bt_date, /*BMD_IS_PURE, */ BMD_DONE);	/* This is standard fun. */
   bif_define_ex ("curtime", bif_curtime, BMD_ALIAS, "current_time", BMD_RET_TYPE, &bt_time, /*BMD_IS_PURE, */ BMD_DONE);	/* This is standard fun. */
   bif_define_ex ("curdatetime", bif_curdatetime, BMD_ALIAS, "sysdatetime", BMD_RET_TYPE, &bt_timestamp, /*BMD_IS_PURE, */ BMD_DONE);	/* curdatetime() is our own, sysdatetime() is MS SQL */
+  bif_define_ex ("curdatetime_tz", bif_curdatetime_tz, BMD_RET_TYPE, &bt_timestamp, /*BMD_IS_PURE, */ BMD_DONE);
   bif_define_ex ("curdatetimeoffset", bif_curdatetimeoffset, BMD_ALIAS, "sysdatetimeoffset", BMD_RET_TYPE, &bt_timestamp, /*BMD_IS_PURE, */ BMD_DONE);	/* curdatetimeoffset() is our own, sysdatetimeoffset() is MS SQL */
   bif_define_ex ("curutcdatetime", bif_curutcdatetime, BMD_ALIAS, "sysutcdatetime", BMD_RET_TYPE, &bt_timestamp, /*BMD_IS_PURE, */ BMD_DONE);	/* curutcdatetime() is our own, sysutcdatetime() is MS SQL */
   bif_define_ex ("datestring", bif_date_string, BMD_RET_TYPE, &bt_varchar, BMD_IS_PURE, BMD_DONE);

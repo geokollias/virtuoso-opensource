@@ -3062,6 +3062,7 @@ sqlo_inx_inf_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_
       if (s >= 0)
 	{
 	  est += s;
+	  inx_card += ic->ic_inx_card;
 	  any_est = 1;
 	}
     }
@@ -4375,7 +4376,6 @@ sqlo_use_p_stat (df_elt_t * dfe, df_elt_t ** lowers, int inx_const_fill, int64 e
   if (!found)
     return 0;
   *inx_arity = est / place[1];
-  mutex_leave (alt_ts_mtx);
   if (lower3 || upper3)
     {
       float p_cost, p_arity;

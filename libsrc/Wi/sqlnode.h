@@ -255,6 +255,8 @@ typedef struct cl_fref_red_node_s
   char clf_no_order;
   struct clo_comp_s **clf_order;
   struct setp_node_s *clf_setp;
+  state_slot_t *clf_top;
+  state_slot_t *clf_skip;
   int clf_set_no;
   int clf_nth_in_set;
   dk_set_t clf_out_slots;
@@ -2227,7 +2229,7 @@ extern long blob_releases_dir;
 
 extern client_connection_t *autocheckpoint_cli;
 
-
+void qr_print (query_t * qr);
 
 #include "sqlcomp.h"
 #include "eqlcomp.h"
