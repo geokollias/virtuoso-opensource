@@ -291,6 +291,8 @@ sqlc_call_exp (sql_comp_t * sc, dk_set_t * code, state_slot_t * ret, ST * tree)
     }
   if (13 == func_len && !stricmp (func, "chash_in_init"))
     no_stl_in_first = 4;
+  if (18 == func_len && !stricmp (func, "rdf_super_sub_list"))
+    no_stl_in_first = 4;
   if (ret_param)
     params = (state_slot_t **) t_alloc_box ((n_params + 1) * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
   else

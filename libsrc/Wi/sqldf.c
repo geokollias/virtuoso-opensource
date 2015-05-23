@@ -7034,6 +7034,7 @@ sqlo_joins_only (sqlo_t * so, dk_set_t * res, int is_restr)
     *prev = NULL;
 }
 
+int sqlo_best_brk = -1;
 int brk_n_placed = 0;
 int brk_prefixes[10];
 int brk_dt_plan;
@@ -7074,6 +7075,8 @@ sqlo_layout_sort_tables (sqlo_t * so, op_table_t * ot, dk_set_t from_dfes, dk_se
   int inx;
   dk_set_t res = NULL;
   df_elt_t **arr;
+  if (-1 != sqlo_best_brk && sqlo_best_brk == OT_NO (ot->ot_new_prefix))
+    bing ();
   if (ot->ot_fixed_order || IS_FOR_XML (sqlp_union_tree_right (ot->ot_dt)))
     {
       DO_SET (df_elt_t *, dfe, &ot->ot_from_dfes)
@@ -7595,6 +7598,8 @@ sqlo_layout_1 (sqlo_t * so, op_table_t * ot, int is_top)
 		ot->ot_first_dfe->_.table.ot->ot_initial_cost = this_score;
 	    }
 	  so->so_any_with_this_first = 1;
+	  if (-1 != sqlo_best_brk && sqlo_best_brk == OT_NO (ot->ot_new_prefix))
+	    bing ();
 	  so->so_best = sqlo_layout_copy (so, ot->ot_work_dfe, NULL);
 	  dfe_ref_check (so->so_best);
 	  so->so_best_score = this_score;

@@ -217,6 +217,7 @@ extern int enable_g_in_sec;
 extern int64 rdf_ctx_max_mem;
 extern int64 rdf_ctx_in_use;
 extern int sqlo_max_layouts;
+extern size_t sqlo_max_mp_size;
 extern int enable_initial_plan;
 extern int32 sqlo_compiler_exceeds_run_factor;
 extern int enable_mem_hash_join;
@@ -1815,6 +1816,7 @@ stat_desc_t dbf_descs[] = {
   {"rdf_ctx_in_use", &rdf_ctx_in_use},
   {"enable_mem_hash_join", (long *) &enable_mem_hash_join, SD_INT32},
   {"sqlo_max_layouts", &sqlo_max_layouts, SD_INT32},
+  {"sqlo_max_mp_size", &sqlo_max_mp_size},
   {"enable_initial_plan", &enable_initial_plan, SD_INT32},
   {"sqlo_compiler_exceeds_run_factor", &sqlo_compiler_exceeds_run_factor, SD_INT32},
   {"enable_hash_merge", (long *) &enable_hash_merge, SD_INT32},
