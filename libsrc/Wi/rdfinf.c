@@ -2559,6 +2559,7 @@ qn_ensure_prev (sql_comp_t * sc, data_source_t ** head, data_source_t * qn)
   (((qn_input_fn) rdf_inf_pre_input == (qn)->src_input && !((rdf_inf_pre_node_t *)(qn))->ri_is_after) \
     || (qn_input_fn)in_iter_input  == (qn)->src_input)
 
+#define IS_ITER_OR_TXS(qn) (IS_ITER(qn) || (qn_input_fn)txs_input == (qn)->src_input)
 
 void
 sqlc_asg_mark (state_slot_t * ssl)
@@ -2682,7 +2683,7 @@ sqlg_cl_outer_with_iters (df_elt_t * tb_dfe, data_source_t * ts, data_source_t *
     {
       if (IS_TS (qn))
 	((table_source_t *) qn)->ts_is_outer = 0;
-      if (IS_ITER (qn))
+      if (IS_ITER_OR_TXS (qn))
 	{
 	  if (!first_iter)
 	    first_iter = qn;

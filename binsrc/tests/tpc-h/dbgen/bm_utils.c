@@ -122,6 +122,31 @@ void usage();
 long *permute_dist(distribution *d, long stream);
 extern seed_t Seed[];
 
+void close_file (void * f);
+
+void
+exit_close (int code)
+{
+  /*char tmp[100];
+  FILE * fp;
+  int cnt = 0;
+  sprintf (tmp, "C_%d_S_%d.txt", children, step);
+  fp = fopen (tmp, "w");*/
+  if (gzfds)
+    {
+      fd_list_t * itm = gzfds;
+      while (itm)
+	{
+	  close_file (itm->fp);
+	  itm = itm->next;
+	  /*cnt ++;*/
+	}
+      gzfds = NULL;
+    }	  
+  /*fprintf (fp, "C=%d S=%d cnt=%d code=%d\n", children, step, cnt, code);*/
+  exit (code);
+}
+
 /*
  * env_config: look for a environmental variable setting and return its
  * value; otherwise return the default supplied
@@ -367,7 +392,7 @@ long      weight,
         {
         fprintf(stderr, "Read error on dist '%s'\n", name);
         fclose(fp);
-        exit(1);
+        exit_close(1);
         }
 	target->permute = (long *)NULL;
     fclose(fp);
@@ -394,25 +419,28 @@ tbl_open(int tbl, char *mode)
         sprintf(fullpath, "%s%c%s",
             env_config(PATH_TAG, PATH_DFLT), PATH_SEP, tdefs[tbl].name);
 
-    retcode = stat(fullpath, &fstats);
-    if (retcode && (errno != ENOENT))
-        {
-        fprintf(stderr, "stat(%s) failed.\n", fullpath);
-        exit(-1);
-        }
-    if (S_ISREG(fstats.st_mode) && !force && *mode != 'r' )
-        {
-        sprintf(prompt, "Do you want to overwrite %s ?", fullpath);
-        if (!yes_no(prompt))
-            exit(0);
-        }
+    if (!gzip)
+      {
+	retcode = stat(fullpath, &fstats);
+	if (retcode && (errno != ENOENT))
+	  {
+	    fprintf(stderr, "stat(%s) failed.\n", fullpath);
+	    exit_close(-1);
+	  }
+	if (S_ISREG(fstats.st_mode) && !force && *mode != 'r' )
+	  {
+	    sprintf(prompt, "Do you want to overwrite %s ?", fullpath);
+	    if (!yes_no(prompt))
+	      exit_close(0);
+	  }
+      }
 
-    if (S_ISFIFO(fstats.st_mode))
-        {
-        retcode =
-	  open(fullpath, ((*mode == 'r')?O_RDONLY:O_WRONLY)|O_CREAT, 00777);
-        f = fdopen(retcode, mode);
-        }
+    if (!gzip && S_ISFIFO(fstats.st_mode))
+      {
+	retcode =
+	    open(fullpath, ((*mode == 'r')?O_RDONLY:O_WRONLY)|O_CREAT, 00777);
+	f = fdopen(retcode, mode);
+      }
     else
       {
 	if (gzip)

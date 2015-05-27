@@ -52,23 +52,46 @@
 /*
  * Function Prototypes
  */
-FILE *print_prep PROTO((int table, int update));
+void *print_prep PROTO((int table, int update));
 int pr_drange PROTO((int tbl, DSS_HUGE min, DSS_HUGE cnt, long num));
 
 void
 close_file (void * f)
 {
   if (gzip)
-    gzclose (f);
+    {
+      gzflush (f, Z_FINISH);
+      gzclose (f);
+    }
   else
     fclose (f);
 }
 
-FILE *
+#ifndef GZFD_DBG
+#define fd_ck(x)
+#else
+void
+fd_ck (void * fd)
+{
+  if (gzfds)
+    {
+      fd_list_t * itm = gzfds;
+      while (itm)
+	{
+	  if (itm->fp == fd)
+	    return;
+	  itm = itm->next;
+	}
+    }
+  *(long*)-1 = 1;
+}  
+#endif
+
+void *
 print_prep(int table, int update)
 {
 	char upath[128];
-	FILE *res;
+	void *res;
 
 	if (updates)
 		{
@@ -120,7 +143,7 @@ dbg_print(int format, void *file, void *data, int len, int sep)
 	switch(format)
 	{
 	case DT_STR:
-		sprintf(target, "%s", (char *)data);
+		snprintf(target, sizeof (target), "%s", (char *)data);
 		break;
 #ifdef MVS
 	case DT_VSTR:
@@ -158,7 +181,13 @@ dbg_print(int format, void *file, void *data, int len, int sep)
 	}
 
 	if (gzip)
-	  gzwrite (file, target, strlen (target));
+	  {
+	    if (0 == gzwrite (file, target, strlen (target)))
+	      {
+		fprintf (stderr, "Error writing in GZ stream\n");
+		*(long*)-1 = 1;
+	      }
+	  }
 	else
 	  fprintf (file, "%s", target);
 
@@ -168,7 +197,13 @@ dbg_print(int format, void *file, void *data, int len, int sep)
 	  {
 	    sprintf(target, "%c", SEPARATOR);
 	    if (gzip)
-	      gzwrite (file, target, strlen (target));
+	      { 
+		if (0 == gzwrite (file, target, strlen (target)))
+		  {
+		    fprintf (stderr, "Error writing in GZ stream\n");
+		    *(long*)-1 = 1;
+		  }
+	      }
 	    else
 	      fprintf (file, "%s", target);
 	  }
@@ -184,6 +219,7 @@ static void *fp = NULL;
    if (fp == NULL)
      fp = print_prep(CUST, 0);
 
+   fd_ck (fp);
    PR_STRT(fp);
    PR_HUGE(fp, &c->custkey);
    if (scale <= 3000)
@@ -207,7 +243,7 @@ static void *fp = NULL;
 int
 pr_order(order_t *o, int mode)
 {
-    static FILE *fp_o = NULL;
+    static void *fp_o = NULL;
     static int last_mode = 0;
         
     if (fp_o == NULL || mode != last_mode)
@@ -217,6 +253,7 @@ pr_order(order_t *o, int mode)
         fp_o = print_prep(ORDER, mode);
         last_mode = mode;
         }
+    fd_ck (fp_o);
     PR_STRT(fp_o);
     PR_HUGE(fp_o, &o->okey);
     PR_HUGE(fp_o, &o->custkey);
@@ -238,7 +275,7 @@ pr_order(order_t *o, int mode)
 int
 pr_line(order_t *o, int mode)
 {
-    static FILE *fp_l = NULL;
+    static void *fp_l = NULL;
     static int last_mode = 0;
     long      i;
         
@@ -250,6 +287,7 @@ pr_line(order_t *o, int mode)
         last_mode = mode;
         }
 
+    fd_ck (fp_l);
     for (i = 0; i < o->lines; i++)
         {
         PR_STRT(fp_l);
@@ -294,11 +332,12 @@ pr_order_line(order_t *o, int mode)
 int
 pr_part(part_t *part, int mode)
 {
-static FILE *p_fp = NULL;
+static void *p_fp = NULL;
 
     if (p_fp == NULL)
         p_fp = print_prep(PART, 0);
 
+   fd_ck (p_fp);
    PR_STRT(p_fp);
    PR_HUGE(p_fp, &part->partkey);
    PR_VSTR(p_fp, part->name,part->nlen);
@@ -320,12 +359,13 @@ static FILE *p_fp = NULL;
 int
 pr_psupp(part_t *part, int mode)
 {
-    static FILE *ps_fp = NULL;
+    static void *ps_fp = NULL;
     long      i;
 
     if (ps_fp == NULL)
         ps_fp = print_prep(PSUPP, mode);
 
+   fd_ck (ps_fp);
    for (i = 0; i < SUPP_PER_PART; i++)
       {
       PR_STRT(ps_fp);
@@ -356,11 +396,12 @@ pr_part_psupp(part_t *part, int mode)
 int
 pr_supp(supplier_t *supp, int mode)
 {
-static FILE *fp = NULL;
+static void *fp = NULL;
         
    if (fp == NULL)
         fp = print_prep(SUPP, mode);
 
+   fd_ck (fp);
    PR_STRT(fp);
    PR_HUGE(fp, &supp->suppkey);
    PR_STR(fp, supp->name, S_NAME_LEN);
@@ -377,11 +418,12 @@ static FILE *fp = NULL;
 int
 pr_nation(code_t *c, int mode)
 {
-static FILE *fp = NULL;
+static void *fp = NULL;
         
    if (fp == NULL)
         fp = print_prep(NATION, mode);
 
+   fd_ck (fp);
    PR_STRT(fp);
    PR_HUGE(fp, &c->code);
    PR_STR(fp, c->text, NATION_LEN);
@@ -395,11 +437,12 @@ static FILE *fp = NULL;
 int
 pr_region(code_t *c, int mode)
 {
-static FILE *fp = NULL;
+static void *fp = NULL;
         
    if (fp == NULL)
         fp = print_prep(REGION, mode);
 
+   fd_ck (fp);
    PR_STRT(fp);
    PR_HUGE(fp, &c->code);
    PR_STR(fp, c->text, REGION_LEN);
@@ -419,7 +462,7 @@ int
 pr_drange(int tbl, DSS_HUGE min, DSS_HUGE cnt, long num)
 {
     static int  last_num = 0;
-    static FILE *dfp = NULL;
+    static void *dfp = NULL;
     DSS_HUGE child = -1;
     DSS_HUGE start, last, new;
 

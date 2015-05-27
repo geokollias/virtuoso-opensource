@@ -18,10 +18,12 @@
 id_hash_t *qr_cache;
 dk_mutex_t qrc_mtx;
 int32 enable_qrc = 0;
+int qrc_fast_hash = 1;
 long tc_qrc_hit;
 long tc_qrc_miss;
 long tc_qrc_recompile;
 long tc_qrc_plan_miss;
+long tc_qrc_non_unq_hash;
 
 
 typedef struct qc_key_s
@@ -82,6 +84,8 @@ qck_cmp (qc_key_t ** e1, qc_key_t ** e2)
   qc_key_t *k2 = (qc_key_t *) e2;
   if (k1->qck_hash != k2->qck_hash)
     return 0;
+  if (qrc_fast_hash)
+    return 1;
   return qck_tree_cmp (k1->qck_tree, k2->qck_tree);
 }
 
@@ -239,16 +243,16 @@ sql_tree_hash_tpl (ST * st)
 	  return 1;
 	first = st->type;
 	if (LIT_PARAM == first)
-	  return 1;
+	  return st->_.lit_param.nth;
 	if (first < 10000)
 	  hash = first;
 	else
 	  hash = sql_tree_hash_tpl ((ST *) first);
-	if (SELECT_STMT == first && len > 4 && DV_ARRAY_OF_POINTER == DV_TYPE_OF (st->_.select_stmt.selection))
+	if (0 && SELECT_STMT == first && len > 4 && DV_ARRAY_OF_POINTER == DV_TYPE_OF (st->_.select_stmt.selection))
 	  {
 	    return sql_tree_hash_tpl ((ST *) st->_.select_stmt.selection);
 	  }
-	if (len > 5)
+	if (0 && len > 5)
 	  len = 5;
 	for (inx = 1; inx < len; inx++)
 	  hash = ((hash >> 2) | ((hash & 3 << 30))) ^ sql_tree_hash_tpl (((ST **) st)[inx]);
@@ -541,6 +545,16 @@ qrc_lookup (sql_comp_t * sc, ST * tree)
       TC (tc_qrc_miss);
       return;
     }
+  if (qrc_fast_hash)
+    {
+      if (!qck_tree_cmp (k.qck_tree, (ST *) qcd->qcd_tree))
+	{
+	  qcd_unref (qcd, 0);
+	  stl->stl_tree = (ST *) box_copy_tree ((caddr_t) stl->stl_tree);
+	  TC (tc_qrc_non_unq_hash);
+	  return;
+	}
+    }
   best_qr = qrc_best_qr (sc->sc_so, qcd);
   qcd_unref (qcd, 0);
   if (!best_qr)
@@ -578,11 +592,19 @@ qr_same_cards (query_t * qr1, query_t * qr2)
 
 
 int
-qcd_add_if_new (qc_data_t * qcd, query_t * new_qr, qce_sample_t ** samples)
+qcd_add_if_new (qc_data_t * qcd, query_t * new_qr, qce_sample_t ** samples, st_lit_state_t * stl)
 {
   int inx;
   query_t **new_qrs = (query_t **) dk_set_to_array (qcd->qcd_to_add);
   mutex_leave (&qrc_mtx);
+  if (qrc_fast_hash)
+    {
+      if (!qck_tree_cmp (stl->stl_tree, (ST *) qcd->qcd_tree))
+	{
+	  dk_free_box ((caddr_t) new_qrs);
+	  return 0;
+	}
+    }
   DO_BOX (query_t *, qr, inx, new_qrs)
   {
     if (qr_same_cards (qr, new_qr))
@@ -650,12 +672,12 @@ qrc_set (sql_comp_t * sc, query_t * qr)
   qck.qck_hash = stl->stl_hash;
   qck.qck_tree = stl->stl_tree;
   mutex_enter (&qrc_mtx);
-  place = (qc_data_t *) id_hash_get (qr_cache, (caddr_t) & qck);
+  place = (qc_data_t **) id_hash_get (qr_cache, (caddr_t) & qck);
   if (place)
     {
       qcd = *place;
       qcd->qcd_ref_count++;
-      if (!qcd_add_if_new (qcd, qr, samples))
+      if (!qcd_add_if_new (qcd, qr, samples, stl))
 	{
 	  qces_arr_free (samples);
 	  qcd_unref (qcd, 0);
@@ -672,7 +694,7 @@ qrc_set (sql_comp_t * sc, query_t * qr)
   qcd->qcd_queries[0] = qr;
   qr_set_qce (qr, qcd, samples);
   mutex_enter (&qrc_mtx);
-  place = (qc_data_t *) id_hash_get (qr_cache, (caddr_t) & qck);
+  place = (qc_data_t **) id_hash_get (qr_cache, (caddr_t) & qck);
   if (place)
     {
       mutex_leave (&qrc_mtx);
@@ -816,8 +838,8 @@ qrc_status ()
   qc_data_t **pqcd, *qcd;
   qc_key_t *qck;
   trset_printf
-      ("Query cache:  %Ld hits %Ld misses %Ld hit but new plan made due to different cardinalities  %Ld recompile\n%d query templates\n",
-      tc_qrc_hit, tc_qrc_miss, tc_qrc_plan_miss, tc_qrc_recompile, qr_cache->ht_count);
+      ("Query cache:  %Ld hits %Ld misses %Ld hit but new plan made due to different cardinalities  %Ld recompile\n%d query templates %Ld non-unq hash\n",
+      tc_qrc_hit, tc_qrc_miss, tc_qrc_plan_miss, tc_qrc_recompile, qr_cache->ht_count, tc_qrc_non_unq_hash);
   mutex_enter (&qrc_mtx);
   id_hash_iterator (&hit, qr_cache);
   while (hit_next (&hit, (caddr_t *) & qck, (caddr_t *) & pqcd))

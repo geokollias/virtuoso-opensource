@@ -3379,6 +3379,25 @@ cmp_max_func (int op)
 
 
 int
+sqlo_is_col_eq_supers (op_table_t * ot, df_elt_t * col1, df_elt_t * col2)
+{
+  int f;
+  if (sqlo_is_col_eq (ot, col1, col2))
+    return 1;
+  for (ot = ot->ot_super; ot; ot = ot->ot_super)
+    {
+      id_hash_t *save = ot->ot_eq_hash;
+      ot->ot_eq_hash = ot->ot_placed_eq_hash;
+      f = sqlo_is_col_eq (ot, col1, col2);
+      ot->ot_eq_hash = save;
+      if (f)
+	return 1;
+    }
+  return 0;
+}
+
+
+int
 sqlo_not_eq_with_any (sqlo_t * so, dk_set_t args, df_elt_t * right)
 {
   /* if the arg is a col and it is not known eq with any of the args */
@@ -3386,7 +3405,7 @@ sqlo_not_eq_with_any (sqlo_t * so, dk_set_t args, df_elt_t * right)
     return 1;
   DO_SET (df_elt_t *, other, &args)
   {
-    if (DFE_COLUMN == other->dfe_type && sqlo_is_col_eq (so->so_this_dt, other, right))
+    if (DFE_COLUMN == other->dfe_type && sqlo_is_col_eq_supers (so->so_this_dt, other, right))
       return 0;
   }
   END_DO_SET ();
@@ -5544,7 +5563,7 @@ dfe_is_tb_only (df_elt_t * dfe, op_table_t * ot)
 }
 
 
-int enable_dt_card = 1;
+int32 enable_dt_card = 1;
 
 float
 dfe_arity_with_supers (df_elt_t * dfe)
@@ -6623,6 +6642,32 @@ dfe_join_score (sqlo_t * so, op_table_t * ot, df_elt_t * tb_dfe, dk_set_t * res)
   return score;
 }
 
+int enable_dt_leaf = 0;
+
+
+int
+dfe_is_leaf (df_elt_t * dfe)
+{
+  return DFE_DT == dfe->dfe_type ? dfe->_.sub.is_leaf : DFE_TABLE == dfe->dfe_type ? dfe->_.table.is_leaf : 0;
+}
+
+
+void
+dfe_set_is_leaf (df_elt_t * dfe, int is_leaf)
+{
+  if (DFE_TABLE == dfe->dfe_type)
+    dfe->_.table.is_leaf = is_leaf;
+  else if (DFE_DT == dfe->dfe_type)
+    dfe->_.sub.is_leaf = is_leaf;
+}
+
+
+int
+dfe_maybe_leaf (df_elt_t * dfe)
+{
+  return DFE_TABLE == dfe->dfe_type || (enable_dt_leaf && DFE_DT == dfe->dfe_type);
+}
+
 
 int
 dfe_list_reqd_placed (dk_set_t list)
@@ -6704,10 +6749,10 @@ sqlo_new_leaves (sqlo_t * so, op_table_t * ot, dk_set_t * all_leaves, dk_set_t *
 {
   DO_SET (df_elt_t *, dfe, &ot->ot_from_dfes)
   {
-    if (!dfe->dfe_is_placed && DFE_TABLE == dfe->dfe_type
-	&& sqlo_dfe_is_leaf (so, ot, dfe) && !dfe->_.table.ot->ot_table->tb_remote_ds)
+    if (!dfe->dfe_is_placed && dfe_maybe_leaf (dfe)
+	&& sqlo_dfe_is_leaf (so, ot, dfe) && (DFE_TABLE != dfe->dfe_type || !dfe->_.table.ot->ot_table->tb_remote_ds))
       {
-	if (!dfe->_.table.is_leaf)
+	if (!dfe_is_leaf (dfe))
 	  t_set_push (new_leaves, (void *) dfe);
 	t_set_push (all_leaves, (void *) dfe);
       }
@@ -6722,7 +6767,7 @@ sqlo_restore_leaves (sqlo_t * so, dk_set_t new_leaves)
   /* in the process of unplacing, the leaves stop being leaves */
   DO_SET (df_elt_t *, leaf, &new_leaves)
   {
-    leaf->_.table.is_leaf = 0;
+    dfe_set_is_leaf (leaf, 0);
     sqlo_dfe_unplace (so, leaf);
   }
   END_DO_SET ();
@@ -6734,7 +6779,7 @@ int32
 df_pred_score_key (dk_set_t first)
 {
   df_elt_t *dfe = (df_elt_t *) first->data;
-  if (DFE_TABLE == dfe->dfe_type && dfe->_.table.is_leaf)
+  if (dfe_is_leaf (dfe))
     {
       float f, ac;
       if (enable_jp)
@@ -6843,7 +6888,7 @@ sqlo_leaves (sqlo_t * so, op_table_t * ot, dk_set_t * all_leaves, dk_set_t * new
   sqlo_new_leaves (so, ot, all_leaves, new_leaves);
   DO_SET (df_elt_t *, leaf, new_leaves)
   {
-    if (!leaf->_.table.is_leaf)
+    if (!dfe_is_leaf (leaf))
       {
 	float this_score;
 	sqlo_place_table (so, leaf);
@@ -6854,7 +6899,7 @@ sqlo_leaves (sqlo_t * so, op_table_t * ot, dk_set_t * all_leaves, dk_set_t * new
 	if (!(leaf->_.table.hash_filler && DFE_DT == leaf->_.table.hash_filler->dfe_type))
 	  {
 	    /* if the hash build imports other tables, the leaf simplification is not valid, a leaf must be a self-contained dfe for placing/unplacing to work */
-	    leaf->_.table.is_leaf = 1;
+	    dfe_set_is_leaf (leaf, 1);
 	    leaf->dfe_is_joined = 1;
 	  }
 	so->so_gen_pt = leaf->dfe_prev;

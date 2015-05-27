@@ -461,7 +461,7 @@ process_options (int count, char **vector)
 			if ((pF = fopen(d_path, "r")) == NULL)
 			{
 				fprintf(stderr, "ERROR: Invalid argument to -b");
-				exit(-1);
+				exit_close(-1);
 			}
 			else
 				fclose(pF);
@@ -573,7 +573,7 @@ process_options (int count, char **vector)
 				fprintf (stderr, "Unknown table name %s\n",
 					optarg);
 				usage ();
-				exit (1);
+				exit_close (1);
 			}
 			break;
 		case 'O':				/* optional actions */
@@ -586,7 +586,7 @@ process_options (int count, char **vector)
 				fprintf (stderr, "Unknown option name %s\n",
 					optarg);
 				usage ();
-				exit (1);
+				exit_close (1);
 			}
 			break;
 		case 'z':				/* use gzip compression */
@@ -601,7 +601,7 @@ process_options (int count, char **vector)
 				NAME, VERSION, RELEASE, PATCH, BUILD);
 			fprintf (stderr, "Copyright %s %s\n", TPC, C_DATES);
 			usage ();
-			exit (1);
+			exit_close (1);
 	}
 
 	return;
@@ -615,12 +615,12 @@ void validate_options(void)
 		if (updates != 0)
 		{
 			fprintf(stderr, "ERROR: -C is not valid when generating updates\n");
-			exit(-1);
+			exit_close(-1);
 		}
 		if (step == -1)
 		{
 			fprintf(stderr, "ERROR: -S must be specified when generating data in multiple chunks\n");
-			exit(-1);
+			exit_close(-1);
 		}
 	}
 
@@ -630,7 +630,7 @@ void validate_options(void)
 		if ((insert_segments != 0) || (delete_segments != 0))
 		{
 			fprintf(stderr, "ERROR: -d/-i are only valid when generating updates\n");
-			exit(-1);
+			exit_close(-1);
 		}
 	}
 
@@ -640,7 +640,7 @@ void validate_options(void)
 		if ((children == 1) && (updates == 0))
 		{
 			fprintf(stderr, "ERROR: -S is only valid when generating data in multiple chunks or generating updates\n");
-			exit(-1);
+			exit_close(-1);
 		}
 	}
 
@@ -648,7 +648,7 @@ void validate_options(void)
 	if (bTableSet && (updates != 0))
 	{
 		fprintf(stderr, "ERROR: -T not valid when generating updates\n");
-		exit(-1);
+		exit_close(-1);
 	}
 
 	return;
@@ -661,7 +661,7 @@ void validate_options(void)
 * assumes the existance of getopt() to clean up the command 
 * line handling
 */
-int
+void
 main (int ac, char **av)
 {
 	DSS_HUGE i;
@@ -694,7 +694,7 @@ main (int ac, char **av)
 	d_path = NULL;
 	
 #ifdef NO_SUPPORT
-	signal (SIGINT, exit);
+	signal (SIGINT, exit_close);
 #endif /* NO_SUPPORT */
 	process_options (ac, av);
 	validate_options();
@@ -766,18 +766,7 @@ main (int ac, char **av)
 			pr_drange (ORDER_LINE, minrow, rowcnt, upd_num + 1);
 			upd_num++;
 			}
-		if (gzfds)
-		  {
-		    fd_list_t * itm = gzfds;
-		    while (itm)
-		      {
-			close_file (itm->fp);
-			itm = itm->next;
-		      }
-		    gzfds = NULL;
-		  }	  
-
-		exit (0);
+		exit_close (0);
 		}
 	
 	/**
@@ -809,15 +798,5 @@ main (int ac, char **av)
 			}
 		}
 
-      if (gzfds)
-        {
-	  fd_list_t * itm = gzfds;
-	  while (itm)
-	    {
-	      close_file (itm->fp);
-	      itm = itm->next;
-	    }
-	  gzfds = NULL;
-	}	  
-		return (0);
+	exit_close (0);
 }

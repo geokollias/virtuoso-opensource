@@ -117,19 +117,21 @@ static char lnoise[4] = {'|', '/', '-', '\\' };
 #define LIFENOISE(n, var)	\
 	if (verbose > 0) fprintf(stderr, "%c\b", lnoise[(var%LN_CNT)])
 
+void exit_close (int code);
+
 #define MALLOC_CHECK(var) \
     if ((var) == NULL) \
         { \
         fprintf(stderr, "Malloc failed at %s:%d\n",  \
             __FILE__, __LINE__); \
-        exit(1);\
+        exit_close(1);\
         }
 #define OPEN_CHECK(var, path) \
     if ((var) == NULL) \
         { \
         fprintf(stderr, "Open failed for %s at %s:%d\n",  \
             path, __FILE__, __LINE__); \
-        exit(1);\
+        exit_close(1);\
         }
 #ifndef MAX_CHILDREN
 #define MAX_CHILDREN    1000

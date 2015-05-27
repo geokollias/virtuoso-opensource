@@ -213,6 +213,23 @@ sqlo_find_inx_intersect (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t col_preds, flo
 /* functions for multiple table inx intersection */
 
 
+sqlo_eq_hash_print (id_hash_t * eq_ht)
+{
+  DO_IDHASH (ST *, col, dk_set_t, eqs, eq_ht)
+  {
+    dbg_print_box (col, stdout);
+    printf (" = ");
+    DO_SET (df_elt_t *, eq, &eqs)
+    {
+      dbg_print_box (eq->dfe_tree, stdout);
+      printf (" ");
+    }
+    END_DO_SET ();
+    printf ("\n");
+  }
+  END_DO_IDHASH;
+}
+
 
 int
 sqlo_is_col_eq (op_table_t * ot, df_elt_t * col, df_elt_t * val)
