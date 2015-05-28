@@ -110,13 +110,13 @@ DATABASE= VIRTUOSO
 MACHINE = LINUX
 WORKLOAD = TPCH
 #
-CFLAGS	= -g -DDBNAME=\"dss\" -D$(MACHINE) -D$(DATABASE) -D$(WORKLOAD) -DRNG_TEST -D_FILE_OFFSET_BITS=64 -I$(HOME)/libsrc/zlib
+CFLAGS	= -g -DDBNAME=\"dss\" -D$(MACHINE) -D$(DATABASE) -D$(WORKLOAD) -DRNG_TEST -D_FILE_OFFSET_BITS=64 -I../../../../libsrc/zlib
 LDFLAGS = -O 
 # The OBJ,EXE and LIB macros will need to be changed for compilation under
 #  Windows NT
 OBJ     = .o
 EXE     =
-LIBS    = -L$(HOME)/lib -lm -lz
+LIBS    = -L../../../../lib -lm -lz
 #
 # NO CHANGES SHOULD BE NECESSARY BELOW THIS LINE
 ###############
@@ -144,7 +144,7 @@ OBJ1 = build$(OBJ) driver$(OBJ) bm_utils$(OBJ) rnd$(OBJ) print$(OBJ) \
 	load_stub$(OBJ) bcd2$(OBJ) speed_seed$(OBJ) text$(OBJ) permute$(OBJ) \
 	rng64$(OBJ)
 OBJ2 = build$(OBJ) bm_utils$(OBJ) qgen$(OBJ) rnd$(OBJ) varsub$(OBJ) \
-	text$(OBJ) bcd2$(OBJ) permute$(OBJ) speed_seed$(OBJ) rng64$(OBJ)
+	text$(OBJ) bcd2$(OBJ) permute$(OBJ) speed_seed$(OBJ) rng64$(OBJ) print$(OBJ)
 OBJS = $(OBJ1) $(OBJ2)
 #
 SETS = dists.dss 
