@@ -5,6 +5,14 @@ create table RESULTS (query integer, run integer, result float, stream integer, 
 primary key (query, run, stream));
 alter index results  on results partition (query int (0hexffff));
 
+create function q_name (in str2 any array) returns varchar 
+{
+  vectored;
+  declare str varchar;
+  str := cast (str2 as varchar);
+  return regexp_substr ('Q[0-9]*', str, 0); 
+}
+
 create procedure start_q (in _seq integer, in _q_no integer, in _stream integer)
 {
   insert into results (query, run, stream, start_time, pre_ru, pre_mpc) 
