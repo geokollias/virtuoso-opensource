@@ -243,6 +243,7 @@ libwi_la_SOURCES = \
 	sqlcomp.c \
 	sqlcomp2.c \
 	sqlcost.c \
+	sqlojoin.c \
 	sqlcr.c \
 	sqldf.c \
 	sqlexp.c \
@@ -391,7 +392,7 @@ libwi_odbc_la_SOURCES = \
 	sqlbif2.c \
 	sqlcomp.c \
 	sqlcomp2.c \
-	sqlcost.c \
+	sqlcost.c \	sqlojoin.c \
 	sqlcr.c \
 	sqldf.c \
 	sqlexp.c \
