@@ -84,6 +84,7 @@ long tc_split_2nd_read;
 long tc_read_wait;
 long tc_write_wait;
 long tc_qp_thread;
+long tc_rec_cm;
 long tc_dive_would_deadlock;
 long tc_cl_deadlocks;
 long tc_cl_wait_queries;
@@ -220,6 +221,8 @@ extern int sqlo_max_layouts;
 extern size_t sqlo_max_mp_size;
 extern int enable_initial_plan;
 extern int32 enable_dt_leaf;
+extern int32 enable_join_sample;
+extern int32 sqlo_sample_batch_sz;
 extern int32 sqlo_compiler_exceeds_run_factor;
 extern int enable_mem_hash_join;
 extern int32 enable_qrc;
@@ -1475,6 +1478,7 @@ stat_desc_t stat_descs[] = {
   {"tc_read_wait", &tc_read_wait, NULL},
   {"tc_write_wait", &tc_write_wait, NULL},
   {"tc_cl_deadlocks", &tc_cl_deadlocks, NULL},
+  {"tc_rec_cm", &tc_rec_cm},
   {"tc_cl_wait_queries", &tc_cl_wait_queries, NULL},
   {"tc_cl_keep_alives", &tc_cl_keep_alives, NULL},
   {"tc_cl_branch_wanted_queries", &tc_cl_branch_wanted_queries, NULL},
@@ -1820,6 +1824,8 @@ stat_desc_t dbf_descs[] = {
   {"sqlo_max_mp_size", &sqlo_max_mp_size},
   {"enable_initial_plan", &enable_initial_plan, SD_INT32},
   {"enable_dt_leaf", &enable_dt_leaf, SD_INT32},
+  {"enable_join_sample", &enable_join_sample, SD_INT32},
+  {"sqlo_sample_batch_sz", &sqlo_sample_batch_sz, SD_INT32},
   {"sqlo_compiler_exceeds_run_factor", &sqlo_compiler_exceeds_run_factor, SD_INT32},
   {"enable_hash_merge", (long *) &enable_hash_merge, SD_INT32},
   {"enable_hash_fill_join", (long *) &enable_hash_fill_join, SD_INT32},

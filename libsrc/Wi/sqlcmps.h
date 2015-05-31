@@ -287,6 +287,10 @@ typedef struct sql_comp_s
   query_frag_t *sc_in_qf;
   query_t *sc_vec_qr;
   dk_hash_t *sc_qn_to_dfe;	/* if dfes are made into executable plan for sampling of other, map to dfe */
+  caddr_t *sc_sample_inst;
+  v_out_map_t **sc_sample_oms;
+  state_slot_t *sc_sample_ssls;
+  table_source_t *sc_sample_ts;
   dk_hash_t *sc_cn_normalize;
   int sc_cn_ctr1;
   int sc_cn_ctr2;
@@ -298,6 +302,8 @@ typedef struct sql_comp_s
 } sql_comp_t;
 
 
+#define SQLO_MAX_SAMPLE_COLS 10
+extern int32 sqlo_sample_batch_sz;
 
 #define SC_UPD_PLACE 1
 #define SC_UPD_INS 2

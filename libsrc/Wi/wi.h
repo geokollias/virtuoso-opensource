@@ -1021,6 +1021,7 @@ struct it_cursor_s
   int itc_n_matches;
   int itc_match_in;
   int itc_match_out;
+  int itc_n_sample_matches;
   sp_stat_t *itc_sp_stat;
   search_spec_t *itc_col_range_spec;	/* range cond on first ordering col */
   db_buf_t itc_last_cmp_ce;

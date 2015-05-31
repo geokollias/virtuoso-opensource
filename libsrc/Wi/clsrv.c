@@ -281,9 +281,25 @@ cl_msg_string_free (caddr_t str)
 }
 
 
-void
-cm_free (cl_message_t * cm)
+
+typedef struct cmfree_s
 {
+  cl_message_t *cmf_cm;
+  char *cmf_file;
+  int cmf_line;
+} cm_free_t;
+
+#define CMF_HIST 1000
+cm_free_t cmf_hist[CMF_HIST];
+int cmf_ctr;
+
+void
+cm_free_1 (cl_message_t * cm, char *file, int line)
+{
+  int ctr = (cmf_ctr++) % CMF_HIST;
+  cmf_hist[ctr].cmf_cm = cm;
+  cmf_hist[ctr].cmf_line = line;
+  cmf_hist[ctr].cmf_file = file;
   if (cm->cm_strses)
     resource_store (cl_strses_rc, (void *) cm->cm_strses);
   if (cm->cm_in_string)

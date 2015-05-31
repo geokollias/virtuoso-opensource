@@ -2616,6 +2616,15 @@ itc_cp_negate (it_cursor_t * itc, int nth, int rows_in_seg, int prev_matches, co
 }
 
 
+int
+sp_is_same (search_spec_t * sp1, search_spec_t * sp2)
+{
+  return sp1->sp_cl.cl_col_id == sp2->sp_cl.cl_col_id
+      && sp1->sp_min_op == sp2->sp_min_op && sp1->sp_max_op == sp2->sp_max_op
+      && sp1->sp_min_ssl == sp2->sp_min_ssl && sp1->sp_max_ssl == sp2->sp_max_ssl;
+}
+
+
 void
 itc_set_col_rng_spec (it_cursor_t * itc)
 {
@@ -2848,7 +2857,7 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
 	}
       if (cpo.cpo_max_op != CMP_NONE)
 	cpo.cpo_cmp_max = itc->itc_search_params[sp->sp_max];
-      if (itc->itc_range_opt > 1 && itc->itc_col_spec->sp_cl.cl_col_id == itc->itc_col_range_spec->sp_cl.cl_col_id
+      if (itc->itc_range_opt > 1 && sp_is_same (itc->itc_col_spec, itc->itc_col_range_spec)
 	  && itc_cp_range_opt (itc, buf, &cpo, nth_sp))
 	continue;
       cr = itc->itc_col_refs[sp->sp_cl.cl_nth - n_keys];
@@ -2938,7 +2947,19 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
   if (do_sp_stat && itc->itc_sp_stat[0].spst_in > 10000)
     itc_sp_stat_check (itc);
   if (RANDOM_SEARCH_COND == itc->itc_random_search)
-    return DVC_LESS;
+    {
+      if (!itc->itc_n_row_specs)
+	{
+	  row_no_t end = itc->itc_ranges[0].r_end;
+	  if (COL_NO_ROW == end)
+	    end = itc_rows_in_seg (itc, buf);
+	  itc->itc_n_sample_matches = end - itc->itc_ranges[0].r_first;
+	}
+      else
+	itc->itc_n_sample_matches = itc->itc_n_matches;
+      if (!itc->itc_v_out_map || itc->itc_n_results >= itc->itc_batch_size)
+	return DVC_LESS;
+    }
   n_out = itc->itc_v_out_map ? box_length (itc->itc_v_out_map) / sizeof (v_out_map_t) : 0;
   if (itc->itc_n_matches)
     {
@@ -3426,8 +3447,11 @@ itc_col_count (it_cursor_t * itc, buffer_desc_t * buf, int *row_match_ctr)
   int inx, row_matches;
   int inx_spec_in_row_spec = 0;
   search_spec_t *prev_row_sp = itc->itc_row_specs;
+  itc->itc_n_sample_matches = itc->itc_n_matches = 0;
+  itc->itc_match_out = itc->itc_match_in = 0;
   itc->itc_rows_in_seg = COL_NO_ROW;
   itc->itc_col_row = COL_NO_ROW;
+  itc->itc_n_matches = 0;
 #if 0
   for (inx = 0; inx < itc->itc_search_par_fill; inx++)
     ITC_P_VEC (itc, inx) = NULL;
@@ -3479,12 +3503,13 @@ itc_col_count (it_cursor_t * itc, buffer_desc_t * buf, int *row_match_ctr)
 	{
 	  itc->itc_row_specs = prev_row_sp;
 	}
-      if (itc->itc_row_specs)
+      if (itc->itc_row_specs || itc->itc_v_out_map)
 	{
 	  itc->itc_random_search = RANDOM_SEARCH_COND;
 	  itc_set_sp_stat (itc);
 	  itc_col_seg (itc, buf, 0, 0);
 	  itc->itc_random_search = RANDOM_SEARCH_OFF;
+	  itc->itc_n_matches = itc->itc_n_sample_matches;
 	  if (inx_spec_in_row_spec)
 	    {
 	      if (itc->itc_n_row_specs > 1)

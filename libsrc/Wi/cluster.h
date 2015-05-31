@@ -1084,7 +1084,8 @@ resource_t * cl_str_3;
 */
 void cl_msg_string_free (caddr_t str);
 
-void cm_free (cl_message_t * cm);
+void cm_free_1 (cl_message_t * cm, char *file, int line);
+#define cm_free(cm) cm_free_1 (cm, __FILE__, __LINE__)
 int cl_process_message (dk_session_t * ses, cl_message_t * cm);
 void cl_self_cm_srv (void *cmv);
 void clt_process_cm (cl_thread_t * clt, cl_message_t * cm);

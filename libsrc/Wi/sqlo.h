@@ -246,6 +246,8 @@ struct df_elt_s
   float dfe_arity;
   dk_set_t dfe_tables;
   state_slot_t *dfe_ssl;
+  data_col_t *dfe_dc;
+  int *dfe_sets;
   dk_set_t dfe_defines;		/* list of dfes which are produced by this, e.g. an exp can define a col of a dt by hash */
   sql_type_t dfe_sqt;
   union
@@ -673,7 +675,7 @@ typedef struct tb_sample_s
   char smp_is_leaf;
   int smp_ref_count;		/* on text_count_mtx or ric_mtx */
   int *smp_sets;
-  data_col_t *smp_dcs;
+  caddr_t **smp_rows;
   float smp_card;
   float smp_inx_card;
   int smp_time;
@@ -686,6 +688,7 @@ typedef struct sample_cache_key_s
   key_id_t sck_key;
   short sck_n_key;
   short sck_n_dep;
+  short sck_n_out;
   char sck_data[10];
 } sample_cache_key_t;
 
@@ -1112,7 +1115,7 @@ extern caddr_t uname_one_of_these;
 
 #define PRED_IS_EQ(dfe) ((DFE_BOP_PRED == dfe->dfe_type || DFE_BOP == dfe->dfe_type) && BOP_EQ == dfe->_.bin.op)
 #define PRED_IS_EQ_OR_IN(dfe) ((DFE_BOP_PRED == dfe->dfe_type || DFE_BOP == dfe->dfe_type) && (BOP_EQ == dfe->_.bin.op || 1 == dfe->_.bin.is_in_list))
-int64 sqlo_inx_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_elt_t ** uppers, int n_parts,
+float sqlo_inx_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_elt_t ** uppers, int n_parts,
     index_choice_t * ic);
 float arity_scale (float ar);
 caddr_t sqlo_rdf_lit_const (ST * tree);
@@ -1142,6 +1145,12 @@ int col_is_rdf (dbe_column_t * col, char name);
 int dfe_is_rdf_type_p (df_elt_t * dfe);
 
 /* end qrc */
+/*sqlojoin.c*/
+void sqlo_sample_out_cols (sqlo_t * so, df_elt_t * tb_dfe, it_cursor_t * itc);
+void smp_set_cols (tb_sample_t * smp, it_cursor_t * itc, int is_mp);
+void smp_get_cols (tb_sample_t * smp, it_cursor_t * itc);
+
+
 
 float dfe_join_score_jp (sqlo_t * so, op_table_t * ot, df_elt_t * tb_dfe, dk_set_t * res, join_plan_t * prev_jp);
 int dfe_is_quad (df_elt_t * tb_dfe);

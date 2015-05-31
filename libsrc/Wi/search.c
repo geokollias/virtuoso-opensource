@@ -3999,6 +3999,7 @@ int
 itc_sample_next (it_cursor_t * itc, buffer_desc_t ** buf_ret)
 {
   /* if landed at end of a page with the hits starting on the next, go one forward */
+  jmp_buf_splice *prev_ctx = itc->itc_fail_context;
   int rc;
   itc_try_land (itc, buf_ret);
   if (!itc->itc_landed)
@@ -4013,9 +4014,28 @@ itc_sample_next (it_cursor_t * itc, buffer_desc_t ** buf_ret)
   ITC_NO_ROW_SPECS (itc);
   if (itc->itc_is_col)
     {
+      key_source_t *save_ks = itc->itc_ks;
+      int save_bs = itc->itc_batch_size;
+      itc->itc_batch_size = 0;
+      itc->itc_ks = NULL;
       itc->itc_is_col = 0;
-      rc = itc_next (itc, buf_ret);
+      ITC_FAIL (itc)
+      {
+	rc = itc_next (itc, buf_ret);
+      }
+      ITC_FAILED
+      {
+	itc->itc_batch_size = save_bs;
+	itc->itc_is_col = 1;
+	itc->itc_ks = save_ks;
+	itc->itc_fail_context = prev_ctx;
+	longjmp_splice (itc->itc_fail_context, 1);
+      }
+      END_FAIL (itc);
+      itc->itc_batch_size = save_bs;
       itc->itc_is_col = 1;
+      itc->itc_ks = save_ks;
+      itc->itc_fail_context = prev_ctx;
     }
   else
     rc = itc_next (itc, buf_ret);
@@ -4216,6 +4236,37 @@ uint64 tc_sample_clocks;
 int dbf_max_itc_samples = MAX_SAMPLES;
 #define SAMPLES_LIMIT (MIN (MAX_SAMPLES, dbf_max_itc_samples))
 
+
+int64
+itc_sample_ctx (it_cursor_t * itc, buffer_desc_t ** ign, int64 * n_leaves, int angle)
+{
+  int n_repeats = 0;
+  int64 sample;
+  buffer_desc_t *buf;
+  itc->itc_dive_mode = PA_READ_ONLY;
+again:
+  ITC_FAIL (itc)
+  {
+    itc->itc_random_search = RANDOM_SEARCH_ON;
+    buf = itc_reset (itc);
+    itc->itc_random_search = RANDOM_SEARCH_OFF;
+    sample = itc_sample_1 (itc, &buf, n_leaves, angle);
+    itc_page_leave (itc, buf);
+  }
+  ITC_FAILED
+  {
+    itc_col_leave (itc, 0);
+    if (++n_repeats < 3)
+      goto again;
+    itc->itc_fail_context = NULL;
+    return 0;
+  }
+  END_FAIL (itc);
+  itc->itc_fail_context = NULL;
+  return sample;
+}
+
+
 int64
 itc_local_sample (it_cursor_t * itc)
 {
@@ -4236,18 +4287,19 @@ itc_local_sample (it_cursor_t * itc)
   itc->itc_st.n_row_spec_matches = 0;
   n_samples = 1;
   itc->itc_random_search = RANDOM_SEARCH_ON;
-  itc->itc_dive_mode = PA_READ_ONLY;
-  buf = itc_reset (itc);
   if (itc->itc_insert_key->key_is_geo)
     {
       dbe_table_t *tb = itc->itc_insert_key->key_table;
+      itc->itc_dive_mode = PA_READ_ONLY;
+      buf = itc_reset (itc);
+
       double ar = geo_page_area (itc, buf);
       tb->tb_geo_area = MAX (tb->tb_geo_area, ar);
+      itc_page_leave (itc, buf);
     }
   if (!itc->itc_key_spec.ksp_spec_array && !itc->itc_geo_op)
     {
-      res = itc_sample_1 (itc, &buf, &n_leaves, -1);
-      itc_page_leave (itc, buf);
+      res = itc_sample_ctx (itc, &buf, &n_leaves, -1);
       if (n_leaves < 2 || 1 == dbf_max_itc_samples)
 	goto return_res;
       if (itc->itc_row_specs)
@@ -4261,9 +4313,7 @@ itc_local_sample (it_cursor_t * itc)
       samples[0] = res;
       goto regular;
     }
-  itc->itc_random_search = RANDOM_SEARCH_OFF;
-  samples[0] = itc_sample_1 (itc, &buf, &n_leaves, -1);
-  itc_page_leave (itc, buf);
+  samples[0] = itc_sample_ctx (itc, &buf, &n_leaves, -1);
 
   if (!n_leaves)
     {
@@ -4278,11 +4328,8 @@ regular:
 	itc->itc_st.is_to_right = 0;
 	for (angle = step + offset; angle < 1000; angle += step)
 	  {
-	    itc->itc_random_search = RANDOM_SEARCH_ON;
-	    buf = itc_reset (itc);
-	    itc->itc_random_search = RANDOM_SEARCH_OFF;
-	    sample = itc_sample_1 (itc, &buf, &n_leaves, angle);
-	    itc_page_leave (itc, buf);
+	    sample = itc_sample_ctx (itc, &buf, &n_leaves, angle);
+
 	    if (itc->itc_key_spec.ksp_spec_array)
 	      {
 		tb_count = tb->tb_count == DBE_NO_STAT_DATA ? tb->tb_count_estimate : tb->tb_count;
