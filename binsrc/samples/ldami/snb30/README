@@ -1,0 +1,123 @@
+These instructions will help you to create and load the SNB dataset of
+scale factor 30 and 300, and inform you how to run the benchmark
+(interactive workload) against it. Here, you can also find the
+instructions for SPB and TPC-H.
+
+All necessary programs and modules are preinstalled, and preconfigured
+(java, maven, git, hadoop, virtuoso, ldbc_driver, etc), and bash
+scripts for all kind of tasks are prepared.
+
+In /home directory, you can find git checkouts from:
+- ldbc driver (/home/ldbc_driver)
+- ldbc datagenerator (/home/ldbc_snb_datagen)
+- virtuoso implmentation of the database connector
+  (/home/ldbc_snb_implementations)
+- virtuoso v7, feature/analytics branch of v7fasttrack  (/home/virtuoso-opensource)
+
+Also, in the same directory, you have one folder per type of benchmark
+and scale factor:
+- snb30 - Social Network Benchmark 30GB
+- snb300 - Social Network Benchmark 300GB
+- snbval - Validation of Social Network Benchmark 
+- spb1g - - Semantic Publishing with 1G triples
+- spb256 - Semantic Publishing with 256M triples
+- spbval - - Validation for Semantic Publishing 
+- tpch100 -  100G scale TPC-H
+- tpch300 - 300GB scale TPC-H
+
+
+
+**********************************
+*****           SNB            ***
+**********************************
+
+
+In order to run one of the SNB benchmarks (e.g. SF30), you have to
+follow the next steps (if you want to run SF300, everything is the same,
+but you have to use different folder, with different scripts - snb300
+instead of snb30):
+
+1) Prepare the filesystems. Be sure that you have 2 SSDs, 300GB each,
+because the total size of the dataset (gzipped) and database files for
+SF300 are 138GB and 246GB at the beginning, respectively. For SF30,
+these numbers are 15GB and 25GB. With this configuration, for example,
+you can have SF30 and SF300 dataset and database files together, but
+you cannot have SNB300 and TPCH300 both in the same time.
+
+$ cd ~
+$ sudo ./mkvol.sh
+
+
+2) Create dataset. Note that this step can take a lot of time (1 hour
+for SF30 and more than 7 hours for SF300), but you will avoid it, if
+you download the created dataset using the script ./dbget.sh. This is
+about 60 times faster option.
+
+$ cd /home/snb30
+$ ./dbgen.sh                  (or: $ ./dbget.sh )
+
+
+3) Unzip update streams (for SF30, less than 2 minutes, and for SF300
+14 minutes)
+
+$ cd /1s1/snb30data/updates/
+$ gunzip *.gz
+
+
+4) Load the dataset (for SF30 this can take about 322s, and for SF300
+almost 2 hours). This step will run the Virtuoso server, load it, and
+leave it online.
+
+$ cd /home/snb30
+$ ./load.sh
+
+During this step (from the second shell), you can check the number of
+remaining files to load with the following command:
+
+$ echo 'select count(*) from load_list where ll_state <> 2;' | isql 1210
+
+It will decrease until 0.
+
+
+5) When the database is loaded, you can check the counts of all the
+tables:
+
+$ isql 1210 < chech.sql
+
+If everything is loaded, you shoud get "OK" as result.
+
+
+6) Run the benchmark. The default configuration is 48 threads, all
+query types enabled (short and long reads and updates), time
+compression ratio is XXX for SF30, and 0.7 for SF300. Number of
+operations for warmup is XXX for SF30 and 150000 for SF300, while the
+numbers of operations in the real run are XXX and 4000000,
+respectively. You can expect that warmup and run phase will take about
+XXX (SF30) and XXX (SF300) minutes in total. The target throughput is
+XXX for SF30 and XXX for SF300.
+
+$ ./run.sh
+
+
+7) Report the results. The following script can produce the report.
+
+$ ./report.sh > report.txt
+
+The following scripts are not necessery, but can be useful:
+- copy the dataset to S3 servers
+$ ./dbput.sh
+- copy the dataset from S3 servers (SF300 - 11min)
+$ ./dbget.sh
+- delete generated dataset
+$ ./rm_dataset.sh
+- delete all database files
+$ ./rm_database.sh
+- copy database files to S3 servers (SF300 - 39 minutes)
+$ ./dbput_db.sh
+- copy database files from S3 servers (SF300 - 22 minutes)
+$ ./dbget_db.sh
+
+If you want to pass the SNB validation, do the following:
+$ cd /home/snbval
+$ ./validate.sh
+

@@ -1,7 +1,7 @@
 ssh localhost mkdir /1s2/tpch300data
 scp dbgen localhost:/1s2/tpch300data
 scp dists.dss localhost:/1s2/tpch300data
-ssh localhost "(cd /1s2/tpch300data; ./dbgen -q -f -s 300 -U 14 
+ssh localhost "(cd /1s2/tpch300data; ./dbgen -q -f -s 300 -U 14 -i 1 -d 1)" &
 sleep 1
 ssh localhost "(cd /1s2/tpch300data; ./dbgen -z -q -f -s 300 -C 32 -S 1)" &
 sleep 1

@@ -1,5 +1,5 @@
-/home/virtuoso-opensource/binsrc/virtuoso/virtuoso-t
-sleep 10
+/home/virtuoso-opensource/binsrc/virtuoso/virtuoso-t +wait
+
 isql 1210 < /home/ldbc_snb_implementations/interactive/virtuoso/scripts/ldschema.sql
 isql 1210 < /home/ldbc_snb_implementations/interactive/virtuoso/scripts/ldfile.sql
 isql 1210 < /home/ldbc_snb_implementations/interactive/virtuoso/scripts/schema.sql

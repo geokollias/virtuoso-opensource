@@ -7,13 +7,13 @@
 ;
 [Database]
 DatabaseFile    = virtuoso.db
-TransactionFile = /1s2/dbs/spb1g.trx
+TransactionFile = virtuoso.trx
 ErrorLogFile    = virtuoso.log
 ErrorLogLevel   = 7
 Syslog          = 0
 TempStorage     = TempDatabase
 FileExtend      = 200
-Striping        = 1
+Striping        = 0
 
 [TempDatabase]
 DatabaseFile    = virtuoso.tdb
@@ -24,16 +24,23 @@ FileExtend      = 200
 ; Server parameters
 ;
 [Parameters]
-ServerPort                 = 1112
+Affinity                   = { case when mod (c ('proc'), 2) = 1 then '0-7, 16-23' else '8-15, 24-31' end}
+;Affinity                   = { case when mod (c ('proc'), 2) = 1 then '1-5, 12-17' else '7-11, 18-23' end}
+;ListenerAffinity           = { case when mod (c ('proc'), 2) = 1 then '0' else '6' end}
+ColumnStore = 1
+ServerPort                 = {1200 + c('proc')}
 ServerThreads              = 100
 CheckpointSyncMode         = 0
 CheckpointInterval         = 0
-NumberOfBuffers            = 13000000
-MaxDirtyBuffers            = 9000000
+NumberOfBuffers            = 5000000
+MaxDirtyBuffers            = 450000
 MaxCheckpointRemap         = 2500000
 DefaultIsolation           = 2
 UnremapQuota               = 0
+AtomicDive                 = 1
+PrefixResultNames          = 0
 CaseMode                   = 2
+DisableMtWrite             = 0
 ;MinAutoCheckpointSize	= 4000000
 ;CheckpointAuditTrail	= 1
 DirsAllowed                = /
@@ -46,21 +53,31 @@ TransactionAfterImageLimit = 1500000000
 FDsPerFile                 = 4
 ;StopCompilerWhenXOverRunTime = 1
 MaxMemPoolSize             = 40000000
-AdjustVectorSize           = 1
-ThreadsPerQuery            = 32
-AsyncQueueMaxThreads       = 64
-MaxQueryMem                = 30G
-HashJoinSpace              = 30G
+ThreadsPerQuery            = 16
+AsyncQueueMaxThreads       = 32
 IndexTreeMaps              = 64
+
+[VDB]
+VDBDisconnectTimeout = 1000
+ArrayOptimization    = 2
+NumArrayParameters   = 10
 
 [Client]
 SQL_QUERY_TIMEOUT  = 0
 SQL_TXN_TIMEOUT    = 0
-SQL_ROWSET_SIZE    = 10000
-SQL_PREFETCH_BYTES = 120000
+SQL_ROWSET_SIZE    = 10
+SQL_PREFETCH_BYTES = 12000
+
+[AutoRepair]
+BadParentLinks = 0
+BadDTP         = 0
+
+[Replication]
+ServerName   = HOSTNAME
+ServerEnable = 1
 
 [HTTPServer]
-ServerPort                  = 8891
+ServerPort                  = { 8600 +  c ('proc')}
 ServerRoot                  = vsp
 ServerThreads               = 40
 MaxKeepAlives               = 10
@@ -68,24 +85,16 @@ KeepAliveTimeout            = 10
 MaxCachedProxyConnections   = 10
 ProxyConnectionCacheTimeout = 10
 DavRoot                     = DAV
-;HTTPLogFile                 = logs/http01042015.log
+HTTPLogFile                 = logs/http.log
+
+[URIQA]
+DefaultHost = HOSTNAME
 
 [SPARQL]
+;ExternalQuerySource = 1
+;ExternalXsltSource = 1
 ResultSetMaxRows   = 100000
 LabelInferenceName = facets
 ImmutableGraphs    = inference-graphs, *
 ShortenLongURIs    = 1
-
-[Striping]
-;; Change the bellow to according to the file system layout
-Segment1 = 1024, /1s1/dbs/spb1g.db = q1, /1s2/dbs/spb1g.db = q2
-
-[Flags]
-enable_mt_txn       = 1
-enable_mt_transact  = 1
-qp_thread_min_usec  = 100
-mp_local_rc_sz      = 0
-dbf_explain_level   = 0
-enable_exact_p_stat = 1
-hash_join_enable    = 2
-enable_g_in_sec     = 1
+;EnablePstats = 0
