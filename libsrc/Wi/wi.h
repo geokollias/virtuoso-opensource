@@ -2020,6 +2020,16 @@ extern int64 bdf_is_avail_mask;	/* all bits on except read aside flag which does
 
 /* Catchers */
 
+#define QR_RESET_CTX_T_CTX(thr, __ctx)		\
+{ \
+  du_thread_t * __self = thr; \
+  int reset_code;  \
+  struct TLSF_struct * __tlsf = __self->thr_tlsf; \
+  jmp_buf_splice * __old_ctx = __self->thr_reset_ctx;\
+  __self->thr_reset_ctx = __ctx; \
+  if (0 == (reset_code = setjmp_splice (__ctx)))
+
+
 #define QR_RESET_CTX_T(thr) \
 { \
   du_thread_t * __self = thr; \

@@ -431,7 +431,6 @@ int
 dfe_top_order_correlated (df_elt_t * dfe)
 {
   /* if desc order top k and the column is in asc order or close, the top k pushdown has no effect */
-  df_elt_t **top_pred = dfe->_.table.top_pred;
   dbe_key_t *key = dfe->_.table.key;
   df_elt_t **body, *call_dfe;
   df_elt_t *col_dfe = NULL;
@@ -1206,7 +1205,7 @@ sqlo_in_list_unit (df_elt_t * in_tb, df_elt_t * pred, float *u1, float *a1)
 {
   du_thread_t *thr;
   int n_items, nth;
-  ST *subr = NULL;
+  df_elt_t **subr = NULL;
   df_elt_t **in_list = sqlo_in_list_1 (pred, NULL, NULL, &subr);
   if (!in_list)
     return 0;
@@ -1722,6 +1721,7 @@ ric_p_stat_from_cache (rdf_inf_ctx_t * ric, dbe_key_t * key, iri_id_t id, float 
   return found;
 }
 
+extern user_t *user_t_dba;
 
 int64
 sqlo_p_stat_query (dbe_table_t * tb, caddr_t p)
@@ -1738,7 +1738,6 @@ sqlo_p_stat_query (dbe_table_t * tb, caddr_t p)
   lock_trx_t *lt = cli->cli_trx;
   user_t *usr = cli->cli_user;
   int at_start = cli->cli_anytime_started;
-  int rpc_timeout = cli->cli_rpc_timeout;
   local_cursor_t *lc = NULL;
   caddr_t err = NULL;
   if (cli->cli_clt)
@@ -1755,27 +1754,27 @@ sqlo_p_stat_query (dbe_table_t * tb, caddr_t p)
   cli->cli_anytime_started = 0;
   if (!s_qr || !o_qr)
     {
-      s_qr =
+      AS_DBA_CLI (cli, s_qr =
 	  sql_compile
 	  ("select count (*), count (distinct s option (order)) from rdf_quad table option (index rdf_quad, isolation read uncommitted) where p = ?",
-	  cli, &err, SQLC_DEFAULT);
+	      cli, &err, SQLC_DEFAULT));
       if (err)
 	goto err;
-      o_qr =
+      AS_DBA_CLI (cli, o_qr =
 	  sql_compile
 	  ("select count (*), count (distinct o option (order)) from rdf_quad table option (index rdf_quad_pogs, isolation read uncommitted) where p = ?",
-	  cli, &err, SQLC_DEFAULT);
+	      cli, &err, SQLC_DEFAULT));
       if (err)
 	goto err;
     }
-  err = qr_rec_exec (s_qr, cli, &lc, CALLER_LOCAL, NULL, 1, ":0", box_copy (p), QRP_RAW);
+  AS_DBA_CLI (cli, err = qr_rec_exec (s_qr, cli, &lc, CALLER_LOCAL, NULL, 1, ":0", box_copy (p), QRP_RAW));
   if (err)
     goto err;
   lc_next (lc);
   cnt = unbox (lc_nth_col (lc, 0));
   s_cnt = unbox (lc_nth_col (lc, 1));
   lc_free (lc);
-  err = qr_rec_exec (o_qr, cli, &lc, CALLER_LOCAL, NULL, 1, ":0", box_copy (p), QRP_RAW);
+  AS_DBA_CLI (cli, err = qr_rec_exec (o_qr, cli, &lc, CALLER_LOCAL, NULL, 1, ":0", box_copy (p), QRP_RAW));
   if (err)
     goto err;
   lc_next (lc);
@@ -1806,6 +1805,7 @@ err:
   p_stat[2] = s_cnt;
   p_stat[3] = MIN (p_stat[0], n_g);
   ric_set_p_stat (empty_ric, key, p, p_stat);
+  cli->cli_anytime_started = at_start;
   return cnt;
 }
 
@@ -2768,6 +2768,8 @@ itc_sample_cache_key (it_cursor_t * itc)
 	}
       sck->sck_n_out = n_out;
     }
+  else
+    sck->sck_n_out = 0;
   sck->sck_n_dep = n_dep;
   box[0] = box_dv_short_nchars (buf, ((ptrlong) data - (ptrlong) buf) + fill);
   for (inx = 0; inx < itc->itc_search_par_fill; inx++)
@@ -3749,13 +3751,13 @@ void
 dfe_rq_p_v_card (df_elt_t * tb_dfe, df_elt_t * pred, float *inx_card)
 {
   /* if the table is rdf quad and there is a join on p from another pattern:  Guess that the p is the same size as any other p of the s of this one.  If there is no s of this one, guess 3x the distinct ps */
-  float tb_card = dbe_key_count (tb_dfe->_.table.ot->ot_table->tb_primary_key);
   sqlo_t *so = tb_dfe->dfe_sqlo;
   op_table_t *ot = so->so_this_dt;
   dbe_column_t *s_col = tb_name_to_column (tb_dfe->_.table.ot->ot_table, "S");
   dk_set_t s_joined = ot_s_eqs (ot, pred->_.bin.left->dfe_tree->_.col_ref.prefix, s_col);
   int n_ps = 0;
   float ps = 0;
+  dbe_key_count (tb_dfe->_.table.ot->ot_table->tb_primary_key);
   DO_SET (caddr_t, pref, &s_joined)
   {
     df_elt_t *p_pred = ot_pref_p_eq (ot, pref);
@@ -3944,7 +3946,7 @@ rq_sample (df_elt_t * dfe, rq_cols_t * rq, index_choice_t * ic)
   df_elt_t *upper[4];
   dbe_key_t *save_key = dfe->_.table.key;
   dbe_key_t *best_key;
-  int fill = 0, n_in_items = -2;
+  int fill = 0;
   int64 res;
   if (ic->ic_set_sample_key)
     best_key = ic->ic_key;
@@ -4029,7 +4031,7 @@ rq_sample_subp (df_elt_t * dfe, rq_cols_t * rq, index_choice_t * ic)
   ri_iterator_t *rit;
   int found;
   rdf_sub_t *sub_iri;
-  variable = &rq->rq_p.rqp_lower->_.bin.right->dfe_tree;
+  variable = (caddr_t *) & rq->rq_p.rqp_lower->_.bin.right->dfe_tree;
   save = *variable;
   sub = ric_iri_to_sub (ric, save, RI_SUBPROPERTY, 0);
   if (!sub || (!sub->rs_sub && !sub->rs_equiv))
@@ -4083,7 +4085,6 @@ dfe_p_card (df_elt_t * dfe, rq_cols_t * rq, float *p_stat, index_choice_t * ic, 
   dbe_key_t *save_key;
   caddr_t p;
   int64 sample;
-  float *place;
   int checked = 0;
   dbe_key_t *key = dfe->_.table.key;
   if (RQ_CONST_EQ != rq->rq_p.rqp_op)
@@ -4130,7 +4131,6 @@ dfe_init_p_stat (df_elt_t * dfe, df_elt_t * lower)
 {
   rq_cols_t rq;
   index_choice_t ic;
-  df_elt_t c;
   float p_stat[4];
   memzero (&rq, sizeof (rq));
   memzero (&ic, sizeof (ic));
@@ -4196,7 +4196,7 @@ sqlo_var_p_card (df_elt_t * tb_dfe, rq_cols_t * rq, float *inx_card)
 
 
 int
-sqlo_use_p_stat_2 (df_elt_t * dfe, float *inx_card, float *col_card, index_choice_t * ic, int64 * sample_ret)
+sqlo_use_p_stat_2 (df_elt_t * dfe, float *inx_card, float *col_card, index_choice_t * ic, float *sample_ret)
 {
   int is_unq = ic->ic_is_unique;
   rq_pred_t *col2, *col3;
@@ -4622,13 +4622,13 @@ dfe_table_unq_card (df_elt_t * dfe, index_choice_t * ic, float tb_card, float *i
   /* adjust card of joini to a non rdf table where unique keys are given.  If this is a multipart fk, then the card guess is 1, if the parts come from different tables these are considered independent and the card is the product of the selectivities */
   dbe_key_t *key = dfe->_.table.key;
   int unq_limit = key->key_is_unique ? key->key_decl_parts : key->key_n_significant;
-  int inx, n_eqs = 0;
+  int inx;
   float inx_card = *inx_card_ret;
   float col_card = *col_card_ret;
   caddr_t pref = NULL;
   if (sqlo_sample_dep_cols && col_card < 0.9)
     {
-      int64 est = sqlo_inx_sample (dfe, dfe->_.table.key, NULL, NULL, 0, ic);
+      sqlo_inx_sample (dfe, dfe->_.table.key, NULL, NULL, 0, ic);
       *col_card_ret /= ic->ic_col_card_corr;
     }
   if (1 == key->key_n_significant)

@@ -1923,6 +1923,14 @@ typedef struct _cl_aq_ctx
   char claq_is_allocated;	/* if copy by dfg thread starting another */
 } cl_aq_ctx_t;
 
+typedef struct _claq_ctx_s
+{
+  /* if reset ctx and claq in the same stack frame, make the claq always have the higher address for error ck */
+  jmp_buf_splice cctx_ctx;
+  cl_aq_ctx_t cctx_claq;
+} claq_ctx_t;
+
+
 #define QI_ACL_CK_ROWS(qi) 0
 
 typedef struct client_connection_s

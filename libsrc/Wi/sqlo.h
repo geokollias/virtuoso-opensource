@@ -1184,6 +1184,8 @@ dbe_key_t *tb_px_key (dbe_table_t * tb, dbe_column_t * col);
 float dfe_scan_card (df_elt_t * dfe);
 int sqlo_parse_tree_count_node (ST * tree, long *nodes, int n_nodes);
 int dfe_init_p_stat (df_elt_t * dfe, df_elt_t * lower);
+int dfe_p_stat (df_elt_t * tb_dfe, df_elt_t * pred, iri_id_t pid, dk_set_t * parts_ret, dbe_column_t * o_col, float *p_stat_ret,
+    float *o_stat_ret);
 dk_set_t sqlo_connective_list (df_elt_t * dfe, int op);
 df_elt_t *dfe_extract_or (sqlo_t * so, df_elt_t * tb_dfe, df_elt_t * pred);
 int dfe_col_of_oj (df_elt_t * col);

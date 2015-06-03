@@ -358,6 +358,14 @@ qi->qi_client->cli_user = user_t_dba;	\
 }
 
 
+#define AS_DBA_CLI(cli, exp) \
+{ \
+ user_t * u = cli->cli_user; \
+cli->cli_user = user_t_dba;	\
+  exp; \
+  cli->cli_user = u;\
+}
+
 int bif_is_no_cluster (bif_t bif);	/* cannot be execd except where invoked */
 int bif_need_enlist (bif_t bif);
 
