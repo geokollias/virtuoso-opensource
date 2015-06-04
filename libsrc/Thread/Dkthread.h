@@ -209,7 +209,7 @@ void mutex_option (dk_mutex_t * mtx, char * name, mtx_entry_check_t ck, void * c
 #define mutex_option(mtx,name,ck,cd) do { ; } while (0)
 #endif
 EXE_EXPORT (int, mutex_try_enter, (dk_mutex_t *mtx));
-void mutex_stat (void);
+void mutex_stat (int mode, int max);
 
 spinlock_t * spinlock_allocate (void);
 void spinlock_free (spinlock_t *self);

@@ -698,7 +698,7 @@ mutex_leave (dk_mutex_t *mtx)
 
 
 void
-mutex_stat ()
+mutex_stat (int mode, int max)
 {
 #ifdef MTX_METER
   DO_SET (dk_mutex_t *, mtx, &all_mtxs)
