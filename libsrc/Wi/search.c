@@ -4054,7 +4054,7 @@ itc_sample_1 (it_cursor_t * it, buffer_desc_t ** buf_ret, int64 * n_leaves_ret, 
   int level_of_single_leaf_match = -1;
   int ctr = 0, leaf_ctr = 0, rows_per_bm, ends_with_match;
   int64 leaf_estimate = 0;
-
+  it->itc_is_sample = 1;
   if (angle > 980)
     angle = 980;
   it->itc_search_mode = SM_READ;

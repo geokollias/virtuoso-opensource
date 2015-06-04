@@ -275,7 +275,8 @@ typedef struct sparp_sources_s
   rdf_grab_config_t ssrc_grab;	/*!< Grabber configuration */
   dk_set_t ssrc_common_sponge_options;	/*!< Options that are added to every FROM ... OPTION ( ... ) list */
   SPART *ssrc_graph_set_by_with;	/*!< The precode expression of WITH clause, if exists */
-  SPART *ssrc_graph_set_by_fallback_with;	/*!< For debugging purposes, it may be convenient to fallback to virtrdf:DefaultSparul11Target or the like instead of "No default graph specified in the preamble..." error. Set the value of this field to non-NULL for this effect. */
+  SPART *ssrc_fallback_target;	/*!< For debugging purposes, it may be convenient to fallback to virtrdf:DefaultSparul11Target or the like instead of "No default graph specified in the preamble..." error. Set the value of this field to non-NULL (by define input:target-fallback-graph-uri) for this effect. */
+  SPART *ssrc_fallback_default_graph;	/*!< For debugging purposes, this can be used as an equivalent of "default graph specified by Graph Store" from spec. To set the value of this field to non-NULL, use define input:with-fallback-graph-uri. */
   dk_set_t ssrc_default_graphs;	/*!< Default graphs and NOT FROM graphs as set by protocol or FROM graph-uri-precode. All NOT FROM are after all FROM! */
   dk_set_t ssrc_named_graphs;	/*!< Named graphs and NOT FROM NAMED graphs as set by protocol or clauses. All NOT FROM NAMED are after all FROM NAMED! */
   int ssrc_default_graphs_listed;	/*!< At least one default graph was set, so the list of default graphs is exhaustive even if empty or consists of solely NOT FROM (NOT FROM may remove all FROM, making the list empty) */
@@ -333,6 +334,8 @@ typedef struct sparp_env_s
   int spare_disable_output_formatting;	/*!< Indicates that sg_output_xxx_format_name are all ignored, because the query is intermediate in iterative get with "seealso" */
   dk_set_t spare_propvar_sets;	/*!< Stack of sets of propvars that should form triples */
   caddr_t spare_sql_refresh_free_text;	/*!< Flags if there's any use of bif:contains or the like, so 'sql:refresh-free-text' 'yes' option should be added to any vector of sponge options. This is a _boxed_ integer even if it's zero; that is used to store a reference to a changing integer in a compiled tree. */
+  SPART *spare_found_default_sparul_target;	/*!< If \c spare_need_for_default_sparul_target is non-NULL, this remembers the result of spare_default_sparul_target() at the end of list of USING clauses. It can also be set after INSERT IN graph_precode, DELETE FROM graph_precode or MODIFY graph_precode */
+  const char *spare_need_for_default_sparul_target;	/*!< When non-NULL, a single default graph should be provided by single USING, WITH or fallback; missing all three means the error */
 } sparp_env_t;
 
 #define SPARP_EBV_SQL		0	/*!< Cast to boolean implicitly, i.e. as that will happen in SQL */
@@ -1081,7 +1084,8 @@ The freeze_ignore_mask lists SPARP_SSRC_FROZEN_xxx bits that can be ignored, it 
      extern SPART *sparp_make_graph_precode (sparp_t * sparp, ptrlong subtype, SPART * iriref, SPART ** options);
 /*! Returns whether \c ctor_gp contains at least one use of default graph, so it depends on WITH <graph_iri> or the like */
      extern int spar_ctor_uses_default_graph (SPART * ctor_gp);
-     extern SPART *spar_default_sparul_target (sparp_t * sparp, const char *reason_to_use);
+     extern SPART *spar_default_sparul_target (sparp_t * sparp, const char *reason_to_use, int preliminary_call);
+     extern void spar_apply_fallback_default_graph (sparp_t * sparp, int target_fallback_first);
      extern SPART *spar_make_regex_or_like_or_eq (sparp_t * sparp, SPART * strg, SPART * regexpn);
      extern void spar_verify_funcall_security (sparp_t * sparp, int *is_agg_ret, const char **fname_ptr, SPART ** args);
 

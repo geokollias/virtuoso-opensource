@@ -14059,7 +14059,12 @@ caddr_t
 bif_mutex_stat (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
 #ifdef MTX_METER
-  mutex_stat ();
+  int mode = 0, max = 100;
+  if (BOX_ELEMENTS (args) > 0)
+    mode = bif_long_arg (qst, args, 0, "mutex_stat");
+  if (BOX_ELEMENTS (args) > 1)
+    max = bif_long_arg (qst, args, 1, "mutex_stat");
+  mutex_stat (mode, max);
 #endif
   return 0;
 }

@@ -1569,7 +1569,8 @@ typedef struct setp_node_s
 #define SETP_GBB_NEED_ID 2	/* not a hash join build but needs id due to refs in other qfs */
 
 
-#define SETP_DISTINCT_MAX_KEYS 100
+extern int32 setp_distinct_max_keys;
+#define SETP_DISTINCT_MAX_KEYS setp_distinct_max_keys
 #define SETP_DISTINCT_NO_OP 2
 #define IS_SETP(qn) IS_QN (qn, setp_node_input)
 

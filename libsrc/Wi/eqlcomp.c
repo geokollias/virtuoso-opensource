@@ -155,6 +155,7 @@ dependence_def_new (int sz)
   NEW_VARZ (dependence_def_t, ddep);
   ddep->ddef_name_to_qr = id_str_hash_create (sz);
   ddep->ddef_mtx = mutex_allocate ();
+  mutex_option (ddep->ddef_mtx, "ddep", NULL, NULL);
   return ddep;
 }
 
