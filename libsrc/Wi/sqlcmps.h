@@ -261,7 +261,8 @@ typedef struct sql_comp_s
   char sc_any_rdf;
   char sc_gen_rdf_rd_sec;
 
-  dk_set_t sc_re_emitted_dfes;
+  dk_set_t sc_re_emitted_dfes;	/* dfes assigned in cond part, not defined after the cond part */
+  dk_set_t sc_cond_defd_dfes;	/* stack for saving the containing cond enps'sc_re_emitted_dfes */
   rdf_inf_slots_t *sc_rdf_inf_slots;
   dk_hash_t *sc_safe_g;		/* ssls with g values checked for safety. if g eequals one of these, no check needed */
 
@@ -567,6 +568,8 @@ void qr_set_local_code_and_funref_flag (query_t * qr);
 
 state_slot_t *scalar_exp_generate_typed (sql_comp_t * sc, ST * tree, dk_set_t * code, sql_type_t * expect);
 
+void sqlg_cond_start (sql_comp_t * sc);
+void sqlg_cond_end (sql_comp_t * sc);
 
 sql_type_t *sqlc_stmt_nth_col_type (sql_comp_t * sc, dbe_table_t * tb, ST * tree, int nth);
 

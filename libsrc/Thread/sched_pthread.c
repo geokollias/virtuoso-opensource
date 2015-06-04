@@ -111,7 +111,9 @@ _sched_init (void)
 #endif
 #ifdef MTX_METER
   all_mtxs_mtx = mutex_allocate ();
+  mutex_option (all_mtxs_mtx, "all_mtxs", NULL, NULL);
   all_mtxs = hash_table_allocate (10000);
+  sethash ((void*)all_mtxs_mtx, all_mtxs, (void*)1);
   all_mtxs->ht_rehash_threshold = 2;
 #endif
 }
@@ -1504,7 +1506,11 @@ mtx_enter_f (const void *s1, const void *s2)
 int 
 mtx_is_bad (dk_mutex_t * mtx)
 {
-  return mtx->mtx_type != 0 || mtx->mtx_enters < 0 || mtx->mtx_waits < 0;
+  return mtx->mtx_type != 0 || mtx->mtx_enters < 0 || mtx->mtx_waits < 0
+#ifdef linux 
+    || 3 != mtx->mtx_mtx.__data.__kind
+#endif
+    ;
 }
 #endif
 

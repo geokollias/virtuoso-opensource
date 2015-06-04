@@ -219,6 +219,11 @@ itc_temp_next_set (it_cursor_t * itc, buffer_desc_t ** buf_ret)
 long tc_same_parent;
 long tc_same_page;
 long tc_same_key;
+int32 dbf_next_set_parent_min_pct = 50;
+
+#define NS_CK_PARENT(itc) \
+  (!(itc->itc_same_parent_miss + itc->itc_same_parent_hit) \
+   || (itc->itc_same_parent_hit * 100) / (itc->itc_same_parent_miss + itc->itc_same_parent_hit) > dbf_next_set_parent_min_pct)
 
 
 int
@@ -540,7 +545,7 @@ next_set:
   if (DVC_LESS == rc)
     {
       itc_check_col_prefetch (itc, *buf_ret);
-      if (itc->itc_same_parent_miss > itc->itc_same_parent_hit)
+      if (!NS_CK_PARENT (itc))
 	goto start_at_reset;
       if (itc_next_set_parent (itc, buf_ret))
 	{
@@ -701,7 +706,7 @@ next_set:
   if (DVC_LESS == rc)
     {
       itc_check_col_prefetch (itc, *buf_ret);
-      if (itc->itc_same_parent_miss > itc->itc_same_parent_hit)
+      if (!NS_CK_PARENT (itc))
 	goto start_at_reset;
       if (itc_next_set_parent (itc, buf_ret))
 	{

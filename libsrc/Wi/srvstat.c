@@ -202,6 +202,8 @@ extern long tc_read_aside;
 extern long tc_adjust_batch_sz;
 extern long tc_cum_batch_sz;
 extern long tc_no_mem_for_longer_batch;
+extern int32 dbf_next_set_parent_min_pct;
+
 extern long tc_dc_max_alloc;
 extern long tc_dc_default_alloc;
 extern long tc_dc_alloc;
@@ -1874,6 +1876,7 @@ stat_desc_t dbf_descs[] = {
   {"dc_batch_sz", (long *) &dc_batch_sz, SD_INT32},
   {"dc_max_batch_sz", (long *) &dc_max_batch_sz, SD_INT32},
   {"enable_dyn_batch_sz", (long *) &enable_dyn_batch_sz, SD_INT32},
+  {"dbf_next_set_parent_min_pct", &dbf_next_set_parent_min_pct, SD_INT32},
   {"enable_vec_reuse", (long *) &enable_vec_reuse, SD_INT32},
   {"dc_adjust_batch_sz_min_anytime", (long *) &dc_adjust_batch_sz_min_anytime, SD_INT32},
   {"enable_split_range", (long *) &enable_split_range, SD_INT32},

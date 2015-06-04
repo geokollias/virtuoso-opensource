@@ -347,7 +347,10 @@ jp_fanout (join_plan_t * jp)
 	    case 'O':
 	    case 'o':
 	      if (DV_DB_NULL == DV_TYPE_OF (ps->ps_const))
-		continue;
+		{
+		  misc_card *= 0.001;
+		  continue;
+		}
 	      o_col = ps->ps_left_col;
 	      is_o = ps->ps_pred;
 	      o = ps->ps_const;

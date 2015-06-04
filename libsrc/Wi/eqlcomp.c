@@ -154,6 +154,7 @@ dependence_def_new (int sz)
 {
   NEW_VARZ (dependence_def_t, ddep);
   ddep->ddef_name_to_qr = id_str_hash_create (sz);
+  id_hash_rehash (ddep->ddef_name_to_qr, 100);
   ddep->ddef_mtx = mutex_allocate ();
   mutex_option (ddep->ddef_mtx, "ddep", NULL, NULL);
   return ddep;
@@ -163,19 +164,21 @@ dependence_def_new (int sz)
 void
 qr_uses_object (query_t * qr, const char *tb, dependent_t * dep, dependence_def_t * ddef)
 {
-  dk_set_t *place;
+  dk_hash_t **place;
   if (!qr)
     return;
   if (!qr_add_used_object (qr, tb, dep))
     return;
   mutex_enter (ddef->ddef_mtx);
-  place = (dk_set_t *) id_hash_get (ddef->ddef_name_to_qr, (caddr_t) & tb);
-  if (place)
-    dk_set_push (place, (void *) qr);
+  place = (dk_hash_t **) id_hash_get (ddef->ddef_name_to_qr, (caddr_t) & tb);
+  if (place && *place)
+    sethash ((void *) qr, *place, (void *) 1);
   else
     {
       caddr_t tb_copy = box_string (tb);
-      dk_set_t lst = dk_set_cons (qr, NULL);
+      dk_hash_t *lst = hash_table_allocate (1000);
+      dk_rehash (lst, 100);
+      sethash ((void *) qr, lst, (void *) 1);
       id_hash_set (ddef->ddef_name_to_qr, (caddr_t) & tb_copy, (caddr_t) & lst);
     }
   mutex_leave (ddef->ddef_mtx);
@@ -193,18 +196,18 @@ qr_uses_table (query_t * qr, const char *tb)
 void
 object_mark_affected (const char *tb, dependence_def_t * ddef, int force_text_reparsing)
 {
-  dk_set_t *place;
+  dk_hash_t **place;
   mutex_enter (ddef->ddef_mtx);
-  place = (dk_set_t *) id_hash_get (ddef->ddef_name_to_qr, (char *) &tb);
-  if (place)
+  place = (dk_hash_t **) id_hash_get (ddef->ddef_name_to_qr, (char *) &tb);
+  if (place && *place)
     {
-      DO_SET (query_t *, aqr, place)
+      DO_HT (query_t *, aqr, void *, dummy, *place)
       {
 	if (force_text_reparsing)
 	  aqr->qr_parse_tree_to_reparse = 1;
 	aqr->qr_to_recompile = 1;
       }
-      END_DO_SET ();
+      END_DO_HT;
     }
   mutex_leave (ddef->ddef_mtx);
 }
@@ -221,13 +224,14 @@ tb_mark_affected (const char *tb)
 void
 qr_drop_obj_dependencies (query_t * qr, dependent_t * dep, dependence_def_t * ddef)
 {
-  dk_set_t *lp;
+  dk_hash_t **lp;
 
   mutex_enter (ddef->ddef_mtx);
   DO_SET (char *, atb, dep)
   {
-    lp = (dk_set_t *) id_hash_get (ddef->ddef_name_to_qr, (caddr_t) & atb);
-    dk_set_delete (lp, (void *) qr);
+    lp = (dk_hash_t **) id_hash_get (ddef->ddef_name_to_qr, (caddr_t) & atb);
+    if (lp && *lp)
+      remhash ((void *) qr, *lp);
   }
   END_DO_SET ();
   mutex_leave (ddef->ddef_mtx);
