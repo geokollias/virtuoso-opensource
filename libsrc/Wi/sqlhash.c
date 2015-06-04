@@ -288,6 +288,8 @@ setp_temp_table (sql_comp_t * sc, setp_node_t * setp)
 }
 
 
+int32 setp_distinct_max_keys = 100;
+
 void
 setp_distinct_hash (sql_comp_t * sc, setp_node_t * setp, uint64 n_rows, int op)
 {

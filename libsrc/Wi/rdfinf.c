@@ -1406,6 +1406,19 @@ bif_rdf_inf_clear (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 }
 
 caddr_t
+bif_sample_cache_clear (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  sec_check_dba ((query_instance_t *) qst, "rdf_inf_clear");
+  DO_IDHASH (caddr_t, name, rdf_inf_ctx_t *, ric, rdf_name_to_ric)
+  {
+    id_hash_clear (ric->ric_samples);
+  }
+  END_DO_IDHASH;
+  return NULL;
+}
+
+
+caddr_t
 bif_rdf_inf_is_loaded (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   caddr_t ctx_name = bif_string_arg (qst, args, 0, "rdf_inf_is_loaded");
@@ -1752,6 +1765,7 @@ rdf_inf_init ()
   bif_define ("rdf_is_sub", bif_rdf_is_sub);
   bif_define ("rdf_inf_dump", bif_rdf_inf_dump);
   bif_define ("tn_cache_clear", bif_tn_cache_clear);
+  bif_define ("sample_cache_clear", bif_sample_cache_clear);
   dk_mem_hooks (DV_RI_ITERATOR, box_non_copiable, rit_free, 0);
   empty_ric = ric_allocate (box_dv_short_string ("__ empty"));
   sas_init ();
@@ -2011,6 +2025,36 @@ ric_iri_has_subs (rdf_inf_ctx_t * ric, caddr_t iri, int mode)
   return sub && (sub->rs_sub || sub->rs_equiv);
 }
 
+int
+sqlg_inf_in_probe (df_elt_t * tb_dfe, data_source_t * ts, df_elt_t * inf_dfe, rdf_inf_pre_node_t * sas_o)
+{
+  if (IS_QN (ts, hash_source_input) && inf_dfe)
+    {
+      /* leading iterator only if column is a part of probe, else it is done in the build */
+      QNCAST (hash_source_t, hs, ts);
+      state_slot_t *ssl;
+      int inx;
+      if (sas_o)
+	{
+	  if ((qn_input_fn) trans_node_input == sas_o->src_gen.src_input)
+	    ssl = ((trans_node_t *) sas_o)->tn_output[0];
+	  else
+	    ssl = sas_o->ri_output;
+	}
+      else
+	ssl = inf_dfe->dfe_ssl;
+      if (!ssl)
+	return 0;
+      DO_BOX (state_slot_t *, in, inx, hs->hs_ref_slots) if (ssl == in)
+	return 0;
+      END_DO_BOX;
+      return 1;
+    }
+  return 0;
+}
+
+#define CK_PROBE(inf, sas_o)				\
+  if (sqlg_inf_in_probe  (tb_dfe, ts, inf, sas_o)) return;
 
 int
 ric_sub_p_in_cset (rdf_inf_ctx_t * ric, caddr_t p)
@@ -2049,6 +2093,7 @@ sqlg_leading_subclass_inf (sqlo_t * so, data_source_t ** q_head, data_source_t *
     return;			/* if p is neither specified nor extracted, then do nothing.  P must ve specified or extracted if a dfe is for inference */
   if (p_const && o_iri && !ric_iri_has_subs (ctx, o_iri, RI_SUBCLASS))
     return;
+  CK_PROBE (o_dfe, sas_o);
   ri = sqlg_rdf_inf_node (so->so_sc);
   qn_ins_before (tb_dfe->dfe_sqlo->so_sc, q_head, (data_source_t *) ts, (data_source_t *) ri);
   ri->ri_mode = RI_SUBCLASS;
@@ -2118,6 +2163,7 @@ sqlg_leading_subproperty_inf (sqlo_t * so, data_source_t ** q_head, data_source_
     return;			/* if p is neither specified nor extracted, then do nothing.  P must ve specified or extracted if a dfe is for inference */
   if (p_const && !ric_iri_has_subs (ctx, p_const, RI_SUBPROPERTY))
     return;
+  CK_PROBE (p_dfe, NULL);
   ri = sqlg_rdf_inf_node (so->so_sc);
   qn_ins_before (tb_dfe->dfe_sqlo->so_sc, q_head, (data_source_t *) ts, (data_source_t *) ri);
   ri->ri_mode = RI_SUBPROPERTY;
@@ -2190,6 +2236,10 @@ sqlg_rdf_inf_same_as_opt (df_elt_t * tb_dfe)
     }
   do
     {
+      if (dfe->dfe_type == DFE_TABLE && sqlo_opt_value (dfe->_.table.ot->ot_opts, OPT_SAME_AS))
+	{
+	  return ctx;
+	}
       if (dfe->dfe_type == DFE_DT && sqlo_opt_value (dfe->_.table.ot->ot_opts, OPT_SAME_AS))
 	{
 	  return ctx;
@@ -2254,6 +2304,8 @@ sqlg_leading_same_as (sqlo_t * so, data_source_t ** q_head, data_source_t * ts,
 {
   df_elt_t **in_list;
   rdf_inf_pre_node_t *ri;
+  CK_PROBE (RI_SAME_AS_S == (mode & 15) ? s_dfe : RI_SAME_AS_O == (mode & 15) ? o_dfe : RI_SAME_AS_P == (mode % 15) ? p_dfe : NULL,
+      NULL);
   if (1 /*!= cl_run_local_only */ )
     {
       sqlg_leading_multistate_same_as (so, q_head, ts, g_dfe, s_dfe, p_dfe, o_dfe, mode, ctx, tb_dfe, inxop_inx, ri_ret);
@@ -2310,8 +2362,9 @@ sqlg_leading_same_as (sqlo_t * so, data_source_t ** q_head, data_source_t * ts,
 			ctx, tb_dfe, inxop_inx, &sas_o)
 
 #define LEADING_SAME_AS_P \
-  sqlg_leading_same_as (tb_dfe->dfe_sqlo, q_head, ts, g_dfe, s_dfe, p_dfe, o_dfe, RI_SAME_AS_P, \
-			ctx, tb_dfe, inxop_inx, &sas_p)
+  {  if (DFE_CONST != p_dfe->dfe_type || empty_ric == ctx)		\
+    sqlg_leading_same_as (tb_dfe->dfe_sqlo, q_head, ts, g_dfe, s_dfe, p_dfe, o_dfe, RI_SAME_AS_P, \
+			  ctx, tb_dfe, inxop_inx, &sas_p); }
 
 #define LEADING_IFP_S \
   sqlg_leading_same_as (tb_dfe->dfe_sqlo, q_head, ts, g_dfe, s_dfe, p_dfe, o_dfe, RI_SAME_AS_IFP | RI_SAME_AS_S, \
@@ -2530,6 +2583,7 @@ qn_ensure_prev (sql_comp_t * sc, data_source_t ** head, data_source_t * qn)
   (((qn_input_fn) rdf_inf_pre_input == (qn)->src_input && !((rdf_inf_pre_node_t *)(qn))->ri_is_after) \
     || (qn_input_fn)in_iter_input  == (qn)->src_input)
 
+#define IS_ITER_OR_TXS(qn) (IS_ITER(qn) || (qn_input_fn)txs_input == (qn)->src_input)
 
 void
 sqlc_asg_mark (state_slot_t * ssl)
@@ -2653,7 +2707,7 @@ sqlg_cl_outer_with_iters (df_elt_t * tb_dfe, data_source_t * ts, data_source_t *
     {
       if (IS_TS (qn))
 	((table_source_t *) qn)->ts_is_outer = 0;
-      if (IS_ITER (qn))
+      if (IS_ITER_OR_TXS (qn))
 	{
 	  if (!first_iter)
 	    first_iter = qn;

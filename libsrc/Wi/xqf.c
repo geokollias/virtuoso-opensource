@@ -304,7 +304,8 @@ __integer_from_string (caddr_t * n, const char *str, int do_what)
   while ('0' == *p)
     p++;
   if ((s && ((XQ_NNINT == do_what) || (XQ_PINT == do_what) || ((XQ_UINT8 <= do_what) && (XQ_UINT64 >= do_what)))) ||
-      (!s && ((XQ_NPINT == do_what) || (XQ_NINT == do_what))) || (('\0' == p[0]) && ((XQ_NINT == do_what) || (XQ_PINT == do_what))))
+      (!s && ((XQ_NINT == do_what) || ((XQ_NPINT == do_what) && ('\0' != p[0])))) ||
+      (('\0' == p[0]) && ((XQ_NINT == do_what) || (XQ_PINT == do_what))))
     sqlr_new_error ("42001", "XPQ??", "'%.100s' is not a valid value for %s constructor", str, s_int_name[do_what]);
   if (XQ_INT <= do_what)
     {
@@ -3462,7 +3463,7 @@ xdt_define_builtin (const char *xpfm_name,
 static xqf_str_parser_desc_t xqf_str_parser_descs[] = {
 /* Keep these strings sorted alphabetically by p_name! */
 /*	p_name			| p_proc			| p_rcheck		| p_opcode		| null	| box	| p_dest_dtp	| p_typed_bif_name		| p_sql_cast_type */
-  {"boolean", __boolean_from_string, __boolean_rcheck, 0, 0, 0, DV_LONG_INT, "__xqf_str_parse_boolean", NULL},
+  {"boolean", __boolean_from_string, __boolean_rcheck, 0, 0, 1, DV_LONG_INT, "__xqf_str_parse_boolean", NULL},
   {"byte", __integer_from_string, __integer_rcheck, XQ_INT8, 0, 1, DV_LONG_INT, "__xqf_str_parse_integer", NULL},
   {"currentDateTime", __cur_datetime, NULL, 0, 0, 0, 0, "__xqf_str_parse_datetime", NULL},
   {"date", __datetime_from_string, __datetime_rcheck, XQ_DATE, 0, 0, DV_DATETIME, "__xqf_str_parse_date", NULL /* not "DATE" */ },
@@ -3480,21 +3481,21 @@ static xqf_str_parser_desc_t xqf_str_parser_descs[] = {
   {"int", __integer_from_string, __integer_rcheck, XQ_INT32, 0, 1, DV_LONG_INT, "__xqf_str_parse_integer", NULL},
   {"integer", __integer_from_string, __integer_rcheck, XQ_INT, 0, 0, DV_LONG_INT, "__xqf_str_parse_integer", "INTEGER"},
   {"long", __integer_from_string, __integer_rcheck, XQ_INT64, 0, 1, DV_LONG_INT, "__xqf_str_parse_integer", "INTEGER"},
-  {"negativeInteger", __integer_from_string, __integer_rcheck, XQ_NINT, 0, 0, DV_LONG_INT, "__xqf_str_parse_integer", NULL},
-  {"nonNegativeInteger", __integer_from_string, __integer_rcheck, XQ_NNINT, 0, 0, DV_LONG_INT, "__xqf_str_parse_integer", NULL},
-  {"nonPositiveInteger", __integer_from_string, __integer_rcheck, XQ_NPINT, 0, 0, DV_LONG_INT, "__xqf_str_parse_integer", NULL},
-  {"normalizedString", __gen_string_from_string, __gen_string_rcheck, XQ_NORM_STRING, 0, 3, 0, "__xqf_str_parse_nvarchar", NULL},
-  {"positiveInteger", __integer_from_string, __integer_rcheck, XQ_PINT, 0, 0, DV_LONG_INT, "__xqf_str_parse_integer", NULL},
+  {"negativeInteger", __integer_from_string, __integer_rcheck, XQ_NINT, 0, 1, DV_LONG_INT, "__xqf_str_parse_integer", NULL},
+  {"nonNegativeInteger", __integer_from_string, __integer_rcheck, XQ_NNINT, 0, 1, DV_LONG_INT, "__xqf_str_parse_integer", NULL},
+  {"nonPositiveInteger", __integer_from_string, __integer_rcheck, XQ_NPINT, 0, 1, DV_LONG_INT, "__xqf_str_parse_integer", NULL},
+  {"normalizedString", __gen_string_from_string, __gen_string_rcheck, XQ_NORM_STRING, 0, 1, 0, "__xqf_str_parse_nvarchar", NULL},
+  {"positiveInteger", __integer_from_string, __integer_rcheck, XQ_PINT, 0, 1, DV_LONG_INT, "__xqf_str_parse_integer", NULL},
   {"precisionDecimal", __numeric_from_string, NULL /*??? */ , 0, 0, 1, DV_NUMERIC, "__xqf_str_parse_numeric", NULL},
   {"short", __integer_from_string, __integer_rcheck, XQ_INT16, 0, 1, DV_LONG_INT, "__xqf_str_parse_integer", NULL},
   {"string", __gen_string_from_string, __gen_string_rcheck, XQ_STRING, 0, 1, DV_STRING, "__xqf_str_parse_nvarchar", "VARCHAR"},
   {"time", __datetime_from_string, __datetime_rcheck, XQ_TIME, 0, 0, DV_DATETIME, "__xqf_str_parse_time", NULL /* not "TIME" */ },
-  {"token", __gen_string_from_string, __gen_string_rcheck, XQ_TOKEN, 0, 3, 0, "__xqf_str_parse_nvarchar", NULL},
-  {"unsignedByte", __integer_from_string, __integer_rcheck, XQ_UINT8, 0, 0, DV_LONG_INT, "__xqf_str_parse_integer", NULL},
-  {"unsignedInt", __integer_from_string, __integer_rcheck, XQ_UINT32, 0, 0, DV_LONG_INT, "__xqf_str_parse_integer", NULL},
-  {"unsignedLong", __integer_from_string, __integer_rcheck, XQ_UINT64, 0, 0, DV_LONG_INT, "__xqf_str_parse_integer", NULL},
-  {"unsignedShort", __integer_from_string, __integer_rcheck, XQ_UINT16, 0, 0, DV_LONG_INT, "__xqf_str_parse_integer", NULL},
-  {"yearMonthDuration", __duration_from_string, NULL /*??? */ , 0, 0, 3, 0, "__xqf_str_parse_datetime", NULL}
+  {"token", __gen_string_from_string, __gen_string_rcheck, XQ_TOKEN, 0, 1, 0, "__xqf_str_parse_nvarchar", NULL},
+  {"unsignedByte", __integer_from_string, __integer_rcheck, XQ_UINT8, 0, 1, DV_LONG_INT, "__xqf_str_parse_integer", NULL},
+  {"unsignedInt", __integer_from_string, __integer_rcheck, XQ_UINT32, 0, 1, DV_LONG_INT, "__xqf_str_parse_integer", NULL},
+  {"unsignedLong", __integer_from_string, __integer_rcheck, XQ_UINT64, 0, 1, DV_LONG_INT, "__xqf_str_parse_integer", NULL},
+  {"unsignedShort", __integer_from_string, __integer_rcheck, XQ_UINT16, 0, 1, DV_LONG_INT, "__xqf_str_parse_integer", NULL},
+  {"yearMonthDuration", __duration_from_string, NULL /*??? */ , 0, 0, 1, 0, "__xqf_str_parse_datetime", NULL}
 };
 
 /* No parsing or validation for

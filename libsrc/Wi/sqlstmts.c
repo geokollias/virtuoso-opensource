@@ -1435,7 +1435,7 @@ sqlc_update_searched (sql_comp_t * sc, ST * tree)
   ST *vd;
   caddr_t *opts = tree->_.update_src.table_exp->_.table_exp.opts;
   int trig_event = sqlo_opt_value (opts, OPT_NO_TRIGGER) ? -1 : TRIG_UPDATE;
-  int inx, sec_checked;
+  int inx, sec_checked, env_done = 0;
   ST *tb_ref = tree->_.update_src.table;
   dbe_table_t *tb = sch_name_to_table (sc->sc_cc->cc_schema,
       tree->_.update_src.table->_.table.name);
@@ -1537,6 +1537,8 @@ sqlc_update_searched (sql_comp_t * sc, ST * tree)
 	sqlc_cset_ssls (sc, &upd->upd_cset_psog, &upd->upd_cset_posg, NULL);
       sqlc_upd_param_types (sc, upd);
       upd_optimize (sc, upd);
+      if (!env_done)
+	sqlg_qr_env (sc, sc->sc_cc->cc_query);
     }
 }
 
@@ -1636,8 +1638,10 @@ sqlc_delete_searched (sql_comp_t * sc, ST * tree)
   trig_cols_t tc;
   ST *vd;
   ST *from = tree->_.delete_src.table_exp->_.table_exp.from[0];
+  caddr_t *opts = tree->_.delete_src.table_exp->_.table_exp.opts;
   dbe_table_t *tb = sch_name_to_table (sc->sc_cc->cc_schema,
       from->_.table.name);
+  int key_trig_event = sqlo_opt_value (opts, OPT_TRIGGER) ? TRIG_DELETE : -1, env_done = 0;
   sqlc_table_used (sc, tb);
   if (tb && !sec_tb_check (tb, (oid_t) unbox (from->_.table.g_id), (oid_t) unbox (from->_.table.u_id), GR_DELETE))
     sqlc_new_error (sc->sc_cc, "42000", "SQ110:SECURITY", "Permission denied for delete from %.300s (user ID = %lu)",
@@ -1662,7 +1666,7 @@ sqlc_delete_searched (sql_comp_t * sc, ST * tree)
       del->del_table = tb;
       del->del_policy_qr = sqlc_make_policy_trig (sc->sc_cc, tb, TB_RLS_D);
       del->del_key_only = sqlc_del_key_only (sc, del->del_table, tree->_.delete_src.table_exp);
-      tc_init (&tc, del->del_key_only ? -1 : TRIG_DELETE, tb, NULL, NULL,
+      tc_init (&tc, del->del_key_only ? key_trig_event : TRIG_DELETE, tb, NULL, NULL,
 	  sqlg_is_vector ? (del->del_key_only ? del->del_key_only : TC_ALL_KEYS) : 0);
       sc->sc_in_cursor_def = 1;
       sc->sc_cc->cc_query->qr_lock_mode = PL_EXCLUSIVE;
@@ -1689,6 +1693,8 @@ sqlc_delete_searched (sql_comp_t * sc, ST * tree)
 	sqlg_qr_env (sc, sc->sc_cc->cc_query);
       }
       tc_free (&tc);
+      if (!env_done)
+	sqlg_qr_env (sc, sc->sc_cc->cc_query);
     }
 }
 

@@ -576,8 +576,8 @@ sqlg_ks_vec (sqlo_t * so, df_elt_t * tb_dfe, key_source_t * ks)
 int enable_cl_fref_union = 1;
 int enable_row_ranges = 1;
 
-#define SP_IS_LOWER(sp) (CMP_GT == sp->sp_min_op || CMP_GTE == sp->sp_min_op)
-#define SP_IS_UPPER(sp) (CMP_LT == sp->sp_max_op || CMP_LTE == sp->sp_max_op)
+#define SP_IS_LOWER(sp) ((CMP_GT == sp->sp_min_op || CMP_GTE == sp->sp_min_op) && CMP_NONE == sp->sp_max_op)
+#define SP_IS_UPPER(sp) ((CMP_LT == sp->sp_max_op || CMP_LTE == sp->sp_max_op) && CMP_NONE == sp->sp_min_op)
 
 void
 sqlg_ks_row_ranges (key_source_t * ks)
@@ -2385,7 +2385,6 @@ sqlg_hash_filler (sqlo_t * so, df_elt_t * tb_dfe, data_source_t * ts_src)
   ha->ha_allow_nulls = 0;
   ha->ha_op = HA_FILL;
   ha->ha_memcache_only = 0;
-  sqlg_setp_append (so, &ts_post, setp);
 
 #ifdef NEW_HASH
   if (shareable)
@@ -2397,6 +2396,12 @@ sqlg_hash_filler (sqlo_t * so, df_elt_t * tb_dfe, data_source_t * ts_src)
     fref->fnr_select = head;
     fref->fnr_select_nodes = sqlg_continue_list (head);
     fref->fnr_setp = setp;
+    sqlg_rdf_inf (tb_dfe, (data_source_t *) ts_src, &fref->fnr_select);
+    ts_post = fref->fnr_select;
+    while (qn_next (ts_post))
+      ts_post = qn_next (ts_post);
+
+    sqlg_setp_append (so, &ts_post, setp);
     setp->setp_fref = fref;
     if (setp->setp_cl_partition
 	|| (enable_par_fill && enable_par_fill < 3 && enable_chash_join && ha->ha_row_count > chash_min_parallel_fill_rows
@@ -2458,7 +2463,8 @@ sqlg_hash_filler_dt (sqlo_t * so, df_elt_t * dt_dfe, subq_source_t * sqs)
 	  dt_dfe->_.sub.gby_hash_filler = 0;
 	  return sqlg_hash_filler_dt (so, dt_dfe, sqs);
 	}
-      setp->setp_cl_partition = dt_dfe->_.sub.hash_filler_of->_.table.ot->ot_hash_filler = setp;
+      setp->setp_cl_partition = 0;
+      dt_dfe->_.sub.hash_filler_of->_.table.ot->ot_hash_filler = setp;
       setp->setp_is_gb_build = SETP_GBB;
       setp->setp_no_bloom = 1;
       if (2 == dt_dfe->_.sub.hash_filler_of->_.table.is_right_oj || setp->setp_partitioned)
@@ -3462,6 +3468,58 @@ box_position_no_tag (caddr_t * box, caddr_t elt)
 }
 
 
+void
+sqlg_mark_not_gen (df_elt_t * dfe)
+{
+  /* a trans dt has the reverse dir sharing col and possibly col pred dfes with the fwd direction.  These must be marked placed and not gen to get the reverse with right placing */
+  if (!IS_BOX_POINTER (dfe))
+    return;
+  if (DV_ARRAY_OF_POINTER == DV_TYPE_OF (dfe))
+    {
+      int inx;
+      df_elt_t **dfe_arr = (df_elt_t **) dfe;
+      DO_BOX (df_elt_t *, elt, inx, dfe_arr)
+      {
+	sqlg_mark_not_gen (elt);
+      }
+      END_DO_BOX;
+      return;
+    }
+  switch (dfe->dfe_type)
+    {
+    case DFE_VALUE_SUBQ:
+    case DFE_EXISTS:
+    case DFE_DT:
+      {
+	df_elt_t *sub;
+	if (dfe->_.sub.generated_dfe)
+	  {
+	    sqlg_mark_not_gen (dfe->_.sub.generated_dfe);
+	    return;
+	  }
+	sqlg_mark_not_gen ((df_elt_t *) dfe->_.sub.join_test);
+	sqlg_mark_not_gen ((df_elt_t *) dfe->_.sub.after_join_test);
+	sqlg_mark_not_gen ((df_elt_t *) dfe->_.sub.vdb_join_test);
+	sqlg_mark_not_gen ((df_elt_t *) dfe->_.sub.invariant_test);
+	for (sub = dfe->_.sub.first; sub; sub = sub->dfe_next)
+	  sqlg_mark_not_gen (sub);
+	break;
+      }
+    case DFE_TABLE:
+      {
+	DO_SET (df_elt_t *, col, &dfe->_.table.out_cols) col->dfe_is_placed = DFE_PLACED;
+	END_DO_SET ();
+	DO_SET (df_elt_t *, col, &dfe->_.table.all_preds) col->dfe_is_placed = DFE_PLACED;
+	END_DO_SET ();
+	sqlg_mark_not_gen ((df_elt_t *) dfe->_.table.join_test);
+	sqlg_mark_not_gen ((df_elt_t *) dfe->_.table.after_join_test);
+	sqlg_mark_not_gen ((df_elt_t *) dfe->_.table.vdb_join_test);
+	break;
+      }
+    }
+}
+
+
 state_slot_t *
 tn_nth_col (sql_comp_t * sc, trans_node_t * tn, int inx)
 {
@@ -3609,6 +3667,7 @@ sqlg_make_trans_dt (sqlo_t * so, df_elt_t * dt_dfe, ST ** target_names, dk_set_t
     {
       tl->tl_complement->dfe_super = dt_dfe;
       tl->tl_complement->dfe_prev = dt_dfe->dfe_prev;
+      sqlg_mark_not_gen (tl->tl_complement);
       tn->tn_complement = (trans_node_t *) sqlg_make_trans_dt (so, tl->tl_complement, target_names, pre_code);
       tn->tn_complement->tn_is_primary = 0;
       tn->tn_complement->tn_complement = tn;
@@ -4549,7 +4608,7 @@ sqlg_is_multistate_gb (sqlo_t * so)
       }
       END_DO_SET ();
     }
-  if (param_inx)
+  if (param_inx || any_param)
     return 1;			/* any parametrized with ? is multistate */
   if ((pars = sc->sc_cc->cc_query->qr_parms))
     {
@@ -4791,6 +4850,8 @@ sqlg_may_parallelize (sql_comp_t * sc, data_source_t * qn)
 	goto no;
       if (IS_TS (ts))
 	{
+	  if (ts->ts_order_ks->ks_is_proc_view)
+	    goto no;
 	}
       if (IS_QN (ts, setp_node_input) && ((setp_node_t *) ts)->setp_distinct && enable_dfg < 2)
 	goto no;
@@ -4908,26 +4969,32 @@ sqlg_top_distinct (sql_comp_t * sc, table_source_t * ts)
 #define SDFG_PART_HS 2		/* because needs partitioned hash join, e.g. hash right oj */
 #define SDFG_POST_SDFG 3	/* because previous fref was partitioned and running over the results straight from the group by partitions */
 #define SDFG_STREAMING 4
+#define SDFG_NO_PAR 5
+
 
 int
 sqlg_sdfg_group (df_elt_t * dt_dfe, data_source_t * qn)
 {
   /* use a partitioned group by in single server? */
+  int no_dfg = 0, starts_w_dfg_ts = 0;
   for (qn = qn; qn; qn = qn_next (qn))
     {
       if (IS_QN (qn, setp_node_input))
 	{
 	  QNCAST (setp_node_t, setp, qn);
+	  if (CL_RUN_LOCAL == cl_run_local_only && dt_dfe->_.sub.hash_filler_of && HA_GROUP == setp->setp_ha->ha_op)
+	    return 0;		/* a group by in hash build on single server will not be partitioned */
+
 	  if (setp->setp_any_distinct_gos)
-	    return 1;
+	    return no_dfg ? SDFG_NO_PAR : 1;
 	  if (setp->setp_is_streaming)
 	    return SDFG_STREAMING;
 	  if (setp->setp_loc_ts)
 	    return 1;
 	  if (setp->setp_any_user_aggregate_gos || setp->setp_distinct)
-	    return SDFG_HIGH_CARD_GBY;
+	    return no_dfg ? SDFG_NO_PAR : SDFG_HIGH_CARD_GBY;
 	  if (setp->setp_ha && HA_GROUP == setp->setp_ha->ha_op && setp_is_high_card (setp))
-	    return SDFG_HIGH_CARD_GBY;
+	    return no_dfg ? 0 : SDFG_HIGH_CARD_GBY;
 	  if (setp->setp_ha && HA_FILL == setp->setp_ha->ha_op && setp->setp_cl_partition)
 	    return SDFG_PART_HS;
 	}
@@ -4938,6 +5005,22 @@ sqlg_sdfg_group (df_elt_t * dt_dfe, data_source_t * qn)
 	    return SDFG_PART_HS;
 	  if (hs->hs_roj || HS_CL_PART == hs->hs_cl_partition)
 	    return SDFG_PART_HS;
+	}
+      if (IS_RTS (qn))
+	{
+	  if (!starts_w_dfg_ts)
+	    no_dfg = 1;
+	}
+      if (IS_TS (qn))
+	{
+	  QNCAST (table_source_t, ts, qn);
+	  if (ts->ts_fs && !starts_w_dfg_ts)
+	    no_dfg = 1;
+	  else
+	    {
+	      no_dfg = 0;
+	      starts_w_dfg_ts = 1;
+	    }
 	}
     }
   return 0;
@@ -5089,6 +5172,8 @@ sqlg_parallel_ts_seq (sql_comp_t * sc, df_elt_t * dt_dfe, table_source_t * ts, f
   else
     {
       is_sdfg = sqlg_sdfg_group (dt_dfe, (data_source_t *) ts);
+      if (SDFG_NO_PAR == is_sdfg)
+	return;			/* some combinations like file ts w no sdfg support  and gby w distinct do not parallelize */
       if (SDFG_STREAMING == is_sdfg)
 	{
 	  is_sdfg = 0;
@@ -5475,6 +5560,25 @@ sqlg_is_subq_sel (data_source_t * qn)
 
 
 int
+sqlg_all_have_ts (dk_set_t terms)
+{
+  /* a union that has a branch that contains no ts cannot get partitioned setp in single */
+  if (CL_RUN_LOCAL != cl_run_local_only)
+    return 1;
+  DO_SET (data_source_t *, qn, &terms)
+  {
+    for (; qn; qn = qn_next (qn))
+      if (IS_TS (qn))
+	goto has_ts;
+    return 0;
+  has_ts:;
+  }
+  END_DO_SET ();
+  return 1;
+}
+
+
+int
 sqlg_union_fref (sql_comp_t * sc, fun_ref_node_t * fref, df_elt_t * dt_dfe, dk_set_t * terms_ret)
 {
   /* if the body of the fref is a  union subq followed by setp or an aggregate code vec, put the setp or cv in the branches */
@@ -5509,6 +5613,8 @@ sqlg_union_fref (sql_comp_t * sc, fun_ref_node_t * fref, df_elt_t * dt_dfe, dk_s
   if (next && !qn_tail_is_copiable (next))
     return 0;
   if (!cv_is_copiable (sqs->src_gen.src_after_code) || !cv_is_copiable (sqs->src_gen.src_pre_code) || !cv_is_copiable (post))
+    return 0;
+  if (!sqlg_all_have_ts (terms))
     return 0;
   sc->sc_cc->cc_query = uni_sqs->sqs_query;
   if (post)
@@ -5851,6 +5957,7 @@ sqlg_make_sort_nodes (sqlo_t * so, data_source_t ** head, ST ** order_by,
   int is_grouping_sets = (is_gb && (BOX_ELEMENTS (group_by) > 1));
   ST *gs_top = 0;
   NEW_VARZ (fun_ref_node_t, fref_node);
+  sc->sc_no_lit_param = 1;
   sc->sc_fref = fref_node;
   SQL_NODE_INIT_NO_ALLOC (fun_ref_node_t, fref_node, fun_ref_node_input, fun_ref_free);
 
@@ -6299,6 +6406,7 @@ sqlg_make_sort_nodes (sqlo_t * so, data_source_t ** head, ST ** order_by,
   fref_node->fnr_setps = setps_set;
   if (is_grouping_sets || !fref_node->fnr_setp->setp_is_streaming)
     sqlg_place_fref (sc, head, fref_node, tb_dfe);
+  sc->sc_no_lit_param = 0;
 }
 
 
@@ -6469,6 +6577,22 @@ sqlg_simple_fun_ref (sqlo_t * so, data_source_t ** head, df_elt_t * tb_dfe, dk_s
 }
 
 
+int
+dfe_is_oby_key (sqlo_t * so, df_elt_t * oby, df_elt_t * out_dfe)
+{
+  int inx;
+  DO_BOX (ST *, spec, inx, oby->_.setp.specs)
+  {
+    ST *exp = spec->_.o_spec.col;
+    df_elt_t *dfe = sqlo_df_elt (so, exp);
+    if (dfe == out_dfe)
+      return 1;
+  }
+  END_DO_BOX;
+  return 0;
+}
+
+
 data_source_t *
 sqlg_oby_node (sqlo_t * so, data_source_t ** head, df_elt_t * oby, df_elt_t * dt_dfe, dk_set_t pre_code)
 {
@@ -6476,10 +6600,18 @@ sqlg_oby_node (sqlo_t * so, data_source_t ** head, df_elt_t * oby, df_elt_t * dt
   ST *tree = dt_dfe->dfe_tree;
   state_slot_t **ssl_out;
   int inx;
+  sc->sc_no_lit_param = 1;
   if (oby->_.setp.is_late_proj)
     {
       dk_set_t dep = NULL;
-      ssl_out = (state_slot_t **) t_list_to_array (oby->_.setp.late_proj);
+      dk_set_t out_cols = oby->_.setp.late_proj;
+      DO_BOX (df_elt_t *, out_dfe, inx, dt_dfe->_.sub.dt_out)
+      {
+	if (dfe_is_oby_key (so, oby, out_dfe))
+	  t_set_push (&out_cols, out_dfe);
+      }
+      END_DO_BOX;
+      ssl_out = (state_slot_t **) t_list_to_array (out_cols);
       DO_BOX (df_elt_t *, exp, inx, ssl_out)
       {
 	ssl_out[inx] = scalar_exp_generate (sc, exp->dfe_tree, &pre_code);
@@ -7316,7 +7448,8 @@ sqlg_dt_query_1 (sqlo_t * so, df_elt_t * dt_dfe, query_t * ext_query, ST ** targ
     sqlc_error (so->so_sc->sc_cc, ".....", "Stack Overflow");
   if (DK_MEM_RESERVE)
     sqlc_error (so->so_sc->sc_cc, ".....", "Out of memory");
-  sc->sc_is_single_state = dt_dfe->_.sub.gby_hash_filler || !sqlg_is_multistate_gb (so);
+  sc->sc_is_single_state = !dt_dfe->_.sub.trans && (dt_dfe->_.sub.gby_hash_filler || !sqlg_is_multistate_gb (so));
+
   sc->sc_delay_colocate = 0;
   sc->sc_re_emit_code = 0;
   sqlg_qn_has_dfe ((data_source_t *) qr, dt_dfe);
@@ -7807,6 +7940,8 @@ dfe_unit_col_loci (df_elt_t * dfe)
 		}
 		END_DO_BOX;
 	      }
+	    if (dfe->dfe_tree && dfe->dfe_tree != dfe->_.sub.ot->ot_dt)
+	      dfe->_.sub.ot->ot_dt = dfe->dfe_tree;
 	    if (dfe->_.sub.hash_filler_of)
 	      t_set_pushfirst (&dfe->dfe_sqlo->so_hash_fillers, (void *) dfe);
 	    if (dfe->_.sub.hash_filler)
@@ -7934,6 +8069,7 @@ sqlg_lit_params (sql_comp_t * sc)
       snprintf (str, sizeof (str), ":lp%d", dfe->dfe_nth_param);
       ssl = ssl_new_parameter (sc->sc_cc, str);
       dk_set_push (&qr->qr_parms, (void *) ssl);
+      ssl->ssl_is_lit_param = 1;
       ssl->ssl_qr_global = 1;
       ssl->ssl_sqt.sqt_dtp = DV_TYPE_OF (dfe->dfe_tree);
       ssl->ssl_constant = box_copy_tree (dfe->dfe_tree);

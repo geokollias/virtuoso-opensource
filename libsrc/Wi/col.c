@@ -40,7 +40,6 @@
 #include "sqlbif.h"
 #include "mhash.h"
 
-
 #define IS_64(n) \
   (!((n) >= (int64) INT32_MIN && (n) <= (int64) INT32_MAX))
 
@@ -1060,7 +1059,7 @@ int enable_ce_skip_bits_2 = 0;
   {if (enable_ce_skip_bits_2) ce_skip_bits_2 (bits, skip, byte, bit);	\
    else ce_skip_bits (bits, skip, byte, bit);}
 
-#if !defined (__GNUC__)
+#if !defined (ENABLE_GCC)
 uint64
 popcount (uint64 x)
 {
@@ -2366,7 +2365,8 @@ new_ce:
 	}
     next_from_pm:
       itc = cpo->cpo_itc;
-      if (itc && itc->itc_is_last_col_spec && itc->itc_n_results + itc->itc_match_out >= itc->itc_batch_size && itc->itc_batch_size)
+      if (itc && itc->itc_is_last_col_spec && itc->itc_n_results + itc->itc_match_out >= itc->itc_batch_size && itc->itc_batch_size
+	  && !itc->itc_random_search)
 	{
 	  int n_sps = itc->itc_n_row_specs;
 	  if (n_sps > 1)
@@ -5063,7 +5063,7 @@ dveq (db_buf_t dv1, db_buf_t dv2)
   DB_BUF_TLEN (len2, dv2[0], dv2);
   if (len1 != len2)
     return 1;
-#if defined(__GNUC__)
+#if defined(ENABLE_GCC)
   return __builtin_memcmp (dv1, dv2, len1);
 #else
   return memcmp (dv1, dv2, len1);
@@ -5159,7 +5159,7 @@ dveq_test (int mode, int repeats)
 int
 memcmp_inl (char *s1, char *s2, int l)
 {
-#if defined(__GNUC__)
+#if defined(ENABLE_GCC)
   return __builtin_memcmp (s1, s2, l);
 #else
   return memcmp (s1, s2, l);
@@ -5254,7 +5254,7 @@ test_if (int n)
 int
 test_popcnt (unsigned long l)
 {
-#if defined(__GNUC__)
+#if defined(ENABLE_GCC)
   return __builtin_popcountl (l);
 #endif
   return 0;
@@ -5312,7 +5312,7 @@ mhash64 (const void *key, int len, uint64 seed)
 
 
 
-#if defined(__GNUC__)
+#if defined(ENABLE_GCC)
 v2di_t mhash_r_v;
 v2di_t mhash_m_v;
 
@@ -5459,7 +5459,7 @@ test_add_2 (int64 * str, int n)
 void
 bzero16 (long *p, int n)
 {
-#if defined(__GNUC__)
+#if defined(ENABLE_GCC)
   int i;
   v2di_u_t z;
   z.l[0] = 0;
@@ -5478,7 +5478,7 @@ bzero16 (long *p, int n)
 void
 cpy16 (long *t, long *s, int n)
 {
-#if defined(__GNUC__)
+#if defined(ENABLE_GCC)
   ptrlong t2 = (ptrlong) t;
   ptrlong s2 = (ptrlong) s;
   int i;
@@ -5501,7 +5501,7 @@ cpy16 (long *t, long *s, int n)
 void
 memcpy_c_inl (char *s1, char *s2, int l)
 {
-#if defined(__GNUC__)
+#if defined(ENABLE_GCC)
   __builtin_memcpy (s1, s2, l);
 #else
   memcpy (s1, s2, l);
@@ -5511,7 +5511,7 @@ memcpy_c_inl (char *s1, char *s2, int l)
 void
 memcpy_d_inl (long *s1, long *s2, int l)
 {
-#if defined(__GNUC__)
+#if defined(ENABLE_GCC)
   __builtin_memcpy (s1, s2, l);
 #else
   memcpy (s1, s2, l);
@@ -5522,7 +5522,7 @@ memcpy_d_inl (long *s1, long *s2, int l)
 void
 test_bzero (long *p, int n)
 {
-#if defined(__GNUC__)
+#if defined(ENABLE_GCC)
   __builtin_memset (p, 0, 8 * n);
 #endif
 }
@@ -5544,7 +5544,7 @@ test_vecplus (double *res, double *d1, double *d2, int n)
 int
 test_cmp (char *s1, char *s2)
 {
-#if defined(__GNUC__)
+#if defined(ENABLE_GCC)
   v2di_u_t r;
   r.v = *(v2di_t *) s1 - *(v2di_t *) s2;
   if (0 == (r.l[0] | r.l[1]))

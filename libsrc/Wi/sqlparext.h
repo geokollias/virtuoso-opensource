@@ -362,11 +362,12 @@ Note: bitwise OR of all these masks should be less than SMALLEST_POSSIBLE_POINTE
 #define OPT_NO_DT_INLINE ((ptrlong)961)
 #define OPT_SEC_EXCEPT ((ptrlong)962)
 #define OPT_CARDINALITY ((ptrlong)963)
-#define OPT_VALUES ((ptrlong)964)
+#define OPT_VALUES ((ptrlong)971)
 #define OPT_EXECUTE ((ptrlong)965)
 #define OPT_BORDER ((ptrlong)966)
 #define OPT_G_SEC ((ptrlong)967)
 
+#define OPT_TRIGGER ((ptrlong)964)
 
 #define OPT_EST_TIME ((ptrlong)950)
 #define OPT_EST_SIZE ((ptrlong)951)
@@ -867,7 +868,6 @@ typedef struct sql_tree_s
   else st->_.select_stmt.top->_.top.all_distinct = f; \
 }
 
-extern long sqlp_bin_op_serial;
 
 #define IS_ARITM_BOP(opq) \
 	((opq) == BOP_PLUS || \

@@ -965,6 +965,13 @@ not_found:
 #endif
 
 
+void
+cm_free_rbuf (cl_message_t * cm)
+{
+  cm_free (cm);
+}
+
+
 rbuf_t *
 cm_rbuf_allocate ()
 {
@@ -973,7 +980,7 @@ cm_rbuf_allocate ()
   rb = (rbuf_t *) resource_get (cll_rbuf_rc);
   if (rb->rb_count)
     GPF_T1 ("expected to get empty rbuf from cll rbuf rc");
-  rb->rb_free_func = (rbuf_free_t) cm_free;
+  rb->rb_free_func = (rbuf_free_t) cm_free_rbuf;
   return rb;
 }
 

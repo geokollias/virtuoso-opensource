@@ -169,7 +169,8 @@ create procedure rdf_rl_lang_id (in ln varchar)
 {
   declare id, old_mode int;
   declare daq  any;
-  id := (select rl_twobyte from rdf_language  where rl_id = ln);
+  ln := lower (ln);
+  id := (select RL_TWOBYTE from DB.DBA.RDF_LANGUAGE where RL_ID = ln);
   if (id)
     {
       rdf_cache_id ('l', ln, id);
@@ -188,7 +189,7 @@ create procedure rdf_rl_lang_id (in ln varchar)
  again:
   if (2 = old_mode)
     log_enable (0, 1);
-  id := (select rl_twobyte from rdf_language  where rl_id = ln);
+  id := (select RL_TWOBYTE from DB.DBA.RDF_LANGUAGE where RL_ID = ln);
   if (id)
     {
       rdf_cache_id ('l', ln, id);
@@ -632,6 +633,13 @@ create procedure ID_TO_IRI_VEC (in id iri_id)
   declare idn int;
   if (id is null)
     return id;
+  if (not isiri_id (id))
+    {
+      if (__tag (id) = __tag of UNAME)
+        return id;
+      if (__tag (id) = __tag of varchar and bit_and (__box_flags (id), 1))
+        return id;
+    }
   idn := iri_id_num (id);
   if ((id >= #ib0) and (id < min_named_bnode_iri_id()))
     {
@@ -667,14 +675,16 @@ create procedure ID_TO_IRI_VEC (in id iri_id)
 }
 ;
 
-
 create procedure ID_TO_IRI_VEC_NS (in id any array)
 {
   vectored;
   declare name, pref varchar;
   declare idn int;
   if (not isiri_id (id))
-    return id;
+    return (case (__tag (id))
+      when __tag of UNAME then id
+      when __tag of varchar then case when bit_and (__box_flags (id), 1) then id else NULL end
+      else NULL end );
   idn := iri_id_num (id);
   if ((id >= #ib0) and (id < min_named_bnode_iri_id()))
     {
@@ -774,7 +784,7 @@ create procedure rdf_vec_ins_triples (in s any, in p any, in o any, in g any)
     else
       {
         dp := dpipe (5, 'IRI_TO_ID_1', 'IRI_TO_ID_1', 'IRI_TO_ID_1', 'MAKE_RO_1', 'IRI_TO_ID_1');
-	dpipe_set_rdf_load (dp, 1);
+	dpipe_set_rdf_load (dp, 2); -- multiple graphs flag as G is given
       }
   }
   dpipe_input (dp, s, p, null, o, g);
@@ -792,16 +802,24 @@ create procedure rdf_vec_ins_triples (in s any, in p any, in o any, in g any)
 }
 ;
 
-create procedure rdf_o_cvt_c (in o any, in o_type any, in o_flags int, in is_local int) returns any array
+create procedure DB.DBA.RDF_MAKE_S_O_FROM_PARTS_AND_FLAGS_C (inout s any array, in o any, in o_type any, in o_flags int, in is_local int) returns any array
 {
   vectored;
+  not vectored {
+    declare xlat_dict any;
+    xlat_dict := connection_get ('RDF_INSERT_TRIPLE_C_BNODES');
+  }
   declare is_text int;
   declare lid, tid int;
-   is_text := bit_and (o_flags, 16);
+  is_text := bit_and (o_flags, 16);
   o_flags := bit_and (o_flags, 15);
   declare rb any array;
+  if (xlat_dict is not null and (__tag(s) in (__tag of varchar, __tag of UNAME)) and s like '[_]:%')
+    s := __bft ('nodeID://' || dict_get_or_set_sequence_next (xlat_dict, __bft (s,1), 'RDF_URL_IID_BLANK'), 1);
+  if (o_flags in (0,15) and xlat_dict is not null and ((__tag(o) = __tag of UNAME) or (__tag(o) = __tag of varchar)) and o like '[_]:%')
+    return __bft ('nodeID://' || dict_get_or_set_sequence_next (xlat_dict, __bft(o,1), 'RDF_URL_IID_BLANK'), 1);
   if (0 = o_flags)
-  return __bft (o, 1);
+    return __bft (o, 1);
   else if (1 = o_flags)
     {
     rb := rdf_box (o, 258, 257, 0, 1);
@@ -830,45 +848,69 @@ create procedure rdf_o_cvt_c (in o any, in o_type any, in o_flags int, in is_loc
       declare parsed any array;
     parsed := __xqf_str_parse_to_rdf_box (o, o_type, 1);
       if (parsed is not null)
-	return parsed;
-      else
-	{
-	tid := rdf_cache_id ('t', o_type);
-	  if (tid = 0)
+        {
+	  if (__tag of XML = __tag (parsed))
 	    {
-	      if (is_local)
-	        tid := rdf_rl_type_id (o_type);
-	      else
-	        tid := rdf_type_id (o_type);
+	      parsed := rdf_box (parsed, 300, 257, 0, 1);
+	      rdf_box_set_type (parsed, 257);
 	    }
-	rb := rdf_box (o, tid, 257, 0, 1);
-	  if (is_text and 246 = __tag (o))
-	    rdf_box_set_is_text (o, 1);
-	return rb;
-	}
+          if (__tag of rdf_box = __tag (parsed))
+            {
+              if (257 = rdf_box_type (parsed))
+                {
+                  tid := rdf_cache_id ('t', o_type);
+                  if (tid = 0)
+                    {
+                      if (is_local)
+                        tid := rdf_rl_type_id (o_type);
+                      else
+                        tid := rdf_type_id (o_type);
+                    }
+                  rdf_box_set_type (parsed, tid);
+                }
+            }
+          return parsed;
+        }
+      else
+        {
+          tid := rdf_cache_id ('t', o_type);
+          if (tid = 0)
+            {
+              if (is_local)
+                tid := rdf_rl_type_id (o_type);
+              else
+                tid := rdf_type_id (o_type);
+            }
+          rb := rdf_box (o, tid, 257, 0, 1);
+          if (is_text and 246 = __tag (o))
+            rdf_box_set_is_text (o, 1);
+          return rb;
+        }
     }
   else if (4 = o_flags)
     {
     rb := rdf_box (xml_tree_doc (o), 300, 257, 0, 1);
-      rdf_set_type (rb, 257);
+      rdf_box_set_type (rb, 257);
       if (is_text and 246 = __tag (o))
 	rdf_box_set_is_text (o, 1);
       return rb;
     }
   else if (5 = o_flags)
-  return cast (o as int);
+    return cast (o as int);
   else if (6 = o_flags)
-  return cast (o as real);
+    return cast (o as real);
   else if (7 = o_flags)
-  return cast (o as double precision);
+    return cast (o as double precision);
   else if (8 = o_flags)
-  return cast (o as decimal);
+    return cast (o as decimal);
+  else if (15 = o_flags)
+    return __bft (o, 1);
   else
     signal ('xxxxx', 'Bad rdf object flags va,value');
 }
 ;
 
-create procedure rdf_insert_triple_c (in s any array, in p any array, in o any array, in o_type any array, in o_flags int, in g any array)
+create procedure DB.DBA.RDF_INSERT_TRIPLE_C (in s any array, in p any array, in o any array, in o_type any array, in o_flags int, in g any array)
 {
   vectored;
   not vectored {
@@ -877,7 +919,7 @@ create procedure rdf_insert_triple_c (in s any array, in p any array, in o any a
     if (log_enable (null, 1) in (2,3))
       set non_txn_insert = 1;
   }
- o := rdf_o_cvt_c (o, o_type, o_flags, is_local);
+  o := DB.DBA.RDF_MAKE_S_O_FROM_PARTS_AND_FLAGS_C (s, o, o_type, o_flags, is_local);
   not vectored {
     declare dp any array;
     if (is_local)
@@ -888,6 +930,7 @@ create procedure rdf_insert_triple_c (in s any array, in p any array, in o any a
 	dpipe_set_rdf_load (dp, 1);
       }
   }
+  --dbg_obj_princ ('After bnodes check, will call dpipe_input (dp, ', s, p, null, o, g, ')...');
   dpipe_input (dp, s, p, null, o, g);
   not vectored {
     if (log_enable (null, 1) in (2,3))
@@ -903,7 +946,6 @@ create procedure rdf_insert_triple_c (in s any array, in p any array, in o any a
 }
 ;
 
-
 create procedure rdf_replace_graph_c (in s any array, in p any array, in o any array, in o_type any array, in o_flags int, in g any array)
 {
   vectored;
@@ -913,7 +955,7 @@ create procedure rdf_replace_graph_c (in s any array, in p any array, in o any a
     if (log_enable (null, 1) in (2,3))
       set non_txn_insert = 1;
   }
- o := rdf_o_cvt_c (o, o_type, o_flags, is_local);
+ o := DB.DBA.RDF_MAKE_S_O_FROM_PARTS_AND_FLAGS_C (s, o, o_type, o_flags, is_local);
   not vectored {
     declare dp any array;
     if (is_local)
@@ -950,7 +992,7 @@ create procedure rdf_delete_triple_c (in s any array, in p any array, in o any a
     if (log_enable (null, 1) in (2,3))
       set non_txn_insert = 1;
   }
- o := rdf_O_cvt_c (o, o_type, o_flags, is_local);
+ o := DB.DBA.RDF_MAKE_S_O_FROM_PARTS_AND_FLAGS_C (s, o, o_type, o_flags, is_local);
   not vectored {
     declare dp any array;
     if (is_local)

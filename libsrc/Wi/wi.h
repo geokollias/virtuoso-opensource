@@ -1035,6 +1035,7 @@ struct it_cursor_s
   int itc_n_matches;
   int itc_match_in;
   int itc_match_out;
+  int itc_n_sample_matches;
   sp_stat_t *itc_sp_stat;
   short *itc_cset_null_ctr;	/* in cset upd/del, how many nulls on each row */
   mem_pool_t *itc_upd_mp;
@@ -1075,11 +1076,13 @@ struct it_cursor_s
   struct
   {
     char mode;
+    char is_to_right;		/* true if this is to the right of prev sample */
     int sample_size;		/* stop random search after this many rows */
     int n_sample_rows;		/* count of rows retrieved in random traversal */
     int segs_sampled;
     int rows_in_segs;
     dk_hash_t *cols;		/* hash from de_col_t to col_stat_t *for random sample col stats. */
+    dk_hash_t *visited;
     struct tb_sample_s *smp;
     uint64 n_rows_sampled;
     uint64 n_row_spec_matches;
@@ -2046,6 +2049,16 @@ extern int64 bdf_is_avail_mask;	/* all bits on except read aside flag which does
 
 
 /* Catchers */
+
+#define QR_RESET_CTX_T_CTX(thr, __ctx)		\
+{ \
+  du_thread_t * __self = thr; \
+  int reset_code;  \
+  struct TLSF_struct * __tlsf = __self->thr_tlsf; \
+  jmp_buf_splice * __old_ctx = __self->thr_reset_ctx;\
+  __self->thr_reset_ctx = __ctx; \
+  if (0 == (reset_code = setjmp_splice (__ctx)))
+
 
 #define QR_RESET_CTX_T(thr) \
 { \

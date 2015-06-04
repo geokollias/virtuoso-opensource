@@ -1460,6 +1460,8 @@ sqlg_is_inline_hash_key (hash_area_t * ha, state_slot_t * ssl, table_source_t * 
   /* true for single intlike key to hash.  Can merge the hash lookup and partition filter as column condition in a ts */
   dtp_t s_dtp = dtp_canonical[ssl->ssl_sqt.sqt_dtp];
   int is_row_merge = ts && !ts->ts_order_ks->ks_key->key_is_col && !ts->ts_csts;
+  if (ts && KI_TEMP == ts->ts_order_ks->ks_key->key_id)
+    return 0;			/* an oby temp or reader not applicable */
   if (ssl->ssl_column && ha->ha_n_keys == 1
       && ((!is_row_merge && (DV_ANY == ha->ha_key_cols[0].cl_sqt.sqt_dtp || DV_ANY == s_dtp))
 	  || (dtp_canonical[ha->ha_key_cols[0].cl_sqt.sqt_dtp] == s_dtp && (DV_LONG_INT == s_dtp || DV_IRI_ID == s_dtp))))
@@ -2203,6 +2205,8 @@ sqlg_vec_del (sql_comp_t * sc, delete_node_t * del)
 	  for (del_ts = last_no_test; del_ts; del_ts = (table_source_t *) qn_next ((data_source_t *) del_ts))
 	    {
 	      if (!IS_TS (del_ts) || del->del_trigger_args)
+		break;
+	      if (!dk_set_member (all_keys, del_ts->ts_order_ks->ks_key))
 		break;
 	      if (!del_ts->ts_order_ks->ks_key->key_distinct || del->del_key_only)
 		sqlg_set_ts_delete (sc, del_ts);
@@ -3285,12 +3289,21 @@ sqlg_hs_non_partitionable (sql_comp_t * sc, hash_source_t * hs)
 int
 sqlg_can_merge_hs (sql_comp_t * sc, hash_source_t * hs, table_source_t * ts, state_slot_t * ssl)
 {
+  data_source_t *next;
   if (!enable_hash_merge)
     return MRG_NONE;
   if (ts->ts_fs)
     return MRG_NONE;
   if (hs->hs_ha->ha_n_keys > 1)
     return MRG_NONE;
+  next = qn_next ((data_source_t *) ts);
+  if (next && IS_QN (next, rdf_inf_pre_input))
+    {
+      /* a rdf quad followed by iterator over super cannot get a merge because the after iterator decides the values, not the ts */
+      QNCAST (rdf_inf_pre_node_t, ri, next);
+      if (ri->ri_is_after)
+	return MRG_NONE;
+    }
   DO_SET (search_spec_t *, sp, &ts->ts_order_ks->ks_hash_spec)
   {
     hash_range_spec_t *hrng = (hash_range_spec_t *) sp->sp_min_ssl;

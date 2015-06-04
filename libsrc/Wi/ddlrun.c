@@ -1492,7 +1492,17 @@ dbe_col_load_stat_hist (client_connection_t * cli, query_instance_t * caller, db
   lc_free (lc_hist);
   dk_free_tree ((box_t) col->col_hist);
   if (dk_set_length (hist_set))
-    col->col_hist = (caddr_t *) list_to_array (dk_set_nreverse (hist_set));
+    {
+      int n_hist;
+      caddr_t **hist;
+      col->col_hist = (caddr_t *) list_to_array (dk_set_nreverse (hist_set));
+      hist = (caddr_t **) col->col_hist;
+      n_hist = BOX_ELEMENTS (hist);
+      if (DVC_GREATER == cmp_boxes (col->col_min, hist[0][1], NULL, NULL))
+	col->col_min = box_copy_tree (hist[0][1]);
+      if (DVC_LESS == cmp_boxes (col->col_max, hist[n_hist - 1][1], NULL, NULL))
+	col->col_max = box_copy_tree (hist[n_hist - 1][1]);
+    }
   else
     col->col_hist = NULL;
 }
@@ -5035,6 +5045,7 @@ ddl_store_proc (caddr_t * state, op_node_t * op)
     }
   else
     {
+      oid_t org_user = qi->qi_u_id;
 #ifdef VIRT30_40
       if (is_27_40_incompartible_procedure (qst_get (state, op->op_arg_1)))
 	goto skip_incomp;
@@ -5042,8 +5053,10 @@ ddl_store_proc (caddr_t * state, op_node_t * op)
       /* first we will remove all entries with the same name,
          because the PK of that table is not designed to keep only one entry per name */
       is_cl = !cl_run_local_only;
+      qi->qi_u_id = U_ID_DBA;
       err = qr_rec_exec (is_cl ? cl_proc_rm_duplicate_query : proc_rm_duplicate_query, cli, NULL, qi, NULL, 1,
 	  ":0", qst_get (state, op->op_arg_1), QRP_STR);
+      qi->qi_u_id = org_user;
       /* the grants also must be removed */
       qr_rec_exec (proc_revoke_query, cli, NULL, qi, NULL, 1, ":0", qst_get (state, op->op_arg_1), QRP_STR);
       /* and if all is OK then will make simple insert */

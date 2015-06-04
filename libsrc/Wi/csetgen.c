@@ -463,6 +463,110 @@ csg_ts_frame (sqlo_t * so, op_table_t * top_ot, cset_t * cset, table_source_t * 
 }
 
 
+
+
+state_slot_t *
+ks_out_col_ssl (key_source_t * ks, oid_t col_id)
+{
+  int inx, n_out = box_length (ks->ks_v_out_map) / sizeof (v_out_map_t);
+  for (inx = 0; inx < n_out; inx++)
+    if (col_id == ks->ks_v_out_map[inx].om_cl.cl_col_id)
+      return ks->ks_v_out_map[inx].om_ssl;
+  GPF_T1 ("expect to have s out slot in cset ts");
+  return NULL;
+}
+
+
+void
+csg_g_ts_frame (sqlo_t * so, op_table_t * top_ot, cset_t * cset, table_source_t * ts)
+{
+  cset_ts_t *csts = ts->ts_csts;
+  sql_comp_t *sc = so->so_sc;
+  caddr_t *o_mode = sc->sc_csg_o_mode;
+  csg_col_t *csgc_arr;
+  op_table_t *cset_ot = NULL;
+  df_elt_t *cset_dfe = NULL, *rq_dfe = NULL, *first_dfe = NULL, *first_s_col_dfe = NULL;
+  int cset_any_reqd = 0;
+  dk_hash_t *ht = hash_table_allocate (23);
+  int n_cols, fill = 0, inx, cset_placed = 0;
+  search_spec_t *s_spec = NULL, *g_spec = NULL, *g_inx_spec = NULL, *sp;
+  table_source_t *cset_ts = (table_source_t *) unbox (o_mode);
+  key_source_t *cset_ks = cset_ts->ts_order_ks;
+  key_source_t *ks = ts->ts_order_ks;
+  oid_t g_col_id = ((dbe_column_t *) ks->ks_key->key_parts->next->data)->col_id;
+  if (ks->ks_spec.ksp_spec_array)
+    {
+      s_spec = ks->ks_spec.ksp_spec_array;
+      g_inx_spec = ks->ks_spec.ksp_spec_array->sp_next;
+    }
+  else
+    {
+      t_NEW_VARZ (search_spec_t, s_spec);
+      s_spec->sp_min_op = CMP_EQ;
+      s_spec->sp_min_ssl = ks_out_col_ssl (cset_ks, ((dbe_column_t *) cset_ks->ks_key->key_parts->data)->col_id);
+    }
+  for (sp = ks->ks_row_spec; sp; sp = sp->sp_next)
+    {
+      if (sp->sp_col == (dbe_column_t *) ks->ks_key->key_parts->data
+	  || sp->sp_col == (dbe_column_t *) ks->ks_key->key_parts->next->data)
+	continue;		/* s or g specs do not make rq access */
+      sethash ((void *) sp->sp_col, ht, (void *) 1);
+      if (sp->sp_cl.cl_col_id == g_col_id)
+	{
+	  if (g_spec && CMP_EQ == g_spec->sp_min_op)
+	    ;
+	  else
+	    g_spec = sp;
+	}
+      else if (sp->sp_col == (dbe_column_t *) ks->ks_key->key_parts->data
+	  || sp->sp_col == (dbe_column_t *) ks->ks_key->key_parts->next->data)
+	continue;		/* s or g specs do not make rq access */
+      sethash ((void *) sp->sp_col, ht, (void *) 1);
+    }
+  DO_SET (dbe_column_t *, col, &ks->ks_key->key_parts)
+  {
+    if (!col->col_cset_iri)	/*not s or g */
+      continue;
+    sethash ((void *) col, ht, (void *) 2);
+  }
+  END_DO_SET ();
+  n_cols = ht->ht_count;
+  csgc_arr = (csg_col_t *) t_alloc_box (sizeof (csg_col_t) * n_cols, DV_BIN);
+  DO_HT (dbe_column_t *, col, ptrlong, fl, ht)
+  {
+    dbe_column_t *cset_col = cset_col_by_iri (cset, col->col_cset_iri);
+    csgc_arr[fill].csgc_ref_col = col;
+    csgc_arr[fill].csgc_selectivity = csgc_selectivity (cset, ts, col, cset_col);
+    csgc_arr[fill++].csgc_col = cset_col;
+  }
+  END_DO_HT;
+  qsort (csgc_arr, ht->ht_count, sizeof (csg_col_t), csgc_cmp);
+  for (inx = 0; inx < ht->ht_count; inx++)
+    {
+      csg_col_t *csgc = &csgc_arr[inx];
+      dbe_column_t *ref_col = csgc->csgc_ref_col;
+      df_elt_t *tb_dfe = NULL;
+      if (csgc->csgc_col)
+	{
+	  int any_cond = 0;
+	  rq_dfe = csg_add_tb (so, cset->cset_table->tb_primary_key);
+	  csg_s_cond (so, rq_dfe, &first_dfe, &first_s_col_dfe, s_spec);
+	  csg_g_cond (so, rq_dfe, g_spec);
+	  csg_o_cond (so, rq_dfe, ref_col, ts, t_listst (3, COL_DOTTED, rq_dfe->_.table.ot->ot_new_prefix, O_NAME));
+	  if (dk_set_member (ks->ks_out_cols, csgc->csgc_ref_col))
+	    {
+	      ST *tree = t_listst (3, COL_DOTTED, rq_dfe->_.table.ot->ot_new_prefix, csgc->csgc_ref_col->col_name);
+	      df_elt_t *rq_col = sqlo_df (so, tree);
+	      t_set_push (&rq_dfe->_.table.out_cols, rq_col);
+	    }
+	}
+    }
+  top_ot->ot_csgc = csgc_arr;
+  hash_table_free (ht);
+}
+
+
+
 df_elt_t *
 csg_dfe (sqlo_t * so, op_table_t * top_ot, cset_t * cset, table_source_t * ts, int mode)
 {
@@ -472,6 +576,9 @@ csg_dfe (sqlo_t * so, op_table_t * top_ot, cset_t * cset, table_source_t * ts, i
     case CSQ_TABLE:
     case CSQ_LOOKUP:
       csg_ts_frame (so, top_ot, cset, ts);
+      break;
+    case CSQ_G_MIX:
+      csg_g_ts_frame (so, top_ot, cset, ts);
       break;
     default:
       sqlr_new_error ("NCSMD", "NCSMD", "cset mode not implemented");
@@ -1131,6 +1238,30 @@ csg_query (cset_t * cset, table_source_t * ts, int mode, caddr_t * o_mode, caddr
   self->thr_tlsf = save_tlsf;
   return qr;
 }
+
+
+query_t *
+ts_cset_gs_query (table_source_t * ts, caddr_t * inst, cset_t * cset)
+{
+  query_t *qr;
+  cset_mode_t *csm = ts->ts_csm;
+  cset_align_node_t *csa = (cset_align_node_t *) qn_next_qn (ts, cset_align_input);
+  table_source_t *model_ts = csa->csa_model_ts;
+  cset_ts_t *csts = model_ts->ts_csts;
+  caddr_t err = NULL;
+  mutex_enter (&csts->csts_mtx);
+  if ((qr = csm->csm_g_mix_qr))
+    {
+      mutex_leave (&csts->csts_mtx);
+      qr_cset_adjust_dcs (qr, inst);
+      return qr;
+    }
+  csm->csm_g_mix_qr = qr = csg_query (csm->csm_cset, model_ts, CSQ_G_MIX, box_num ((ptrlong) ts), &err);
+  mutex_leave (&csts->csts_mtx);
+  qr_cset_adjust_dcs (qr, inst);
+  return qr;
+}
+
 
 
 void

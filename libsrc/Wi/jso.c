@@ -1118,7 +1118,7 @@ jso_dbg_text_fd_and_member_field (jso_field_descr_t * fd, void *inst_member_fiel
     case DV_STRING:
       return box_sprintf (600 + box_length (val), "%.500s '''%s'''", fd->jsofd_local_name, val);
     case DV_DOUBLE_FLOAT:
-      return box_sprintf (1000, "%.500s %lf", fd->jsofd_local_name, unbox_double (val));
+      return box_sprintf (1000, "%.500s " DOUBLE_E_STAR_FMT, fd->jsofd_local_name, DOUBLE_E_PREC, unbox_double (val));
     case DV_UNAME:
       return box_sprintf (1000, "%.500s <%.500s>", fd->jsofd_local_name, val);
     default:

@@ -496,7 +496,7 @@ bif_iri_pattern_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     if (prev_start != inx)
       {
 	NEW_VARZ (ip_field_t, irif);
-	irif->irif_string = box_n_chars ((db_buf_t) pattern, len - prev_start);
+	irif->irif_string = box_n_chars ((db_buf_t) pattern + prev_start, len - prev_start);
 	dk_set_push (&parts, (void *) irif);
       }
     parts = dk_set_nreverse (parts);

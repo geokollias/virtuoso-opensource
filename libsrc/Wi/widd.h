@@ -295,6 +295,11 @@ typedef struct col_stat_s
   id_hash_t *cs_distinct;
   int64 cs_len;
   int64 cs_n_values;
+  int64 cs_n_asc;
+  int64 cs_n_desc;
+  int cs_n_sample_asc;
+  int cs_n_sample_desc;
+  caddr_t cs_prev;
 } col_stat_t;
 
 /* fields in int64 in cs_distinct counting repeats of a value */
@@ -389,12 +394,18 @@ struct dbe_col_loc_s
   row_ver_t cl_row_version_mask;	/* and with row version is true if this cl is compressed on that row. 0x00 if always on row */
   unsigned char cl_compression:4;
   unsigned char cl_comp_asc:1;	/* look for left to right for compression */
+  unsigned char cl_is_asc:3;	/* col tends to be ascending (in non 1st key part or dep, greater values tend to occur towards the end in key order */
   short cl_nth;			/* 0 based ordinal pos in key in layout order */
   short cl_fixed_len;
   short cl_pos[N_ROW_VERSIONS];
   short cl_null_flag[N_ROW_VERSIONS];
   dtp_t cl_null_mask[N_ROW_VERSIONS];
 };
+
+
+/*cl_is_asc */
+#define CL_ASC 1
+#define CL_DESC 2
 
 
 #define CL_FIRST_VAR -1
@@ -554,6 +565,7 @@ fragment instead of searching for the the fragment actually needed. */
   uint64 key_segs_sampled;
   uint64 key_rows_in_sampled_segs;
   int64 key_count;		/* if distinct proj, count is not the table count */
+  int64 key_n_deletes;
   dbe_table_t *key_cset_rdf_quad;
   struct cset_s *key_cset;
   /* for imaginary key that stands for a union of csets */

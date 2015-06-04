@@ -213,6 +213,23 @@ sqlo_find_inx_intersect (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t col_preds, flo
 /* functions for multiple table inx intersection */
 
 
+sqlo_eq_hash_print (id_hash_t * eq_ht)
+{
+  DO_IDHASH (ST *, col, dk_set_t, eqs, eq_ht)
+  {
+    dbg_print_box (col, stdout);
+    printf (" = ");
+    DO_SET (df_elt_t *, eq, &eqs)
+    {
+      dbg_print_box (eq->dfe_tree, stdout);
+      printf (" ");
+    }
+    END_DO_SET ();
+    printf ("\n");
+  }
+  END_DO_IDHASH;
+}
+
 
 int
 sqlo_is_col_eq (op_table_t * ot, df_elt_t * col, df_elt_t * val)
@@ -265,7 +282,44 @@ sqlo_col_eq (op_table_t * ot, df_elt_t * col, df_elt_t * val)
 
 
 void
-sqlo_init_eqs (sqlo_t * so, op_table_t * ot, dk_set_t preds)
+sqlo_clear_eqs (id_hash_t * eqs)
+{
+  id_hash_iterator_t hit;
+  dk_set_t *place;
+  void **ign;
+  id_hash_iterator (&hit, eqs);
+  while (hit_next (&hit, &ign, &place))
+    *place = NULL;
+}
+
+df_elt_t *
+dfe_col_tb (df_elt_t * dfe)
+{
+  op_table_t *ot;
+  if (!dfe || DFE_COLUMN != dfe->dfe_type)
+    return NULL;
+  ot = dfe->dfe_tables->data;
+  if (!ot->ot_dfe || DFE_TABLE != ot->ot_dfe->dfe_type)
+    return NULL;
+  return ot->ot_dfe;
+}
+
+void
+dfe_out_eq (op_table_t * ot, df_elt_t * tb_dfe)
+{
+  /* if there is an eq on col and col is out col, there is eq */
+  dk_set_t out_col = NULL;
+  DO_SET (df_elt_t *, pred, &tb_dfe->_.table.col_preds)
+  {
+    if (PRED_IS_EQ (pred) && (out_col = dk_set_member (tb_dfe->_.table.out_cols, pred->_.bin.left)))
+      sqlo_col_eq (ot, pred->_.bin.right, (df_elt_t *) out_col->data);
+  }
+  END_DO_SET ();
+}
+
+
+void
+sqlo_init_eqs (sqlo_t * so, op_table_t * ot, dk_set_t preds, int placed_only, dk_set_t except)
 {
   if (!preds && !ot->ot_from_dfes)
     return;
@@ -273,6 +327,8 @@ sqlo_init_eqs (sqlo_t * so, op_table_t * ot, dk_set_t preds)
     preds = ot->ot_preds;
   DO_SET (df_elt_t *, pred, &preds)
   {
+    if ((placed_only && !pred->dfe_is_placed) || dk_set_member (except, pred))
+      continue;
     if (DFE_BOP_PRED == pred->dfe_type && BOP_EQ == pred->_.bin.op)
       {
 	df_elt_t *left = pred->_.bin.left;
@@ -288,6 +344,13 @@ sqlo_init_eqs (sqlo_t * so, op_table_t * ot, dk_set_t preds)
       }
   }
   END_DO_SET ();
+  if (placed_only)
+    {
+      df_elt_t *tb_dfe;
+      for (tb_dfe = ot->ot_work_dfe->_.sub.first; tb_dfe && tb_dfe->dfe_next; tb_dfe = tb_dfe->dfe_next)
+	if (DFE_TABLE == tb_dfe->dfe_type)
+	  dfe_out_eq (ot, tb_dfe);
+    }
 }
 
 

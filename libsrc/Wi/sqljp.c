@@ -346,6 +346,8 @@ jp_fanout (join_plan_t * jp)
 	      break;
 	    case 'O':
 	    case 'o':
+	      if (DV_DB_NULL == DV_TYPE_OF (ps->ps_const))
+		continue;
 	      o_col = ps->ps_left_col;
 	      is_o = ps->ps_pred;
 	      o = ps->ps_const;
@@ -405,7 +407,7 @@ jp_fanout (join_plan_t * jp)
 	return jp->jp_fanout = (p_stat[0] / o_card) * misc_card;
       if (is_s && is_o)
 	return (p_stat[0] / s_card / o_card) * misc_card;
-      return jp->jp_fanout = p_stat[0];
+      return jp->jp_fanout = p_stat[0] * misc_card;
     }
   else if (DFE_TABLE == jp->jp_tb_dfe->dfe_type)
     {
@@ -1236,9 +1238,9 @@ sqlo_dt_eqs (sqlo_t * so, df_elt_t * dfe)
   op_table_t *ot = dfe->_.sub.ot;
   op_table_t *s_ot;
   while (sqlo_unq_exists (so, dfe));
-  sqlo_init_eqs (so, ot, NULL);
+  sqlo_init_eqs (so, ot, NULL, 0, NULL);
   for (s_ot = ot->ot_super; s_ot; s_ot = s_ot->ot_super)
-    sqlo_init_eqs (so, dfe->_.sub.ot, s_ot->ot_preds);
+    sqlo_init_eqs (so, dfe->_.sub.ot, s_ot->ot_preds, 0, NULL);
   DO_SET (df_elt_t *, pred, &ot->ot_preds)
   {
     sqlo_pred_tree_eqs (so, pred);
@@ -1802,7 +1804,9 @@ sqlo_hash_fill_join (sqlo_t * so, df_elt_t * hash_ref_tb, df_elt_t ** fill_ret, 
       }
       END_DO_BOX;
       sel = t_box_copy_tree ((caddr_t) sel);
+      NO_LIT_PARS;
       sqlo_scope (so, &sel);
+      RESTORE_LIT_PARS;
       fill_dfe = sqlo_df (so, sel);
       fill_ot = fill_dfe->_.sub.ot;
       fill_ot->ot_dfe = fill_dfe;

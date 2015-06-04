@@ -122,6 +122,7 @@ typedef struct op_table_s
 
   dk_set_t ot_invariant_preds;
   id_hash_t *ot_eq_hash;	/* eq group of things, use for eq transitivity */
+  id_hash_t *ot_placed_eq_hash;	/* eq cols, only counting placed ones */
   ST *ot_trans;			/* if transitive dt, trans opts */
   df_elt_t *ot_first_dfe;	/* first dfe in current plan, one of ot from dfes */
   dk_set_t ot_hash_fillers;	/* all fillers of currently placed.  anywhere in the plan. Can look up for reuse.  In top ot only */
@@ -269,6 +270,8 @@ struct df_elt_s
   float dfe_arity;
   dk_set_t dfe_tables;
   state_slot_t *dfe_ssl;
+  data_col_t *dfe_dc;
+  int *dfe_sets;
   dk_set_t dfe_defines;		/* list of dfes which are produced by this, e.g. an exp can define a col of a dt by hash */
   sql_type_t dfe_sqt;
   union
@@ -380,6 +383,7 @@ struct df_elt_s
       bitf_t to_be_trans:1;	/* if will be transitive even though ot_trans is not set during placing */
       bitf_t is_control:1;	/* if set, do not place things inside into supers evenn if could by  dependency. */
       bitf_t not_in_top_and:1;	/* existence in a not or or, scalar subq. if hash probe outside of this subq, must not prefilter on bloom when fetching the probe col */
+      bitf_t is_leaf;
     } sub;
     struct
     {
@@ -413,6 +417,7 @@ struct df_elt_s
       bitf_t is_not:1;		/* for a like or equals, means the pred is negated */
       bitf_t is_used:1;		/* during dfe table cost, whether already counted */
       bitf_t is_pk_fk_ref:1;	/* If part of a multipart pk ref to a multipart fk in the table in dfe table cost */
+      bitf_t rng_by_hist:1;
     } bin;
     struct
     {
@@ -626,6 +631,7 @@ struct sqlo_s
   char so_placed_outside_dt;
   char so_no_dt_cache;
   char so_any_rdf_quad;
+  char so_ret_flag;		/* aux, used for misc status return */
 
   st_lit_state_t *so_stl;	/* if gathering literals for use as params */
 
@@ -702,7 +708,7 @@ typedef struct tb_sample_s
   char smp_is_leaf;
   int smp_ref_count;		/* on text_count_mtx or ric_mtx */
   int *smp_sets;
-  data_col_t *smp_dcs;
+  caddr_t **smp_rows;
   float smp_card;
   float smp_inx_card;
   int smp_time;
@@ -715,6 +721,7 @@ typedef struct sample_cache_key_s
   key_id_t sck_key;
   short sck_n_key;
   short sck_n_dep;
+  short sck_n_out;
   char sck_data[10];
 } sample_cache_key_t;
 
@@ -769,9 +776,11 @@ typedef struct index_choice_s
   float ic_overhead;
   float ic_spacing;		/* this many rows between consecutive rows fetched on vectored index lookup. 1 means consecutive */
   float ic_in_list_sel;
+  float ic_top_sel;
   char ic_in_order;		/* vectored index lookup in order with the previous index lookup */
   char ic_is_cl_part_first;	/* preceded by a cluster partitioning step, qf or dfg stage */
   char ic_leading_constants;	/* this many leading constants used for sampling */
+  char ic_sampled_col_preds;	/* n conds on dep part of sample */
   char ic_is_unique;
   char ic_not_applicable;
   char ic_no_dep_sample;
@@ -966,7 +975,9 @@ void dfe_top_discount (df_elt_t * dfe, float *u1, float *a1);
 
 
 /* sqloinx.c */
-void sqlo_init_eqs (sqlo_t * so, op_table_t * ot, dk_set_t preds);
+void sqlo_init_eqs (sqlo_t * so, op_table_t * ot, dk_set_t preds, int placed_only, dk_set_t except);
+void sqlo_clear_eqs (id_hash_t * eqs);
+
 void sqlo_find_inx_intersect (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t col_preds, float best);
 int sqlo_is_col_eq (op_table_t * ot, df_elt_t * col, df_elt_t * val);
 void sqlo_place_inx_int_join (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t group, dk_set_t * after_preds);
@@ -1173,7 +1184,7 @@ extern caddr_t uname_one_of_these;
 
 #define PRED_IS_EQ(dfe) ((DFE_BOP_PRED == dfe->dfe_type || DFE_BOP == dfe->dfe_type) && BOP_EQ == dfe->_.bin.op)
 #define PRED_IS_EQ_OR_IN(dfe) ((DFE_BOP_PRED == dfe->dfe_type || DFE_BOP == dfe->dfe_type) && (BOP_EQ == dfe->_.bin.op || 1 == dfe->_.bin.is_in_list))
-int64 sqlo_inx_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_elt_t ** uppers, int n_parts,
+float sqlo_inx_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_elt_t ** uppers, int n_parts,
     index_choice_t * ic);
 float arity_scale (float ar);
 caddr_t sqlo_rdf_lit_const (ST * tree);
@@ -1200,6 +1211,14 @@ void rq_cols_init (df_elt_t * dfe, rq_cols_t * rq);
 
 /* qrc */
 
+#define NO_LIT_PARS \
+  { st_lit_state_t * __save_stl = so->so_stl; so->so_stl = NULL;
+
+#define RESTORE_LIT_PARS \
+  so->so_stl = __save_stl; }
+
+
+
 #define OT_NO(pref) \
   atoi ('d' == pref[0] ? pref + 2 : pref + 1)
 
@@ -1214,6 +1233,12 @@ int col_is_rdf (dbe_column_t * col, char name);
 int dfe_is_rdf_type_p (df_elt_t * dfe);
 
 /* end qrc */
+/*sqlojoin.c*/
+void sqlo_sample_out_cols (sqlo_t * so, df_elt_t * tb_dfe, it_cursor_t * itc);
+void smp_set_cols (tb_sample_t * smp, it_cursor_t * itc, int is_mp);
+void smp_get_cols (tb_sample_t * smp, it_cursor_t * itc);
+
+
 
 float dfe_join_score_jp (sqlo_t * so, op_table_t * ot, df_elt_t * tb_dfe, dk_set_t * res, join_plan_t * prev_jp);
 int dfe_is_quad (df_elt_t * tb_dfe);
@@ -1226,7 +1251,7 @@ df_elt_t *dfe_container (sqlo_t * so, int type, df_elt_t * super);
 float dfe_hash_fill_cond_card (df_elt_t * tb_dfe);
 float sqlo_hash_ins_cost (df_elt_t * dfe, float card, dk_set_t cols, float *size_ret);
 float sqlo_hash_ref_cost (df_elt_t * dfe, float hash_card);
-
+df_elt_t *dfe_left_col (df_elt_t * tb_dfe, df_elt_t * pred);
 #define SQK_MAX_CHARS 2000
 void dfe_cc_list_key (dk_set_t list, char *str, int *fill, int space);
 void so_ensure_subq_cache (sqlo_t * so);
@@ -1242,10 +1267,13 @@ int dk_set_ssl_position (dk_set_t set, state_slot_t * ssl);
 void dbg_qi_print_row (query_instance_t * qi, dk_set_t slots, int nthset);
 void dbg_qi_print_slots (query_instance_t * qi, state_slot_t ** slots, int nthset);
 #endif /* DEBUG */
+int dfe_is_leaf (df_elt_t * dfe);
 dbe_key_t *tb_px_key (dbe_table_t * tb, dbe_column_t * col);
 float dfe_scan_card (df_elt_t * dfe);
 int sqlo_parse_tree_count_node (ST * tree, long *nodes, int n_nodes);
 int dfe_init_p_stat (df_elt_t * dfe, df_elt_t * lower);
+int dfe_p_stat (df_elt_t * tb_dfe, df_elt_t * pred, iri_id_t pid, dk_set_t * parts_ret, dbe_column_t * o_col, float *p_stat_ret,
+    float *o_stat_ret);
 dk_set_t sqlo_connective_list (df_elt_t * dfe, int op);
 df_elt_t *dfe_extract_or (sqlo_t * so, df_elt_t * tb_dfe, df_elt_t * pred);
 int dfe_col_of_oj (df_elt_t * col);

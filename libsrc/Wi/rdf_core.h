@@ -44,23 +44,22 @@ extern caddr_t key_id_to_iri (query_instance_t * qi, iri_id_t iri_id_no);
 extern int key_id_to_namespace_and_local (query_instance_t * qi, iri_id_t iid, caddr_t * subj_ns_ret, caddr_t * subj_loc_ret);
 #define rdf_type_twobyte_to_iri(twobyte) nic_id_name (rdf_type_cache, (twobyte))
 #define rdf_lang_twobyte_to_string(twobyte) nic_id_name (rdf_lang_cache, (twobyte))
+#define RDF_TYPE_PARSEABLE			0x1
+#define RDF_TYPE_PARSEABLE_TO_NUMERIC		0x2
+#define RDF_TYPE_PARSEABLE_TO_DTDURATION	0x4
+#define RDF_TYPE_PARSEABLE_TO_DATETIME		0x8
+int rb_uname_to_flags_of_parseable_datatype (ccaddr_t dt_uname);
+extern int rb_twobyte_to_flags_of_parseable_datatype (unsigned short dt_twobyte);
 /*! \returns NULL for string, (ccaddr_t)((ptrlong)1) for unsupported, 2 for NULL, UNAME for others */
 extern caddr_t xsd_type_of_box (caddr_t arg);
 /*! Casts \c new_val to some datatype appropriate for XPATH/XSLT and stores in an XSLT variable value or XQI slot passed as an address to free and set */
 extern void rb_cast_to_xpath_safe (query_instance_t * qi, caddr_t new_val, caddr_t * retval_ptr);
 extern iri_id_t bnode_t_treshold;
-#ifndef NDEBUG
 #define BNODE_FMT_IMPL(fn,arg1,pfx,iid) (((iri_id_t)(iid) >= bnode_t_treshold) ? \
   (fn) ((arg1), pfx "t" IIDBOXINT_FMT, (boxint)((iri_id_t)(iid) - bnode_t_treshold)) : \
   (((iri_id_t)(iid) >= MIN_64BIT_BNODE_IRI_ID) ? \
     (fn) ((arg1), pfx "b" IIDBOXINT_FMT, (boxint)((iri_id_t)(iid)-MIN_64BIT_BNODE_IRI_ID)) : \
     (fn) ((arg1), pfx IIDBOXINT_FMT, (boxint)((iri_id_t)(iid))) ) )
-#else
-#define BNODE_FMT_IMPL(fn,arg1,pfx,iid) (((iri_id_t)(iid) >= MIN_64BIT_BNODE_IRI_ID) ? \
-  (fn) ((arg1), pfx "b" IIDBOXINT_FMT, (boxint)((iri_id_t)(iid)-MIN_64BIT_BNODE_IRI_ID)) : \
-  (fn) ((arg1), pfx IIDBOXINT_FMT, (boxint)((iri_id_t)(iid))) )
-#endif
-
 
 #define BNODE_IID_TO_LABEL_BUFFER(buf,iid) BNODE_FMT_IMPL(sprintf,buf,"nodeID://",iid)
 #define BNODE_IID_TO_LABEL(iid) BNODE_FMT_IMPL(box_sprintf,30,"nodeID://",iid)
@@ -370,5 +369,21 @@ caddr_t bif_rdf_iri_always_cached_init (caddr_t * qst, caddr_t * err_ret, state_
 
 #define SPLIT_MODE_TTL 0
 #define SPLIT_MODE_XML 1
+
+extern dk_mutex_t *rdf_obj_ft_rules_mtx;
+extern id_hash_t *rdf_obj_ft_rules_by_iids;
+
+typedef struct rdf_obj_ft_rule_iid_hkey_s
+{
+  iri_id_t hkey_g;
+  iri_id_t hkey_iid_p;
+} rdf_obj_ft_rule_iid_hkey_t;
+
+typedef struct rdf_obj_ft_rule_iri_hkey_s
+{
+  iri_id_t hkey_g;
+  caddr_t hkey_iri_p;
+} rdf_obj_ft_rule_iri_hkey_t;
+
 
 #endif

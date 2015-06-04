@@ -103,9 +103,11 @@ caddr_t f##_w p \
     { \
       log_error ("SQL client operation on a connection which was not logged in.\n"); \
       ses->dks_to_close = 1; \
+      DKST_RPC_DONE (ses); \
       return NULL; \
     } \
   CLI_ENTER; \
+  sqlc_set_client (NULL); \
   f p1; \
   CLI_LEAVE; \
   return NULL; \
@@ -3169,6 +3171,8 @@ sf_overflow (future_request_t * frq)
 {
   client_connection_t *cli = DKS_DB_DATA (frq->rq_client);
   lock_trx_t *lt;
+  if (!cli)
+    goto no;
   IN_TXN;
   lt = cli->cli_trx;
   if (0 == lt->lt_threads)
@@ -3194,6 +3198,7 @@ sf_overflow (future_request_t * frq)
 	}
     }
   LEAVE_TXN;
+no:
   frq_no_thread_reply (frq);
 }
 
@@ -3802,15 +3807,12 @@ srv_global_init (char *mode)
   mode_pass_change = 0;
   in_srv_global_init = 1;
 
-  if (f_old_dba_pass && f_new_dba_pass && f_new_dav_pass)
+  if (f_old_dba_pass && f_new_dba_pass)
     {
       log_info ("Starting for DBA password change.");
       mode_pass_change = 1;
     }
 
-  if (!mode_pass_change)
-    {
-    }
 
   srv_pid = getpid ();
   init_server_cwd ();
@@ -4084,26 +4086,24 @@ srv_global_init (char *mode)
       char e_text[200];
 
       snprintf (e_text, sizeof (e_text), "USER_CHANGE_PASSWORD ('dba', '%.20s', '%.20s')", f_old_dba_pass, f_new_dba_pass);
-
       qr = sql_compile (e_text, bootstrap_cli, &err, SQLC_DEFAULT);
       if (!err)
 	{
 	  err = qr_quick_exec (qr, bootstrap_cli, NULL, NULL, 0);
 	  qr_free (qr);
 	}
-
       log_info ("The DBA password is changed.");
-      snprintf (e_text, sizeof (e_text), "USER_CHANGE_PASSWORD ('dav', 'dav', '%.20s')", f_new_dav_pass);
-
-      qr = sql_compile (e_text, bootstrap_cli, &err, SQLC_DEFAULT);
-      if (!err)
+      if (f_new_dav_pass)
 	{
-	  err = qr_quick_exec (qr, bootstrap_cli, NULL, NULL, 0);
-	  qr_free (qr);
+	  snprintf (e_text, sizeof (e_text), "USER_CHANGE_PASSWORD ('dav', 'dav', '%.20s')", f_new_dav_pass);
+	  qr = sql_compile (e_text, bootstrap_cli, &err, SQLC_DEFAULT);
+	  if (!err)
+	    {
+	      err = qr_quick_exec (qr, bootstrap_cli, NULL, NULL, 0);
+	      qr_free (qr);
+	    }
+	  log_info ("The DAV password is changed.");
 	}
-
-      log_info ("The DAV password is changed.");
-
       local_commit (bootstrap_cli);
       sf_shutdown (sf_make_new_log_name (wi_inst.wi_master), bootstrap_cli->cli_trx);
     }

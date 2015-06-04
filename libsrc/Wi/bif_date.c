@@ -93,6 +93,12 @@ dt_print_flags_of_rb_type (int rb_type)
     return DT_PRINT_MODE_YMD | DT_PRINT_MODE_NO_M | DT_PRINT_MODE_NO_D;
   if (rb_type__xsd_gYearMonth == rb_type)
     return DT_PRINT_MODE_YMD | DT_PRINT_MODE_NO_D;
+  if (rb_type__xsd_date == rb_type)
+    return DT_PRINT_MODE_YMD;
+  if (rb_type__xsd_dateTime == rb_type)
+    return DT_PRINT_MODE_YMD | DT_PRINT_MODE_HMS;
+  if (rb_type__xsd_time == rb_type)
+    return DT_PRINT_MODE_HMS;
   return 0;
 }
 
@@ -109,6 +115,12 @@ dt_print_flags_of_xsd_type_uname (ccaddr_t xsd_type_uname)
     return DT_PRINT_MODE_YMD | DT_PRINT_MODE_NO_M | DT_PRINT_MODE_NO_D;
   if (uname_xmlschema_ns_uri_hash_gYearMonth == xsd_type_uname)
     return DT_PRINT_MODE_YMD | DT_PRINT_MODE_NO_D;
+  if (uname_xmlschema_ns_uri_hash_date == xsd_type_uname)
+    return DT_PRINT_MODE_YMD;
+  if (uname_xmlschema_ns_uri_hash_dateTime == xsd_type_uname)
+    return DT_PRINT_MODE_YMD | DT_PRINT_MODE_HMS;
+  if (uname_xmlschema_ns_uri_hash_time == xsd_type_uname)
+    return DT_PRINT_MODE_HMS;
   return 0;
 }
 
@@ -629,6 +641,7 @@ bif_forget_timezone (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       ts_add (&ts, tzmin, "minute");
       GMTimestamp_struct_to_dt (&ts, arg);
     }
+  DT_SET_TZ (arg, 0);
   DT_SET_TZL (arg, 1);
   return arg;
 }
@@ -887,9 +900,10 @@ caddr_t
 bif_dt_set_tz (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   caddr_t arg = bif_date_arg (qst, args, 0, "dt_set_tz");
-  long tz = (long) bif_long_arg (qst, args, 1, "dt_set_tz");
+  long tz = (long) bif_long_range_arg (qst, args, 1, "dt_set_tz", -14 * 60, 14 * 60);
   caddr_t res = box_copy (arg);
   DT_SET_TZ (res, tz);
+  DT_SET_TZL (res, 0);
   return res;
 }
 
@@ -1018,6 +1032,20 @@ bif_curdatetime (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   if (args && BOX_ELEMENTS (args) > 0)
     {
       fract = (long) bif_long_arg (qst, args, 0, "curdatetime");
+      DT_SET_FRACTION (res, fract);
+    }
+  return res;
+}
+
+caddr_t
+bif_curdatetime_tz (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  long fract = 0;
+  caddr_t res = dk_alloc_box (DT_LENGTH, DV_DATETIME);
+  dt_now_tz (res);
+  if (args && BOX_ELEMENTS (args) > 0)
+    {
+      fract = (long) bif_long_arg (qst, args, 0, "curdatetime_tz");
       DT_SET_FRACTION (res, fract);
     }
   return res;
@@ -1237,6 +1265,7 @@ bif_date_init ()
   bif_define_ex ("curdate", bif_curdate, BMD_ALIAS, "current_date", BMD_RET_TYPE, &bt_date, /*BMD_IS_PURE, */ BMD_DONE);	/* This is standard fun. */
   bif_define_ex ("curtime", bif_curtime, BMD_ALIAS, "current_time", BMD_RET_TYPE, &bt_time, /*BMD_IS_PURE, */ BMD_DONE);	/* This is standard fun. */
   bif_define_ex ("curdatetime", bif_curdatetime, BMD_ALIAS, "sysdatetime", BMD_RET_TYPE, &bt_timestamp, /*BMD_IS_PURE, */ BMD_DONE);	/* curdatetime() is our own, sysdatetime() is MS SQL */
+  bif_define_ex ("curdatetime_tz", bif_curdatetime_tz, BMD_RET_TYPE, &bt_timestamp, /*BMD_IS_PURE, */ BMD_DONE);
   bif_define_ex ("curdatetimeoffset", bif_curdatetimeoffset, BMD_ALIAS, "sysdatetimeoffset", BMD_RET_TYPE, &bt_timestamp, /*BMD_IS_PURE, */ BMD_DONE);	/* curdatetimeoffset() is our own, sysdatetimeoffset() is MS SQL */
   bif_define_ex ("curutcdatetime", bif_curutcdatetime, BMD_ALIAS, "sysutcdatetime", BMD_RET_TYPE, &bt_timestamp, /*BMD_IS_PURE, */ BMD_DONE);	/* curutcdatetime() is our own, sysutcdatetime() is MS SQL */
   bif_define_ex ("datestring", bif_date_string, BMD_RET_TYPE, &bt_varchar, BMD_IS_PURE, BMD_DONE);

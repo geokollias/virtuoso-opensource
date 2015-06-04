@@ -57,7 +57,7 @@
 #include "http.h"
 #include "mhash.h"
 
-extern int enable_qrc;		/* generate query plan comments and warnings */
+int32 enable_qr_comment;	/* generate query plan comments and warnings */
 #define MSG_MAX_LEN 100
 
 typedef struct qr_comment_s
@@ -193,7 +193,6 @@ qr_qn_total (query_t * qr)
 
 #define stmt_printf(a) trset_printf a
 
-static void qr_print (query_t * qr);
 static void node_print (data_source_t * node);
 
 
@@ -996,7 +995,7 @@ node_stat (data_source_t * qn)
     {
       float guess = IS_TS (qn) ? ((table_source_t *) qn)->ts_cardinality : ((hash_source_t *) qn)->hs_cardinality;
       float fanout = srs->srs_n_in ? srs->srs_n_out / (float) srs->srs_n_in : 0.0;
-      if (enable_qrc && (guess / fanout >= 10.0 || guess / fanout <= 0.1))
+      if (enable_qr_comment && (guess / fanout >= 10.0 || guess / fanout <= 0.1))
 	stmt_printf (
 	    ("Warning: the cardinality estimate of the cost model differs greatly from the measured time. Cardinality estimate: %9.2g Fanout: %9.2g\n",
 		guess, fanout));
@@ -2624,7 +2623,7 @@ qr_print_params (query_t * qr)
     }
 }
 
-static void
+void
 qr_print (query_t * qr)
 {
   du_thread_t *self = THREAD_CURRENT_THREAD;
@@ -2732,7 +2731,9 @@ ssl_print_xml (state_slot_t * ssl, dk_session_t * s)
 		&err_ret);
 	    if (!err_ret && strval)
 	      {
-		ses_sprintf (s, "<ssl constant='" EXPLAIN_LINE_MAX_STR_FORMAT "' />", strval);
+		SES_PRINT (s, "<ssl constant='");
+		dks_esc_write (s, strval, MIN (strlen (strval), EXPLAIN_LINE_MAX), CHARSET_UTF8, CHARSET_UTF8, DKS_ESC_PTEXT);
+		SES_PRINT (s, "' />");
 	      }
 	    else
 	      SES_PRINT (s, "<ssl constant='' />");
@@ -4279,7 +4280,7 @@ qi_branch_stats (query_instance_t * qi, query_instance_t * branch, query_t * qr)
       data_source_t *qn2 = qn;
       while (qn2 && (IS_QN (qn2, fun_ref_node_input) || IS_QN (qn2, hash_fill_node_input)))
 	qn2 = ((fun_ref_node_t *) qn2)->fnr_select;
-      if (qn2 && !qn2->src_stat)
+      if (qn2 && !qn2->src_stat && !IS_QN (qn2, union_node_input))
 	return;
     }
   qnw.qnw_qi_from = branch;
@@ -4449,7 +4450,7 @@ qi_log_stats_1 (query_instance_t * qi, caddr_t err, caddr_t ext_text)
 
   memset (&comm, 0, sizeof (comm));
   /* comm.qrc_is_first = 0; */
-  if (enable_qrc)
+  if (enable_qr_comment)
     SET_THR_ATTR (self, TA_STAT_COMM, (void *) &comm);
   if (!qi->qi_log_stats)
     return;

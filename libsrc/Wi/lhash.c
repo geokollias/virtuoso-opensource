@@ -2653,6 +2653,7 @@ cha_clear_1 (chash_t * cha, hash_index_t * hi)
   cha->cha_current_data = cha->cha_init_data;
   cha_clear_fill (cha->cha_current, hi ? NULL : cha);
   cha_clear_fill (cha->cha_current_data, NULL);
+  cha->cha_exception_fill = 0;
 }
 
 
@@ -3737,7 +3738,7 @@ chash_merge (setp_node_t * setp, chash_t * cha, chash_t * delta, int n_to_go)
     {
       chash_t *de_p = CHA_PARTITION (delta, part);
       chash_page_t *chp = de_p->cha_init_page;
-      uint64 hash_no[PAGE_DATA_SZ / (2 * sizeof (uint64))];
+      uint64 hash_no[PAGE_DATA_SZ / sizeof (uint64)];
       for (chp = chp; chp; chp = chp->h.h.chp_next)
 	{
 	  int row;
@@ -7188,7 +7189,20 @@ ce_hash_dc (col_pos_t * fetch_cpo, db_buf_t ce, db_buf_t ce_first, int n_values,
     {
       dtp_t ce_dtp = CE_INTLIKE (flags) ? ((CE_IS_IRI & flags) ? DV_IRI_ID : DV_LONG_INT) : DV_ANY;
       if (ce_dtp != DV_ANY && ce_dtp != dtp_canonical[dcdtp])
-	return;			/*incompatible dc */
+	{
+	  if (itc->itc_n_matches)
+	    {
+	      int end = fetch_cpo->cpo_ce_row_no + n_values;
+	      for (;;)
+		{
+		  if (++itc->itc_match_in == itc->itc_n_matches)
+		    return;
+		  if (itc->itc_matches[itc->itc_match_in] >= end)
+		    return;
+		}
+	    }
+	  return;		/*incompatible dc */
+	}
       if (DV_ANY == fetch_cpo->cpo_cl->cl_sqt.sqt_col_dtp && DV_ANY == ce_dtp)
 	{
 	  fetch_cpo->cpo_value_cb = ce_result_typed;
@@ -8251,58 +8265,6 @@ bif_chash_in_init (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       int inx2;
       switch (DV_TYPE_OF (vals))
 	{
-#ifdef RDF_SECURITY_CLO
-	case DV_CLOP:
-	  {
-	    cl_op_t *clo = (cl_op_t *) vals;
-	    if (CLO_RDF_GRAPH_USER_PERMS == clo->clo_op)
-	      {
-		dk_hash_64_t *ht = clo->_.rdf_graph_user_perms.ht;
-		int req_perms = clo->_.rdf_graph_user_perms.req_perms;
-		dk_hash_64_iterator_t iter;
-		int64 *g_iid_num_ptr, *g_perms_ptr;
-		int need_dupe_check = (0 != dc->dc_n_values);
-		if (clo->_.rdf_graph_user_perms.g_read_qr)
-		  {
-		    index_tree_t *tree =
-			rdf_ctx_hash (qi, clo->_.rdf_graph_user_perms.g_read_qr, clo->_.rdf_graph_user_perms.g_read_param);
-		    if (!args[3] || !ssl_is_settable (args[3]))
-		      qst_set (qst, args[1], (caddr_t) tree);
-		    else
-		      qst_set (qst, args[2], box_num (tree->it_hi->hi_cl_id));
-		    return NULL;
-		  }
-		rwlock_rdlock (ht->ht_rwlock);
-		dbg_printf (("Chash from user %d, req perms %d\n\n", (int) (clo->_.rdf_graph_user_perms.u_id), req_perms));
-		dk_hash_64_iterator (&iter, ht);
-		while (dk_hash_64_hit_next (&iter, &g_iid_num_ptr, &g_perms_ptr))
-		  {
-		    dbg_printf ((BOXINT_FMT " <%s> has %d\n", (boxint) (g_iid_num_ptr[0]), key_id_to_iri (qst, g_iid_num_ptr[0]),
-			    (int) (g_perms_ptr[0])));
-		    if ((g_perms_ptr[0] & req_perms) == req_perms)
-		      {
-			char val_buf[sizeof (int64) + BOX_AUTO_OVERHEAD];
-			caddr_t val;
-			BOX_AUTO (val, val_buf, sizeof (int64), DV_IRI_ID);
-			((int64 *) val)[0] = g_iid_num_ptr[0];
-			if (need_dupe_check)
-			  {
-			    for (inx2 = 0; inx2 < dc->dc_n_values; inx2++)
-			      {
-				qi->qi_set = inx2;
-				if (DVC_MATCH == cmp_boxes (val, qst_get ((caddr_t *) qi, hfq->hfq_fill_dc), NULL, NULL))
-				  goto next_in_rgu_clo;
-			      }
-			  }
-			dc_append_box (dc, val);
-		      }
-		  next_in_rgu_clo:;
-		  }
-		rwlock_unlock (ht->ht_rwlock);
-	      }
-	    break;
-	  }
-#endif
 	case DV_ARRAY_OF_POINTER:
 	  {
 	    int nth, n_vals = BOX_ELEMENTS (vals);

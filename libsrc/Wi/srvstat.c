@@ -52,6 +52,7 @@
 #include "sqlo.h"
 #include "rdfinf.h"
 #include "rdf_core.h"
+#include "mhash.h"
 
 #ifndef WIN32
 # include <pwd.h>
@@ -83,6 +84,7 @@ long tc_split_2nd_read;
 long tc_read_wait;
 long tc_write_wait;
 long tc_qp_thread;
+long tc_rec_cm;
 long tc_dive_would_deadlock;
 long tc_cl_deadlocks;
 long tc_cl_wait_queries;
@@ -109,6 +111,7 @@ int cls_rollback_no_finish_if_thread;
 long tc_page_fill_hash_overflow;
 extern long tc_part_hash_join;
 long tc_key_sample_reset;
+extern uint64 tc_sample_clocks;
 long tc_pl_moved_in_reentry;
 long tc_enter_transiting_bm_inx;
 long tc_geo_delete_retry, tc_geo_delete_missed;
@@ -217,6 +220,11 @@ extern int enable_g_in_sec;
 extern int64 rdf_ctx_max_mem;
 extern int64 rdf_ctx_in_use;
 extern int sqlo_max_layouts;
+extern size_t sqlo_max_mp_size;
+extern int enable_initial_plan;
+extern int32 enable_dt_leaf;
+extern int32 enable_join_sample;
+extern int32 sqlo_sample_batch_sz;
 extern int32 sqlo_compiler_exceeds_run_factor;
 extern int enable_mem_hash_join;
 extern int32 enable_qrc;
@@ -257,6 +265,7 @@ extern int enable_conn_rc_fifo;
 extern int enable_cm_still_wanted;
 extern int enable_cancel_waiting;
 extern int enable_setp_partition;
+extern int32 setp_distinct_max_keys;
 extern int enable_stream_gb;
 extern int enable_min_card;
 extern int enable_hash_colocate;
@@ -337,6 +346,9 @@ long vt_batch_size_limit = 1000000L;
 /* flags for simulated exceptions */
 long dbf_no_disk = 0;
 long dbf_log_no_disk;
+extern int32 dbf_log_always;
+extern int32 dbf_no_raw_exit;
+extern int32 dbf_no_atomic;
 long dbf_2pc_prepare_wait;	/* wait this many msec between prepare and commit */
 long dbf_2pc_wait;		/* wait this many msec after each 2pc message or log write */
 long dbf_branch_transact_wait;	/* wait this many msec onn cluster branch before doing rollback, prepare or commit */
@@ -426,6 +438,7 @@ int cl_no_auto_remove;
 extern int dbf_log_fsync;
 extern int dbf_assert_on_malformed_data;
 extern int dbf_max_itc_samples;
+extern int32 enable_sample_hist;
 
 extern int32 c_pcre_match_limit;
 extern int32 c_pcre_match_limit_recursion;
@@ -494,6 +507,8 @@ long sparql_max_mem_in_use = 0;
 
 extern int rdf_create_graph_keywords;
 extern int rdf_query_graph_keywords;
+
+extern int timezoneless_datetimes;
 
 static long thr_cli_running;
 static long thr_cli_waiting;
@@ -1412,6 +1427,7 @@ int32 enable_mt_ft_inx = 1;
 int32 disable_rdf_init = 0;
 extern int32 enable_pg_card;
 long vdb_attach_autocommit = 1;
+extern int32 backup_snappy;
 static long my_thread_num_total;
 static long my_thread_num_wait;
 static long my_thread_num_dead;
@@ -1431,6 +1447,12 @@ extern int32 col_seg_max_rows;
 #ifdef MALLOC_DEBUG
 extern long slow_malloc_debug;
 #endif
+
+extern int32 enable_qrc;
+extern int32 enable_qr_comment;
+extern int32 enable_rdf_trig;
+extern int32 enable_sslr_check;
+
 
 stat_desc_t stat_descs[] = {
   {"main_bufs", (long *) &main_bufs, SD_INT32},
@@ -1464,6 +1486,7 @@ stat_desc_t stat_descs[] = {
   {"tc_read_wait", &tc_read_wait, NULL},
   {"tc_write_wait", &tc_write_wait, NULL},
   {"tc_cl_deadlocks", &tc_cl_deadlocks, NULL},
+  {"tc_rec_cm", &tc_rec_cm},
   {"tc_cl_wait_queries", &tc_cl_wait_queries, NULL},
   {"tc_cl_keep_alives", &tc_cl_keep_alives, NULL},
   {"tc_cl_branch_wanted_queries", &tc_cl_branch_wanted_queries, NULL},
@@ -1497,6 +1520,7 @@ stat_desc_t stat_descs[] = {
   {"tc_page_fill_hash_overflow", &tc_page_fill_hash_overflow, NULL},
   {"tc_autocompact_split", &tc_autocompact_split, NULL},
   {"tc_key_sample_reset", &tc_key_sample_reset, NULL},
+  {"tc_sample_clocks", &tc_sample_clocks},
   {"tc_part_hash_join", &tc_part_hash_join, NULL},
   {"tc_pl_moved_in_reentry", &tc_pl_moved_in_reentry, NULL},
   {"tc_enter_transiting_bm_inx", &tc_enter_transiting_bm_inx, NULL},
@@ -1748,6 +1772,7 @@ stat_desc_t stat_descs[] = {
   {"disable_rdf_init", (long *) &disable_rdf_init, SD_INT32},
 
   /* backup vars */
+  {"backup_snappy", &backup_snappy, SD_INT32},
   {"backup_prefix_name", NULL, &my_bp_prefix},
   {"backup_file_index", (long *) &bp_ctx.db_bp_num, NULL},
   {"backup_dir_index", (long *) &bp_ctx.db_bp_index, NULL},
@@ -1781,6 +1806,9 @@ stat_desc_t dbf_descs[] = {
   {"dbf_2pc_wait", &dbf_2pc_wait, NULL},
   {"dbf_branch_transact_wait", &dbf_branch_transact_wait, NULL},
   {"dbf_log_no_disk", &dbf_log_no_disk, NULL},
+  {"dbf_log_always", &dbf_log_always, SD_INT32},
+  {"dbf_no_atomic", &dbf_no_atomic, SD_INT32},
+  {"dbf_no_raw_exit", &dbf_no_raw_exit, SD_INT32},
   {"txn_after_image_limit", &txn_after_image_limit, NULL},
   {"dbf_clop_enter_wait", &dbf_clop_enter_wait, NULL},
   {"dbf_cl_skip_wait_notify", &dbf_cl_skip_wait_notify, NULL},
@@ -1803,6 +1831,11 @@ stat_desc_t dbf_descs[] = {
   {"rdf_ctx_in_use", &rdf_ctx_in_use},
   {"enable_mem_hash_join", (long *) &enable_mem_hash_join, SD_INT32},
   {"sqlo_max_layouts", &sqlo_max_layouts, SD_INT32},
+  {"sqlo_max_mp_size", &sqlo_max_mp_size},
+  {"enable_initial_plan", &enable_initial_plan, SD_INT32},
+  {"enable_dt_leaf", &enable_dt_leaf, SD_INT32},
+  {"enable_join_sample", &enable_join_sample, SD_INT32},
+  {"sqlo_sample_batch_sz", &sqlo_sample_batch_sz, SD_INT32},
   {"sqlo_compiler_exceeds_run_factor", &sqlo_compiler_exceeds_run_factor, SD_INT32},
   {"enable_hash_merge", (long *) &enable_hash_merge, SD_INT32},
   {"enable_hash_fill_join", (long *) &enable_hash_fill_join, SD_INT32},
@@ -1823,6 +1856,7 @@ stat_desc_t dbf_descs[] = {
   {"enable_bsp_trans", &enable_bsp_trans, SD_INT32},
   {"enable_cset", &enable_cset, SD_INT32},
   {"iri_seqs_used", &iri_seqs_used, SD_INT32},
+  {"setp_distinct_max_keys", (long *) &setp_distinct_max_keys, SD_INT32},
   {"enable_iri_nic_n", (long *) &enable_iri_nic_n, SD_INT32},
   {"enable_at_print", (long *) &enable_at_print, SD_INT32},
   {"enable_min_card", (long *) &enable_min_card},
@@ -1862,6 +1896,7 @@ stat_desc_t dbf_descs[] = {
   {"dbf_col_ins_dbg_log", (long *) &dbf_col_ins_dbg_log, SD_INT32},
   {"dbf_col_del_leaf", (long *) &dbf_col_del_leaf, SD_INT32},
   {"enable_pogs_check", (long *) &enable_pogs_check, SD_INT32},
+  {"enable_sslr_check", (long *) &enable_sslr_check, SD_INT32},
   {"chash_space_avail", (long *) &chash_space_avail},
   {"chash_per_query_pct", (long *) &chash_per_query_pct, SD_INT32},
   {"enable_chash_gb", (long *) &enable_chash_gb, SD_INT32},
@@ -1902,8 +1937,10 @@ stat_desc_t dbf_descs[] = {
   {"tn_at_card_cutoff", (long *) &tn_at_card_cutoff, NULL},
   {"tn_card_cutoff", (long *) &tn_card_cutoff, NULL},
   {"dbf_max_itc_samples", (long *) &dbf_max_itc_samples, SD_INT32},
+  {"enable_sample_hist", &enable_sample_hist, SD_INT32},
   {"enable_mt_ft_inx", (long *) &enable_mt_ft_inx, SD_INT32},
   {"disable_rdf_init", (long *) &disable_rdf_init, SD_INT32},
+  {"enable_rdf_trig", (long *) &enable_rdf_trig, SD_INT32},
   {"enable_pg_card", (long *) &enable_pg_card, SD_INT32},
   {"enable_ce_ins_check", (long *) &enable_ce_ins_check, SD_INT32},
   {"dbf_ignore_uneven_col", (long *) &dbf_ignore_uneven_col, SD_INT32},
@@ -1927,6 +1964,8 @@ stat_desc_t dbf_descs[] = {
   {"pcre_match_limit", &c_pcre_match_limit, SD_INT32},
   {"pcre_match_limit_recursion", &c_pcre_match_limit_recursion, SD_INT32},
   {"pcre_max_cache_sz", &pcre_max_cache_sz, SD_INT32},
+  {"enable_qr_comment", &enable_qr_comment, SD_INT32},
+  {"timezoneless_datetimes", &timezoneless_datetimes, SD_INT32},
   {NULL, NULL, NULL}
 };
 
@@ -2080,8 +2119,6 @@ bif_dbf_set (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   place = (stat_desc_t **) id_hash_get (sd_hash, (caddr_t) & name);
   if (!place)
     sqlr_new_error ("42000", "SR...", "sys_stat parameter '%.300s' does not exist and can not be set by __dbf_set()", name);
-
-
   sd = *place;
   if (SD_INT32 == (char **) sd->sd_str_value)
     {
@@ -2239,6 +2276,8 @@ bif_key_stat (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 	  return (box_num (it_remap_count (key->key_fragments[0]->kf_it)));
 	if (0 == strcmp (stat_name, "n_rows"))
 	  return (box_num (key->key_table->tb_count));
+	if (0 == strcmp (stat_name, "n_deletes"))
+	  return (box_num (key->key_n_deletes));
 	if (0 == strcmp (stat_name, "ac_in"))
 	  return (box_num (key->key_ac_in));
 	if (0 == strcmp (stat_name, "ac_out"))
@@ -2926,7 +2965,7 @@ dbg_print_box_aux (caddr_t object, FILE * out, dk_hash_t * known)
 	    fprintf (out, "#D(");
 	    for (n = 0; n < length; n++)
 	      {
-		fprintf (out, "%f ", ((double *) object)[n]);
+		fprintf (out, DOUBLE_E_STAR_FMT " ", DOUBLE_E_PREC, ((double *) object)[n]);
 	      }
 	    fprintf (out, ")");
 	    break;
@@ -2939,7 +2978,7 @@ dbg_print_box_aux (caddr_t object, FILE * out, dk_hash_t * known)
 	    fprintf (out, "#F(");
 	    for (n = 0; n < length; n++)
 	      {
-		fprintf (out, "%f ", ((float *) object)[n]);
+		fprintf (out, SINGLE_E_STAR_FMT " ", SINGLE_E_PREC, ((float *) object)[n]);
 	      }
 	    fprintf (out, ")");
 	    break;
@@ -2963,11 +3002,11 @@ dbg_print_box_aux (caddr_t object, FILE * out, dk_hash_t * known)
 	  break;
 
 	case DV_SINGLE_FLOAT:
-	  fprintf (out, "%f", *(float *) object);
+	  fprintf (out, SINGLE_E_STAR_FMT, SINGLE_E_PREC, *(float *) object);
 	  break;
 
 	case DV_DOUBLE_FLOAT:
-	  fprintf (out, "%f", *(double *) object);
+	  fprintf (out, DOUBLE_E_STAR_FMT, DOUBLE_E_PREC, *(double *) object);
 	  break;
 
 	case DV_DB_NULL:
@@ -3156,14 +3195,14 @@ printf_dv (db_buf_t dv, FILE * out)
       {
 	float f;
 	EXT_TO_FLOAT (&f, (dv + 1));
-	fprintf (out, "%f ", f);
+	fprintf (out, SINGLE_E_STAR_FMT " ", SINGLE_E_PREC, f);
 	break;
       }
     case DV_DOUBLE_FLOAT:
       {
 	double f;
 	EXT_TO_DOUBLE (&f, (dv + 1));
-	fprintf (out, "%f ", f);
+	fprintf (out, DOUBLE_E_STAR_FMT " ", DOUBLE_E_PREC, f);
 	break;
       }
     default:
@@ -3358,7 +3397,7 @@ row_map_fprint (FILE * out, buffer_desc_t * buf, db_buf_t row, dbe_key_t * key)
 	{
 	  float f;
 	  EXT_TO_FLOAT (&f, xx);
-	  fprintf (out, " %f ", f);
+	  fprintf (out, " " SINGLE_E_STAR_FMT " ", SINGLE_E_PREC, f);
 	  break;
 	}
       case DV_DOUBLE_FLOAT:
@@ -4674,6 +4713,7 @@ bif_col_set_samples (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   dk_set_t cols;
   ITC_INIT (itc, NULL, NULL);
   memzero (&itc->itc_st, sizeof (itc->itc_st));
+  itc->itc_insert_key = tb->tb_primary_key;
   itc->itc_st.cols = hash_table_allocate (31);
   if (!tb)
     sqlr_new_error ("42000", "CSNTB", "No table %s", tb_name);
@@ -4911,6 +4951,155 @@ bif_key_em_check (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   return list_to_array (dk_set_nreverse (l));
 }
 
+
+caddr_t
+bif_ws_save (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  int bp_inx, b_inx;
+  dk_session_t *ses = dk_session_allocate (SESCLASS_TCPIP);
+  int fd = fd_open ("virt.ws", OPEN_FLAGS | O_TRUNC);
+  tcpses_set_fd (ses->dks_session, fd);
+  CATCH_WRITE_FAIL (ses)
+  {
+    DO_BOX (buffer_pool_t *, bp, bp_inx, wi_inst.wi_bps)
+    {
+      for (b_inx = 0; b_inx < bp->bp_n_bufs; b_inx++)
+	{
+	  buffer_desc_t *buf = &bp->bp_bufs[b_inx];
+	  index_tree_t *tree = buf->bd_tree;
+	  if (tree)
+	    {
+	      if (!tree->it_key || KI_TEMP == tree->it_key->key_id || !buf->bd_storage)
+		continue;
+	      print_int (tree->it_key->key_id, ses);
+	      print_int (buf->bd_page, ses);
+	      print_object (buf->bd_storage->dbs_name, ses, NULL, NULL);
+	    }
+	}
+    }
+    END_DO_BOX;
+    session_flush (ses);
+  }
+  END_WRITE_FAIL (ses);
+  fd_close (fd, "virt.ws");
+  PrpcSessionFree (ses);
+  return NULL;
+}
+
+typedef struct _ra_key_s
+{
+  dbe_key_t *rk_key;
+  dbe_storage_t *rk_dbs;
+} ra_key_t;
+
+
+rk_hash (ra_key_t * rk)
+{
+  uint64 h = 1;
+  MHASH_STEP (h, (ptrlong) rk->rk_key);
+  MHASH_STEP (h, (ptrlong) rk->rk_dbs);
+  return (uint32) h;
+}
+
+
+int
+rk_cmp (ra_key_t * r1, ra_key_t * r2)
+{
+  return r1->rk_key == r2->rk_key && r1->rk_dbs == r2->rk_dbs;
+}
+
+
+void
+rk_read (ra_key_t * rk, ra_req_t ** rap, int is_last)
+{
+  dp_addr_t phys, dp;
+  ra_req_t *ra = *rap;
+  it_cursor_t itc_auto;
+  int inx, ra_fill = ra->ra_fill;
+  it_cursor_t *itc = &itc_auto;
+  dbe_storage_t *dbs = rk->rk_dbs;
+  ITC_INIT (itc, NULL, NULL);
+  itc_from (itc, rk->rk_key, DBS_ELASTIC == dbs->dbs_type ? dbs->dbs_slice : QI_NO_SLICE);
+
+  ra->ra_fill = 0;
+  for (inx = 0; inx < ra_fill; inx++)
+    {
+      ITC_IN_KNOWN_MAP (itc, ra->ra_dp[inx]);
+      if (!DBS_PAGE_IN_RANGE (itc->itc_tree->it_storage, ra->ra_dp[inx])
+	  || dbs_may_be_free (itc->itc_tree->it_storage, ra->ra_dp[inx]) || 0 == ra->ra_dp[inx])
+	{
+	  ITC_LEAVE_MAP_NC (itc);
+	  continue;
+	}
+      IT_DP_REMAP (itc->itc_tree, ra->ra_dp[inx], phys);
+      if (DP_DELETED == phys)
+	{
+	  ITC_LEAVE_MAP_NC (itc);
+	  continue;
+	}
+      ITC_LEAVE_MAP_NC (itc);
+      ra->ra_dp[ra->ra_fill++] = ra->ra_dp[inx];
+    }
+  itc_read_ahead_blob (itc, ra, 0);
+  if (!is_last)
+    *rap = dk_alloc_box_zero (sizeof (ra_req_t), DV_BIN);
+}
+
+caddr_t
+bif_ws_restore (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  id_hash_iterator_t hit;
+  dk_session_t *ses = dk_session_allocate (SESCLASS_TCPIP);
+  mem_pool_t *mp = mem_pool_alloc ();
+  int fd = fd_open ("virt.ws", OPEN_FLAGS);
+  ra_req_t **place, *ra;
+  ra_key_t *rkp;
+  tcpses_set_fd (ses->dks_session, fd);
+  MP_START ();
+  {
+    id_hash_t *ht = t_id_hash_allocate (1001, sizeof (ra_key_t), sizeof (caddr_t), rk_hash, rk_cmp);
+    CATCH_READ_FAIL (ses)
+    {
+      for (;;)
+	{
+	  ra_key_t rk;
+	  int key_id = read_boxint (ses);
+	  dp_addr_t dp = read_boxint (ses);
+	  caddr_t dbsn = scan_session_boxing (ses);
+	  rk.rk_dbs = wd_storage (wi_inst.wi_master_wd, dbsn, 0);
+	  dk_free_box (dbsn);
+	  if (!rk.rk_dbs)
+	    continue;
+	  rk.rk_key = sch_id_to_key (wi_inst.wi_schema, key_id);
+	  if (!rk.rk_key)
+	    continue;
+	  place = id_hash_get (ht, (caddr_t) & rk);
+	  if (!place)
+	    {
+	      ra = (ra_req_t *) dk_alloc_box (sizeof (ra_req_t), DV_BIN);
+	      memzero (ra, sizeof (ra_req_t));
+	      id_hash_set (ht, (caddr_t) & rk, (caddr_t) & ra);
+	    }
+	  else
+	    ra = *place;
+	  ra->ra_dp[ra->ra_fill++] = dp;
+	  if (RA_MAX_BATCH == ra->ra_fill)
+	    rk_read (&rk, place, 0);
+	}
+    }
+    END_READ_FAIL (ses);
+    id_hash_iterator (&hit, ht);
+    while (hit_next (&hit, &rkp, &place))
+      rk_read (rkp, place, 1);
+  }
+  MP_DONE ();
+  fd_close (fd, "virt.ws");
+  PrpcSessionFree (ses);
+  mp_free (mp);
+  return NULL;
+}
+
+
 void
 bif_status_init (void)
 {
@@ -4953,4 +5142,6 @@ bif_status_init (void)
   bif_define ("_sys_real_cv_size", bif_real_cv_size);
 #endif
   bif_define ("key_em_check", bif_key_em_check);
+  bif_define ("ws_save", bif_ws_save);
+  bif_define ("ws_restore", bif_ws_restore);
 }

@@ -172,6 +172,84 @@ RDF_FETCH_OR_CREATE_1 (virtrdf_ns_uri)
 
 iri_id_t bnode_t_treshold = ~((iri_id_t) 0);
 
+int
+rb_uname_to_flags_of_parseable_datatype (ccaddr_t dt_uname)
+{
+  if ((uname_xmlschema_ns_uri_hash_byte == dt_uname)
+      || (uname_xmlschema_ns_uri_hash_decimal == dt_uname)
+      || (uname_xmlschema_ns_uri_hash_double == dt_uname)
+      || (uname_xmlschema_ns_uri_hash_float == dt_uname)
+      || (uname_xmlschema_ns_uri_hash_int == dt_uname)
+      || (uname_xmlschema_ns_uri_hash_integer == dt_uname)
+      || (uname_xmlschema_ns_uri_hash_long == dt_uname)
+      || (uname_xmlschema_ns_uri_hash_negativeInteger == dt_uname)
+      || (uname_xmlschema_ns_uri_hash_nonNegativeInteger == dt_uname)
+      || (uname_xmlschema_ns_uri_hash_nonPositiveInteger == dt_uname)
+      || (uname_xmlschema_ns_uri_hash_positiveInteger == dt_uname)
+      || (uname_xmlschema_ns_uri_hash_short == dt_uname)
+      || (uname_xmlschema_ns_uri_hash_unsignedByte == dt_uname)
+      || (uname_xmlschema_ns_uri_hash_unsignedInt == dt_uname)
+      || (uname_xmlschema_ns_uri_hash_unsignedLong == dt_uname) || (uname_xmlschema_ns_uri_hash_unsignedShort == dt_uname))
+    return RDF_TYPE_PARSEABLE | RDF_TYPE_PARSEABLE_TO_NUMERIC;
+  if ((uname_xmlschema_ns_uri_hash_dayTimeDuration == dt_uname))
+    return RDF_TYPE_PARSEABLE | RDF_TYPE_PARSEABLE_TO_DTDURATION;
+  if ((uname_xmlschema_ns_uri_hash_boolean == dt_uname)
+      || (uname_xmlschema_ns_uri_hash_date == dt_uname) || (uname_xmlschema_ns_uri_hash_dateTime == dt_uname)
+      /*|| (uname_xmlschema_ns_uri_hash_dateTimeStamp       == dt_uname) */
+      || (uname_xmlschema_ns_uri_hash_duration == dt_uname)
+      || (uname_xmlschema_ns_uri_hash_gDay == dt_uname)
+      || (uname_xmlschema_ns_uri_hash_gMonth == dt_uname)
+      || (uname_xmlschema_ns_uri_hash_gMonthDay == dt_uname)
+      || (uname_xmlschema_ns_uri_hash_gYear == dt_uname) || (uname_xmlschema_ns_uri_hash_gYearMonth == dt_uname)
+      /*|| (uname_xmlschema_ns_uri_hash_hexBinary           == dt_uname) */
+      /*|| (uname_xmlschema_ns_uri_hash_language            == dt_uname) */
+      /*|| (uname_xmlschema_ns_uri_hash_normalizedString    == dt_uname) */
+      /*|| (uname_xmlschema_ns_uri_hash_string              == dt_uname) */
+      || (uname_xmlschema_ns_uri_hash_time == dt_uname)
+      /*|| (uname_xmlschema_ns_uri_hash_token               == dt_uname) */
+      || (uname_xmlschema_ns_uri_hash_yearMonthDuration == dt_uname))
+    return RDF_TYPE_PARSEABLE;
+  return 0;
+}
+
+int
+rb_twobyte_to_flags_of_parseable_datatype (unsigned short dt_twobyte)
+{
+  if ((rb_type__xsd_byte == dt_twobyte)
+      || (rb_type__xsd_decimal == dt_twobyte)
+      || (rb_type__xsd_double == dt_twobyte)
+      || (rb_type__xsd_float == dt_twobyte)
+      || (rb_type__xsd_int == dt_twobyte)
+      || (rb_type__xsd_integer == dt_twobyte)
+      || (rb_type__xsd_long == dt_twobyte)
+      || (rb_type__xsd_negativeInteger == dt_twobyte)
+      || (rb_type__xsd_nonNegativeInteger == dt_twobyte)
+      || (rb_type__xsd_nonPositiveInteger == dt_twobyte)
+      || (rb_type__xsd_positiveInteger == dt_twobyte)
+      || (rb_type__xsd_short == dt_twobyte)
+      || (rb_type__xsd_unsignedByte == dt_twobyte)
+      || (rb_type__xsd_unsignedInt == dt_twobyte)
+      || (rb_type__xsd_unsignedLong == dt_twobyte) || (rb_type__xsd_unsignedShort == dt_twobyte))
+    return RDF_TYPE_PARSEABLE | RDF_TYPE_PARSEABLE_TO_NUMERIC;
+  if ((rb_type__xsd_dayTimeDuration == dt_twobyte))
+    return RDF_TYPE_PARSEABLE | RDF_TYPE_PARSEABLE_TO_DTDURATION;
+  if ((rb_type__xsd_boolean == dt_twobyte) || (rb_type__xsd_date == dt_twobyte) || (rb_type__xsd_dateTime == dt_twobyte)
+      /*|| (rb_type__xsd_dateTimeStamp      == dt_twobyte) */
+      || (rb_type__xsd_duration == dt_twobyte)
+      || (rb_type__xsd_gDay == dt_twobyte)
+      || (rb_type__xsd_gMonth == dt_twobyte)
+      || (rb_type__xsd_gMonthDay == dt_twobyte) || (rb_type__xsd_gYear == dt_twobyte) || (rb_type__xsd_gYearMonth == dt_twobyte)
+      /*|| (rb_type__xsd_hexBinary          == dt_twobyte) */
+      /*|| (rb_type__xsd_language           == dt_twobyte) */
+      /*|| (rb_type__xsd_normalizedString   == dt_twobyte) */
+      /*|| (rb_type__xsd_string             == dt_twobyte) */
+      || (rb_type__xsd_time == dt_twobyte)
+      /*|| (rb_type__xsd_token              == dt_twobyte) */
+      || (rb_type__xsd_yearMonthDuration == dt_twobyte))
+    return RDF_TYPE_PARSEABLE;
+  return 0;
+}
+
 caddr_t
 bif_rdf_set_bnode_t_treshold (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
@@ -2136,6 +2214,185 @@ bif_rdf_sqlval_of_obj (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 }
 
 caddr_t
+rb_new_bool (int val)
+{
+  rdf_box_t *res = rb_allocate ();
+  res->rb_box = (caddr_t) ((ptrlong) (val ? 1 : 0));
+  res->rb_is_complete = 1;
+  res->rb_type = rb_type__xsd_boolean;
+  res->rb_lang = RDF_BOX_DEFAULT_LANG;
+  return (caddr_t) res;
+}
+
+caddr_t
+rb_ebv_of_plain_box (caddr_t val)
+{
+  switch (DV_TYPE_OF (val))
+    {
+    case DV_LONG_INT:
+      return rb_new_bool (unbox (val));
+    case DV_SINGLE_FLOAT:
+      return rb_new_bool (unbox_float (val) != 0);
+    case DV_DOUBLE_FLOAT:
+      return rb_new_bool (unbox_double (val) != 0);
+    case DV_NUMERIC:
+      return rb_new_bool (!num_is_zero ((numeric_t) (val)));
+    case DV_STRING:
+      return (box_flags (val) & BF_IRI) ? NEW_DB_NULL : rb_new_bool (1 < box_length (val));
+    case DV_BIN:
+      return rb_new_bool (1 < box_length (val));
+    case DV_WIDE:
+      return rb_new_bool (sizeof (wchar_t) < box_length (val));
+    default:			/* case DV_DATETIME: case DV_XML_ENTITY: case DV_GEO: case DV_IRI_ID: case DV_UNAME: case DV_DB_NULL: */
+      return NEW_DB_NULL;
+    }
+}
+
+caddr_t
+rdf_ebv_int_of_plain_box (caddr_t val)
+{
+  switch (DV_TYPE_OF (val))
+    {
+    case DV_LONG_INT:
+      return (caddr_t) ((ptrlong) (unbox (val) ? 1 : 0));
+    case DV_SINGLE_FLOAT:
+      return (caddr_t) ((ptrlong) (unbox_float (val) ? 1 : 0));
+    case DV_DOUBLE_FLOAT:
+      return (caddr_t) ((ptrlong) (unbox_double (val) ? 1 : 0));
+    case DV_NUMERIC:
+      return (caddr_t) ((ptrlong) (!num_is_zero ((numeric_t) (val)) ? 1 : 0));
+    case DV_STRING:
+      return (box_flags (val) & BF_IRI) ? NEW_DB_NULL : ((caddr_t) ((ptrlong) ((1 < box_length (val)) ? 1 : 0)));
+    case DV_BIN:
+      return (caddr_t) ((ptrlong) ((1 < box_length (val)) ? 1 : 0));
+    case DV_WIDE:
+      return (caddr_t) ((ptrlong) ((sizeof (wchar_t) < box_length (val)) ? 1 : 0));
+    default:			/* case DV_DATETIME: case DV_XML_ENTITY: case DV_GEO: case DV_IRI_ID: case DV_UNAME: case DV_DB_NULL: */
+      return NEW_DB_NULL;
+    }
+}
+
+caddr_t
+bif_sparql_ebv_impl (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, const char *fname, int is_pure)
+{
+  caddr_t shortobj = bif_arg (qst, args, 0, fname);
+  rdf_box_t *rb;
+  query_instance_t *qi = (query_instance_t *) qst;
+  switch (DV_TYPE_OF (shortobj))
+    {
+    case DV_RDF_ID:
+      {
+	sqlr_new_error ("42000", "RDF31", "(internal SPARQL compiler error?) Cannot get EBV from RDF_ID in %s()", fname);
+	return NULL;		/* Never reached */
+      }
+    case DV_RDF:
+      {
+	dtp_t box_dtp;
+	rb = (rdf_box_t *) shortobj;
+	if (!rb->rb_is_complete)
+	  {
+	    if (is_pure)
+	      sqlr_new_error ("42000", "RDF31", "(internal SPARQL compiler error?) Incomplete RDF box as argument of %s()", fname);
+	    rb_complete (rb, qi->qi_trx, qi);
+	  }
+	box_dtp = DV_TYPE_OF (rb->rb_box);
+	if (rb_type__xsd_boolean == rb->rb_type)
+	  {
+	    if (DV_LONG_INT == DV_TYPE_OF (rb->rb_box))
+	      return box_copy (shortobj);
+	    if (!strcasecmp (rb->rb_box, "true") || !strcmp (rb->rb_box, "1"))
+	      return rb_new_bool (1);
+	    if (!strcasecmp (rb->rb_box, "false") || !strcmp (rb->rb_box, "0"))
+	      return rb_new_bool (0);
+	    return NEW_DB_NULL;
+	  }
+	if ((DV_STRING != box_dtp) || (RDF_BOX_DEFAULT_TYPE >= rb->rb_type))
+	  return rb_ebv_of_plain_box (rb->rb_box);
+	if (rb_twobyte_to_flags_of_parseable_datatype (rb->rb_type) & RDF_TYPE_PARSEABLE_TO_NUMERIC)
+	  {
+	    if (DV_STRING == box_dtp)
+	      return rb_new_bool (0);
+	    return rb_ebv_of_plain_box (rb->rb_box);
+	  }
+	return NEW_DB_NULL;
+      }
+    }
+  return rb_ebv_of_plain_box (shortobj);
+}
+
+caddr_t
+bif_sparql_ebv (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  return bif_sparql_ebv_impl (qst, err_ret, args, "sparql_ebv", 0);
+}
+
+caddr_t
+bif_sparql_ebv_pure (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  return bif_sparql_ebv_impl (qst, err_ret, args, "sparql_ebv_pure", 1);
+}
+
+caddr_t
+bif_sparql_ebv_int_impl (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, const char *fname, int is_pure)
+{
+  caddr_t shortobj = bif_arg (qst, args, 0, "sparql_ebv_int");
+  rdf_box_t *rb;
+  query_instance_t *qi = (query_instance_t *) qst;
+  switch (DV_TYPE_OF (shortobj))
+    {
+    case DV_RDF_ID:
+      {
+	sqlr_new_error ("42000", "RDF31", "Internal SPARQL compiler error: cannot get EBV from RDF_ID in %s()", fname);
+	return NULL;		/* Never reached */
+      }
+    case DV_RDF:
+      {
+	dtp_t box_dtp;
+	rb = (rdf_box_t *) shortobj;
+	if (!rb->rb_is_complete)
+	  {
+	    if (is_pure)
+	      sqlr_new_error ("42000", "RDF31", "(internal SPARQL compiler error?) Incomplete RDF box as argument of %s()", fname);
+	    rb_complete (rb, qi->qi_trx, qi);
+	  }
+	box_dtp = DV_TYPE_OF (rb->rb_box);
+	if (rb_type__xsd_boolean == rb->rb_type)
+	  {
+	    if (DV_LONG_INT == DV_TYPE_OF (rb->rb_box))
+	      return box_num (unbox (rb->rb_box));
+	    if (!strcasecmp (rb->rb_box, "true") || !strcmp (rb->rb_box, "1"))
+	      return (caddr_t) ((ptrlong) (1));
+	    if (!strcasecmp (rb->rb_box, "false") || !strcmp (rb->rb_box, "0"))
+	      return (caddr_t) ((ptrlong) (0));
+	    return NEW_DB_NULL;
+	  }
+	if ((DV_STRING != box_dtp) || (RDF_BOX_DEFAULT_TYPE >= rb->rb_type))
+	  return rdf_ebv_int_of_plain_box (rb->rb_box);
+	if (rb_twobyte_to_flags_of_parseable_datatype (rb->rb_type) & RDF_TYPE_PARSEABLE_TO_NUMERIC)
+	  {
+	    if (DV_STRING == box_dtp)
+	      return (caddr_t) ((ptrlong) (0));
+	    return rdf_ebv_int_of_plain_box (rb->rb_box);
+	  }
+	return NEW_DB_NULL;
+      }
+    }
+  return rdf_ebv_int_of_plain_box (shortobj);
+}
+
+caddr_t
+bif_sparql_ebv_int (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  return bif_sparql_ebv_int_impl (qst, err_ret, args, "sparql_ebv_int", 0);
+}
+
+caddr_t
+bif_sparql_ebv_int_pure (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  return bif_sparql_ebv_int_impl (qst, err_ret, args, "sparql_ebv_int_pure", 1);
+}
+
+caddr_t
 bif_rq_iid_of_o (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   caddr_t shortobj = bif_arg (qst, args, 0, "__rq_iid_of_o");
@@ -2161,6 +2418,8 @@ bif_rdf_strsqlval (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       val = rb->rb_box;
       val_dtp = DV_TYPE_OF (val);
       rb_type = rb->rb_type;
+      if ((rb_type__xsd_boolean == rb_type) && (DV_LONG_INT == DV_TYPE_OF (val)))
+	val = unbox (val) ? uname_true : uname_false;
     }
   switch (val_dtp)
     {
@@ -2553,6 +2812,7 @@ iri_cast_and_split_ttl_qname (query_instance_t * qi, caddr_t iri, caddr_t * ns_p
   return iri_cast_and_split_ttl_qname_impl (qi, iri, ns_prefix_ret, local_ret, is_bnode_ret, SPLIT_MODE_TTL);
 }
 
+int
 iri_cast_and_split_xml_qname (query_instance_t * qi, caddr_t iri, caddr_t * ns_prefix_ret, caddr_t * local_ret,
     ptrlong * is_bnode_ret)
 {
@@ -3119,6 +3379,8 @@ http_ttl_write_obj (dk_session_t * ses, ttl_env_t * env, query_instance_t * qi, 
     {
       obj_box_value = ((rdf_box_t *) obj)->rb_box;
       obj_box_value_dtp = DV_TYPE_OF (obj_box_value);
+      if ((rb_type__xsd_boolean == ((rdf_box_t *) obj)->rb_type) && (DV_LONG_INT == obj_box_value_dtp))
+	obj_box_value = unbox (obj_box_value) ? uname_true : uname_false;
     }
   else
     {
@@ -3167,7 +3429,7 @@ http_ttl_write_obj (dk_session_t * ses, ttl_env_t * env, query_instance_t * qi, 
 	char tmpbuf[50];
 	int buffill;
 	double boxdbl = (double) (unbox_float (obj_box_value));
-	buffill = sprintf (tmpbuf, "\"%lg", boxdbl);
+	buffill = sprintf (tmpbuf, "\"" SINGLE_G_STAR_FMT, SINGLE_G_LEN, boxdbl);
 	if ((NULL == strchr (tmpbuf + 1, '.')) && (NULL == strchr (tmpbuf + 1, 'E')) && (NULL == strchr (tmpbuf + 1, 'e')))
 	  {
 	    if (isalpha (tmpbuf[1 + 1]))
@@ -3204,7 +3466,7 @@ http_ttl_write_obj (dk_session_t * ses, ttl_env_t * env, query_instance_t * qi, 
 	    http_ttl_write_duration (ses, boxdbl, "second");
 	    break;
 	  }
-	buffill = sprintf (tmpbuf, "%lg", boxdbl);
+	buffill = sprintf (tmpbuf, DOUBLE_G_STAR_FMT, DOUBLE_G_LEN, boxdbl);
 	if ((NULL == strchr (tmpbuf, '.')) && (NULL == strchr (tmpbuf, 'E')) && (NULL == strchr (tmpbuf, 'e')))
 	  {
 	    if (isalpha (tmpbuf[1]))
@@ -3696,6 +3958,8 @@ http_rdfxml_write_obj (dk_session_t * ses, ttl_env_t * env, query_instance_t * q
     {
       obj_box_value = ((rdf_box_t *) obj)->rb_box;
       obj_box_value_dtp = DV_TYPE_OF (obj_box_value);
+      if ((rb_type__xsd_boolean == ((rdf_box_t *) obj)->rb_type) && (DV_LONG_INT == obj_box_value_dtp))
+	obj_box_value = unbox (obj_box_value) ? uname_true : uname_false;
     }
   else
     {
@@ -3942,6 +4206,8 @@ http_nt_write_obj (dk_session_t * ses, nt_env_t * env, query_instance_t * qi, ca
     {
       obj_box_value = ((rdf_box_t *) obj)->rb_box;
       obj_box_value_dtp = DV_TYPE_OF (obj_box_value);
+      if ((rb_type__xsd_boolean == ((rdf_box_t *) obj)->rb_type) && (DV_LONG_INT == obj_box_value_dtp))
+	obj_box_value = unbox (obj_box_value) ? uname_true : uname_false;
     }
   else
     {
@@ -4444,6 +4710,8 @@ http_talis_json_write_literal_obj (dk_session_t * ses, query_instance_t * qi, ca
       rb_dt_lang_check (rb);
       if (RDF_BOX_DEFAULT_TYPE != rb->rb_type)
 	type_uri = rdf_type_twobyte_to_iri (rb->rb_type);
+      if ((rb_type__xsd_boolean == rb->rb_type) && (DV_LONG_INT == obj_box_value_dtp))
+	obj_box_value = unbox (obj_box_value) ? uname_true : uname_false;
     }
   else
     {
@@ -4869,10 +5137,10 @@ bif_http_ld_json_triple (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   else				/* 01.2345678901 */
     session_buffered_write (ses, " ,\n        ", 11);
   if (obj_is_iri)
-    {
-      session_buffered_write_char ('\"', ses);
+    {				/* 01 2345 678 90 */
+      session_buffered_write (ses, "{ \"@id\": \"", 10);
       dks_esc_write (ses, obj_iri, box_length (obj_iri) - 1, CHARSET_UTF8, CHARSET_UTF8, DKS_ESC_JSWRITE_DQ);
-      session_buffered_write_char ('\"', ses);
+      session_buffered_write (ses, "\"}", 2);
     }
   else
     http_ld_json_write_literal_obj (ses, qi, obj, obj_dtp);
@@ -5296,8 +5564,14 @@ sparql_rset_xml_write_row_impl (query_instance_t * qi, dk_session_t * ses, caddr
 		dt_to_iso8601_string_ext (rb->rb_box, temp, sizeof (temp), mode);
 		session_buffered_write (ses, temp, strlen (temp));
 	      }
-	    else
-	      dks_sqlval_esc_write ((caddr_t *) qi, ses, rb->rb_box, CHARSET_UTF8, CHARSET_UTF8, DKS_ESC_PTEXT);
+	    else if ((rb_type__xsd_boolean == rb->rb_type) && DV_TYPE_OF (rb->rb_box))
+	      {
+		if (unbox (rb->rb_box))
+		  SES_PRINT (ses, "true");
+		else
+		  SES_PRINT (ses, "false");
+	      }
+	    dks_sqlval_esc_write ((caddr_t *) qi, ses, rb->rb_box, CHARSET_UTF8, CHARSET_UTF8, DKS_ESC_PTEXT);
 	    SES_PRINT (ses, "</literal>");
 	    break;
 	  }
@@ -5977,41 +6251,7 @@ int enable_g_in_sec;
 caddr_t
 bif_rgs_user_perms_clo (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-#ifdef RDF_SECURITY_CLO
-  user_t *usr =
-      bif_user_t_arg (qst, args, 0, "__rgs_user_perms_clo",
-      (USER_SHOULD_EXIST | USER_SHOULD_BE_SQL_ENABLED | USER_NOBODY_IS_PERMITTED | USER_SPARQL_IS_PERMITTED), 1);
-  long perms = bif_long_arg (qst, args, 1, "__rgs_user_perms_clo");
-  dk_hash_64_t *usr_perms_ht = usr->usr_rdf_graph_perms;
-  cl_op_t *clo = clo_allocate (CLO_RDF_GRAPH_USER_PERMS);;
-  clo->_.rdf_graph_user_perms.u_id = usr->usr_id;
-  clo->_.rdf_graph_user_perms.req_perms = perms;
-  if (enable_g_in_sec)
-    {
-      QNCAST (QI, qi, qst);
-      client_connection_t *cli = qi->qi_client;
-      char *q_name = "g_ctx_query";
-      char *p_name = "g_ctx_param";
-      caddr_t *place = (caddr_t *) id_hash_get (cli->cli_globals, (caddr_t) & q_name);
-      caddr_t *place2 = (caddr_t *) id_hash_get (cli->cli_globals, (caddr_t) & p_name);
-      if (!place || !place2)
-	{
-	  dk_free_box ((caddr_t) clo);
-	  sqlr_new_error ("42000", "GCTX1", "g_in_query or g_in_params connection setting not set for graph scoping");
-	}
-      clo->_.rdf_graph_user_perms.g_read_qr = box_copy_tree (*place);
-      clo->_.rdf_graph_user_perms.g_read_param = box_copy_tree (*place2);
-    }
-  if (NULL == usr_perms_ht)
-    usr_perms_ht = rgs_alloc_usr_rdf_graph_perms (usr);
-  clo->_.rdf_graph_user_perms.ht = usr_perms_ht;
-  rwlock_wrlock (usr_perms_ht->ht_rwlock);
-  usr_perms_ht->ht_dict_refctr++;
-  rwlock_unlock (usr_perms_ht->ht_rwlock);
-  return (caddr_t) clo;
-#else
   sqlr_new_error ("42001", "SR657", "Function __rgs_user_perms_clo() is not implemented in this version of Virtuoso server");
-#endif
 }
 
 caddr_t
@@ -6741,29 +6981,31 @@ rdf_make_long_of_typedsqlval_strings (caddr_t * qst, caddr_t strval, caddr_t dt_
 	sparql_construct2_triple (caddr_t * qst, caddr_t * err_ret, id_hash_t * ht, caddr_t * triple_op, caddr_t * vars,
 	caddr_t ** blank_iids_ptr)
     {
+      AUTO_POOL (100);
       caddr_t *triple;
       int fld_ctr, fld_count;
       int var_count = BOX_ELEMENTS (vars);
       ptrlong one = 1;
+      caddr_t temp_val = NULL;
       switch (BOX_ELEMENTS (triple_op))
 	{
 	case 8:
 	  fld_count = 4;
-	  triple = (caddr_t *) list (4, NULL, NULL, NULL, NULL);
+	  triple = (caddr_t *) ap_alloc_box (&ap, 4 * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
 	  break;
 	case 6:
 	  fld_count = 3;
-	  triple = (caddr_t *) list (3, NULL, NULL, NULL);
+	  triple = (caddr_t *) ap_alloc_box (&ap, 3 * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
 	  break;
 	default:
 	  goto bad_op;		/* see below */
 	}
+      memzero (triple, box_length (triple));
       for (fld_ctr = fld_count; fld_ctr--; /* no step */ )
 	{
 	  ptrlong op = unbox (triple_op[fld_ctr * 2]);
 	  caddr_t arg = triple_op[fld_ctr * 2 + 1];
 	  caddr_t val;
-	  int val_is_temp = 0;
 	  switch (op)
 	    {
 	    case 1:
@@ -6829,7 +7071,7 @@ rdf_make_long_of_typedsqlval_strings (caddr_t * qst, caddr_t strval, caddr_t dt_
 			  goto bad_op;
 		      }
 		    val = rdf_make_long_of_typedsqlval_strings (qst, strval, dt_iri, lang_str);
-		    val_is_temp = 1;
+		    temp_val = val;
 		  }
 		else
 		  val = arg;
@@ -6841,12 +7083,11 @@ rdf_make_long_of_typedsqlval_strings (caddr_t * qst, caddr_t strval, caddr_t dt_
 	  switch (DV_TYPE_OF (val))
 	    {
 	    case DV_DB_NULL:
-	      dk_free_tree ((caddr_t) triple);
 	      return;
 	    case DV_IRI_ID:
 	      if ((((iri_id_t *) val)[0] >= min_bnode_iri_id ()) && ((1 == fld_ctr) || (3 == fld_ctr)))
 		{
-		  dk_free_tree ((caddr_t) triple);
+		  dk_free_box (temp_val);
 		  sqlr_new_error ("RDF01", "SR658", "Bad variable value in CONSTRUCT: blank node can not be used as %s",
 		      ((1 == fld_ctr) ? "predicate" : "graph"));
 		}
@@ -6856,7 +7097,7 @@ rdf_make_long_of_typedsqlval_strings (caddr_t * qst, caddr_t strval, caddr_t dt_
 	    case DV_STRING:
 	      if (!(box_flags (val) & BF_IRI) && (2 != fld_ctr))
 		{
-		  dk_free_tree ((caddr_t) triple);
+		  dk_free_box (temp_val);
 		  sqlr_new_error ("RDF01", "SR658", "Bad variable value in CONSTRUCT: string can not be used as %s",
 		      ((0 == fld_ctr) ? "subject" : ((1 == fld_ctr) ? "predicate" : "graph")));
 		}
@@ -6864,22 +7105,23 @@ rdf_make_long_of_typedsqlval_strings (caddr_t * qst, caddr_t strval, caddr_t dt_
 	    default:
 	      if (2 != fld_ctr)
 		{
-		  dk_free_tree ((caddr_t) triple);
+		  dk_free_box (temp_val);
 		  sqlr_new_error ("RDF01", "SR658", "Bad variable value in CONSTRUCT: literals can not be used as %s",
 		      ((0 == fld_ctr) ? "subject" : ((1 == fld_ctr) ? "predicate" : "graph")));
 		}
 	      break;
 	    }
-	  if (val_is_temp)
-	    triple[fld_ctr] = val;
-	  else
-	    triple[fld_ctr] = box_copy_tree (val);
+	  triple[fld_ctr] = val;
 	}
-      id_hash_set (ht, (caddr_t) (&triple), (caddr_t) (&one));
+      if (!id_hash_get (ht, (caddr_t) & triple))
+	{
+	  triple = (caddr_t *) box_copy_tree ((caddr_t) triple);
+	  id_hash_set (ht, (caddr_t) (&triple), (caddr_t) (&one));
+	}
+      dk_free_box (temp_val);
       return;
     bad_op:
       dk_free_tree ((caddr_t) (blank_iids_ptr[0]));
-      dk_free_tree ((caddr_t) triple);
       blank_iids_ptr[0] = NULL;
       sqlr_new_error ("22023", "SR657", "Invalid opcode list in triple constructor");
     }
@@ -7063,7 +7305,7 @@ rdf_make_long_of_typedsqlval_strings (caddr_t * qst, caddr_t strval, caddr_t dt_
     extern box_tmp_copy_f box_tmp_copier[256];
     void bif_ro2lo_vec (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, state_slot_t * ret);
     void bif_ro2sq_vec (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, state_slot_t * ret);
-    void bif_ro2lo_vec (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, state_slot_t * ret);
+    void bif_ro2ebv_vec (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, state_slot_t * ret);
     void bif_str_vec (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, state_slot_t * ret);
 
 
@@ -7116,6 +7358,15 @@ rdf_make_long_of_typedsqlval_strings (caddr_t * qst, caddr_t strval, caddr_t dt_
       bif_define_ex ("__rdf_box_to_ro_id_search_fields", bif_rdf_box_to_ro_id_search_fields, BMD_RET_TYPE, &bt_integer, BMD_DONE);
       bif_define_ex ("__rdf_sqlval_of_obj", bif_rdf_sqlval_of_obj, BMD_ALIAS, "__ro2sq", BMD_VECTOR_IMPL, bif_ro2sq_vec,
 	  BMD_RET_TYPE, &bt_any, BMD_USES_INDEX, BMD_DONE);
+      bif_define_ex ("sparql_ebv", bif_sparql_ebv, BMD_ALIAS, "sparql_ebv_of_sqlval", BMD_ALIAS, "sparql_ebv_of_obj", BMD_ALIAS,
+	  "__ro2ebv", /*BMD_VECTOR_IMPL, bif_ro2ebv_vec, */ BMD_RET_TYPE, &bt_any_box, BMD_USES_INDEX, BMD_DONE);
+      bif_define_ex ("sparql_ebv_int", bif_sparql_ebv_int, BMD_ALIAS, "sparql_ebv_int_of_sqlval", BMD_ALIAS,
+	  "sparql_ebv_int_of_obj", BMD_ALIAS, "__ro2ebv_int", /*BMD_VECTOR_IMPL, bif_ro2ebv_int_vec, */ BMD_RET_TYPE, &bt_integer,
+	  BMD_USES_INDEX, BMD_DONE);
+      bif_define_ex ("sparql_ebv_pure", bif_sparql_ebv_pure, /*BMD_VECTOR_IMPL, bif_ro2ebv_vec, */ BMD_RET_TYPE, &bt_any_box,
+	  BMD_IS_PURE, BMD_DONE);
+      bif_define_ex ("sparql_ebv_int_pure", bif_sparql_ebv_int_pure, /*BMD_VECTOR_IMPL, bif_ro2ebv_int_vec, */ BMD_RET_TYPE,
+	  &bt_integer, BMD_IS_PURE, BMD_DONE);
       bif_define_ex ("__rdf_strsqlval", bif_rdf_strsqlval, BMD_VECTOR_IMPL, bif_str_vec, BMD_RET_TYPE, &bt_varchar, BMD_USES_INDEX,
 	  BMD_DONE);
       bif_define_ex ("__rdf_long_to_ttl", bif_rdf_long_to_ttl, BMD_RET_TYPE, &bt_any, BMD_DONE);
@@ -7168,10 +7419,9 @@ rdf_make_long_of_typedsqlval_strings (caddr_t * qst, caddr_t strval, caddr_t dt_
       bif_define ("__rdf_graph_approx_perms", bif_rdf_graph_approx_perms);
       bif_define ("__rdf_graph_specific_perms_of_user", bif_rdf_graph_specific_perms_of_user);
       bif_define ("__rgs_assert", bif_rgs_assert);
-      bif_define ("__rgs_assert_cbk", bif_rgs_assert_cbk);
-      bif_set_uses_index (bif_rgs_assert_cbk);
-      bif_define ("__rgs_ack", bif_rgs_ack);
-      bif_define_ex ("__rgs_ack_cbk", bif_rgs_ack_cbk, BMD_USES_INDEX, BMD_DONE);
+      bif_define_ex ("__rgs_assert_cbk", bif_rgs_assert_cbk, BMD_USES_INDEX, BMD_DONE);
+      bif_define_ex ("__rgs_ack", bif_rgs_ack, BMD_RET_TYPE, &bt_integer, BMD_DONE);
+      bif_define_ex ("__rgs_ack_cbk", bif_rgs_ack_cbk, BMD_RET_TYPE, &bt_integer, BMD_USES_INDEX, BMD_DONE);
       bif_define_ex ("__rgs_user_perms_clo", bif_rgs_user_perms_clo, BMD_DONE);
       bif_define_ex ("__rdf_repl_uid", bif_rdf_repl_uid, BMD_RET_TYPE, &bt_integer, BMD_DONE);
       bif_define_ex ("__rgs_prepare_del_or_ins", bif_rgs_prepare_del_or_ins, BMD_RET_TYPE, &bt_integer, BMD_USES_INDEX, BMD_DONE);

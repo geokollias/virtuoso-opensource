@@ -676,6 +676,23 @@ setp_mem_insert (setp_node_t * setp, caddr_t * qst, int pos, caddr_t ** arr, int
 
 long setp_top_row_limit = 10000;
 
+
+int
+setp_top_get (caddr_t * inst, state_slot_t * ssl, int deflt)
+{
+  /* top, skip are usually const.  can be exp in which case vector and ssl ref from setp not applicable in reader or mrg ctx, different qi's and different set nos.  Use elt 0 if vec */
+  if (!ssl)
+    return deflt;
+  if (SSL_IS_VEC_OR_REF (ssl))
+    {
+      state_slot_t ts = *ssl;
+      ts.ssl_type = SSL_VEC;
+      return unbox (sslr_qst_get (inst, (state_slot_ref_t *) & ts, 0));
+    }
+  return unbox (qst_get (inst, ssl));
+}
+
+
 void
 setp_mem_sort (setp_node_t * setp, caddr_t * qst, int n_sets, int merge_set)
 {
@@ -683,8 +700,8 @@ setp_mem_sort (setp_node_t * setp, caddr_t * qst, int n_sets, int merge_set)
   int set, prev_set;
   QNCAST (query_instance_t, qi, qst);
   caddr_t **arr;
-  ptrlong top = unbox (qst_get (qst, setp->setp_top));
-  ptrlong skip = setp->setp_top_skip ? unbox (qst_get (qst, setp->setp_top_skip)) : 0;
+  ptrlong top = setp_top_get (qst, setp->setp_top, 0);
+  ptrlong skip = setp_top_get (qst, setp->setp_top_skip, 0);
   ptrlong fill;
   ptrlong rc, guess, at_or_above, below;
   int skip_only = (top == -1 && skip >= 0 ? 1 : 0);
@@ -1352,46 +1369,6 @@ in_iter_input_fill_members (caddr_t vals, collation_t * out_collation, dk_set_t 
 {
   switch (DV_TYPE_OF (vals))
     {
-#ifdef RDF_SECURITY_CLO
-    case DV_CLOP:
-      {
-	cl_op_t *clo = (cl_op_t *) vals;
-	if (CLO_RDF_GRAPH_USER_PERMS == clo->clo_op)
-	  {
-	    dk_hash_64_t *ht = clo->_.rdf_graph_user_perms.ht;
-	    int req_perms = clo->_.rdf_graph_user_perms.req_perms;
-	    dk_hash_64_iterator_t iter;
-	    int64 *g_iid_num_ptr, *g_perms_ptr;
-	    int need_dupe_check = (NULL != members_ptr[0]);
-	    rwlock_rdlock (ht->ht_rwlock);
-	    dk_hash_64_iterator (&iter, ht);
-	    while (dk_hash_64_hit_next (&iter, &g_iid_num_ptr, &g_perms_ptr))
-	      {
-		caddr_t val;
-		if ((g_perms_ptr[0] & req_perms) == req_perms)
-		  {
-		    char val_buf[sizeof (int64) + BOX_AUTO_OVERHEAD];
-		    caddr_t val;
-		    BOX_AUTO (val, val_buf, sizeof (int64), DV_IRI_ID);
-		    ((int64 *) val)[0] = g_iid_num_ptr[0];
-		    if (need_dupe_check)
-		      {
-			DO_SET (caddr_t, member, members_ptr)
-			{
-			  if (DVC_MATCH == cmp_boxes (val, member, out_collation, out_collation))
-			    goto next_in_rgu_clo;
-			}
-			END_DO_SET ();
-		      }
-		    dk_set_push (members_ptr, (void *) box_copy_tree (val));
-		  }
-	      next_in_rgu_clo:;
-	      }
-	    rwlock_unlock (ht->ht_rwlock);
-	  }
-	break;
-      }
-#endif
     case DV_ARRAY_OF_POINTER:
       {
 	int nth, n_vals = BOX_ELEMENTS (vals);
@@ -1554,10 +1531,10 @@ sort_read_vec_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
   setp_node_t *setp = ts->ts_order_ks->ks_from_setp;
   int n_results = 0, last_set, batch;
   caddr_t **arr;
-  ptrlong top = unbox (qst_get (inst, setp->setp_top));
-  ptrlong skip = setp->setp_top_skip ? unbox (qst_get (inst, setp->setp_top_skip)) : 0;
+  ptrlong top = setp_top_get (inst, setp->setp_top, 0);
+  ptrlong skip = setp_top_get (inst, setp->setp_top_skip, 0);
   ptrlong fill;
-  int set, n_sets;
+  int set, n_sets = ts->src_gen.src_prev ? QST_INT (inst, ts->src_gen.src_prev->src_out_fill) : qi->qi_n_sets;
   if (setp->setp_partitioned)
     {
       top += skip;

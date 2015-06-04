@@ -265,7 +265,7 @@ sqlo_is_tautology (ST * tree)
       dtp_t l_dtp = DV_TYPE_OF (l);
       dtp_t r_dtp = DV_TYPE_OF (r);
       if (DV_LONG_INT == l_dtp && DV_LONG_INT == r_dtp)
-	return unbox (l) == unbox (r);
+	return unbox ((caddr_t) l) == unbox ((caddr_t) r);
       return 2;
     }
   return 2;
@@ -994,7 +994,7 @@ sqlo_df (sqlo_t * so, ST * tree)
 	      if (inx >= 2 && inx < n_args - 1 && DV_STRINGP (arg) && 0 == stricmp ((char *) arg, "index")
 		  && DFE_COLUMN == col_dfe->dfe_type)
 		{
-		  tb_ext_inx_t *tie = tb_find_tie (ot->ot_table, col_dfe->_.col.col, args[inx + 1]);
+		  tb_ext_inx_t *tie = tb_find_tie (ot->ot_table, col_dfe->_.col.col, (caddr_t) args[inx + 1]);
 		  if (!tie)
 		    sqlc_new_error (so->so_sc->sc_cc, "22000", "NTTIE", "Table %s doe not have extension index %s",
 			ot->ot_table->tb_name, DV_STRINGP (args[inx + 1]) ? args[inx + 1] : "<bad name>");
@@ -1171,6 +1171,8 @@ sqlo_df (sqlo_t * so, ST * tree)
 		stl->stl_lit_dfes = (df_elt_t **) t_alloc_box (sizeof (caddr_t) * stl->stl_tree_to_lit->ht_count, DV_BIN);
 		memzero (stl->stl_lit_dfes, box_length (stl->stl_lit_dfes));
 	      }
+	    if (tree->_.lit_param.nth - 1 >= BOX_ELEMENTS (stl->stl_lit_dfes))
+	      SQL_GPF_T1 (top_sc->sc_cc, "out of range lit param no");
 	    dfe->dfe_nth_param = tree->_.lit_param.nth;
 	    stl->stl_lit_dfes[dfe->dfe_nth_param - 1] = dfe;
 	  }
@@ -1282,9 +1284,9 @@ dfe_is_setp_key (df_elt_t * setp, df_elt_t * dfe)
 int enable_gb_dep = 1;
 
 void
-sqlo_mark_gb_dep (sqlo_t * so, df_elt_t * dfe)
+sqlo_mark_gb_dep (sqlo_t * so, df_elt_t * dfe, df_elt_t * exp_dfe)
 {
-  /* if an exp is placed before a group by but is used after the group by then add it to the dependent of the gby */
+  /* if an exp is placed before a group by but is used after the group by then add it to the dependent of the gby.  The exp can be defd in a pred body of a ts or such.  If so, the dfe is the defining top level dfe and the exp_dfe is the exp.  If the exp is top level these are the same.  */
   df_elt_t *next;
   so->so_mark_gb_dep = 0;
   if (!enable_gb_dep)
@@ -1295,13 +1297,14 @@ sqlo_mark_gb_dep (sqlo_t * so, df_elt_t * dfe)
     case DFE_ORDER:
     case DFE_TABLE:
     case DFE_DT:
-      return;
+      if (dfe == exp_dfe)
+	return;
     }
 
   for (next = dfe->dfe_next; next; next = next->dfe_next)
     {
       if (DFE_GROUP == next->dfe_type && !next->_.setp.is_being_placed && !dfe_is_setp_key (next, dfe))
-	t_set_pushnew (&next->_.setp.gb_dependent, (void *) dfe);
+	t_set_pushnew (&next->_.setp.gb_dependent, (void *) exp_dfe);
     }
   /* it can be that a dt being placed has a having that has an invariant.  If so, the invariant goes a level above and the grup by is not directly after it.  So then start from the ghen pt and goup to the placed and get all the setps on the way and add the dfe as dep to them */
   dfe_latest (so, 1, &dfe, 1);
@@ -1352,7 +1355,7 @@ sqlo_place_dfe_after (sqlo_t * so, locus_t * loc, df_elt_t * after_this, df_elt_
     so->so_gen_pt = dfe;
   sqlo_dfe_type (so, dfe);
   if (so->so_mark_gb_dep)
-    sqlo_mark_gb_dep (so, dfe);
+    sqlo_mark_gb_dep (so, dfe, dfe);
   sqlo_check_outside_dt (so, dfe);
 }
 
@@ -1648,9 +1651,13 @@ sqlo_hash_fill_dt_place_col (df_elt_t * dt_dfe, df_elt_t * col)
   if (!is_out_dfe)
     dt_dfe->_.sub.dt_out = (df_elt_t **) t_box_append_1 ((caddr_t) out, (caddr_t) ref_dfe);
   if (!is_name)
-    tree->_.select_stmt.selection =
-	(caddr_t *) t_box_append_1 ((caddr_t) tree->_.select_stmt.selection, (caddr_t) t_listst (5, BOP_AS, ref_dfe->dfe_tree, NULL,
-	    t_box_string (tmp), NULL, NULL));
+    {
+      if (tree == dt_dfe->_.sub.ot->ot_dt)
+	tree = dt_dfe->dfe_tree = (ST *) t_box_copy_tree ((caddr_t) tree);
+      tree->_.select_stmt.selection =
+	  (caddr_t *) t_box_append_1 ((caddr_t) tree->_.select_stmt.selection, (caddr_t) t_listst (5, BOP_AS, ref_dfe->dfe_tree,
+	      NULL, t_box_string (tmp), NULL, NULL));
+    }
 }
 
 
@@ -1926,10 +1933,10 @@ pred_body_defines (df_elt_t ** pred, df_elt_t * defd)
 	  if (DFE_BOP_PRED == dfe->dfe_type)
 	    return 0;
 	  if (dfe_defines (dfe, defd))
-	    return defd;
+	    return NULL != defd;
 	}
     }
-  return NULL;
+  return 0;
 }
 
 
@@ -1994,7 +2001,7 @@ dfe_defines (df_elt_t * defining, df_elt_t * defd)
       if (pred_body_defines (defining->_.table.join_test, defd))
 	return NULL != defining;
       if (pred_body_defines (defining->_.table.top_pred, defd))
-	return defining;
+	return NULL != defining;
     }
   return 0;
 }
@@ -2309,7 +2316,7 @@ sqlo_place_exp (sqlo_t * so, df_elt_t * super, df_elt_t * dfe)
 		{
 		  dfe_loc_result (placed->dfe_locus, super, dfe);
 		}
-	      sqlo_mark_gb_dep (so, placed);
+	      sqlo_mark_gb_dep (so, placed, dfe);
 	      return placed;
 	    }
 	}
@@ -2451,6 +2458,8 @@ sqlo_place_exp (sqlo_t * so, df_elt_t * super, df_elt_t * dfe)
 	}
 	END_DO_BOX;
 	placed = dfe_skip_exp_dfes (placed, &dfe, 1);
+	placed = dfe_skip_to_min_card (placed, super, dfe);
+	so->so_mark_gb_dep = 1;
 	sqlo_place_dfe_after (so, pref_loc, placed, dfe);
 	return dfe;
       }
@@ -3324,6 +3333,9 @@ sqlo_trans_dt_2_way (sqlo_t * so, df_elt_t * dfe, dk_set_t preds, ptrlong * in_p
 }
 
 
+dk_set_t sqlo_uniques (sqlo_t * so, dk_set_t cols, dk_set_t join_preds);
+
+
 void
 sqlo_place_trans_dt (sqlo_t * so, df_elt_t * dfe, dk_set_t preds)
 {
@@ -3357,7 +3369,7 @@ sqlo_place_trans_dt (sqlo_t * so, df_elt_t * dfe, dk_set_t preds)
 	dk_set_t rhs = in_pair->next;
 	ST *pred;
 	df_elt_t *rhs_dfe, *pred_dfe;
-	ST *all_eq = t_listst (3, CALL_STMT, t_sqlp_box_id_upcase ("__all_eq"), t_list_to_array (rhs));
+	ST *all_eq = t_listst (3, CALL_STMT, t_sqlp_box_id_upcase ("__all_eq"), t_list_to_array (sqlo_uniques (so, rhs, preds)));
 	rhs_dfe = sqlo_df (so, all_eq);
 	sqlo_place_exp (so, dfe->dfe_super, rhs_dfe);
 	t_set_push (&tl->tl_params, rhs_dfe);
@@ -3390,7 +3402,7 @@ sqlo_place_trans_dt (sqlo_t * so, df_elt_t * dfe, dk_set_t preds)
 	dk_set_t rhs = in_pair->next;
 	ST *pred;
 	df_elt_t *rhs_dfe, *pred_dfe;
-	ST *all_eq = t_listst (3, CALL_STMT, t_sqlp_box_id_upcase ("__all_eq"), t_list_to_array (rhs));
+	ST *all_eq = t_listst (3, CALL_STMT, t_sqlp_box_id_upcase ("__all_eq"), t_list_to_array (sqlo_uniques (so, rhs, preds)));
 	rhs_dfe = sqlo_df (so, all_eq);
 	sqlo_place_exp (so, dfe->dfe_super, rhs_dfe);
 	t_set_push (&tl->tl_params, rhs_dfe);
@@ -3484,6 +3496,25 @@ cmp_max_func (int op)
 
 
 int
+sqlo_is_col_eq_supers (op_table_t * ot, df_elt_t * col1, df_elt_t * col2)
+{
+  int f;
+  if (sqlo_is_col_eq (ot, col1, col2))
+    return 1;
+  for (ot = ot->ot_super; ot; ot = ot->ot_super)
+    {
+      id_hash_t *save = ot->ot_eq_hash;
+      ot->ot_eq_hash = ot->ot_placed_eq_hash;
+      f = sqlo_is_col_eq (ot, col1, col2);
+      ot->ot_eq_hash = save;
+      if (f)
+	return 1;
+    }
+  return 0;
+}
+
+
+int
 sqlo_not_eq_with_any (sqlo_t * so, dk_set_t args, df_elt_t * right)
 {
   /* if the arg is a col and it is not known eq with any of the args */
@@ -3491,7 +3522,7 @@ sqlo_not_eq_with_any (sqlo_t * so, dk_set_t args, df_elt_t * right)
     return 1;
   DO_SET (df_elt_t *, other, &args)
   {
-    if (DFE_COLUMN == other->dfe_type && sqlo_is_col_eq (so->so_this_dt, other, right))
+    if (DFE_COLUMN == other->dfe_type && sqlo_is_col_eq_supers (so->so_this_dt, other, right))
       return 0;
   }
   END_DO_SET ();
@@ -3499,8 +3530,37 @@ sqlo_not_eq_with_any (sqlo_t * so, dk_set_t args, df_elt_t * right)
 }
 
 
+dk_set_t
+sqlo_uniques (sqlo_t * so, dk_set_t cols, dk_set_t join_preds)
+{
+  /* given a list of columns, keep one from each eq set.  The eq sets are the eqs that are in effect based on what is placed so far */
+  op_table_t *ot = so->so_this_dt;
+  id_hash_t *prev_eqs = ot->ot_eq_hash;
+  dk_set_t res = NULL, dfes = NULL;
+  if (!cols || !cols->next)
+    return cols;
+  ot->ot_eq_hash = NULL;
+  ot->ot_eq_hash = ot->ot_placed_eq_hash;
+  sqlo_init_eqs (so, so->so_this_dt, NULL, 1, join_preds);
+  if (!ot->ot_placed_eq_hash)
+    ot->ot_placed_eq_hash = ot->ot_eq_hash;
+  DO_SET (ST *, st, &cols)
+  {
+    df_elt_t *dfe = sqlo_df (so, st);
+    if (sqlo_not_eq_with_any (so, dfes, dfe))
+      {
+	t_set_push (&dfes, (void *) dfe);
+	t_set_push (&res, st);
+      }
+  }
+  END_DO_SET ();
+  ot->ot_eq_hash = prev_eqs;
+  return res;
+}
+
+
 df_elt_t *
-sqlo_merge_dfe (sqlo_t * so, df_elt_t * pred, dk_set_t merge_with, int allow_contr)
+sqlo_merge_dfe (sqlo_t * so, df_elt_t * pred, dk_set_t merge_with, int allow_contr, df_elt_t * tb_dfe)
 {
   int inx;
   /* return max, min, eq of the right sides of pred and of the preds in merge_with *
@@ -3509,6 +3569,14 @@ sqlo_merge_dfe (sqlo_t * so, df_elt_t * pred, dk_set_t merge_with, int allow_con
   dk_set_t args = NULL;
   df_elt_t *cnst = NULL;
   df_elt_t *dfe = NULL;
+  op_table_t *ot = so->so_this_dt;
+  if (!ot->ot_eq_hash)
+    {
+      ot->ot_eq_hash = ot->ot_placed_eq_hash;
+      sqlo_init_eqs (so, so->so_this_dt, NULL, 1, tb_dfe->_.table.all_preds);
+      if (!ot->ot_placed_eq_hash)
+	ot->ot_placed_eq_hash = ot->ot_eq_hash;
+    }
   merge_with = t_cons ((void *) pred, merge_with);
   DO_SET (df_elt_t *, merge, &merge_with)
   {
@@ -3542,7 +3610,7 @@ sqlo_merge_dfe (sqlo_t * so, df_elt_t * pred, dk_set_t merge_with, int allow_con
 }
 
 dk_set_t
-sqlo_merge_col_preds (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t col_preds, dk_set_t * to_place)
+sqlo_merge_col_preds_1 (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t col_preds, dk_set_t * to_place)
 {
   /* equalities of same col */
   df_elt_t *merge_dfe;
@@ -3569,7 +3637,7 @@ sqlo_merge_col_preds (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t col_preds, dk_set
 	}
 	END_DO_SET ();
       }
-    if (merged_with && (merge_dfe = sqlo_merge_dfe (so, pred, merged_with, !tb_dfe->_.table.ot->ot_is_outer)))
+    if (merged_with && (merge_dfe = sqlo_merge_dfe (so, pred, merged_with, !tb_dfe->_.table.ot->ot_is_outer, tb_dfe)))
       {
 	df_elt_t *new_pred = sqlo_new_dfe (so, DFE_BOP_PRED, NULL);
 	t_set_push (&merged, (void *) pred);
@@ -3590,6 +3658,19 @@ sqlo_merge_col_preds (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t col_preds, dk_set
   return res;
 }
 
+
+dk_set_t
+sqlo_merge_col_preds (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t col_preds, dk_set_t * to_place)
+{
+  /* make a bubble of eqs that contains eqs that are in fact based on placed equalities, not equalities being checked or still to be checked */
+  op_table_t *ot = so->so_this_dt;
+  id_hash_t *prev_eqs = ot->ot_eq_hash;
+  dk_set_t res;
+  ot->ot_eq_hash = NULL;
+  res = sqlo_merge_col_preds_1 (so, tb_dfe, col_preds, to_place);
+  ot->ot_eq_hash = prev_eqs;
+  return res;
+}
 
 
 #define dfe_is_upper(dfe) (dfe->_.bin.op == BOP_LT || dfe->_.bin.op == BOP_LTE)
@@ -3834,6 +3915,7 @@ dfe_table_set_by_best (df_elt_t * tb_dfe, index_choice_t * ic, float true_arity,
   tb_dfe->dfe_arity = true_arity != -1 ? true_arity : ic->ic_arity;
   tb_dfe->_.table.inx_card = ic->ic_inx_card;
   tb_dfe->_.table.hit_spacing = ic->ic_spacing;
+  tb_dfe->_.table.top_sel = ic->ic_top_sel;
   tb_dfe->_.table.is_cl_part_first = ic->ic_is_cl_part_first;
   tb_dfe->_.table.joins_pk = ic->ic_joins_pk;
   tb_dfe->_.table.in_order = ic->ic_in_order != 0;
@@ -4725,10 +4807,10 @@ sqlo_tb_col_preds (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t preds, dk_set_t nj_p
     so->so_context_dt = old_ctx;
   }
   END_DO_SET ();
+  sqlo_top_pred (so, tb_dfe->_.table.ot->ot_super, tb_dfe);
   sqlo_choose_index (so, tb_dfe, &merged_col_preds, &after_preds);
   sqlo_in_place_in_pred (so, tb_dfe, &merged_col_preds, &after_preds);
   sqlo_tb_order (so, tb_dfe, merged_col_preds);
-  sqlo_top_pred (so, tb_dfe->_.table.ot->ot_super, tb_dfe);
   exec = (ST *) sqlo_opt_value (tb_dfe->_.table.ot->ot_opts, OPT_EXECUTE);
   if (exec)
     sqlo_place_proc_cols (so, exec, tb_dfe);
@@ -5676,7 +5758,7 @@ dfe_is_tb_only (df_elt_t * dfe, op_table_t * ot)
 }
 
 
-int enable_dt_card = 1;
+int32 enable_dt_card = 1;
 
 float
 dfe_arity_with_supers (df_elt_t * dfe)
@@ -5866,6 +5948,34 @@ sqlo_check_col_pred_placed (df_elt_t * tb_dfe)
 }
 
 
+int
+st_is_vec_ssl (ST * tree, void *cd)
+{
+  QNCAST (sqlo_t, so, cd);
+  if (so->so_ret_flag)
+    return 1;
+  if (ST_P (tree, COL_DOTTED))
+    {
+      df_elt_t *dfe = sqlo_df_elt (so, tree);
+      if (dfe && DFE_CONST == dfe->dfe_type && dfe->dfe_ssl && SSL_VEC == dfe->dfe_ssl->ssl_type)
+	so->so_ret_flag = 1;
+
+      return 1;
+    }
+  return 0;
+}
+
+
+int
+dfe_depends_on_vec_code (sqlo_t * so, df_elt_t * pred)
+{
+  /* a hash build side is single state, so should not depend on vec ssls of an enclosing proc context */
+  so->so_ret_flag = 0;
+  sqlo_map_st (pred->dfe_tree, st_is_vec_ssl, so);
+  return so->so_ret_flag;
+}
+
+
 void
 sqlo_hash_fill_dt_new_preds (sqlo_t * so, op_table_t * ot, df_elt_t * dfe, dk_set_t * post_preds)
 {
@@ -5948,6 +6058,7 @@ sqlo_try_hash (sqlo_t * so, df_elt_t * dfe, op_table_t * super_ot, float *score_
   cset_hash_save_t chs;
   dk_set_t hash_pred_locus_refs = NULL;
   dk_set_t prev_probes = so->so_hash_probes;
+  float inx_card_save = dfe->dfe_arity;
   int remote = sqlo_try_remote_hash (so, dfe);
   float ov = 0, size_est = 0;
   dk_set_t preds = dfe->_.table.ot->ot_is_outer ? dfe->_.table.ot->ot_join_preds : dfe->_.table.all_preds;
@@ -5982,7 +6093,11 @@ sqlo_try_hash (sqlo_t * so, df_elt_t * dfe, op_table_t * super_ot, float *score_
   DO_SET (df_elt_t *, pred, &preds)
   {
     if (dfe_is_tb_only (pred, ot))
-      t_set_push (&org_preds, (void *) pred);
+      {
+	if (dfe_depends_on_vec_code (so, pred))
+	  return 0;
+	t_set_push (&org_preds, (void *) pred);
+      }
     else if (DFE_BOP_PRED == pred->dfe_type && BOP_EQ == pred->_.bin.op)
       {
 	df_elt_t *left = pred->_.bin.left;
@@ -6025,6 +6140,7 @@ sqlo_try_hash (sqlo_t * so, df_elt_t * dfe, op_table_t * super_ot, float *score_
 	  ptrlong top_cnt = sqlo_select_top_cnt (so, top_exp);
 	  if (top_cnt)
 	    {
+	      float prev_ref_arity = ref_arity;
 	      if (dfe->dfe_arity > 1)
 		{
 		  ref_arity = top_cnt;
@@ -6033,6 +6149,7 @@ sqlo_try_hash (sqlo_t * so, df_elt_t * dfe, op_table_t * super_ot, float *score_
 		{
 		  ref_arity = top_cnt / dfe->dfe_arity;
 		}
+	      ref_arity = MIN (prev_ref_arity, ref_arity);
 	    }
 	}
       if (ref_arity < 1)
@@ -6082,6 +6199,7 @@ sqlo_try_hash (sqlo_t * so, df_elt_t * dfe, op_table_t * super_ot, float *score_
 	    dfe->_.table.text_pred = text_pred_save;
 	    dfe->_.table.hash_filler = NULL;
 	    sqlo_cset_no_hash (dfe, &chs);
+	    dfe->dfe_arity = inx_card_save;
 	    return 0;
 	  }
 	}
@@ -6093,6 +6211,7 @@ sqlo_try_hash (sqlo_t * so, df_elt_t * dfe, op_table_t * super_ot, float *score_
       if (!prev_tb)
 	{
 	  sqlo_cset_no_hash (dfe, &chs);
+	  dfe->dfe_arity = inx_card_save;
 	  return 0;
 	}
       dfe->_.table.is_right_oj = 2;
@@ -6103,6 +6222,7 @@ sqlo_try_hash (sqlo_t * so, df_elt_t * dfe, op_table_t * super_ot, float *score_
       if (!sqlo_remote_hash_filler (so, fill_dfe, dfe))
 	{
 	  sqlo_cset_no_hash (dfe, &chs);
+	  dfe->dfe_arity = inx_card_save;
 	  return 0;
 	}
       /* one more time to get the predicates' locus right */
@@ -6258,7 +6378,7 @@ sqlo_try_in_loop (sqlo_t * so, op_table_t * ot, df_elt_t * tb_dfe, df_elt_t ** s
     return;
   if (sqlo_max_mp_size > 0 && (THR_TMP_POOL)->mp_bytes > (so->so_max_memory / 3 * 2))
     return;
-  if (DFE_TABLE != tb_dfe->dfe_type || IS_BOX_POINTER (tb_dfe->dfe_super->dfe_locus))
+  if (DFE_TABLE != tb_dfe->dfe_type || IS_BOX_POINTER (tb_dfe->dfe_super->dfe_locus) || tb_dfe->_.table.in_arity != 1)
     return;			/* if not a table or a table in a pss through dt.  For pass through ,let the remote decide */
   DO_SET (df_elt_t *, pred, &tb_dfe->_.table.all_preds)
   {
@@ -6758,6 +6878,32 @@ dfe_join_score (sqlo_t * so, op_table_t * ot, df_elt_t * tb_dfe, dk_set_t * res)
   return score;
 }
 
+int enable_dt_leaf = 0;
+
+
+int
+dfe_is_leaf (df_elt_t * dfe)
+{
+  return DFE_DT == dfe->dfe_type ? dfe->_.sub.is_leaf : DFE_TABLE == dfe->dfe_type ? dfe->_.table.is_leaf : 0;
+}
+
+
+void
+dfe_set_is_leaf (df_elt_t * dfe, int is_leaf)
+{
+  if (DFE_TABLE == dfe->dfe_type)
+    dfe->_.table.is_leaf = is_leaf;
+  else if (DFE_DT == dfe->dfe_type)
+    dfe->_.sub.is_leaf = is_leaf;
+}
+
+
+int
+dfe_maybe_leaf (df_elt_t * dfe)
+{
+  return DFE_TABLE == dfe->dfe_type || (enable_dt_leaf && DFE_DT == dfe->dfe_type);
+}
+
 
 int
 dfe_list_reqd_placed (dk_set_t list)
@@ -6841,10 +6987,10 @@ sqlo_new_leaves (sqlo_t * so, op_table_t * ot, dk_set_t * all_leaves, dk_set_t *
 {
   DO_SET (df_elt_t *, dfe, &ot->ot_from_dfes)
   {
-    if (!dfe->dfe_is_placed && DFE_TABLE == dfe->dfe_type
-	&& sqlo_dfe_is_leaf (so, ot, dfe) && !dfe->_.table.ot->ot_table->tb_remote_ds)
+    if (!dfe->dfe_is_placed && dfe_maybe_leaf (dfe)
+	&& sqlo_dfe_is_leaf (so, ot, dfe) && (DFE_TABLE != dfe->dfe_type || !dfe->_.table.ot->ot_table->tb_remote_ds))
       {
-	if (!dfe->_.table.is_leaf)
+	if (!dfe_is_leaf (dfe))
 	  t_set_push (new_leaves, (void *) dfe);
 	t_set_push (all_leaves, (void *) dfe);
       }
@@ -6859,7 +7005,7 @@ sqlo_restore_leaves (sqlo_t * so, dk_set_t new_leaves)
   /* in the process of unplacing, the leaves stop being leaves */
   DO_SET (df_elt_t *, leaf, &new_leaves)
   {
-    leaf->_.table.is_leaf = 0;
+    dfe_set_is_leaf (leaf, 0);
     sqlo_dfe_unplace (so, leaf);
   }
   END_DO_SET ();
@@ -6871,7 +7017,7 @@ int32
 df_pred_score_key (dk_set_t first)
 {
   df_elt_t *dfe = (df_elt_t *) first->data;
-  if (DFE_TABLE == dfe->dfe_type && dfe->_.table.is_leaf)
+  if (dfe_is_leaf (dfe))
     {
       float f, ac;
       if (enable_jp)
@@ -6980,7 +7126,7 @@ sqlo_leaves (sqlo_t * so, op_table_t * ot, dk_set_t * all_leaves, dk_set_t * new
   sqlo_new_leaves (so, ot, all_leaves, new_leaves);
   DO_SET (df_elt_t *, leaf, new_leaves)
   {
-    if (!leaf->_.table.is_leaf)
+    if (!dfe_is_leaf (leaf))
       {
 	float this_score;
 	sqlo_place_table (so, leaf);
@@ -6991,7 +7137,7 @@ sqlo_leaves (sqlo_t * so, op_table_t * ot, dk_set_t * all_leaves, dk_set_t * new
 	if (!(leaf->_.table.hash_filler && DFE_DT == leaf->_.table.hash_filler->dfe_type))
 	  {
 	    /* if the hash build imports other tables, the leaf simplification is not valid, a leaf must be a self-contained dfe for placing/unplacing to work */
-	    leaf->_.table.is_leaf = 1;
+	    dfe_set_is_leaf (leaf, 1);
 	    leaf->dfe_is_joined = 1;
 	  }
 	so->so_gen_pt = leaf->dfe_prev;
@@ -7171,6 +7317,7 @@ sqlo_joins_only (sqlo_t * so, dk_set_t * res, int is_restr)
     *prev = NULL;
 }
 
+int sqlo_best_brk = -1;
 int brk_n_placed = 0;
 int brk_prefixes[10];
 int brk_dt_plan;
@@ -7211,6 +7358,8 @@ sqlo_layout_sort_tables (sqlo_t * so, op_table_t * ot, dk_set_t from_dfes, dk_se
   int inx;
   dk_set_t res = NULL;
   df_elt_t **arr;
+  if (-1 != sqlo_best_brk && sqlo_best_brk == OT_NO (ot->ot_new_prefix))
+    bing ();
   if (ot->ot_fixed_order || IS_FOR_XML (sqlp_union_tree_right (ot->ot_dt)))
     {
       DO_SET (df_elt_t *, dfe, &ot->ot_from_dfes)
@@ -7509,6 +7658,8 @@ sqlo_layout_lim (sqlo_t * so, op_table_t * ot, int is_top)
       changed = 1;
     }
   sqlo_layout_1 (so, ot, is_top);
+  if (ot->ot_placed_eq_hash)
+    sqlo_clear_eqs (ot->ot_placed_eq_hash);
   if (changed)
     {
       ot->ot_layouts_tried = ot->ot_tried_at_cutoff;
@@ -7732,6 +7883,8 @@ sqlo_layout_1 (sqlo_t * so, op_table_t * ot, int is_top)
 		ot->ot_first_dfe->_.table.ot->ot_initial_cost = this_score;
 	    }
 	  so->so_any_with_this_first = 1;
+	  if (-1 != sqlo_best_brk && sqlo_best_brk == OT_NO (ot->ot_new_prefix))
+	    bing ();
 	  so->so_best = sqlo_layout_copy (so, ot->ot_work_dfe, NULL);
 	  dfe_ref_check (so->so_best);
 	  so->so_best_score = this_score;
@@ -7853,7 +8006,7 @@ sqlo_layout (sqlo_t * so, op_table_t * ot, int is_top, df_elt_t * super)
     }
   else
     ot->ot_work_dfe->dfe_locus = sqlo_dt_locus (so, ot, super ? super->dfe_locus : LOC_LOCAL);
-  sqlo_init_eqs (so, ot, NULL);
+  sqlo_init_eqs (so, ot, NULL, 0, NULL);
   if (SQLO_LAY_TOP == is_top)
     so->so_vdb_top = dfe_container (so, DFE_DT, NULL);
   so->so_best_score = -1;
@@ -8338,20 +8491,6 @@ sqlo_unique_rows (sql_comp_t * sc, op_table_t * top_ot, ST * tree)
 void
 sqlo_need_rdf_sec (sqlo_t * so, ST * tree)
 {
-#ifdef RDF_SECURITY_CLO
-  char *q_name = "g_ctx_query";
-  client_connection_t *cli;
-  ST *texp = NULL;
-  if (!enable_g_in_sec)
-    return;
-  if (ST_P (tree, SELECT_STMT) && BOX_ELEMENTS (tree) >= 5 && ST_P (tree->_.select_stmt.table_exp, TABLE_EXP))
-    texp = tree->_.select_stmt.table_exp;
-  cli = sqlc_client ();
-  if (!cli->cli_user || G_ID_DBA != cli->cli_user->usr_g_id
-      || id_hash_get (cli->cli_globals, (caddr_t) & q_name)
-      || (texp && sqlo_opt_value (ST_OPT (texp, caddr_t *, _.table_exp.opts), OPT_G_SEC)))
-    so->so_sc->sc_gen_rdf_rd_sec = 1;
-#endif
 }
 
 

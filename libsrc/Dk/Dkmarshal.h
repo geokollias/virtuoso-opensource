@@ -46,6 +46,7 @@ void *read_object_boxing (dk_session_t * session);
 void init_readtable (void);
 void *PrpcReadObject (dk_session_t * session);
 macro_char_func *get_readtable (void);
+macro_char_func *get_rpcreadtable (void);
 void *scan_session (dk_session_t * session);
 void *scan_session_boxing (dk_session_t * session);
 void print_long (long l, dk_session_t * session);
@@ -96,6 +97,13 @@ NORETURN void box_read_error (dk_session_t * session, dtp_t dtp);
       return 0; /* dummy */ \
     }
 
+#define MARSH_KEEP_OBJ(s, obj) do { \
+  dk_set_push(&(s)->dks_pending_obj, obj); \
+  if (!(s)->dks_top_obj) (s)->dks_top_obj = obj; \
+} while (0)
+#define MARSH_POP_OBJ(s, obj) do { \
+  dk_set_pop(&(s)->dks_pending_obj); \
+} while (0)
 
 extern int (*box_flags_serial_test_hook) (dk_session_t * ses);
 

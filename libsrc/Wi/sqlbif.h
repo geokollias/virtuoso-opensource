@@ -113,7 +113,7 @@ EXE_EXPORT (bif_metadata_t *, find_bif_metadata_by_name, (const char *name));
 EXE_EXPORT (bif_metadata_t *, find_bif_metadata_by_raw_name, (const char *name));
 #define find_bif_metadata_by_raw_name_safe(name) ((NULL == name_to_bif_metadata_idhash) ? NULL : find_bif_metadata_by_raw_name(name))
 EXE_EXPORT (bif_metadata_t *, bif_define, (const char *name, bif_t bif));
-EXE_EXPORT (bif_metadata_t *, bif_define_ex, (const char *name, bif_t bif,...));
+EXE_EXPORT (bif_metadata_t *, bif_define_ex, (const char *name, bif_t bif, ...));
 EXE_EXPORT (bif_metadata_t *, bif_define_typed, (const char *name, bif_t bif, bif_type_t * bt));
 EXE_EXPORT (void, bif_set_uses_index, (bif_t bif));
 EXE_EXPORT (bif_t, bif_find, (const char *name));
@@ -201,6 +201,7 @@ extern bif_type_t bt_any;
 extern bif_type_t bt_any_box;
 extern bif_type_t bt_iri_id;
 extern bif_type_t bt_integer;
+extern bif_type_t bt_integer_nn;
 extern bif_type_t bt_double;
 extern bif_type_t bt_float;
 extern bif_type_t bt_numeric;
@@ -356,6 +357,14 @@ qi->qi_client->cli_user = user_t_dba;	\
   qi->qi_client->cli_user = u;\
 }
 
+
+#define AS_DBA_CLI(cli, exp) \
+{ \
+ user_t * u = cli->cli_user; \
+cli->cli_user = user_t_dba;	\
+  exp; \
+  cli->cli_user = u;\
+}
 
 int bif_is_no_cluster (bif_t bif);	/* cannot be execd except where invoked */
 int bif_need_enlist (bif_t bif);

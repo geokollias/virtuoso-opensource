@@ -160,8 +160,8 @@ typedef struct sql_comp_s
   int sc_last_label;
   dk_set_t sc_preds;
   client_connection_t *sc_client;
-  int sc_is_proc;
   dk_set_t sc_routine_code;
+  ST *sc_top_tree;
   id_hash_t *sc_name_to_label;
   id_hash_t *sc_decl_name_to_label;
   data_source_t *sc_sorter;	/*!< a sort_node_t * if the ORDER BY
@@ -225,6 +225,7 @@ typedef struct sql_comp_s
   state_slot_t *sc_grouping;
   ST **sc_groupby_set;
   int sc_is_update;
+  char sc_is_exp;		/* if top lecel exp */
   char sc_parallel_dml;
   char sc_need_pk;
   char sc_need_enlist;
@@ -289,6 +290,10 @@ typedef struct sql_comp_s
   query_frag_t *sc_in_qf;
   query_t *sc_vec_qr;
   dk_hash_t *sc_qn_to_dfe;	/* if dfes are made into executable plan for sampling of other, map to dfe */
+  caddr_t *sc_sample_inst;
+  v_out_map_t **sc_sample_oms;
+  state_slot_t *sc_sample_ssls;
+  table_source_t *sc_sample_ts;
   dk_hash_t *sc_cn_normalize;
   int sc_cn_ctr1;
   int sc_cn_ctr2;
@@ -311,6 +316,8 @@ typedef struct sql_comp_s
 } sql_comp_t;
 
 
+#define SQLO_MAX_SAMPLE_COLS 10
+extern int32 sqlo_sample_batch_sz;
 
 #define SC_UPD_PLACE 1
 #define SC_UPD_INS 2
@@ -668,7 +675,7 @@ extern int sqlg_count_qr_global_refs;
 
 #define REF_SSL(res, ssl) \
   {if (res && ssl && SSL_CONSTANT != ssl->ssl_type \
-       && (sqlg_count_qr_global_refs||  !ssl->ssl_qr_global)  && SSL_PLACEHOLDER != ssl->ssl_type && SSL_ITC != ssl->ssl_type) \
+       && (sqlg_count_qr_global_refs || ssl->ssl_is_lit_param || !ssl->ssl_qr_global)  && SSL_PLACEHOLDER != ssl->ssl_type && SSL_ITC != ssl->ssl_type) \
 sethash ((void*)ssl, res, (void*)1); }
 
 void ref_ssl_list (sql_comp_t * sc, dk_hash_t * ht, dk_set_t ssls);

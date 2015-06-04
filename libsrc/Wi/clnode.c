@@ -365,26 +365,61 @@ qi_n_cl_aq_threads (query_instance_t * qi)
   return MAX (0, enable_qp - 1);
 }
 
+
 client_connection_t *
-cl_cli ()
+cl_cli_1 (int must_have)
 {
   /* the cli that belongs to the thread */
   du_thread_t *self;
-  dk_session_t *ses = IMMEDIATE_CLIENT;
+  dk_session_t *ses;
   client_connection_t *cli;
+  cli = ((client_connection_t *) THR_ATTR (THREAD_CURRENT_THREAD, TA_SQLC_CURRENT_CLIENT));
+  if (cli)
+    return cli;
+  ses = IMMEDIATE_CLIENT;
   if (ses)
     return DKS_DB_DATA (ses);
   self = THREAD_CURRENT_THREAD;
   cli = (client_connection_t *) THR_ATTR (self, TA_IMMEDIATE_CLIENT);
   if (cli)
     return cli;
-  cli = ((client_connection_t *) THR_ATTR (THREAD_CURRENT_THREAD, TA_SQLC_CURRENT_CLIENT));
-  if (cli)
-    return cli;
-  GPF_T1 ("the thread is not associated to a cli");
+  if (must_have)
+    GPF_T1 ("the thread is not associated to a cli");
   return NULL;
 }
 
+
+
+#define CL_INIT_BATCH_SIZE 1
+
+void
+cl_select_save_env (table_source_t * ts, itc_cluster_t * itcl, caddr_t * inst, cl_op_t * clo, int nth)
+{
+  caddr_t **array = (caddr_t **) itcl->itcl_param_rows;
+  caddr_t *row;
+  int n_save;
+  if (!array)
+    {
+      itcl->itcl_param_rows = (cl_op_t ***) (array =
+	  (caddr_t **) mp_alloc_box_ni (itcl->itcl_pool, CL_INIT_BATCH_SIZE * sizeof (caddr_t), DV_ARRAY_OF_POINTER));
+    }
+  else if (BOX_ELEMENTS (array) <= nth)
+    {
+      if (!IS_QN (ts, trans_node_input))
+	GPF_T1 ("vectored cl does not pass through here");
+      else
+	{
+	  caddr_t new_array =
+	      mp_alloc_box_ni (itcl->itcl_pool, MIN (dc_max_batch_sz, nth * 2) * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
+	  memcpy (new_array, array, box_length (array));
+	  itcl->itcl_param_rows = (cl_op_t ***) (array = (caddr_t **) new_array);
+	}
+    }
+  n_save = 0;
+  row = (caddr_t *) mp_alloc_box_ni (itcl->itcl_pool, sizeof (caddr_t) * (1 + n_save), DV_ARRAY_OF_POINTER);
+  row[0] = (caddr_t) clo;
+  array[nth] = row;
+}
 
 itc_cluster_t *
 itcl_allocate (lock_trx_t * lt, caddr_t * inst)
@@ -589,35 +624,6 @@ qf_select_node_input (qf_select_node_t * qfs, caddr_t * inst, caddr_t * state)
 }
 
 #define CL_INIT_BATCH_SIZE 1
-
-void
-cl_select_save_env (table_source_t * ts, itc_cluster_t * itcl, caddr_t * inst, cl_op_t * clo, int nth)
-{
-  caddr_t **array = (caddr_t **) itcl->itcl_param_rows;
-  caddr_t *row;
-  int n_save;
-  if (!array)
-    {
-      itcl->itcl_param_rows = (cl_op_t ***) (array =
-	  (caddr_t **) mp_alloc_box_ni (itcl->itcl_pool, CL_INIT_BATCH_SIZE * sizeof (caddr_t), DV_ARRAY_OF_POINTER));
-    }
-  else if (BOX_ELEMENTS (array) <= nth)
-    {
-      if (!IS_QN (ts, trans_node_input))
-	GPF_T1 ("vectored cl does not pass through here");
-      else
-	{
-	  caddr_t new_array =
-	      mp_alloc_box_ni (itcl->itcl_pool, MAX ((ts->clb.clb_batch_size), (nth + 1)) * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
-	  memcpy (new_array, array, box_length (array));
-	  itcl->itcl_param_rows = (cl_op_t ***) (array = (caddr_t **) new_array);
-	}
-    }
-  n_save = 0;
-  row = (caddr_t *) mp_alloc_box_ni (itcl->itcl_pool, sizeof (caddr_t) * (1 + n_save), DV_ARRAY_OF_POINTER);
-  row[0] = (caddr_t) clo;
-  array[nth] = row;
-}
 
 void
 cl_node_init (table_source_t * ts, caddr_t * inst)

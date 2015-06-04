@@ -380,7 +380,7 @@ extern server_lock_t server_lock;
 
 void plh_free (placeholder_t * plh);
 
-EXE_EXPORT (caddr_t, srv_make_new_error, (const char *code, const char *virt_code, const char *msg,...));
+EXE_EXPORT (caddr_t, srv_make_new_error, (const char *code, const char *virt_code, const char *msg, ...));
 #ifndef _USRDLL
 #ifdef __GNUC__
 caddr_t srv_make_new_error (const char *code, const char *virt_code, const char *msg, ...) __attribute__ ((format (printf, 3, 4)));
@@ -541,7 +541,7 @@ EXE_EXPORT (void, sqlr_resignal, (caddr_t err));
 
 #define TA_IMMEDIATE_CLIENT 1009
 #define GET_IMMEDIATE_CLIENT_OR_NULL \
-	((client_connection_t *)(IMMEDIATE_CLIENT_OR_NULL && IMMEDIATE_CLIENT ? DKS_DB_DATA (IMMEDIATE_CLIENT) : THR_ATTR (THREAD_CURRENT_THREAD, TA_IMMEDIATE_CLIENT)))
+  cl_cli_1 (0)
 
 #define TA_REPORT_BUFFER	1212
 #define TA_REPORT_PTR		1213
@@ -678,7 +678,7 @@ void ssl_alias (state_slot_t * alias, state_slot_t * real);
 void ssl_copy_types (state_slot_t * to, state_slot_t * from);
 
 EXE_EXPORT (caddr_t, qr_rec_exec, (query_t * qr, client_connection_t * cli, local_cursor_t ** lc_ret, query_instance_t * caller,
-	stmt_options_t * opts, long n_pars,...));
+	stmt_options_t * opts, long n_pars, ...));
 
 EXE_EXPORT (caddr_t, lc_nth_col, (local_cursor_t * lc, int n));
 
@@ -709,6 +709,7 @@ void end_node_free (end_node_t * en);
 void setp_temp_clear (setp_node_t * setp, hash_area_t * ha, caddr_t * qst);
 void setp_mem_sort_flush (setp_node_t * setp, caddr_t * qst);
 void setp_mem_sort (setp_node_t * setp, caddr_t * qst, int n_sets, int merge_set);
+int setp_top_get (caddr_t * inst, state_slot_t * ssl, int deflt);
 void setp_filled (setp_node_t * setp, caddr_t * qst);
 setp_node_t *qn_top_setp (data_source_t * qn, setp_node_t ** top);
 int setp_top_k_limit (setp_node_t * setp, caddr_t * inst, caddr_t * ret_box);

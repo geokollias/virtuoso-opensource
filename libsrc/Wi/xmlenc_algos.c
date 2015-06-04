@@ -1030,10 +1030,6 @@ dsig_tr_fake_uri (query_instance_t * qi, dk_session_t * ses_in, long len, dk_ses
 
 
 finish:
-#ifdef DEBUG
-  if (!ret)
-    breakpoint ();
-#endif
   dk_free_box (text);
   dk_free_tree (err_ret);
   dk_free_box (ret_text);

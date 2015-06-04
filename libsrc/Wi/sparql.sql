@@ -1054,47 +1054,17 @@ create function DB.DBA.RQ_SQLVAL_OF_O (in o_col any) returns any -- DEPRECATED
 }
 ;
 
-create function DB.DBA.RQ_BOOL_OF_O (in o_col any) returns any
+create function DB.DBA.RQ_BOOL_OF_O (in o_col any array) returns any -- DEPRECATED
 {
-  declare t, len integer;
-  if (isiri_id (o_col))
-    return NULL;
-  if (isinteger (o_col))
-    {
-      if (o_col)
-        return 1;
-      return 0;
-    }
-  if (__tag of rdf_box = __tag (o_col))
-    {
-      declare twobyte integer;
-      declare dtqname any;
-      if (__tag of varchar <> rdf_box_data_tag (o_col))
-        {
-          whenever sqlstate '*' goto retnull;
-          return neq (rdf_box_data (o_col), 0.0);
-        }
-      twobyte := rdf_box_type (o_col);
-      if (257 = twobyte)
-        goto type_ok;
-      whenever not found goto badtype;
-      select RDT_QNAME into dtqname from DB.DBA.RDF_DATATYPE where RDT_TWOBYTE = twobyte;
-      if (dtqname <> UNAME'http://www.w3.org/2001/XMLSchema#string')
-        return null;
+  vectored;
+  return sparql_ebv_int_of_sqlval (__ro2sq(o_col));
+}
+;
 
-type_ok:
-      return case (length (rdf_box_data (o_col))) when 0 then 0 else 1 end;
-
-badtype:
-      signal ('RDFXX', sprintf ('Unknown datatype in DB.DBA.RQ_BOOL_OF_O, bad type id %d, string value "%s"',
-        twobyte, cast (rdf_box_data (o_col) as varchar) ) );
-    }
-  if (o_col is null)
-    return null;
-  whenever sqlstate '*' goto retnull;
-  return neq (o_col, 0.0);
-retnull:
-  return null;
+create function DB.DBA.RQ_SPARQL_EBV_OF_O (in o_col any array) returns any -- DEPRECATED
+{
+  vectored;
+  return sparql_ebv_of_sqlval (__ro2sq(o_col));
 }
 ;
 
@@ -1525,10 +1495,12 @@ create function DB.DBA.RDF_MAKE_OBJ_OF_SQLVAL (in v any) returns any array
   t := __tag (v);
   if (not (t in (126, __tag of varchar, __tag of UNAME, __tag of nvarchar, __tag of XML, __tag of rdf_box)))
     return v;
+  if (__tag of UNAME = t)
+    return __i2id (v);
+  if (isstring (v) and bit_and (__box_flags (v), 1))
+    return __i2id (v);
   if (__tag of nvarchar = t)
     v := charset_recode (v, '_WIDE_', 'UTF-8');
-  else if (t in (126, __tag of UNAME))
-    v := cast (v as varchar);
   return DB.DBA.RDF_OBJ_ADD (257, v, 257);
 }
 ;
@@ -1540,9 +1512,13 @@ create function DB.DBA.RDF_MAKE_OBJ_OF_SQLVAL_FT (in v any, in g_iid IRI_ID, in 
   t := __tag (v);
   if (not (t in (126, __tag of varchar, __tag of UNAME, __tag of nvarchar, __tag of XML, __tag of rdf_box)))
     return v;
+  if (__tag of UNAME = t)
+    return __i2id (v);
+  if (isstring (v) and bit_and (__box_flags (v), 1))
+    return __i2id (v);
   if (__tag of nvarchar = t)
     v := charset_recode (v, '_WIDE_', 'UTF-8');
-  else if (t in (126, __tag of UNAME))
+  else if (t = 126)
     v := cast (v as varchar);
   if (not __rdf_obj_ft_rule_check (g_iid, p_iid))
     ro_id_dict := null;
@@ -1579,7 +1555,7 @@ retry_unrdf:
     }
   if (__tag of nvarchar = t)
     v := charset_recode (v, '_WIDE_', 'UTF-8');
-  else if (__tag of UNAME = t or 126 = t)
+  else if (126 = t)
     v := cast (v as varchar);
   if (dt_iid is not null)
     dt_twobyte := DB.DBA.RDF_TWOBYTE_OF_DATATYPE (dt_iid);
@@ -1734,7 +1710,7 @@ create function DB.DBA.RDF_LANGUAGE_OF_OBJ (in shortobj any array, in dflt varch
   -- dbg_obj_princ ('DB.DBA.RDF_LANGUAGE_OF_OBJ (', shortobj, ') found twobyte ', twobyte);
   if (257 = twobyte)
     return dflt;
-  return coalesce ((select lower (RL_ID)  from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = twobyte),
+  return coalesce ((select RL_ID from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = twobyte),
      signal ('RDFXX', sprintf ('Unknown language in DB.DBA.RDF_LANGUAGE_OF_OBJ, bad string "%s"', cast (shortobj as varchar))));
 }
 ;
@@ -1745,38 +1721,17 @@ create function DB.DBA.RDF_SQLVAL_OF_OBJ (in shortobj any) returns any -- DEPREC
 }
 ;
 
-create function DB.DBA.RDF_BOOL_OF_OBJ (in shortobj any) returns any
+create function DB.DBA.RDF_BOOL_OF_OBJ (in shortobj any array) returns any
 {
-  if (isiri_id (shortobj))
-    return null;
-  if (isinteger (shortobj))
-    {
-      if (shortobj)
-        return 1;
-      return 0;
-    }
-  if (__tag of rdf_box <> __tag (shortobj))
-    {
-      if (shortobj is null)
-        return null;
-      if (equ (shortobj, 0.0) or equ (shortobj, '')) return 0; else return 1;
-    }
-  declare twobyte integer;
-  twobyte := rdf_box_type (shortobj);
-  if (257 = twobyte)
-    goto type_ok;
-  declare dtqname varchar;
-  whenever not found goto badtype;
-  select RDT_QNAME into dtqname from DB.DBA.RDF_DATATYPE where RDT_TWOBYTE = twobyte;
-  if (dtqname <> UNAME'http://www.w3.org/2001/XMLSchema#string')
-    return null;
+  vectored;
+  return sparql_ebv (__ro2sq(shortobj));
+}
+;
 
-type_ok:
-  return case length (rdf_box_data (shortobj)) when 0 then 0 else 1 end;
-
-badtype:
-  signal ('RDFXX', sprintf ('Unknown datatype in DB.DBA.RDF_BOOL_OF_OBJ, bad type id %d, string value "%s"',
-    twobyte, cast (rdf_box_data (shortobj) as varchar) ) );
+create function DB.DBA.RDF_SPARQL_EBV_OF_OBJ (in shortobj any array) returns any
+{
+  vectored;
+  return sparql_ebv (__ro2sq(shortobj));
 }
 ;
 
@@ -1807,12 +1762,12 @@ create function DB.DBA.RDF_OBJ_OF_LONG (in longobj any) returns any
 	}
       if (__tag of nvarchar = t or t = 226)
         longobj := charset_recode (longobj, '_WIDE_', 'UTF-8');
-      else if (t in (126, __tag of UNAME))
+      else if (t = 126)
         longobj := cast (longobj as varchar);
-      else if (bit_and (1, __box_flags (longobj)))
-        return iri_to_id (longobj);
       else if (__tag of UNAME = t)
-        return iri_to_id (longobj);
+        return __i2id (longobj);
+      else if (bit_and (1, __box_flags (longobj)))
+        return __i2id (longobj);
       return DB.DBA.RDF_OBJ_ADD (257, longobj, 257);
     }
   if (0 = rdf_box_needs_digest (longobj))
@@ -1831,12 +1786,14 @@ create function DB.DBA.RDF_OBJ_OF_SQLVAL (in v any) returns any array
         return DB.DBA.RDF_OBJ_ADD (257, v, 257);
       return v;
     }
+  if (__tag of UNAME = t)
+    return __i2id (v);
+  if (isstring (v) and bit_and (__box_flags (v), 1))
+    return __i2id (v);
   if (__tag of nvarchar = t)
     v := charset_recode (v, '_WIDE_', 'UTF-8');
-  else if (t in (126, __tag of UNAME))
+  else if (t = 126)
     v := cast (v as varchar);
-  else if (bit_and (1, __box_flags (v)))
-    return iri_to_id (v);
   return DB.DBA.RDF_OBJ_ADD (257, v, 257);
 }
 ;
@@ -1851,12 +1808,14 @@ create function DB.DBA.RDF_MAKE_LONG_OF_SQLVAL (in v any) returns any
   t := __tag (v);
   if (not (t in (126, __tag of varchar, __tag of UNAME, __tag of nvarchar, __tag of XML)))
     return v;
+  if (__tag of UNAME = t)
+    return __i2id (v);
+  if (isstring (v) and bit_and (__box_flags (v), 1))
+    return __i2id (v);
   if (__tag of nvarchar = t)
     v := charset_recode (v, '_WIDE_', 'UTF-8');
-  else if (__tag of UNAME = t or 126 = t)
+  else if (126 = t)
     v := cast (v as varchar);
-  else if (bit_and (1, __box_flags (v)))
-    return iri_to_id (v);
   res := rdf_box (v, 257, 257, 0, 1);
   return res;
 }
@@ -2046,7 +2005,7 @@ create function DB.DBA.RDF_LANGUAGE_OF_LONG (in longobj any, in dflt varchar := 
       if (257 = twobyte)
         return dflt;
       whenever not found goto badlang;
-      select lower (RL_ID) into res from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = twobyte;
+      select RL_ID into res from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = twobyte;
       return res;
 
 badlang:
@@ -2154,12 +2113,14 @@ create function DB.DBA.RDF_LONG_OF_SQLVAL (in v varchar) returns any
   t := __tag (v);
   if (not (t in (126, __tag of varchar, __tag of UNAME, __tag of nvarchar)))
     return v;
+  if (__tag of UNAME = t)
+    return __i2id (v);
+  if (isstring (v) and bit_and (__box_flags (v), 1))
+    return __i2id (v);
   if (__tag of nvarchar = t)
     v := charset_recode (v, '_WIDE_', 'UTF-8');
-  else if (t in (126, __tag of UNAME))
+  else if (t = 126)
     v := cast (v as varchar);
-  else if ((t = __tag of varchar) and (1 = __box_flags (v)))
-    return iri_to_id (v);
 --  if ((t = __tag of varchar) and (v like 'http://%'))
 --    {
 --     -- dbg_obj_princ ('DB.DBA.RDF_LONG_OF_SQLVAL (', v, '): no box flag, suspicious value');
@@ -2216,7 +2177,13 @@ create function DB.DBA.RDF_LANGUAGE_OF_SQLVAL (in v any, in dflt varchar := '') 
 badtype:
   signal ('RDFXX', sprintf ('Unknown language in DB.DBA.RDF_LANGUAGE_OF_SQLVAL, bad id %d', twobyte));
     }
-  return case (isiri_id (v)) when 0 then dflt else null end;
+  if (__tag of UNAME = t)
+    return null;
+  if (isstring (v) and bit_and (__box_flags (v), 1))
+    return null;
+  if (isiri_id (v))
+    return null;
+  return dflt;
 --  t := __tag (v);
 --  if (not (t in (__tag of varchar, __tag of UNAME, __tag of nvarchar)))
 --    return NULL;
@@ -2280,6 +2247,8 @@ create function DB.DBA.RDF_IS_LITERAL (in v any) returns any
     return 0;
   if ((__tag of varchar = __tag (v)) and bit_and (1, __box_flags (v)))
     return 0;
+  if (v is null)
+    return 0;
   return 1;
 }
 ;
@@ -2288,18 +2257,20 @@ create function DB.DBA.RDF_IS_LITERAL (in v any) returns any
 -- Partial emulation of XQuery Core Function Library (temporary, to be deleted soon)
 
 --!AWK PUBLIC
-create function DB.DBA."http://www.w3.org/2001/XMLSchema#boolean" (in strg any) returns integer
+create function DB.DBA."http://www.w3.org/2001/XMLSchema#boolean" (in strg any) returns any
 {
+  declare res integer;
   if (isstring (strg))
     {
       if (('true' = strg) or ('1' = strg))
-        return 1;
-      if (('false' = strg) or ('0' = strg))
-        return 0;
+        res := 1;
+      else if (('false' = strg) or ('0' = strg))
+        res := 0;
+      else
+        return NULL;
+      return sparql_ebv_of_sqlval (res);
     }
-  if (isinteger (strg))
-    return case (strg) when 0 then 0 else 1 end;
-  return NULL;
+  return sparql_ebv_of_sqlval (strg);
 }
 ;
 
@@ -2714,8 +2685,13 @@ create procedure DB.DBA.RDF_QUAD_L_RDB2RDF (in g_iid varchar, in s_iid varchar, 
 	}
       if (__tag of nvarchar = t or t = 226)
         o_val := charset_recode (o_val, '_WIDE_', 'UTF-8');
-      else if (t in (126, __tag of UNAME))
+      else if (t = 126)
         o_val := cast (o_val as varchar);
+      else if (t = __tag of UNAME)
+        {
+          o_val := iri_to_id (o_val);
+          goto o_val_done;
+        }
       else if (bit_and (1, __box_flags (o_val)))
         {
           o_val := iri_to_id (o_val);
@@ -3733,6 +3709,21 @@ create procedure DB.DBA.RDF_LONG_TO_TTL (inout obj any, inout ses any)
     }
   else if (__tag of rdf_box = __tag (obj))
     {
+      declare dt_iri varchar;
+      if (257 <> rdf_box_type (obj))
+        {
+          dt_iri := coalesce ((select RDT_QNAME from DB.DBA.RDF_DATATYPE where RDT_TWOBYTE = rdf_box_type (obj)));
+          if (dt_iri is null)
+            signal ('RDFXX', sprintf ('Bad rdf box type (%d), box "%s"', rdf_box_type (obj), cast (rdf_box_data (obj) as varchar)));
+          if (dt_iri = 'http://www.w3.org/2001/XMLSchema#boolean' and rdf_box_data_tag (obj) = __tag of integer)
+            {
+              http (case sparql_ebv_of_obj (obj) when 0 then '"false"^^<' else '"true"^^<' end, ses);
+              http ('http://www.w3.org/2001/XMLSchema#boolean> ', ses);
+            }
+          return;
+        }
+      else
+        dt_iri := null;
       http ('"', ses);
       if (rdf_box_data_tag (obj) in (__tag of varchar, __tag of long varchar, __tag of nvarchar, __tag of long nvarchar, 185))
         http_escape (__rdf_sqlval_of_obj (obj, 1), 11, ses, 1, 1);
@@ -3748,18 +3739,15 @@ create procedure DB.DBA.RDF_LONG_TO_TTL (inout obj any, inout ses any)
         }
       else
         http_escape (cast (__rdf_sqlval_of_obj (obj, 1) as varchar), 11, ses, 1, 1);
-      if (257 <> rdf_box_type (obj))
+      if (dt_iri is not null)
         {
-          res := coalesce ((select RDT_QNAME from DB.DBA.RDF_DATATYPE where RDT_TWOBYTE = rdf_box_type (obj)));
-          if (res is null)
-            signal ('RDFXX', sprintf ('Bad rdf box type (%d), box "%s"', rdf_box_type (obj), cast (rdf_box_data (obj) as varchar)));
           http ('"^^<', ses);
-          http_escape (res, 12, ses, 1, 1);
+          http_escape (dt_iri, 12, ses, 1, 1);
           http ('> ', ses);
         }
       else if (257 <> rdf_box_lang (obj))
         {
-          res := coalesce ((select lower (RL_ID) from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = rdf_box_lang (obj)));
+          res := coalesce ((select RL_ID from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = rdf_box_lang (obj)));
           http ('"@', ses); http (res, ses); http (' ', ses);
         }
       else
@@ -4476,7 +4464,7 @@ This time the service made zero such statements, sorry.</p></body></html>', ses)
               if (257 <> rdf_box_type (obj))
                 dt := coalesce ((select __bft (RDT_QNAME, 1) from DB.DBA.RDF_DATATYPE where RDT_TWOBYTE = rdf_box_type (obj)));
               else if (257 <> rdf_box_lang (obj))
-                lang := coalesce ((select lower (RL_ID) from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = rdf_box_lang (obj)));
+                lang := coalesce ((select RL_ID from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = rdf_box_lang (obj)));
               sqlval := __rdf_sqlval_of_obj (obj, 1);
               if (__tag of datetime = __tag (sqlval))
                 {
@@ -4680,7 +4668,7 @@ This time the service made zero such statements, sorry.</p></body></html>', ses)
           if (__tag of rdf_box = __tag (obj))
             {
               if (257 <> rdf_box_lang (obj))
-                lang := coalesce ((select lower (RL_ID) from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = rdf_box_lang (obj)));
+                lang := coalesce ((select RL_ID from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = rdf_box_lang (obj)));
               else if (257 <> rdf_box_type (obj))
                 dt := coalesce ((select __bft (RDT_QNAME, 1) from DB.DBA.RDF_DATATYPE where RDT_TWOBYTE = rdf_box_type (obj)));
               sqlval := __rdf_sqlval_of_obj (obj, 1);
@@ -4842,7 +4830,7 @@ This time the service made zero such statements, sorry.</p></body></html>', ses)
           if (__tag of rdf_box = __tag (obj))
             {
               if (257 <> rdf_box_lang (obj))
-                lang := coalesce ((select lower (RL_ID) from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = rdf_box_lang (obj)));
+                lang := coalesce ((select RL_ID from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = rdf_box_lang (obj)));
               else if (257 <> rdf_box_type (obj))
                 dt := coalesce ((select __bft (RDT_QNAME, 1) from DB.DBA.RDF_DATATYPE where RDT_TWOBYTE = rdf_box_type (obj)));
               sqlval := __rdf_sqlval_of_obj (obj, 1);
@@ -5008,7 +4996,7 @@ This time the service made zero such statements, sorry.</p></body></html>', ses)
           if (__tag of rdf_box = __tag (obj))
             {
               if (257 <> rdf_box_lang (obj))
-                lang := coalesce ((select lower (RL_ID) from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = rdf_box_lang (obj)));
+                lang := coalesce ((select RL_ID from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = rdf_box_lang (obj)));
 --DT          else if (257 <> rdf_box_type (obj))
 --DT            dt := coalesce ((select __bft (RDT_QNAME, 1) from DB.DBA.RDF_DATATYPE where RDT_TWOBYTE = rdf_box_type (obj)));
               sqlval := __rdf_sqlval_of_obj (obj, 1);
@@ -5214,7 +5202,7 @@ This time the service made zero such statements, sorry.</p></body></html>', ses)
           if (__tag of rdf_box = __tag (obj))
             {
               if (257 <> rdf_box_lang (obj))
-                lang := coalesce ((select lower (RL_ID) from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = rdf_box_lang (obj)));
+                lang := coalesce ((select RL_ID from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = rdf_box_lang (obj)));
 --DT          else if (257 <> rdf_box_type (obj))
 --DT            dt := coalesce ((select __bft (RDT_QNAME, 1) from DB.DBA.RDF_DATATYPE where RDT_TWOBYTE = rdf_box_type (obj)));
               sqlval := __rdf_sqlval_of_obj (obj, 1);
@@ -5351,7 +5339,7 @@ create procedure DB.DBA.RDF_TRIPLES_TO_JSON_MICRODATA (inout triples any, inout 
           if (__tag of rdf_box = __tag (obj))
             {
               if (257 <> rdf_box_lang (obj))
-                lang := coalesce ((select lower (RL_ID) from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = rdf_box_lang (obj)));
+                lang := coalesce ((select RL_ID from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = rdf_box_lang (obj)));
 --DT          else if (257 <> rdf_box_type (obj))
 --DT            dt := coalesce ((select __bft (RDT_QNAME, 1) from DB.DBA.RDF_DATATYPE where RDT_TWOBYTE = rdf_box_type (obj)));
               sqlval := __rdf_sqlval_of_obj (obj, 1);
@@ -5696,7 +5684,7 @@ create procedure DB.DBA.RDF_TRIPLES_TO_ATOM_XML_TEXT (inout triples any, in prin
 		       twobyte := rdf_box_lang (obj);
 		       if (twobyte <> 257)
 		         {
-			   lang := coalesce ((select lower (RL_ID) from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = twobyte), lang);
+			   lang := coalesce ((select RL_ID from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = twobyte), lang);
 			 }
 		     }
 		   rc := langmatches_pct_http (lang, range);
@@ -5740,7 +5728,7 @@ create procedure DB.DBA.RDF_TRIPLES_TO_ATOM_XML_TEXT (inout triples any, in prin
 		       twobyte := rdf_box_lang (obj);
 		       if (twobyte <> 257)
 			 {
-			   lang := coalesce ((select lower (RL_ID) from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = twobyte), lang);
+			   lang := coalesce ((select RL_ID from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = twobyte), lang);
 			   http (sprintf (' xml:lang="%s"', lang), ses);
 			 }
 		      http ('>', ses);
@@ -6074,9 +6062,9 @@ create procedure DB.DBA.SPARQL_RESULTS_CSV_WRITE_VALUE (inout _env any, in val a
       val := rdf_box_data (val);
       t := __tag (val);
     }
-  if (t in (__tag of integer, __tag of numeric, __tag of double precision, __tag of float, __tag of date, __tag of time, __tag of datetime))
+  if (t in (__tag of integer, __tag of numeric, __tag of double precision, __tag of float, __tag of date, __tag of time, __tag of datetime, __tag of real))
     {
-      http_value (val, 0, _env);
+      http_value (__rdf_strsqlval (val), 0, _env);
       return;
     }
   if (t = __tag of IRI_ID)
@@ -8658,7 +8646,7 @@ create procedure DB.DBA.BEST_LANGMATCH_ACC (inout env any, in obj any array, in 
       else
         {
           whenever not found goto badlang;
-          select lower (RL_ID) into lang from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = twobyte;
+          select RL_ID into lang from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = twobyte;
           goto lang_ready;
 badlang:
           signal ('RDFXX', sprintf ('Unknown language in DB.DBA.BEST_LANGMATCH_ACC, bad lang id %d', twobyte));
@@ -10457,7 +10445,7 @@ next_batch:
 --            (select id_to_iri (RDT_IID) from DB.DBA.RDF_DATATYPE where RDT_TWOBYTE = dt_twobyte) ) end;
 --          lang_twobyte := rdf_box_lang (O);
 --          O_LANG := case (lang_twobyte) when 257 then NULL else coalesce (
---            (select lower (RL_ID) from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = lang_twobyte) ) end;
+--            (select RL_ID from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = lang_twobyte) ) end;
 --          result (S, P, O, 0, O_DT, O_LANG);
 --        }
       else if (S is not null and P is not null and O is not null)
@@ -10502,7 +10490,7 @@ create procedure DB.DBA.RDF_DICT_OF_TRIPLES_TO_FOUR_COLS (in dict any, in destru
             (select id_to_iri (RDT_IID) from DB.DBA.RDF_DATATYPE where RDT_TWOBYTE = dt_twobyte) ) end;
           lang_twobyte := rdf_box_lang (O);
           --O_LANG := case (lang_twobyte) when 257 then NULL else coalesce (
-          --  (select lower (RL_ID) from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = lang_twobyte) ) end;
+          --  (select RL_ID from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = lang_twobyte) ) end;
           result (S, P, O, coalesce (O_DT, ''));
         }
       else if (S is not null and P is not null and O is not null)
@@ -10932,6 +10920,8 @@ create function DB.DBA.JSO_LOAD_INSTANCE (in jgraph varchar, in jinst varchar, i
 create procedure DB.DBA.JSO_LIST_INSTANCES_OF_GRAPH (in jgraph varchar, out instances any)
 {
   declare md, res, st, msg any;
+  if (not isiri_id (jgraph))
+    jgraph := __i2id (jgraph);
   st:= '00000';
   exec (
     'select DB.DBA.VECTOR_AGG (
@@ -16627,7 +16617,7 @@ create procedure DB.DBA.SPARQL_RELOAD_QM_GRAPH ()
 {
   declare ver varchar;
   declare inx int;
-  ver := '2014-02-20 0001v7';
+  ver := '2015-03-16 0001v7';
   if (USER <> 'dba')
     signal ('RDFXX', 'Only DBA can reload quad map metadata');
   if (not exists (sparql define input:storage "" ask where {
@@ -16763,7 +16753,8 @@ create procedure DB.DBA.RDF_CREATE_SPARQL_ROLES ()
     'grant execute on DB.DBA.RDF_TWOBYTE_OF_LANGUAGE to SPARQL_SELECT',
     'grant execute on DB.DBA.RQ_LONG_OF_O to SPARQL_SELECT', -- DEPRECATED
     'grant execute on DB.DBA.RQ_SQLVAL_OF_O to SPARQL_SELECT', -- DEPRECATED
-    'grant execute on DB.DBA.RDF_BOOL_OF_O to SPARQL_SELECT',
+    'grant execute on DB.DBA.RQ_BOOL_OF_O to SPARQL_SELECT',
+    'grant execute on DB.DBA.RQ_SPARQL_EBV_OF_O to SPARQL_SELECT',
     'grant execute on DB.DBA.RQ_IID_OF_O to SPARQL_SELECT', -- DEPRECATED
     'grant execute on DB.DBA.RQ_O_IS_LIT to SPARQL_SELECT', -- DEPRECATED
     'grant execute on DB.DBA.RDF_OBJ_ADD to SPARQL_SELECT',
@@ -16778,6 +16769,7 @@ create procedure DB.DBA.RDF_CREATE_SPARQL_ROLES ()
     'grant execute on DB.DBA.RDF_LANGUAGE_OF_OBJ to SPARQL_SELECT',
     'grant execute on DB.DBA.RDF_SQLVAL_OF_OBJ to SPARQL_SELECT', -- DEPRECATED
     'grant execute on DB.DBA.RDF_BOOL_OF_OBJ to SPARQL_SELECT',
+    'grant execute on DB.DBA.RDF_SPARQL_EBV_OF_OBJ to SPARQL_SELECT',
     'grant execute on DB.DBA.RDF_QNAME_OF_OBJ to SPARQL_SELECT', -- DEPRECATED
     'grant execute on DB.DBA.RDF_STRSQLVAL_OF_OBJ to SPARQL_SELECT',
     'grant execute on DB.DBA.RDF_OBJ_OF_LONG to SPARQL_SELECT',
@@ -17272,6 +17264,7 @@ create procedure DB.DBA.RDF_QUAD_FT_UPGRADE ()
       exec ('revoke "SPARQL_UPDATE" from "SPARQL"', stat, msg);
       return;
     }
+  commit work;
   if (1 <> sys_stat ('cl_run_local_only'))
     goto final_qm_reload;
   if (244 = coalesce ((select COL_DTP from SYS_COLS where "TABLE" = 'DB.DBA.RDF_QUAD' and "COLUMN"='G'), 0))
@@ -17315,6 +17308,15 @@ DB.DBA.RDF_QUAD_FT_UPGRADE ()
 --#ENDIF
 DB.DBA.RDF_CREATE_SPARQL_ROLES ()
 ;
+
+create aggregate VT_WORD_STRING_ID_AGG (in word_string varchar) returns any
+  from vt_word_string_id_init, vt_word_string_id_acc, vt_word_string_id_final
+;
+
+create aggregate VT_WORD_STRING_RO_ID_AGG (in word_string varchar) returns any
+  from vt_word_string_id_init, vt_word_string_id_acc, vt_word_string_ro_id_final
+;
+
 
 -- loading subclass inference ctxs
 
@@ -17741,3 +17743,126 @@ create procedure DB.DBA.RDF_QUAD_REPL_INS (in quads any)
   repl_text ('__rdf_repl', 'DB.DBA.RDF_REPL_INS_QUADS (?)', quads);
 }
 ;
+
+
+-- Make geometries for geo:long, geo:lat pairs
+
+
+create procedure num_or_null (in n any)
+{
+  declare exit handler for sqlstate '*'{ return null; };
+  return cast (cast (n as decimal) as real);
+}
+;
+
+create procedure rdf_geo_fill_single ()
+{
+  for (select "s", "long", "lat", "g" from (sparql define output:valmode "LONG"
+      prefix geo: <http://www.w3.org/2003/01/geo/wgs84_pos#>
+      select ?g ?s ?long ?lat where {
+      graph ?g { ?s geo:long ?long . ?s geo:lat ?lat}}) f option (any order)) do
+  {
+    "lat" := num_or_null ("lat");
+    "long" := num_or_null ("long");
+    if (isnumeric ("lat") and isnumeric ("long"))
+      insert into rdf_quad (g, s, p, o) values ("g", "s", iri_to_id ('http://www.w3.org/2003/01/geo/wgs84_pos#geometry'),
+	rdf_geo_add (rdf_box (st_point ("long", "lat"), 256, 257, 0, 1)));
+  }
+
+}
+;
+
+create procedure GEO_FILL_CL_SRV  (inout arr any, in fill int)
+{
+  declare lat, lng, s, g, l, dp any;
+  declare inx int;
+  log_enable (2, 1);
+  connection_set ('g_dict', null);
+ dp := dpipe (5, 'IRI_TO_ID_1', 'IRI_TO_ID_1', 'IRI_TO_ID_1', 'MAKE_RO_1', 'IRI_TO_ID_1');
+  dpipe_set_rdf_load (dp, 2);
+  for (inx := 0; inx < fill; inx := inx + 1)
+    {
+    l := arr[inx];
+    g := l[0];
+    s := l[1];
+    lng := num_or_null (l[2]);
+    lat := num_or_null (l[3]);
+      if (isnumeric (lat) and isnumeric (lng))
+	dpipe_input (dp, s, 'http://www.w3.org/2003/01/geo/wgs84_pos#geometry', null, rdf_box (st_point (lng, lat), 256, 257, 0, 1), g);
+    }
+    dpipe_next (dp, 0);
+  dpipe_next (dp, 1);
+}
+;
+
+create procedure GEO_FILL_SRV  (in arr any, in fill int)
+{
+  declare lat, lng, s, g, l any;
+  declare inx int;
+  log_enable (2, 1);
+  if (0 = sys_stat ('cl_run_local_only'))
+    return geo_fill_cl_srv (arr, fill);
+  declare geop iri_id_8;
+  declare gs, ss, os any array;
+ gs := make_array (fill, 'any');
+ ss := make_array (fill, 'any');
+ os := make_array (fill, 'any');
+  geop := iri_to_id ('http://www.w3.org/2003/01/geo/wgs84_pos#geometry');
+  for (inx := 0; inx < fill; inx := inx + 1)
+    {
+    l := aref_set_0 (arr, inx);
+      gs[inx]  := aref_set_0 (l, 0);
+    ss[inx] := aref_set_0 (l, 1);
+      os[inx] := st_point (aref_set_0 (l, 2), aref_set_0 (l, 3));
+    }
+  for vectored (in g1 iri_id_8 := gs, in s1 iri_id_8 := ss, in o1 any array := os)
+    {
+	insert soft rdf_quad (g, s, p, o) values ("g1", "s1", geop,
+						  rdf_geo_add (rdf_box (o1, 256, 257, 0, 1)));
+    }
+}
+;
+
+create procedure rdf_geo_fill (in threads int := null, in batch int := 100000)
+{
+  declare arr, fill, aq, ctr any;
+  if (threads is null) threads := sys_stat ('enable_qp');
+  aq := async_queue (threads);
+  arr := make_array (batch, 'any');
+  fill := 0;
+  ctr := 0;
+  log_enable (2, 1);
+  for (select "s", "long", "lat", "g" from (sparql define output:valmode "LONG"
+      prefix geo: <http://www.w3.org/2003/01/geo/wgs84_pos#>
+      select ?g ?s ?long ?lat where {
+          graph ?g {
+              ?s geo:long ?long . ?s geo:lat ?lat . } } ) as f) do
+  {
+    declare lat2, long2 any;
+  long2 := num_or_null (rdf_box_data ("long"));
+  lat2 := num_or_null (rdf_box_data ("lat"));
+    if (isnumeric (long2) and isnumeric (lat2))
+      {
+	arr[fill] := vector ("g", "s", long2, lat2);
+      fill := fill + 1;
+	if (batch = fill)
+	  {
+	    aq_request (aq, 'DB.DBA.GEO_FILL_SRV', vector (arr, fill));
+	  ctr := ctr + 1;
+	    if (ctr > 100)
+	      {
+		commit work;
+		aq_wait_all (aq);
+	      ctr := 0;
+	      }
+	  arr := make_array (batch, 'any');
+	  fill := 0;
+	  }
+      }
+  }
+  geo_fill_srv (arr, fill);
+  commit work;
+  aq_wait_all (aq);
+}
+;
+

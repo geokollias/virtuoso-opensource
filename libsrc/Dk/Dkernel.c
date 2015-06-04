@@ -96,7 +96,7 @@ long second_rpcs = 0;
 
 void (*process_exit_hook) (int);
 future_request_t *frq_create (dk_session_t * ses, caddr_t * request);
-
+id_hash_t * cli_abuse;
 
 void
 call_exit_outline (int status)
@@ -952,6 +952,7 @@ dk_report_error (const char *format, ...)
 
 int dbf_assert_on_malformed_data;
 
+dk_mutex_t bad_rpc_mtx;
 
 void
 sr_report_future_error (dk_session_t * ses, const char *service_name, const char *reason)
@@ -960,12 +961,23 @@ sr_report_future_error (dk_session_t * ses, const char *service_name, const char
       (ses->dks_session->ses_class == SESCLASS_TCPIP ||
        ses->dks_session->ses_class == SESCLASS_UDPIP))
     {
-      char ip_buffer[16];
+      char ip_buffer[16] = "", *ipp = &(ip_buffer[0]);
+      ptrlong p = 0, *pp;
+      uint32 now = approx_msec_real_time ();
       tcpses_print_client_ip (ses->dks_session, ip_buffer, sizeof (ip_buffer));
       if (service_name && strlen (service_name) > 0)
 	log_error ("Malformed RPC %.10s received from IP [%.256s] : %.255s. Disconnecting the client", service_name, ip_buffer, reason);
       else
 	log_error ("Malformed data received from IP [%.256s] : %.255s. Disconnecting the client", ip_buffer, reason);
+      mutex_enter (&bad_rpc_mtx);
+      pp = (ptrlong*) id_hash_get (cli_abuse, (caddr_t)&ipp);
+      if (pp)
+	p = (*pp) & 0xFFFF;
+      p ++;
+      p = ((ptrlong)now << 16) | p;
+      if (!pp) ipp = box_dv_short_string (ip_buffer);
+      id_hash_set (cli_abuse, (caddr_t)&ipp, (caddr_t)&p);
+      mutex_leave (&bad_rpc_mtx);
     }
 /* do not report - it's usually an internal session - like txn log, deserialize etc
   else
@@ -1132,7 +1144,10 @@ future_wrapper (void *ignore)
 	      arg_array[finx] = NULL;
 	}
 
-      dk_free_box_and_int_boxes ((caddr_t) arguments);
+      if (error)
+	dk_free_tree (arguments);
+      else
+	dk_free_box_and_int_boxes ((caddr_t) arguments);
 
       /* Free this now. If freed after RPC func the references items may have been
          freed and reallocated and could be erroneously re-freed. */
@@ -1180,10 +1195,8 @@ future_wrapper (void *ignore)
 		  ret_box[0] = box_string (result);
 		else
 		  {
-		    dtp_t dtp = DV_TYPE_OF (result);
 		    ret_box[0] = result;
-		    if (DV_LONG_INT == dtp || DV_C_STRING == dtp || DV_SINGLE_FLOAT == dtp || DV_DOUBLE_FLOAT == dtp)
-		      result = NULL; /* if freed by free box and numbers, clear so postprocess not called on freed */
+		    result = NULL;
 		  }
 	      }
 	    ret_block[DA_MESSAGE_TYPE] = (caddr_t) (long) DA_FUTURE_ANSWER;
@@ -1197,10 +1210,7 @@ future_wrapper (void *ignore)
 	    write_in_session ((caddr_t) ret_block, future->rq_client, NULL, NULL, 1);
 #endif
 	    CB_DONE;
-	    if (ret_type == DV_C_STRING)
-	      dk_free_box ((caddr_t) ret_box[0]);	/* mty HUHTI */
-	    dk_free_box_and_numbers ((caddr_t) ret_block);	/* mty HUHTI */
-	    dk_free_box_and_numbers ((caddr_t) ret_box);	/* mty HUHTI */
+	    dk_free_tree (ret_block);
 	  }
       }
 
@@ -1394,7 +1404,7 @@ future_wrapper (void *ignore)
 
 			  dk_free_box (req[FRQ_SERVICE_NAME]);
 			  req[FRQ_SERVICE_NAME] = NULL;
-			  dk_free_box_and_numbers ((box_t) req);	/* mty HUHTI */
+			  dk_free_tree ((box_t) req);	/* mty HUHTI */
 			}
 		      else
 			{
@@ -1525,13 +1535,8 @@ frq_create (dk_session_t * ses, caddr_t * request)
       sr_report_future_error (ses, "", "invalid future request length");
       if (IS_BOX_POINTER (request))
 	dk_free_tree (request);
-      mutex_enter (thread_mtx);
-      if (ses->dks_thread_state == DKST_IDLE)
-	{
-	  PrpcDisconnect (ses);
-	  PrpcSessionFree (ses);
-	}
-      mutex_leave (thread_mtx);
+      SESSTAT_CLR (ses->dks_session, SST_OK);
+      SESSTAT_SET (ses->dks_session, SST_BROKEN_CONNECTION);
       dk_free (future_request, sizeof (future_request_t));
       return NULL;
     }
@@ -1551,13 +1556,18 @@ frq_create (dk_session_t * ses, caddr_t * request)
 
       printf ("\nUnknown service %s requested. req no = %d", svc, (int) unbox (request[FRQ_COND_NUMBER]));
       dk_free (future_request, sizeof (future_request_t));
+      if (IS_BOX_POINTER (request))
+	dk_free_tree (request);
       return NULL;
     }
 
   future_request->rq_condition = (long) unbox (request[FRQ_COND_NUMBER]);	/* mty HUHTI */
   args = request[FRQ_ARGUMENTS];
   if (IS_BOX_POINTER (args) && DV_TYPE_OF (args) == DV_ARRAY_OF_POINTER)
-    future_request->rq_arguments = (long **) request[FRQ_ARGUMENTS];
+    {
+      future_request->rq_arguments = (long **) request[FRQ_ARGUMENTS];
+      request[FRQ_ARGUMENTS] = NULL;
+    }
 
   return future_request;
 }
@@ -1615,7 +1625,7 @@ schedule_request (TAKE_G dk_session_t * ses, caddr_t * request)
 
   dk_free_box (request[FRQ_SERVICE_NAME]);
   request[FRQ_SERVICE_NAME] = NULL;
-  dk_free_box_and_numbers ((box_t) request);	 /* mty HUHTI */
+  dk_free_tree ((box_t) request);	 /* mty HUHTI */
 #if 1						 /*!!! */
   ss_dprintf_2 (("Starting future %ld with thread %p", future_request->rq_condition,
 	  /*future_request->rq_service->sr_name, */ thread));
@@ -1688,7 +1698,7 @@ schedule_future:
       ss_dprintf_4 (("found no free thread - queueing"));
       queued_reqs++;
       if (client_trace_flag)
-	logit (L_DEBUG, "adding to in_basket client: %lx service: %s", future_request->rq_client, future_request->rq_service->sr_name);
+	logit (L_DEBUG, "adding to in_basket client: %lx service: %s", future_request->rq_client, future_request->rq_service ? future_request->rq_service->sr_name : "no service");
       thrs_printf ((thrs_fo, "**ses %p thr:%p req to basket\n", ses, THREAD_CURRENT_THREAD));
       basket_add (&in_basket, future_request);
       mutex_leave (thread_mtx);
@@ -2330,8 +2340,7 @@ read_service_request (dk_session_t * ses)
 
   if (!SESSTAT_ISSET (ses->dks_session, SST_TIMED_OUT) && !SESSTAT_ISSET (ses->dks_session, SST_BROKEN_CONNECTION) && (DV_TYPE_OF (request) != DV_ARRAY_OF_POINTER || BOX_ELEMENTS (request) < 1))
     {
-      if (!box_destr [DV_TYPE_OF (request)])
-	dk_free_tree (request);
+      dk_free_tree (request);
       sr_report_future_error (ses, "", "invalid future box");
       SESSTAT_CLR (ses->dks_session, SST_OK);
       SESSTAT_SET (ses->dks_session, SST_BROKEN_CONNECTION);
@@ -2434,6 +2443,7 @@ read_service_request (dk_session_t * ses)
 	{
 	  sr_report_future_error (ses, "", "invalid future answer length");
 	  PrpcDisconnect (ses);
+	  PrpcSessionFree (ses);
 	  dk_free_tree ((box_t) request);
 	  return 0;
 	}
@@ -2455,6 +2465,7 @@ read_service_request (dk_session_t * ses)
 	{
 	  sr_report_future_error (ses, "", "invalid future partial answer length");
 	  PrpcDisconnect (ses);
+	  PrpcSessionFree (ses);
 	  dk_free_tree ((box_t) request);
 	  return 0;
 	}
@@ -2472,6 +2483,7 @@ read_service_request (dk_session_t * ses)
     default:
       sr_report_future_error (ses, "", "invalid future type");
       PrpcDisconnect (ses);
+      PrpcSessionFree (ses);
       dk_free_tree ((box_t) request);
       return 0;
 
@@ -2599,12 +2611,44 @@ dk_session_clear (dk_session_t * ses)
   the served sessions set.
 */
 #ifndef NO_THREAD
+int32 max_bad_rpc_on_connection = 100;
+int32 max_bad_rpc_timeout = 60;
+dk_mutex_t bad_rpc_mtx;
+
 static int
 accept_client (dk_session_t * ses)
 {
+  char ip_buffer[16] = "", *ipp = &(ip_buffer[0]);
+  ptrlong p = 0;
+  uint32 now = approx_msec_real_time (), last;
   dk_session_t *newses = dk_session_allocate (ses->dks_session->ses_class);
   without_scheduling_tic ();
   session_accept (ses->dks_session, newses->dks_session);
+  tcpses_print_client_ip (newses->dks_session, ip_buffer, sizeof (ip_buffer));
+
+  mutex_enter (&bad_rpc_mtx);
+  if (NULL != (p = (ptrlong) id_hash_get (cli_abuse, (caddr_t)&ipp)))
+    {
+      p = *(ptrlong*)p;
+      last = p >> 16;
+      p = p & 0xFFFF;
+    }
+  if (max_bad_rpc_on_connection > 0 && p && p >= max_bad_rpc_on_connection && (now - last) < max_bad_rpc_timeout * 1000)
+    {
+      p = ((ptrlong)now << 16) | p;
+      id_hash_set (cli_abuse, (caddr_t)&ipp, (caddr_t)&p); /* set timestamp */
+      PrpcDisconnect (newses);
+      PrpcSessionFree (newses);
+      mutex_leave (&bad_rpc_mtx);
+      return 0;
+    }
+  else if (max_bad_rpc_on_connection > 0 && p && p >= max_bad_rpc_on_connection && (now - last) > max_bad_rpc_timeout * 1000)
+    {
+      p = ((ptrlong)now << 16); /* reset counter */
+      id_hash_set (cli_abuse, (caddr_t)&ipp, (caddr_t)&p);
+    }
+  mutex_leave (&bad_rpc_mtx);
+
   restore_scheduling_tic ();
 
   SESSION_SCH_DATA (newses)->sio_default_read_ready_action = read_service_request;
@@ -3810,11 +3854,13 @@ PrpcInitialize1 (int mem_mode)
   process_futures_initialize (timeout_checker->dkt_process);
   semaphore_leave (timeout_checker->dkt_process->thr_sem);
 #endif
+  cli_abuse = id_hash_allocate (100, sizeof (caddr_t), sizeof (caddr_t), strhash, strhashcmp);
 
 #ifdef _SSL
   ssl_server_init ();
 #endif
 #ifndef NO_THREAD
+  dk_mutex_init (&bad_rpc_mtx, MUTEX_TYPE_SHORT);
 #ifdef MALLOC_DEBUG
   log_info ("*** THIS SERVER BINARY CONTAINS MEMORY DEBUG CODE! ***");
 #endif

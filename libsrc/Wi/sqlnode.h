@@ -118,6 +118,7 @@ struct data_source_s
     bitf_t		ssl_is_observer:1; \
     bitf_t		ssl_is_callret:1; \
     bitf_t		ssl_not_freeable:1;				\
+  bitf_t	ssl_is_lit_param:1; \
     bitf_t		ssl_qr_global:1; /* value either aggregating or invariant across qr */ \
   bitf_t	ssl_always_vec:1; \
   bitf_t	ssl_vec_param:2; /* in vectored proc in/inout/out */	\
@@ -255,6 +256,8 @@ typedef struct cl_fref_red_node_s
   char clf_no_order;
   struct clo_comp_s **clf_order;
   struct setp_node_s *clf_setp;
+  state_slot_t *clf_top;
+  state_slot_t *clf_skip;
   int clf_set_no;
   int clf_nth_in_set;
   dk_set_t clf_out_slots;
@@ -1793,7 +1796,8 @@ typedef struct setp_node_s
 #define SETP_GBB_NEED_ID 2	/* not a hash join build but needs id due to refs in other qfs */
 
 
-#define SETP_DISTINCT_MAX_KEYS 100
+extern int32 setp_distinct_max_keys;
+#define SETP_DISTINCT_MAX_KEYS setp_distinct_max_keys
 #define SETP_DISTINCT_NO_OP 2
 #define IS_SETP(qn) IS_QN (qn, setp_node_input)
 
@@ -2153,6 +2157,14 @@ typedef struct _cl_aq_ctx
   char claq_is_allocated;	/* if copy by dfg thread starting another */
 } cl_aq_ctx_t;
 
+typedef struct _claq_ctx_s
+{
+  /* if reset ctx and claq in the same stack frame, make the claq always have the higher address for error ck */
+  jmp_buf_splice cctx_ctx;
+  cl_aq_ctx_t cctx_claq;
+} claq_ctx_t;
+
+
 #define QI_ACL_CK_ROWS(qi) 0
 
 typedef struct client_connection_s
@@ -2486,7 +2498,7 @@ extern long blob_releases_dir;
 
 extern client_connection_t *autocheckpoint_cli;
 
-
+void qr_print (query_t * qr);
 
 #include "sqlcomp.h"
 #include "eqlcomp.h"
