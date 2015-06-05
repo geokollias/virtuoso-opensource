@@ -12,3 +12,4 @@ do
     ln -s /home/virtuoso-opensource/binsrc/virtuoso/virtuoso-t .
     cd ..
 done
+cp -R /home/virtuoso-opensource/binsrc/samples/ldami/ec2-user/* /home/ec2-user/
