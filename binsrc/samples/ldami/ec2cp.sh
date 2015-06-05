@@ -13,3 +13,4 @@ do
     cd ..
 done
 cp -R /home/virtuoso-opensource/binsrc/samples/ldami/ec2-user/* /home/ec2-user/
+sudo cp /home/virtuoso-opensource/binsrc/samples/ldami/motd /etc/motd
