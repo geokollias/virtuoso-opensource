@@ -26,7 +26,7 @@ In the /home directory, you can find git checkouts from:
 
 Also, in the same directory, you have one folder per type of benchmark
 and scale factor:
-- snb30 - Social Network Benchmark 30GB
+- snb100 - Social Network Benchmark 100GB
 - snb300 - Social Network Benchmark 300GB
 - snbval - Validation of Social Network Benchmark 
 - spb1g - - Semantic Publishing with 1G triples
@@ -51,6 +51,9 @@ $ sudo ./mkvol.sh
 
 This command will make two file systems on the SSD based instance storage of the instance, mounted as /1s1 and /1s2.
 
+Many of procedures require AWS credentials for accessing S3 buckets.
+
+$ aws configure
 
 SMB 30G and SMB 300G
 
@@ -64,16 +67,16 @@ This section covers loading and running the LDBC SNB benchmarks.
 **********************************
 
 
-In order to run one of the SNB benchmarks (e.g. SF30), you have to
+In order to run one of the SNB benchmarks (e.g. SF100), you have to
 follow the next steps (if you want to run SF300, everything is the same,
 but you have to use different folder, with different scripts - snb300
-instead of snb30):
+instead of snb100):
 
 1) Prepare the filesystems, if not already done. Be sure that you have 2 SSDs, 300GB each,
 because the total size of the dataset (gzipped) and database files for
-SF300 are 138GB and 246GB at the beginning, respectively. For SF30,
+SF300 are 138GB and 246GB at the beginning, respectively. For SF100,
 these numbers are 13G and 25G. With this configuration, for example,
-you can have SF30 and SF300 dataset and database files together, but
+you can have SF100 and SF300 dataset and database files together, but
 you cannot have SNB300 and TPCH300 both at the same time.
 
 
@@ -82,15 +85,15 @@ The initial state of the database may be created on the instance by bulk loading
 
 
 2) Create or download dataset. Note that creating the dataset  can take a long time (1 hour
-for SF30 and more than 7 hours for SF300).  The dbgen.sh command creates the dataset, the dbget.sh gets it from S3.
+for SF100 and more than 7 hours for SF300).  The dbgen.sh command creates the dataset, the dbget.sh gets it from S3.
 
 
 
-$ cd /home/snb30
+$ cd /home/snb100
 $ ./dbgen.sh                  (or: $ ./dbget.sh )
 
 
-3) Unzip update streams (for SF30, less than 2 minutes, and for SF300
+3) Unzip update streams (for SF100, less than 2 minutes, and for SF300
 14 minutes)
 
 $ cd /1s1/snb30data/updates/
@@ -113,11 +116,11 @@ For running, you need to manually start the Virtuoso server:
 
 This returns when the server is online.  Progress can be tracked from the virtuoso.log message log.
 
-4.2) Bulk load the dataset (for SF30 this takes about 15 minutes, and for SF300
+4.2) Bulk load the dataset (for SF100 this takes about 15 minutes, and for SF300
 almost 2 hours). This step will run the Virtuoso server, load it, and
 leave it online.
 
-$ cd /home/snb30
+$ cd /home/snb100
 $ ./load.sh
 
 During this step (from a second shell), you can  follow the progress of the load.  Og in with isql:
@@ -141,12 +144,12 @@ If everything is loaded, you should get "OK" as result.
 
 6) Run the benchmark. The default configuration is 48 threads, all
 query types enabled (short and long reads and updates), time
-compression ratio is XXX for SF30, and 0.7 for SF300. Number of
-operations for warmup is XXX for SF30 and 150000 for SF300, while the
+compression ratio is XXX for SF100, and 0.7 for SF300. Number of
+operations for warmup is XXX for SF100 and 150000 for SF300, while the
 numbers of operations in the real run are XXX and 4000000,
 respectively. You can expect that warmup and run phase will take about
-XXX (SF30) and XXX (SF300) minutes in total. The target throughput is
-XXX for SF30 and XXX for SF300.
+XXX (SF100) and XXX (SF300) minutes in total. The target throughput is
+XXX for SF100 and XXX for SF300.
 
 $ ./run.sh &
 
