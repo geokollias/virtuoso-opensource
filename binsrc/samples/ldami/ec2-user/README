@@ -164,8 +164,15 @@ run.out file every 2 seconds.  The run stops after completing the said number of
 $ ./report.sh > report.txt
 
 
-To do the recovery test part of LDBC SNB, you may kill the server with kill -9.  After this, restart it with ./virtuoso-t -f & 
-This will show you the progress of the roll forward recovery on standard output.
+To do the recovery test part of LDBC SNB, you may kill the server with
+kill -9.  After this, restart it with ./virtuoso-t -f +no-checkpoint &
+This will show you the progress of the roll forward recovery on
+standard output.  The +no-checkpoint switch causes the log to be left
+in place and the contents of the log will not be checkpointed in the
+database.  Killing the server after this and deleting the log leaves
+the database in post bulk load state, so that a new run can be made.
+The driver cannot be run twice if effects of the previous run are left
+in the starting state of the next.
 
 The following scripts are not necessery, but can be useful:
 - copy the dataset to S3 servers
@@ -278,12 +285,29 @@ After the load command returns, the bulk load is complete.  You can do
 
 SQL> status ();
 
-to see server tatistics, for example this should say there are 0 dirty buffers.
+to see server statistics, for example this should say there are 0 dirty buffers.
 
- 1.6. run ./run.sh in order to complete the benchmark
- 1.7. to stop server execute isql 1111 dba dba exec="raw_exit()", in case of 1G scale SQL port is 1112 and remove /1s2/dbs/spb256.trx or /1s2/dbs/spb1g.trx
- 
-3) to remove database use rm_database.sh
-4) to remove dataset use rm_dataset.sh
+ 1.6. run ./run.sh to run the benchmark.
+
+The duration is set to 10 minutes of warmup and 20 minutes of running.
+ The command produces a running commentary on the progress to standard
+ output.  There is a long time of single threaded execution, up to
+ several minutes with 1G scale during which the test driver variously
+ reads data from the database to control the run.    The The running commentary starts after the warmup period.
+
+
+1.7 After the test driver finishes, kill the server.  Use kill -9 or connect with isql and do 
+
+SQL> raw_exit ();
+
+The server port is 1111 for the 256M scale and 1112 for the 1G scale.  Also remember to delete the transaction log.  This is  /1s2/dbs/spb256.trx
+ or /1s2/dbs/spb1g.trx
+
+When the server is restarted, it will restart from the post bulk load state.  If modifications made by one run are persisted in the database and a second run is made, results will be off.
+
+
+
+3) to delete the database use rm_database.sh
+4) to delete the  dataset use rm_dataset.sh
 
 
