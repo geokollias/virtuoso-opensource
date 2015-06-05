@@ -385,9 +385,7 @@ wait_for_init_done (void)
 	return;
     }
 
-  fprintf (stderr,
-      "The VDBMS server process terminated prematurely\nafter %s.\n",
-      notify_stage[sts]);
+  fprintf (stderr, "The server can not start, see messages log for details\nStatus: %s.\n", notify_stage[sts]);
   exit (100 + sts);
 }
 
@@ -547,7 +545,9 @@ main (int argc, char **argv)
   dk_session_t *listening;
 
 #ifdef MALLOC_DEBUG
+#ifndef USE_TLSF
   dbg_malloc_enable();
+#endif
 #endif
   if (!startup_log)
     startup_log = cfg_open_syslog (LOG_DEBUG, "default");

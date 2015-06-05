@@ -1,17 +1,23 @@
 
+
+Virtuoso Benchmark AMI Documentation
+
+
 This document contains instructions for using the Virtuoso Benchmarks
 AMI.  This is a Linux AMI preloaded with the most up to date Virtuoso
-Open Source (v7fasttrack) with a selection of TPC-H, LDBC Social Network and LDBC Semantic Publishing  benchmarks at different scales.
+Open Source (v7fasttrack, feature/analytics) with a selection of
+TPC-H, LDBC Social Network and LDBC Semantic Publishing benchmarks at
+different scales.
 
 
 This AMI is intended for use with an R3.8xlarge instance.
 
 
-All necessary programs and modules are preinstalled, and preconfigured
+All necessary programs and modules are preinstalled and preconfigured
 (java, maven, git, hadoop, virtuoso, ldbc_driver, etc), and bash
-scripts for all kind of tasks are prepared.
+scripts for all tasks are predefined.
 
-In /home directory, you can find git checkouts from:
+In the /home directory, you can find git checkouts from:
 - ldbc driver (/home/ldbc_driver)
 - ldbc datagenerator (/home/ldbc_snb_datagen)
 - virtuoso implmentation of the database connector
@@ -43,16 +49,13 @@ $ cd ~
 $ sudo ./mkvol.sh
 
 
-This command will make two file systems on the SSD based instance storage of the instance.
+This command will make two file systems on the SSD based instance storage of the instance, mounted as /1s1 and /1s2.
 
 
 SMB 30G and SMB 300G
 
 
-This section indicates how to  create and load the SNB dataset of
-scale factor 30 and 300, and inform you how to run the benchmark
-(interactive workload) against it. Here, you can also find the
-instructions for SPB and TPC-H.
+This section covers loading and running the LDBC SNB benchmarks.
 
 
 
@@ -69,18 +72,19 @@ instead of snb30):
 1) Prepare the filesystems, if not already done. Be sure that you have 2 SSDs, 300GB each,
 because the total size of the dataset (gzipped) and database files for
 SF300 are 138GB and 246GB at the beginning, respectively. For SF30,
-these numbers are XXX and XXX. With this configuration, for example,
+these numbers are 13G and 25G. With this configuration, for example,
 you can have SF30 and SF300 dataset and database files together, but
-you cannot have SNB300 and TPCH300 both in the same time.
-
-$ cd ~
-$ sudo ./mkvol.sh
+you cannot have SNB300 and TPCH300 both at the same time.
 
 
-2) Create dataset. Note that this step can take a lot of time (1 hour
-for SF30 and more than 7 hours for SF300), but you will avoid it, if
-you download the created dataset using the script ./dbget.sh. This option is about 
- 60 times faster.
+The benchmark datasets can either be downloaded from S3 or generated from scratch on the instance.  Downloading from S3 is tens of times faster and thus recommended.
+The initial state of the database may be created on the instance by bulk loading the dataset or by downloading pre-loaded database files from S3.
+
+
+2) Create or download dataset. Note that creating the dataset  can take a long time (1 hour
+for SF30 and more than 7 hours for SF300).  The dbgen.sh command creates the dataset, the dbget.sh gets it from S3.
+
+
 
 $ cd /home/snb30
 $ ./dbgen.sh                  (or: $ ./dbget.sh )
@@ -93,19 +97,38 @@ $ cd /1s1/snb30data/updates/
 $ gunzip *.gz
 
 
-4) Load the dataset (for SF30 this can take about XXX, and for SF300
+4. Bulk Load
+
+You have a choice of downloading pre-loaded database files from S3 or to bulk load the database.  Downloading pre-loaded database files is faster, bulk loading will take a little under 2h for 300GB scale.  Depending on your preference, do either 4.1 or 4.2.
+
+4.1 Download database files:
+
+$ ./dbget_db.sh 
+
+The command downloads an unzips the database files from S3.
+
+For running, you need to manually start the Virtuoso server:
+
+./virtuoso-t +wait
+
+This returns when the server is online.  Progress can be tracked from the virtuoso.log message log.
+
+4.2) Bulk load the dataset (for SF30 this takes about 15 minutes, and for SF300
 almost 2 hours). This step will run the Virtuoso server, load it, and
 leave it online.
 
 $ cd /home/snb30
 $ ./load.sh
 
-During this step (from a second shell), you can check the number of
-remaining files to load with the following command:
+During this step (from a second shell), you can  follow the progress of the load.  Og in with isql:
 
-$ echo 'select count(*) from load_list where ll_state <> 2;' | isql 1210
+$ isql 1210
+SQL> select count (*) from load_list where ll_state = 0;
 
-It will decrease until 0.
+The load_list table contains the files to bulk load.  The ll_state
+column is 0 for not loaded, 1 for loading and 2 for loaded.  The other
+columns are self-explaining.
+
 
 
 5) When the database is loaded, you can check the counts of all the
@@ -125,12 +148,24 @@ respectively. You can expect that warmup and run phase will take about
 XXX (SF30) and XXX (SF300) minutes in total. The target throughput is
 XXX for SF30 and XXX for SF300.
 
-$ ./run.sh
+$ ./run.sh &
+
+The run.sh script emits continuous output to run.out in the same
+directory.  You can follow the progress of the run from this.  The
+300G run takes about 2h.  This is due to the scaling rule of SNB that
+specifies that a minimum reportable run is 2 hours of simulation time
+worth.  The run.sh script or the *.properties files specify a number
+of operations.  The number of operations completed is added to the
+run.out file every 2 seconds.  The run stops after completing the said number of operations.
 
 
-7) Report the results. The following script can produce the report.
+7) Report the results. The following script produces the report.
 
 $ ./report.sh > report.txt
+
+
+To do the recovery test part of LDBC SNB, you may kill the server with kill -9.  After this, restart it with ./virtuoso-t -f & 
+This will show you the progress of the roll forward recovery on standard output.
 
 The following scripts are not necessery, but can be useful:
 - copy the dataset to S3 servers
@@ -146,7 +181,12 @@ $ ./dbput_db.sh
 - copy database files from S3 servers (SF300 - 22 minutes)
 $ ./dbget_db.sh
 
-If you want to pass the SNB validation, do the following:
+
+
+SNB Validation
+
+To perform the SNB qualification test:
+
 $ cd /home/snbval
 $ ./validate.sh
 
@@ -155,9 +195,11 @@ $ ./validate.sh
 
 TPC-H
 
-TPC-H is configured at 100G and 300G scales.  cd to /home/tpch100 or /home/tpch300 and do the following:
 
-- Make sure there is space.  If benchmarks were previously run, you should run the rm_database.sh and rm_dataset.sh in the directory of the previous benchmark.
+TPC-H is configured at 100G and 300G scales.  cd to /home/tpch100 or
+/home/tpch300 and do the following:
+
+- Make sure there is space.  If other benchmarks were previously run, you should run the rm_database.sh and rm_dataset.sh in the directory of the previous benchmark.
 
 - Generate the data.  Run ./datagen.sh.  For 100G this is single threaded and takes about an hour.  For 300G this is multithreaded and uses a modified dbgen that produces files in gz format.  This takes a few minutes.
 
@@ -171,21 +213,28 @@ When the command returns, the database is online.
 
 $ ./load.sh
 
-This takes a about 10 minutes for 100G and 30 minutes for 300G.  During the load, youi can connect to the server and watch the progress.
-The server port is 1111.
-$ isql 1111
-SQL> select ll_file from load_list where ll_state = 1;
+This takes a about 10 minutes for 100G and 30 minutes for 300G.
+During the load, you can connect to the server and watch the progress.
+The server port is 1111.  
+
+$ isql 1111 SQL> select ll_file from
+load_list where ll_state = 1;
 
 shows the set of files loading at the moment in the 300G case.  In the 100G case, all files are loaded at the same time.
 
-In any case one can do select count (*) from lineitem; to see how loading is progressing.
+In any case one can do select count (*) from lineitem; to see how
+loading is progressing.  Instead of lineitem you can look at any of
+the other tables but lineitem takes the most time.
 
 After the load completes, the server is left online and the benchmark can be run.
 
 # ./run.sh
 
 
-This takes a few minutes for 100G and 3x longer for 300G.  At the end of the run, the files report1.xt and report2.txt appear in the directory.  These contain the standard TPC-H numerical quantities summaries. 
+This takes a few minutes for 100G and 3x longer for 300G.  At the end
+of the run, the files report1.xt and report2.txt appear in the
+directory.  These contain the standard TPC-H numerical quantities
+summaries.
 
 To shutdown the Virtuoso, do 
 isql 1111 
@@ -197,20 +246,44 @@ $ rm /1s2/dbs/virtuoso.trx
 
 If the server is restarted, it will start in the post bulk load state and can do another run.  
 
-**********************************
-**** SPB 256M & 1G scale
-**********************************
+If you stop it with the shutdown command via isql, the effects of the refresh functions will be persisted and the database cannot be reused for another run.
+
+
+SPB 256M & 1G scale
+
 
 1) In order to run on pre-generated datasets, see /home/spb256/README or /home/spb1g/README
 2) In order to run benchmark from scratch do:
 
  1.1. go to /home/spb256 for 256M scale or /home/spb1g for 1G scale
- 1.2. start the Virtuoso server but running ./virtuoso-t 
+ 1.2. start the Virtuoso server but running ./virtuoso-t +wait
  1.3. check the virtuoso.log to see when server is up
- 1.4. run ./load.sh will take about a hour to complete for 256M scale, and about 5 hours for 1g scale
- 1.5. connect with isql on port 1111 or 1112 for 1G scale and check how many triples are loaded by doing "sparql select count(*) where {?s ?p ?o}"
+
+ 1.4. run ./load.sh .  This will take about a hour to complete for 256M scale, and about 5 hours for 1g scale
+
+ 1.5. connect with isql on port 1111 or 1112 for 1G scale and check
+ how many triples are loaded by doing 
+
+$isql 1111
+
+SQL>  sparql select count(*) where  {?s ?p ?o};
+
+The triples will be loaded relatively fast. 3/4ths of the time will be spent updating the full text index.  To follow the progress of this, do
+
+SQL> select count (*) from vtlog_db_dba_rdf_obj;
+
+This returns the count of unindexed RDF literals.  When this hits 0 the load is complete.
+
+After the load command returns, the bulk load is complete.  You can do 
+
+SQL> status ();
+
+to see server tatistics, for example this should say there are 0 dirty buffers.
+
  1.6. run ./run.sh in order to complete the benchmark
  1.7. to stop server execute isql 1111 dba dba exec="raw_exit()", in case of 1G scale SQL port is 1112 and remove /1s2/dbs/spb256.trx or /1s2/dbs/spb1g.trx
  
 3) to remove database use rm_database.sh
 4) to remove dataset use rm_dataset.sh
+
+
