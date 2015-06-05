@@ -1,7 +1,7 @@
 cd /home
 for f in snb100 snb300 snbval spb1g spb256 spbval tpch100 tpch1000c tpch300
 do
-    if [ !-d /home/virtuoso-opensource/binsrc/samples/ldami/$f ]
+    if [ ! -d /home/virtuoso-opensource/binsrc/samples/ldami/$f ]
     then
 	echo "$f does not exists in vos checkout" 
 	exit 1
