@@ -17,6 +17,7 @@ All necessary programs and modules are preinstalled and preconfigured
 (java, maven, git, hadoop, virtuoso, ldbc_driver, etc), and bash
 scripts for all tasks are predefined.
 
+
 In the /home directory, you can find git checkouts from:
 - ldbc driver (/home/ldbc_driver)
 - ldbc datagenerator (/home/ldbc_snb_datagen)
@@ -35,6 +36,13 @@ and scale factor:
 - tpch100 -  100G scale TPC-H
 - tpch300 - 300GB scale TPC-H
 
+Generally, all benchmarks have scripts for downloading or generating
+datasets, bulk loading, running and cleaning up.  Note that the larger
+sizes SNB 300 GB and TPC-H 300GB take most of the space on the AWS
+instance, so cleaning up is necessary before running the next
+benchmark.  The cleanup scripts are called rm_database.sh and
+rm_dataset.sh in each directory.
+
 
 
 To get started:
@@ -51,40 +59,28 @@ $ sudo ./mkvol.sh
 
 This command will make two file systems on the SSD based instance storage of the instance, mounted as /1s1 and /1s2.
 
-Many of procedures require AWS credentials for accessing S3 buckets.
+Many of the procedures described herein require AWS credentials for accessing S3 buckets.
 
 $ aws configure
 
-SMB 30G and SMB 300G
+prompts for the access keys and sets up the AWS command line interface used by the scripts. 
+
+SMB 100G and SMB 300G
 
 
-This section covers loading and running the LDBC SNB benchmarks.
-
-
-
-**********************************
-*****           SNB            ***
-**********************************
-
-
-In order to run one of the SNB benchmarks (e.g. SF100), you have to
-follow the next steps (if you want to run SF300, everything is the same,
-but you have to use different folder, with different scripts - snb300
-instead of snb100):
+Go to the appropriate directory, /home/snb100 for 100G and /home/snb300 for 300G.
 
 1) Prepare the filesystems, if not already done. Be sure that you have 2 SSDs, 300GB each,
-because the total size of the dataset (gzipped) and database files for
-SF300 are 138GB and 246GB at the beginning, respectively. For SF100,
-these numbers are 13G and 25G. With this configuration, for example,
-you can have SF100 and SF300 dataset and database files together, but
-you cannot have SNB300 and TPCH300 both at the same time.
+because the initial  size of the dataset (gzipped) and database files for
+SF300 is 138GB and 246GB, respectively. For SF100,
+these numbers are 40G and 75G. 
 
 
 The benchmark datasets can either be downloaded from S3 or generated from scratch on the instance.  Downloading from S3 is tens of times faster and thus recommended.
 The initial state of the database may be created on the instance by bulk loading the dataset or by downloading pre-loaded database files from S3.
 
 
-2) Create or download dataset. Note that creating the dataset  can take a long time (1 hour
+2) Create or download dataset. Note that creating the dataset  can take a long time (4 hours
 for SF100 and more than 7 hours for SF300).  The dbgen.sh command creates the dataset, the dbget.sh gets it from S3.
 
 
@@ -93,16 +89,16 @@ $ cd /home/snb100
 $ ./dbgen.sh                  (or: $ ./dbget.sh )
 
 
-3) Unzip update streams (for SF100, less than 2 minutes, and for SF300
+3) Unzip update streams (for SF100, less than 8 minutes, and for SF300
 14 minutes)
 
-$ cd /1s1/snb30data/updates/
+$ cd /1s1/snb100data/updates/
 $ gunzip *.gz
 
 
 4. Bulk Load
 
-You have a choice of downloading pre-loaded database files from S3 or to bulk load the database.  Downloading pre-loaded database files is faster, bulk loading will take a little under 2h for 300GB scale.  Depending on your preference, do either 4.1 or 4.2.
+You have a choice of downloading pre-loaded database files from S3 or to bulk load the database.  Downloading pre-loaded database files is faster, bulk loading will take a little under 2h for 300GB.  Depending on your preference, do either 4.1 or 4.2.
 
 4.1 Download database files:
 
@@ -116,7 +112,7 @@ For running, you need to manually start the Virtuoso server:
 
 This returns when the server is online.  Progress can be tracked from the virtuoso.log message log.
 
-4.2) Bulk load the dataset (for SF100 this takes about 15 minutes, and for SF300
+4.2) Bulk load the dataset (for SF100 this takes about 40 minutes, and for SF300
 almost 2 hours). This step will run the Virtuoso server, load it, and
 leave it online.
 
@@ -144,9 +140,9 @@ If everything is loaded, you should get "OK" as result.
 
 6) Run the benchmark. The default configuration is 48 threads, all
 query types enabled (short and long reads and updates), time
-compression ratio is XXX for SF100, and 0.7 for SF300. Number of
+compression ratio is XXX for SF100, and 1.1 for SF300. Number of
 operations for warmup is XXX for SF100 and 150000 for SF300, while the
-numbers of operations in the real run are XXX and 4000000,
+numbers of operations in the real run are 1500000 and 4000000,
 respectively. You can expect that warmup and run phase will take about
 XXX (SF100) and XXX (SF300) minutes in total. The target throughput is
 XXX for SF100 and XXX for SF300.
@@ -173,7 +169,7 @@ This will show you the progress of the roll forward recovery on
 standard output.  The +no-checkpoint switch causes the log to be left
 in place and the contents of the log will not be checkpointed in the
 database.  Killing the server after this and deleting the log leaves
-the database in post bulk load state, so that a new run can be made.
+the database in the post bulk load state, so that a new run can be made.
 The driver cannot be run twice if effects of the previous run are left
 in the starting state of the next.
 
@@ -223,12 +219,12 @@ When the command returns, the database is online.
 
 $ ./load.sh
 
-This takes a about 10 minutes for 100G and 30 minutes for 300G.
+This takes about 10 minutes for 100G and 30 minutes for 300G.
 During the load, you can connect to the server and watch the progress.
 The server port is 1111.  
 
-$ isql 1111 SQL> select ll_file from
-load_list where ll_state = 1;
+$ isql 1111 
+SQL> select ll_file from load_list where ll_state = 1;
 
 shows the set of files loading at the moment in the 300G case.  In the 100G case, all files are loaded at the same time.
 
@@ -244,7 +240,7 @@ After the load completes, the server is left online and the benchmark can be run
 This takes a few minutes for 100G and 3x longer for 300G.  At the end
 of the run, the files report1.xt and report2.txt appear in the
 directory.  These contain the standard TPC-H numerical quantities
-summaries.
+summaries.  The 100G run is set up with 5 throughput test streams and the 300G with 6.
 
 To shutdown the Virtuoso, do 
 isql 1111 
@@ -259,15 +255,20 @@ If the server is restarted, it will start in the post bulk load state and can do
 If you stop it with the shutdown command via isql, the effects of the refresh functions will be persisted and the database cannot be reused for another run.
 
 
-SPB 256M & 1G scale
+SPB 256M and  1G scale
 
 
 1) In order to run on pre-generated datasets, see /home/spb256/README or /home/spb1g/README
-2) In order to run benchmark from scratch do:
+
+To run the benchmark from scratch do:
 
  1.1. go to /home/spb256 for 256M scale or /home/spb1g for 1G scale
- 1.2. start the Virtuoso server but running ./virtuoso-t +wait
- 1.3. check the virtuoso.log to see when server is up
+
+The pre-generated datasets are and pre-loaded database files are available on S3. 
+
+***
+start the Virtuoso server but running ./virtuoso-t +wait
+ 1.3. When the command returns the server is online.  You can see the startup messages in virtuoso.log.
 
  1.4. run ./load.sh .  This will take about a hour to complete for 256M scale, and about 5 hours for 1g scale
 
