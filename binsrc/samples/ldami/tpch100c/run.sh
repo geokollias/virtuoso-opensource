@@ -5,4 +5,4 @@ export WO_START=1
 export DSN=1201
 export PORT=1201
 ./run.sh 100 5 2
-cp report?.txt /home/tpch1000c
+cp report?.txt /home/tpch100c

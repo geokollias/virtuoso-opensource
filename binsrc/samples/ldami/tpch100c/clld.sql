@@ -67,7 +67,7 @@ create procedure tpch_cl_load (in f varchar)
 create procedure fill_load_list () {
        declare i int;       
        for (i := 1; i < length(cl_control(1, 'cl_host_map')); i := i + 2)
-       	   cl_exec ('ld_dir (''/1s1/tpch1000data'', ''%.tbl%'', ''sql:tpch_cl_load (?)'', txn => 0)', txn => 1, hosts => vector (i));
+       	   cl_exec ('ld_dir (''/1s1/tpch100data'', ''%.tbl%'', ''sql:tpch_cl_load (?)'', txn => 0)', txn => 1, hosts => vector (i));
 }
 
 fill_load_list();

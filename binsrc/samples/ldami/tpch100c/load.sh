@@ -2,7 +2,7 @@
 
 for ((i=0; i<12; i++ ))
 do
-    diff <(echo "status('cluster');" | isql 1201 | head -n 9 | tail -n 1 | awk '{print $1, $3;}') <(echo "Cluster nodes,") > /dev/null 2> /dev/null
+    diff <(echo "status('cluster');" | isql 1201 2> /dev/null | head -n 9 | tail -n 1 | awk '{print $1, $3;}') <(echo "Cluster nodes,") > /dev/null 2> /dev/null
     if [ $? -eq 0 ]; then
 	break
     fi
@@ -56,4 +56,4 @@ echo " FINISHED LOADING TPC-H DATA  $today"
 echo " FINISHED LOADING TPC-H DATA  $today" >> load.output
 
 cp load.output /home/ec2-user/virtuoso-opensource/binsrc/tests/tpc-h/
-cp load.output /home/tpch1000r/1/
+cp load.output /home/tpch100r/1/
