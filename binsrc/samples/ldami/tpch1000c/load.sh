@@ -17,8 +17,8 @@ then echo "Servers are not online"; exit
 fi
 
 today=$(date +"%m/%d/%y %H:%M:%S")
-echo "LOADING TPC-H DATA  $today"
-echo "LOADING TPC-H DATA  $today" > load.output
+echo "  LOADING TPC-H DATA  $today"
+echo "  LOADING TPC-H DATA  $today" > load.output
 
 isql 1201 < ldschema.sql >> load.output 2>> load.err
 isql 1201 < ldfile.sql >> load.output 2>> load.err
@@ -52,8 +52,8 @@ wait
 echo "cl_exec('checkpoint');" | isql 1201  >> load.output  2>> load.err
 
 today=$(date +"%m/%d/%y %H:%M:%S")
-echo "FINISHED LOADING TPC-H DATA  $today"
-echo "FINISHED LOADING TPC-H DATA  $today" >> load.output
+echo " FINISHED LOADING TPC-H DATA  $today"
+echo " FINISHED LOADING TPC-H DATA  $today" >> load.output
 
 cp load.output /home/ec2-user/virtuoso-opensource/binsrc/tests/tpc-h/
 cp load.output /home/tpch1000r/1/
