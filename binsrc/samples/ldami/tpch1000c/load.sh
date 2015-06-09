@@ -10,7 +10,7 @@ do
     sleep 10
 done
 
-echo "cl_wait_start();" | isql 1201
+echo "cl_wait_start(0);" | isql 1201
 
 if [ $i -eq 12 ];
 then echo "Servers are not online"; exit
@@ -56,3 +56,4 @@ echo "FINISHED LOADING TPC-H DATA  $today"
 echo "FINISHED LOADING TPC-H DATA  $today" >> load.output
 
 cp load.output /home/ec2-user/virtuoso-opensource/binsrc/tests/tpc-h/
+cp load.output /home/tpch1000r/1/

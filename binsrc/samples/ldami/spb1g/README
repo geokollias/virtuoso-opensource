@@ -1,34 +1,67 @@
-# SPB 1G benchmark
-# make SSD volumes /1s1 and /1s2
-sudo ./mkvol.sh 
-# download the spb 1g db backup from the s3 bucket
-cd /1s1/
-aws s3 cp s3://opl-spb1gdataset/spb1gdb.tar .
-# decompress the spb 1g db backup
-cd /
-tar xf /1s1/spb1gdb.tar 
-gunzip /1s1/dbs/spb1g.db.gz &
-gunzip /1s2/dbs/spb1g.db.gz &
-wait
-# cleanup archive
-rm /1s1/spb1gdb.tar 
-# copy the benchmark on SSD 
-cd /home/spb1g/
-cp -R /home/ec2-user/ldbc_spb_bm_2.0/dist /1s2/spb1g
-# copy the config files for banchmark
-cp *.properties /1s2/spb1g
-# download the datasets and query parameters
-cd /1s2/spb1g/
-aws s3 cp s3://opl-spb1gdataset/spb1gdata.tar .
-aws s3 cp s3://opl-spb1gdataset/spb1gq.tgz .
-# decompress the dataset and query parameters
-tar xf spb1gdata.tar
-tar zxf spb1gq.tgz
-# start the Virtuoso server
-cd /home/spb1g
-./virtuoso-t +wait
-# run the SPB driver
-sh run.sh 
-# check results from /1s2/spb1g/logs 
-# stop the server
-isql 1111 dba dba exec="raw_exit()"
+
+   Running SBP 1Gtriples scale benchmark from pre-loaded database
+
+In order to avoid loading and data generation which are time consuming we provide a way to use ready SPB database.
+Some of commands bellow require access to Amazon S3 storage, for this purpose the 'aws' client must be configured. 
+
+1) Initialize SSD volumes /1s1 and /1s2
+$ sudo ./mkvol.sh 
+
+2) Download the SPB 1Gtriples database backup from the Amzson S3 bucket
+
+$ cd /1s1/
+$ aws s3 cp s3://opl-spb1gdataset/spb1gdb.tar .
+
+3) Decompress the SPB 1Gtriples database files, after last command return must have /1s?/dbs/spb1g.db files.
+
+$ cd /
+$ tar xf /1s1/spb1gdb.tar 
+$ gunzip /1s1/dbs/spb1g.db.gz &
+$ gunzip /1s2/dbs/spb1g.db.gz &
+$ wait
+
+4) Next we remove the backup file to do not take space
+
+$ rm /1s1/spb1gdb.tar 
+
+5) Do a copy of the SPB driver on SSD as logs and other files may take a space
+
+$ cd /home/spb1g/
+$ cp -R /home/ec2-user/ldbc_spb_bm_2.0/dist /1s2/spb1g
+
+6) Do a copy of the the config files for SPB banchmark driver
+
+$ cp *.properties /1s2/spb1g
+
+7) Download the SPB 1Gtriples scale datasets and query parameters
+
+$ cd /1s2/spb1g/
+$ aws s3 cp s3://opl-spb1gdataset/spb1gdata.tar .
+$ aws s3 cp s3://opl-spb1gdataset/spb1gq.tgz .
+
+8) Decompress the SPB 1Gtriples dataset and query parameters, after that operation the directory /1s2/spb1g/generated must be filled with *.nq.gz and query*.txt files.
+
+$ tar xf spb1gdata.tar
+$ tar zxf spb1gq.tgz
+
+9) Start the Virtuoso server
+
+$ cd /home/spb1g
+$ ./virtuoso-t +wait
+
+10) Check the SPB 1Gtriples database contains relevant number of triples, the command bellow should return about 1Gtriples count
+
+$ isql 1111
+SQL> sparql select count(*) { ?s ?p ?o };
+SQL> exit;
+
+11) Run the SPB driver
+
+$ sh run.sh 
+
+12) Check results from /1s2/spb1g/logs
+
+13) Stop the server, and cleanup the transaction log if need to make second run
+
+$ isql 1111 dba dba exec="raw_exit()"
+$ rm /1s?/dbs/spb1g.trx
