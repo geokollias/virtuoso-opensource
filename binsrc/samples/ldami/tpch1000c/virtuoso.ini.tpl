@@ -7,7 +7,7 @@
 ;
 [Database]
 DatabaseFile    = virtuoso.db
-TransactionFile = virtuoso.trx
+TransactionFile = { sprintf ('/1s2/dbs/virtuoso-%d.trx', c ('proc')) };
 ErrorLogFile    = virtuoso.log
 ErrorLogLevel   = 7
 Syslog          = 0
