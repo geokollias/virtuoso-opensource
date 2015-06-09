@@ -10,7 +10,7 @@ do
     sleep 10
 done
 
-echo "cl_wait_start();" | isql 1201
+echo "cl_wait_start(0);" | isql 1201
 
 if [ $i -eq 12 ];
 then echo "Servers are not online"; exit
