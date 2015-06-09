@@ -1,4 +1,5 @@
 #!/bin/bash
+rm -f ~/.ssh/known_hosts
 
 echo '127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4' > /etc/hosts
 echo '::1         localhost localhost.localdomain localhost6 localhost6.localdomain6' >> /etc/hosts
