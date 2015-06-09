@@ -56,3 +56,4 @@ echo "FINISHED LOADING TPC-H DATA  $today"
 echo "FINISHED LOADING TPC-H DATA  $today" >> load.output
 
 cp load.output /home/ec2-user/virtuoso-opensource/binsrc/tests/tpc-h/
+cp load.output /home/tpch1000r/1/
