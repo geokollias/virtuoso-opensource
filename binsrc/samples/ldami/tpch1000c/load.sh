@@ -34,17 +34,18 @@ if [ $number_of_machines -eq 2 ];
 then number_of_loaders=8;
 fi
 if [ $number_of_machines -eq 3 ];
-then number_of_loaders=6;
+then number_of_loaders=7;
 fi
 if [ $number_of_machines -eq 4 ];
-then number_of_loaders=4;
+then number_of_loaders=6;
 fi
 if [ $number_of_machines -eq 5 ];
-then number_of_loaders=3;
+then number_of_loaders=6;
 fi
 for ((i=0; i<$number_of_loaders; i++ ))
 do
     echo "cl_exec('rdf_ld_srv()');" | isql 1201  >> load.output 2>> load.err &
+    sleep 2
 done
 
 wait
