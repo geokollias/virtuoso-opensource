@@ -1,0 +1,175 @@
+
+
+Virtuoso Cluster Benchmark AMI
+
+
+This document contains instructions for deploying the Virtuoso Cluster
+Benchmarks AMI.
+
+Note that these instructions do not apply to the open source v7fasttrack benchmark AMI.
+
+The AMI comes with a preconfigured TPC-H at 100G and at 1000G scale.  The
+100G scale is intended to be deployed on 2 machines and the 1000G on 4
+machines.  In each case the instances should be of the type
+R3.8xlarge.  The instances must be launched in a virtual private cloud
+(AWS VPC).  The VPC should have a security setting that allows unrestricted connections.
+
+
+
+The setups can be used for running TPC-H or any other workload.  Follow the steps below to get started.
+
+
+Cluster Setup 
+
+
+Launch 2 or 4 instances R3.8xlarge instances.  The instances must all
+be in the same placement group and the same virtual private cloud
+(VPC) and the VPC must have unrestricted security settings.
+
+After launching the instances, put their private IP addresses in a file called hosts.conf.  The instances will be named a1, a2, a3 and a4.
+
+The hosts.conf file is of the form:
+
+Number_of_machines = 4
+172.30.3.89
+172.30.3.88
+172.30.3.87
+172.30.3.86
+
+
+
+Copy this file to the ec2-user's home in the first machine.
+Log in to the first machine and do:
+
+$ sudo setup_one.sh
+$ setup_all.sh
+
+The second command will create file systems on all machines and may take a few minutes.
+
+
+
+You can verify that there is a no-login ssh connection between any two of the hosts a1, a2, and so forth.
+
+The Virtuoso cluster server bundled with the image needs a license
+file.  You may obtain the requisite number of license files, one per
+machine instance from OpenLink sales/support.  You should specify
+that the license file is for use with the cluster benchmarks AMI.
+
+Once you have the license files, copy a different file  in the /etc/oplmgr directory of each  machine.
+
+
+scp virtuoso.lic.2 a2:/etc/oplmgr/
+
+Then start the license manager on the machine:
+
+ssh a2 "cd /etc/oplmgr; /usr/sbin/oplmgr +start"
+
+
+Running a Virtuoso Cluster 
+
+There are two ready made benchmark configurations, one with two
+machines in /home/tpch100c and one with 4 machines in /home/tpch1000c.
+In addition to these there are all the single server benchmark
+directories of the open source benchmarks AMI.
+
+You can use these setups for running TPC-H at the indicated scale or any other cluster workload.
+
+The setup is configured two run two server processes per machine, each
+scoped to its own NUMA node.  The SQL listener of the first server
+process is 1201 on the first machine.  The second process is at 1202
+on the first machine, the third is at 1203 on the second machine and
+so forth.
+
+On the first host (a1)
+
+$ cd /home/tpch1000c or (/home/tpch100c for the 2 machine configuration )
+$ ./init_all.sh 
+
+This command starts Virtuoso for running the cluster configurator
+utility which generates configuration files for all constituent
+processes based on template files *.tpl in the same directoory.  The
+init_all.sh script then runs the setup files, creating data and
+running directories on each machine in the cluster.  After completing
+init_all.sh, the Virtuoso cluster is ready to be started.
+
+
+To simply run Virtuoso without TPC-H, do ./start.sh in the directory
+where the init_all.sh was run.  This will create an empty database
+split across the nodes of the cluster when done for the first time.
+
+You can follow the progress of the start in /home/tpch1000r/1/virtuoso.log.  Initialization takes about one minute.
+
+When the cluster is online, you can connect to it with 
+
+$ isql 1201
+
+
+To run TPC-H, you must first generate the dataset.  This is done with 
+
+$ ./dbgen.sh
+
+in the appropriate directory.  This starts a parallel, distributed set of dbgen processes that will generate a fraction of the data on each of the machines.  For 100G this takes a few minutes, for 1000G this is about half an hour.
+
+
+
+Once the data generation is complete, to start the database server and load the TPC-H dataset, do
+
+./load.sh
+
+This starts the servers, defines the schema and bulk loads the data.
+For 100G, this takes about 4 minutes, and about 34 minutes for 1000G.
+
+
+You can follow the progress of data loading by connecting to the servers and do interactive SQL.
+
+$ isql 1201
+-- show the list of presently loading files.  You can do this at intervals.
+SQL> select ll_file from load_list where ll_state = 1;
+-- To see cluster traffic and CPU utilization, you can do:
+SQL> status ('cluster');
+-- or , for per process statistics
+SQL> status ('cluster_d');
+-- from time to time you can check the table counts, e.g.
+SQL> select count (*) from lineitem;
+
+The load.sh script returns when the data loading is complete.
+
+
+After the data loading is complete, you can run the benchmark with 
+
+./run.sh
+
+in the appropriate directory.  This expects the servers to be up, in
+the post load state.  For 100G this runs 2 sets of power + throughput
+tests, for 1000G this runs 3 sets.  The 100G is has 5 stream of
+throughput test, the 1000G setup has 7.
+
+The 100G run takes about 3 minutes, the 30G about 33 minutes. 
+
+At the end of the run, the files report1.txt to report3.txt appear in
+the running directory.  These contain the regular numerical quantities
+summaries for each power+throughput test pair.
+
+After the run is completed, you may do another run by stopping the servers without a checkpoint, so that they come up in the post bulk load state.
+
+Connect with isql:
+
+# isql 1201
+SQL> cl_exec ('raw_exit ()');
+
+Then delete the transaction logs by 
+
+ssh <machine> "rm /1s1/dbs/*.trx"
+
+
+for each machine, a1, a2, ...
+
+
+To start the Virtuoso cluster, do 
+
+$ ./start.sh 
+
+in the directory of the configuration, /home/tpch100c or /home/tpch1000c on the first machine, named a1 in /etc/hosts.
+
+
+
