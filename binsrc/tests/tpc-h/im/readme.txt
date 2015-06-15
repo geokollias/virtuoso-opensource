@@ -39,7 +39,6 @@ minutes, while the majority of times went to COMPUTE STATS statements
 Everything is loaded, and that can be checked with count.sql and
 count1.sql scripts. The output of them is in count.out and count1.out.
 
-
 Then, I executed from impala-shell 22 of TPC-H queries (1.sql, 2.sql,
 ..., 22.sql). The standard output and error are redirected for each
 query are redirected to number_of_query.out and number_of_query.err
@@ -47,7 +46,6 @@ query are redirected to number_of_query.out and number_of_query.err
 times of queries, while in the out files you can find the results of
 the queries. Also, you can find number of returned rows, execution
 time and CPU load per query in the file execution.txt. There should be
-no query returing 0 rows, while this is the case with query XXX, XXX,
-XXX and XXX.
-
-The query plans of all of these queries can be found in .expl files.
+no query returing 0 rows, while this is the case with lot of
+queries. The query plans of all of these queries can be found in .expl
+files.
