@@ -1,0 +1,62 @@
+[?1034h+------------------------------------------------------------------------------------------------------------------+
+| Explain String                                                                                                   |
++------------------------------------------------------------------------------------------------------------------+
+| Estimated Per-Host Requirements: Memory=1.56GB VCores=2                                                          |
+| WARNING: The following tables are missing relevant table and/or column statistics.                               |
+| tpch.lineitem, tpch.orders                                                                                       |
+|                                                                                                                  |
+| 09:MERGING-EXCHANGE [UNPARTITIONED]                                                                              |
+| |  order by: o_orderpriority ASC                                                                                 |
+| |  hosts=1 per-host-mem=unavailable                                                                              |
+| |  tuple-ids=4 row-size=23B cardinality=1500000                                                                  |
+| |                                                                                                                |
+| 04:SORT                                                                                                          |
+| |  order by: o_orderpriority ASC                                                                                 |
+| |  hosts=1 per-host-mem=24.00MB                                                                                  |
+| |  tuple-ids=4 row-size=23B cardinality=1500000                                                                  |
+| |                                                                                                                |
+| 08:AGGREGATE [FINALIZE]                                                                                          |
+| |  output: count:merge(*)                                                                                        |
+| |  group by: o_orderpriority                                                                                     |
+| |  hosts=1 per-host-mem=128.00MB                                                                                 |
+| |  tuple-ids=3 row-size=23B cardinality=1500000                                                                  |
+| |                                                                                                                |
+| 07:EXCHANGE [HASH(o_orderpriority)]                                                                              |
+| |  hosts=1 per-host-mem=0B                                                                                       |
+| |  tuple-ids=3 row-size=23B cardinality=1500000                                                                  |
+| |                                                                                                                |
+| 03:AGGREGATE                                                                                                     |
+| |  output: count(*)                                                                                              |
+| |  group by: o_orderpriority                                                                                     |
+| |  hosts=1 per-host-mem=128.00MB                                                                                 |
+| |  tuple-ids=3 row-size=23B cardinality=1500000                                                                  |
+| |                                                                                                                |
+| 02:HASH JOIN [RIGHT SEMI JOIN, PARTITIONED]                                                                      |
+| |  hash predicates: l_orderkey = o_orderkey                                                                      |
+| |  hosts=1 per-host-mem=61.37MB                                                                                  |
+| |  tuple-ids=0 row-size=39B cardinality=1500000                                                                  |
+| |                                                                                                                |
+| |--06:EXCHANGE [HASH(o_orderkey)]                                                                                |
+| |  |  hosts=1 per-host-mem=0B                                                                                    |
+| |  |  tuple-ids=0 row-size=39B cardinality=1500000                                                               |
+| |  |                                                                                                             |
+| |  00:SCAN HDFS [tpch.orders, RANDOM]                                                                            |
+| |     partitions=1/1 files=25 size=6.02GB                                                                        |
+| |     predicates: o_orderdate >= '1993-07-01', o_orderdate < CAST('1993-07-01' AS TIMESTAMP) + INTERVAL 3 MONTHS |
+| |     table stats: 150000000 rows total                                                                          |
+| |     columns missing stats: o_orderpriority                                                                     |
+| |     hosts=1 per-host-mem=264.00MB                                                                              |
+| |     tuple-ids=0 row-size=39B cardinality=1500000                                                               |
+| |                                                                                                                |
+| 05:EXCHANGE [HASH(l_orderkey)]                                                                                   |
+| |  hosts=1 per-host-mem=0B                                                                                       |
+| |  tuple-ids=1 row-size=40B cardinality=60003790                                                                 |
+| |                                                                                                                |
+| 01:SCAN HDFS [tpch.lineitem, RANDOM]                                                                             |
+|    partitions=1/1 files=82 size=20.20GB                                                                          |
+|    predicates: l_commitdate < l_receiptdate                                                                      |
+|    table stats: 600037902 rows total                                                                             |
+|    columns missing stats: l_returnflag, l_linestatus, l_shipinstruct, l_shipmode, l_comment                      |
+|    hosts=1 per-host-mem=1.38GB                                                                                   |
+|    tuple-ids=1 row-size=40B cardinality=60003790                                                                 |
++------------------------------------------------------------------------------------------------------------------+

@@ -1,0 +1,121 @@
+[?1034h+------------------------------------------------------------------------------------+
+| Explain String                                                                     |
++------------------------------------------------------------------------------------+
+| Estimated Per-Host Requirements: Memory=5.85GB VCores=6                            |
+| WARNING: The following tables are missing relevant table and/or column statistics. |
+| tpch.nation, tpch.part                                                             |
+|                                                                                    |
+| 20:MERGING-EXCHANGE [UNPARTITIONED]                                                |
+| |  order by: nation ASC, o_year DESC                                               |
+| |  hosts=1 per-host-mem=unavailable                                                |
+| |  tuple-ids=8 row-size=37B cardinality=2706944657                                 |
+| |                                                                                  |
+| 12:SORT                                                                            |
+| |  order by: nation ASC, o_year DESC                                               |
+| |  hosts=1 per-host-mem=880.00MB                                                   |
+| |  tuple-ids=8 row-size=37B cardinality=2706944657                                 |
+| |                                                                                  |
+| 19:AGGREGATE [FINALIZE]                                                            |
+| |  output: sum:merge(amount)                                                       |
+| |  group by: nation, o_year                                                        |
+| |  hosts=1 per-host-mem=128.00MB                                                   |
+| |  tuple-ids=7 row-size=37B cardinality=2706944657                                 |
+| |                                                                                  |
+| 18:EXCHANGE [HASH(nation,o_year)]                                                  |
+| |  hosts=1 per-host-mem=0B                                                         |
+| |  tuple-ids=7 row-size=37B cardinality=2706944657                                 |
+| |                                                                                  |
+| 11:AGGREGATE                                                                       |
+| |  output: sum(l_extendedprice * (1 - l_discount) - ps_supplycost * l_quantity)    |
+| |  group by: n_name, EXTRACT(year FROM o_orderdate)                                |
+| |  hosts=1 per-host-mem=128.00MB                                                   |
+| |  tuple-ids=7 row-size=37B cardinality=2706944657                                 |
+| |                                                                                  |
+| 10:HASH JOIN [INNER JOIN, BROADCAST]                                               |
+| |  hash predicates: l_suppkey = ps_suppkey, l_partkey = ps_partkey                 |
+| |  hosts=1 per-host-mem=1.31GB                                                     |
+| |  tuple-ids=2,0,1,5,4,3 row-size=137B cardinality=2706944657                      |
+| |                                                                                  |
+| |--17:EXCHANGE [BROADCAST]                                                         |
+| |  |  hosts=1 per-host-mem=0B                                                      |
+| |  |  tuple-ids=3 row-size=16B cardinality=80000000                                |
+| |  |                                                                               |
+| |  03:SCAN HDFS [tpch.partsupp, RANDOM]                                            |
+| |     partitions=1/1 files=18 size=4.21GB                                          |
+| |     table stats: 80000000 rows total                                             |
+| |     column stats: all                                                            |
+| |     hosts=1 per-host-mem=264.00MB                                                |
+| |     tuple-ids=3 row-size=16B cardinality=80000000                                |
+| |                                                                                  |
+| 09:HASH JOIN [INNER JOIN, BROADCAST]                                               |
+| |  hash predicates: l_orderkey = o_orderkey                                        |
+| |  hosts=1 per-host-mem=3.69GB                                                     |
+| |  tuple-ids=2,0,1,5,4 row-size=121B cardinality=794272581                         |
+| |                                                                                  |
+| |--16:EXCHANGE [BROADCAST]                                                         |
+| |  |  hosts=1 per-host-mem=0B                                                      |
+| |  |  tuple-ids=4 row-size=24B cardinality=150000000                               |
+| |  |                                                                               |
+| |  04:SCAN HDFS [tpch.orders, RANDOM]                                              |
+| |     partitions=1/1 files=25 size=6.02GB                                          |
+| |     table stats: 150000000 rows total                                            |
+| |     column stats: all                                                            |
+| |     hosts=1 per-host-mem=176.00MB                                                |
+| |     tuple-ids=4 row-size=24B cardinality=150000000                               |
+| |                                                                                  |
+| 08:HASH JOIN [INNER JOIN, BROADCAST]                                               |
+| |  hash predicates: s_nationkey = n_nationkey                                      |
+| |  hosts=1 per-host-mem=798B                                                       |
+| |  tuple-ids=2,0,1,5 row-size=97B cardinality=600037902                            |
+| |                                                                                  |
+| |--15:EXCHANGE [BROADCAST]                                                         |
+| |  |  hosts=1 per-host-mem=0B                                                      |
+| |  |  tuple-ids=5 row-size=29B cardinality=25                                      |
+| |  |                                                                               |
+| |  05:SCAN HDFS [tpch.nation, RANDOM]                                              |
+| |     partitions=1/1 files=1 size=2.17KB                                           |
+| |     table stats: 25 rows total                                                   |
+| |     columns missing stats: n_name                                                |
+| |     hosts=1 per-host-mem=32.00MB                                                 |
+| |     tuple-ids=5 row-size=29B cardinality=25                                      |
+| |                                                                                  |
+| 07:HASH JOIN [INNER JOIN, BROADCAST]                                               |
+| |  hash predicates: l_suppkey = s_suppkey                                          |
+| |  hosts=1 per-host-mem=8.39MB                                                     |
+| |  tuple-ids=2,0,1 row-size=68B cardinality=600037902                              |
+| |                                                                                  |
+| |--14:EXCHANGE [BROADCAST]                                                         |
+| |  |  hosts=1 per-host-mem=0B                                                      |
+| |  |  tuple-ids=1 row-size=8B cardinality=1000000                                  |
+| |  |                                                                               |
+| |  01:SCAN HDFS [tpch.supplier, RANDOM]                                            |
+| |     partitions=1/1 files=1 size=77.32MB                                          |
+| |     table stats: 1000000 rows total                                              |
+| |     column stats: all                                                            |
+| |     hosts=1 per-host-mem=176.00MB                                                |
+| |     tuple-ids=1 row-size=8B cardinality=1000000                                  |
+| |                                                                                  |
+| 06:HASH JOIN [INNER JOIN, BROADCAST]                                               |
+| |  hash predicates: l_partkey = p_partkey                                          |
+| |  hosts=1 per-host-mem=41.96MB                                                    |
+| |  tuple-ids=2,0 row-size=60B cardinality=600037902                                |
+| |                                                                                  |
+| |--13:EXCHANGE [BROADCAST]                                                         |
+| |  |  hosts=1 per-host-mem=0B                                                      |
+| |  |  tuple-ids=0 row-size=20B cardinality=2000000                                 |
+| |  |                                                                               |
+| |  00:SCAN HDFS [tpch.part, RANDOM]                                                |
+| |     partitions=1/1 files=3 size=648.75MB                                         |
+| |     predicates: p_name LIKE '%green%'                                            |
+| |     table stats: 20000000 rows total                                             |
+| |     columns missing stats: p_name                                                |
+| |     hosts=1 per-host-mem=176.00MB                                                |
+| |     tuple-ids=0 row-size=20B cardinality=2000000                                 |
+| |                                                                                  |
+| 02:SCAN HDFS [tpch.lineitem, RANDOM]                                               |
+|    partitions=1/1 files=82 size=20.20GB                                            |
+|    table stats: 600037902 rows total                                               |
+|    column stats: all                                                               |
+|    hosts=1 per-host-mem=528.00MB                                                   |
+|    tuple-ids=2 row-size=40B cardinality=600037902                                  |
++------------------------------------------------------------------------------------+

@@ -1,0 +1,77 @@
+[?1034h+------------------------------------------------------------------------------------+
+| Explain String                                                                     |
++------------------------------------------------------------------------------------+
+| Estimated Per-Host Requirements: Memory=1.05GB VCores=2                            |
+| WARNING: The following tables are missing relevant table and/or column statistics. |
+| tpch.customer, tpch.orders                                                         |
+|                                                                                    |
+| 12:MERGING-EXCHANGE [UNPARTITIONED]                                                |
+| |  order by: count(*) DESC, c_count DESC                                           |
+| |  hosts=1 per-host-mem=unavailable                                                |
+| |  tuple-ids=6 row-size=16B cardinality=17453516                                   |
+| |                                                                                  |
+| 05:SORT                                                                            |
+| |  order by: count(*) DESC, c_count DESC                                           |
+| |  hosts=1 per-host-mem=48.00MB                                                    |
+| |  tuple-ids=6 row-size=16B cardinality=17453516                                   |
+| |                                                                                  |
+| 11:AGGREGATE [FINALIZE]                                                            |
+| |  output: count:merge(*)                                                          |
+| |  group by: c_count                                                               |
+| |  hosts=1 per-host-mem=292.95MB                                                   |
+| |  tuple-ids=5 row-size=16B cardinality=17453516                                   |
+| |                                                                                  |
+| 10:EXCHANGE [HASH(c_count)]                                                        |
+| |  hosts=1 per-host-mem=0B                                                         |
+| |  tuple-ids=5 row-size=16B cardinality=17453516                                   |
+| |                                                                                  |
+| 04:AGGREGATE                                                                       |
+| |  output: count(*)                                                                |
+| |  group by: count(o_orderkey)                                                     |
+| |  hosts=1 per-host-mem=292.95MB                                                   |
+| |  tuple-ids=5 row-size=16B cardinality=17453516                                   |
+| |                                                                                  |
+| 09:AGGREGATE [FINALIZE]                                                            |
+| |  output: count:merge(o_orderkey)                                                 |
+| |  group by: c_custkey                                                             |
+| |  hosts=1 per-host-mem=219.71MB                                                   |
+| |  tuple-ids=3 row-size=12B cardinality=17453516                                   |
+| |                                                                                  |
+| 08:EXCHANGE [HASH(c_custkey)]                                                      |
+| |  hosts=1 per-host-mem=0B                                                         |
+| |  tuple-ids=3 row-size=12B cardinality=17453516                                   |
+| |                                                                                  |
+| 03:AGGREGATE                                                                       |
+| |  output: count(TPCH.orders.o_orderkey)                                           |
+| |  group by: TPCH.customer.c_custkey                                               |
+| |  hosts=1 per-host-mem=219.71MB                                                   |
+| |  tuple-ids=3 row-size=12B cardinality=17453516                                   |
+| |                                                                                  |
+| 02:HASH JOIN [RIGHT OUTER JOIN, PARTITIONED]                                       |
+| |  hash predicates: o_custkey = c_custkey                                          |
+| |  hosts=1 per-host-mem=62.94MB                                                    |
+| |  tuple-ids=1N,0 row-size=32B cardinality=135000000                               |
+| |                                                                                  |
+| |--07:EXCHANGE [HASH(c_custkey)]                                                   |
+| |  |  hosts=1 per-host-mem=0B                                                      |
+| |  |  tuple-ids=0 row-size=4B cardinality=15000000                                 |
+| |  |                                                                               |
+| |  00:SCAN HDFS [tpch.customer, RANDOM]                                            |
+| |     partitions=1/1 files=5 size=1.18GB                                           |
+| |     table stats: 15000000 rows total                                             |
+| |     columns missing stats: c_name, c_address, c_phone, c_mktsegment, c_comment   |
+| |     hosts=1 per-host-mem=704.00MB                                                |
+| |     tuple-ids=0 row-size=4B cardinality=15000000                                 |
+| |                                                                                  |
+| 06:EXCHANGE [HASH(o_custkey)]                                                      |
+| |  hosts=1 per-host-mem=0B                                                         |
+| |  tuple-ids=1 row-size=28B cardinality=135000000                                  |
+| |                                                                                  |
+| 01:SCAN HDFS [tpch.orders, RANDOM]                                                 |
+|    partitions=1/1 files=25 size=6.02GB                                             |
+|    predicates: NOT o_comment LIKE '%special%requests%'                             |
+|    table stats: 150000000 rows total                                               |
+|    columns missing stats: o_comment, o_orderstatus, o_orderpriority, o_clerk       |
+|    hosts=1 per-host-mem=792.00MB                                                   |
+|    tuple-ids=1 row-size=28B cardinality=135000000                                  |
++------------------------------------------------------------------------------------+

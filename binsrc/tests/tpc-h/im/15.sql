@@ -1,4 +1,4 @@
-
+use TPCH;
 drop view if exists revenue0;
 
 

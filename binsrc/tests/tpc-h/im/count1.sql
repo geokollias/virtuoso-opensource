@@ -1,9 +1,9 @@
-select count(*) from REGION;
-select count(*) from LINEITEM;
-select count(*) from ORDERS;
-select count(*) from PARTSUPP;
-select count(*) from CUSTOMER;
-select count(*) from SUPPLIER;
-select count(*) from NATION;
-select count(*) from PART;
+select count(*) from TPCH.REGION;
+select count(*) from TPCH.LINEITEM;
+select count(*) from TPCH.ORDERS;
+select count(*) from TPCH.PARTSUPP;
+select count(*) from TPCH.CUSTOMER;
+select count(*) from TPCH.SUPPLIER;
+select count(*) from TPCH.NATION;
+select count(*) from TPCH.PART;
 

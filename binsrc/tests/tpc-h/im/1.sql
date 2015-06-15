@@ -1,4 +1,4 @@
-
+use TPCH; set explain_level=extended;
 select
 	l_returnflag,
 	l_linestatus,

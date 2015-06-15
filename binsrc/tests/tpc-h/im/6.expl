@@ -1,0 +1,27 @@
+[?1034h+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Explain String                                                                                                                                                                       |
++--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Estimated Per-Host Requirements: Memory=362.00MB VCores=1                                                                                                                            |
+|                                                                                                                                                                                      |
+| 03:AGGREGATE [FINALIZE]                                                                                                                                                              |
+| |  output: sum:merge(l_extendedprice * l_discount)                                                                                                                                   |
+| |  hosts=1 per-host-mem=unavailable                                                                                                                                                  |
+| |  tuple-ids=1 row-size=8B cardinality=1                                                                                                                                             |
+| |                                                                                                                                                                                    |
+| 02:EXCHANGE [UNPARTITIONED]                                                                                                                                                          |
+| |  hosts=1 per-host-mem=unavailable                                                                                                                                                  |
+| |  tuple-ids=1 row-size=8B cardinality=1                                                                                                                                             |
+| |                                                                                                                                                                                    |
+| 01:AGGREGATE                                                                                                                                                                         |
+| |  output: sum(l_extendedprice * l_discount)                                                                                                                                         |
+| |  hosts=1 per-host-mem=10.00MB                                                                                                                                                      |
+| |  tuple-ids=1 row-size=8B cardinality=1                                                                                                                                             |
+| |                                                                                                                                                                                    |
+| 00:SCAN HDFS [tpch.lineitem, RANDOM]                                                                                                                                                 |
+|    partitions=1/1 files=82 size=20.20GB                                                                                                                                              |
+|    predicates: l_shipdate >= '1994-01-01', l_shipdate < CAST('1994-01-01' AS TIMESTAMP) + INTERVAL 1 YEAR, l_discount >= 0.06 - 0.01, l_discount <= 0.06 + 0.010001, l_quantity < 24 |
+|    table stats: 600037902 rows total                                                                                                                                                 |
+|    column stats: all                                                                                                                                                                 |
+|    hosts=1 per-host-mem=352.00MB                                                                                                                                                     |
+|    tuple-ids=0 row-size=40B cardinality=6000                                                                                                                                         |
++--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+

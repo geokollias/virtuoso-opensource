@@ -1,3 +1,4 @@
+use TPCH;
 select ps_partkey,
        value
 from (

@@ -1,4 +1,4 @@
-
+use TPCH;
 
 select
  c_name,

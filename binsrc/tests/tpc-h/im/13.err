@@ -1,0 +1,24 @@
+Starting Impala Shell without Kerberos authentication
+Connected to ip-10-0-1-251.ec2.internal:21000
+Server version: impalad version 2.1.3-cdh5 RELEASE (build 20816e26a150d20d2c92c470aa40b342521b243e)
+Query: use TPCH
+Query: select c_count,
+          count(*) as custdist
+  from (
+          select
+                  c_custkey,
+                  count(o_orderkey) as c_count
+          from
+                  (select * from customer
+                  left outer join orders on
+                    c_custkey = o_custkey and
+                    o_comment not like '%special%requests%') c_customer
+          group by
+                  c_custkey
+          ) c_orders
+  group by
+          c_count
+  order by
+          custdist desc,
+          c_count desc
+Fetched 45 row(s) in 155.74s

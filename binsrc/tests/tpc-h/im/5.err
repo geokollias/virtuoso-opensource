@@ -1,0 +1,28 @@
+Starting Impala Shell without Kerberos authentication
+Connected to ip-10-0-1-251.ec2.internal:21000
+Server version: impalad version 2.1.3-cdh5 RELEASE (build 20816e26a150d20d2c92c470aa40b342521b243e)
+Query: use TPCH
+Query: select n_name,
+	sum(l_extendedprice * (1 - l_discount)) as revenue
+from
+	customer,
+	orders,
+	lineitem,
+	supplier,
+	nation,
+	region
+where
+	c_custkey = o_custkey
+	and l_orderkey = o_orderkey
+	and l_suppkey = s_suppkey
+	and c_nationkey = s_nationkey
+	and s_nationkey = n_nationkey
+	and n_regionkey = r_regionkey
+	and r_name = 'ASIA'
+	and o_orderdate >= '1994-01-01'
+	and o_orderdate < cast ('1994-01-01' as timestamp) + INTERVAL 1 YEAR
+group by
+	n_name
+order by
+	revenue desc
+Fetched 0 row(s) in 109.84s

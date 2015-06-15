@@ -13,7 +13,7 @@ CREATE EXTERNAL TABLE REGION_F (
     R_COMMENT    VARCHAR(152)
     )
 ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'
-LOCATION '/user/impala/tpch6data/region'
+LOCATION '/user/impala/tpch100data/region'
 ;
 
 
@@ -24,7 +24,7 @@ CREATE EXTERNAL TABLE NATION_F (
     N_COMMENT    VARCHAR(152)
     )
 ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'
-LOCATION '/user/impala/tpch6data/nation'
+LOCATION '/user/impala/tpch100data/nation'
 ;
 
 
@@ -40,7 +40,7 @@ CREATE EXTERNAL TABLE PART_F (
     P_COMMENT     VARCHAR(23)
     )
 ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'
-LOCATION '/user/impala/tpch6data/part'
+LOCATION '/user/impala/tpch100data/part'
 ;
 
 CREATE EXTERNAL TABLE SUPPLIER_F (
@@ -53,7 +53,7 @@ CREATE EXTERNAL TABLE SUPPLIER_F (
     S_COMMENT     VARCHAR(101)
     )
 ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'
-LOCATION '/user/impala/tpch6data/supplier'
+LOCATION '/user/impala/tpch100data/supplier'
 ;
 
 CREATE EXTERNAL TABLE PARTSUPP_F (
@@ -64,7 +64,7 @@ CREATE EXTERNAL TABLE PARTSUPP_F (
     PS_COMMENT     VARCHAR (199)
     )
 ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'
-LOCATION '/user/impala/tpch6data/partsupp'
+LOCATION '/user/impala/tpch100data/partsupp'
 ;
 
 CREATE EXTERNAL TABLE CUSTOMER_F (
@@ -78,7 +78,7 @@ CREATE EXTERNAL TABLE CUSTOMER_F (
     C_COMMENT     VARCHAR(117)
     )
 ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'
-LOCATION '/user/impala/tpch6data/customer'
+LOCATION '/user/impala/tpch100data/customer'
 ;
 
 CREATE EXTERNAL TABLE ORDERS_F (
@@ -93,7 +93,7 @@ CREATE EXTERNAL TABLE ORDERS_F (
     O_COMMENT        VARCHAR(79)
     )
 ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'
-LOCATION '/user/impala/tpch6data/orders'
+LOCATION '/user/impala/tpch100data/orders'
 ;
 
 CREATE EXTERNAL TABLE LINEITEM_F (
@@ -115,6 +115,6 @@ CREATE EXTERNAL TABLE LINEITEM_F (
     L_COMMENT      VARCHAR(44)
     )
 ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'
-LOCATION '/user/impala/tpch6data/lineitem'
+LOCATION '/user/impala/tpch100data/lineitem'
 ;
 
