@@ -1,7 +1,7 @@
 --
 --  tdate.sql
 --
---  $Id: tdate.sql,v 1.15.10.2 2013/01/02 16:15:01 source Exp $
+--  $Id$
 --
 --  Some simple date checking functions
 --  
@@ -37,7 +37,7 @@ echo BOTH "STARTED: Date tests (tdate.sql)\n";
 --  Create the test table
 --
 drop table tdate;
-create table tdate (id integer not null primary key, val date);
+create table tdate (id integer not null primary key, val datetime);
 create index tdateix1 on tdate (val);
 
 --
