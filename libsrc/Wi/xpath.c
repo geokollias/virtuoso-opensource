@@ -3200,7 +3200,7 @@ xp_to_sql_tree (sql_comp_t * sc, char *str, caddr_t * err_ret, int is_in_sql)
   xpp->xpp_client = sc->sc_client;
 
   xe->xe_inside_sql = is_in_sql;
-  xe->xe_schema = sc->sc_cc->cc_schema;
+  xe->xe_schema = wi_inst.wi_schema;
   xe->xe_sc = sc;
 
   query_charset = ((NULL != sc->sc_client) ? sc->sc_client->cli_charset : NULL);
@@ -3344,7 +3344,7 @@ xp_sql_xp_tree (xpp_t * caller_xpp, xp_lexbmk_t * begin, sql_comp_t * sc, caddr_
 
   xe->xe_inside_sql = is_in_sql;
   xe->xe_after_xmlview = 1;
-  xe->xe_schema = sc->sc_cc->cc_schema;
+  xe->xe_schema = wi_inst.wi_schema;
   xe->xe_sc = sc;
 
   xpp->xpp_enc = caller_xpp->xpp_enc;

@@ -81,7 +81,6 @@ static int configMode;
  */
 static DWORD ierror[ERROR_NUM] = { 0 };
 static LPSTR errormsg[ERROR_NUM] = { 0 };
-
 static SQLSMALLINT numerrors = -1;
 
 

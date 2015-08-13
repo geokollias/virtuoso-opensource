@@ -863,7 +863,6 @@ static word inv_root[] = { tag_moov, tag_ftyp, tag_udta, 0 };
 static word inv_moov[] = { tag_udta, 0 };
 static word inv_udta[] = { tag_cprt, tag_meta, tag_Ccpy, tag_Cdes, tag_Cnam, tag_Ccmt, tag_Cprd, 0 };
 static word inv_meta[] = { tag_hdlr, tag_ilst, 0 };
-
 static word inv_ilst[] = {
   tag_Cnam, tag_CART, tag_Cwrt, tag_Calb, tag_Cday, tag_Ctoo, tag_Ccmt, tag_Cgen,
   tag_Cgrp, tag_Clyr, tag_trkn, tag_disk, tag_gnre, tag_cpil, tag_tmpo, tag_covr, tag_aART,

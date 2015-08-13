@@ -4182,7 +4182,7 @@ extern jso_class_descr_t jso__quad_map;
 
 void
 jso__rdf_val_range_inst_validation (rdf_val_range_t * rvr, const char *structname, jso_rtti_t * inst_rtti,
-    dk_set_t * warnings_log_ptr)
+    dk_set_t * errors_log_ptr, dk_set_t * warnings_log_ptr)
 {
   rdf_val_range_t saved_orig_rvr;
   memcpy (&saved_orig_rvr, rvr, sizeof (rdf_val_range_t));
@@ -4260,31 +4260,31 @@ jso__rdf_val_range_inst_validation (rdf_val_range_t * rvr, const char *structnam
 }
 
 void
-jso__quad_map_jsocd_validation_cbk (jso_rtti_t * inst_rtti, dk_set_t * warnings_log_ptr)
+jso__quad_map_jsocd_validation_cbk (jso_rtti_t * inst_rtti, dk_set_t * errors_log_ptr, dk_set_t * warnings_log_ptr)
 {
   quad_map_t *qm = (quad_map_t *) (inst_rtti->jrtti_self);
-  jso__rdf_val_range_inst_validation (&(qm->qmGraphRange), "qmGraphRange", inst_rtti, warnings_log_ptr);
-  jso__rdf_val_range_inst_validation (&(qm->qmSubjectRange), "qmSubjectRange", inst_rtti, warnings_log_ptr);
-  jso__rdf_val_range_inst_validation (&(qm->qmPredicateRange), "qmPredicateRange", inst_rtti, warnings_log_ptr);
-  jso__rdf_val_range_inst_validation (&(qm->qmObjectRange), "qmObjectRange", inst_rtti, warnings_log_ptr);
+  jso__rdf_val_range_inst_validation (&(qm->qmGraphRange), "qmGraphRange", inst_rtti, errors_log_ptr, warnings_log_ptr);
+  jso__rdf_val_range_inst_validation (&(qm->qmSubjectRange), "qmSubjectRange", inst_rtti, errors_log_ptr, warnings_log_ptr);
+  jso__rdf_val_range_inst_validation (&(qm->qmPredicateRange), "qmPredicateRange", inst_rtti, errors_log_ptr, warnings_log_ptr);
+  jso__rdf_val_range_inst_validation (&(qm->qmObjectRange), "qmObjectRange", inst_rtti, errors_log_ptr, warnings_log_ptr);
 }
 
 extern jso_class_descr_t jso__qm_value;
 
 void
-jso__qm_value_jsocd_validation_cbk (jso_rtti_t * inst_rtti, dk_set_t * warnings_log_ptr)
+jso__qm_value_jsocd_validation_cbk (jso_rtti_t * inst_rtti, dk_set_t * errors_log_ptr, dk_set_t * warnings_log_ptr)
 {
   qm_value_t *qmv = (qm_value_t *) (inst_rtti->jrtti_self);
-  jso__rdf_val_range_inst_validation (&(qmv->qmvRange), "qmVRange", inst_rtti, warnings_log_ptr);
+  jso__rdf_val_range_inst_validation (&(qmv->qmvRange), "qmVRange", inst_rtti, errors_log_ptr, warnings_log_ptr);
 }
 
 extern jso_class_descr_t jso__qm_format;
 
 void
-jso__qm_format_jsocd_validation_cbk (jso_rtti_t * inst_rtti, dk_set_t * warnings_log_ptr)
+jso__qm_format_jsocd_validation_cbk (jso_rtti_t * inst_rtti, dk_set_t * errors_log_ptr, dk_set_t * warnings_log_ptr)
 {
   qm_format_t *qmf = (qm_format_t *) (inst_rtti->jrtti_self);
-  jso__rdf_val_range_inst_validation (&(qmf->qmfValRange), "qmfValRange", inst_rtti, warnings_log_ptr);
+  jso__rdf_val_range_inst_validation (&(qmf->qmfValRange), "qmfValRange", inst_rtti, errors_log_ptr, warnings_log_ptr);
 }
 
 #ifdef DEBUG
@@ -4373,7 +4373,7 @@ rdf_core_init (void)
     nic_set_n_ways (iri_name_cache, 64);
   iri_prefix_cache = nic_allocate (iri_cache_size / 10, 0, 0);
   nic_set_n_ways (iri_prefix_cache, 64);
-  rdf_lang_cache = nic_allocate (255, 0, 0);
+  rdf_lang_cache = nic_allocate (1000, 0, 0);
   rdf_type_cache = nic_allocate (1000, 0, 0);
   ddl_ensure_table ("DB.DBA.RDF_PREFIX", rdf_prefix_text);
   ddl_ensure_table ("DB.DBA.RDF_IRI", rdf_iri_text);

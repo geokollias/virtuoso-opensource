@@ -170,7 +170,7 @@ sqlc_col_to_view_scope (sql_comp_t * sc, ST ** tree_place, ST * view_exp, dk_set
      No correlation names and joins here */
   int inx;
   ST *tree = *tree_place;
-  char *name = ST_P (tree, COL_DOTTED) ? tree->_.col_ref.name : (caddr_t) tree;
+  char *name = ST_COLUMN (tree, COL_DOTTED) ? tree->_.col_ref.name : (caddr_t) tree;
   ST **sel = (ST **) view_exp->_.select_stmt.selection;
   ST *repl = NULL;
   DO_BOX (ST *, as_exp, inx, sel)
@@ -191,7 +191,7 @@ sqlc_col_to_view_scope (sql_comp_t * sc, ST ** tree_place, ST * view_exp, dk_set
     }
   else
     {
-      if (!ST_P (tree, COL_DOTTED))
+      if (!ST_COLUMN (tree, COL_DOTTED))
 	sqlc_new_error (sc->sc_cc, "37000", "SQ113", "Non-view column set in view update");
       /*sqlc_alias_update_non_view_ref (sc, tree_place, aliases); */
     }
@@ -208,7 +208,7 @@ sqlc_exp_to_view_scope (sql_comp_t * sc, ST ** tree_place, comp_table_t * view_c
     return;
   if (ST_P (tree, QUOTE))
     return;
-  if (ST_P (tree, COL_DOTTED))
+  if (ST_COLUMN (tree, COL_DOTTED))
     {
       if (!view_ct)
 	{
@@ -376,7 +376,7 @@ sqlc_insert_view (sql_comp_t * sc, ST * view, ST * tree, dbe_table_t * tb)
 
   _DO_BOX (inx, tree->_.insert.cols)
   {
-    if (ST_P (cols[inx], COL_DOTTED))
+    if (ST_COLUMN (cols[inx], COL_DOTTED))
       {
 	ST *c = (ST *) t_box_copy_tree (cols[inx]->_.col_ref.name);
 	/*dk_free_tree (cols[inx]); */
@@ -454,7 +454,7 @@ sqlc_update_view (sql_comp_t * sc, ST * view, ST * tree, dbe_table_t * tb)
 
   _DO_BOX (inx, tree->_.update_src.cols)
   {
-    if (ST_P (cols[inx], COL_DOTTED))
+    if (ST_COLUMN (cols[inx], COL_DOTTED))
       {
 	ST *c = (ST *) t_box_copy_tree (cols[inx]->_.col_ref.name);
 	cols[inx] = c;
@@ -874,7 +874,7 @@ sqlc_selection_names (ST * tree)
 	    sel[inx] = sqlc_copy_union_as ((ST *) t_list (3, COL_DOTTED, NULL, t_box_copy_tree (exp->_.as_exp.name)), exp, inx);
 	  }
       }
-    else if (ST_P (exp, COL_DOTTED))
+    else if (ST_COLUMN (exp, COL_DOTTED))
       {
 	tree->_.select_stmt.selection[inx] = (caddr_t) t_list (5, BOP_AS, exp, NULL, t_box_string (exp->_.col_ref.name), NULL);
 	sel[inx] = (ST *) t_list (3, COL_DOTTED, NULL, t_box_copy_tree (exp->_.col_ref.name));

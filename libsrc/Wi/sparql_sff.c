@@ -174,10 +174,9 @@ static const char *full_f2 = NULL;
 static char *full_res_buf = NULL;
 
 #ifdef SSF_WEIGHTED_ISECT
-! ! !Should not be used because it does not support %
+!!!Should not be used because it does not support %
 {
 connvarname} U in format strings and is poorly tested so it is probably buggy static const char *full_f1_end = NULL;
-
 static const char *full_f2_end = NULL;
 static char *full_res_buf_end = NULL;
 

@@ -1788,7 +1788,6 @@ xqf_numeric_gt (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
   else
     XQI_SET (xqi, tree->_.xp_func.res, (caddr_t) 0L);
 }
-
 static void
 xqf_numeric_lt (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -2823,7 +2822,6 @@ xqf_boolean_equal (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
   else
     XQI_SET (xqi, tree->_.xp_func.res, (caddr_t) 0L);
 }
-
 static void
 xqf_boolean_lt (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -2907,7 +2905,6 @@ xqf_YM_gt (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 
   XQI_SET (xqi, tree->_.xp_func.res, box_num_nonull (arg1 > arg2));
 }
-
 static void
 xqf_DT_eq (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -3102,7 +3099,6 @@ xqf_yMd_add (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 
   XQI_SET (xqi, tree->_.xp_func.res, xqf_YM_from_months (a1 + a2));
 }
-
 static void
 xqf_yMd_sub (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -3111,7 +3107,6 @@ xqf_yMd_sub (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 
   XQI_SET (xqi, tree->_.xp_func.res, xqf_YM_from_months (a1 - a2));
 }
-
 static void
 xqf_yMd_mult (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -3124,7 +3119,6 @@ xqf_yMd_mult (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
   XQI_SET (xqi, tree->_.xp_func.res, xqf_YM_from_months ((long) (virt_rint (a1 * unbox_double (d2)))));
   dk_free_box (d2);
 }
-
 static void
 xqf_yMd_div (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -3136,7 +3130,6 @@ xqf_yMd_div (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
   XQI_SET (xqi, tree->_.xp_func.res, xqf_YM_from_months ((long) (virt_rint (a1 / unbox_double (d2)))));
   dk_free_box (d2);
 }
-
 static void
 xqf_yMd_div_yMd (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -3156,7 +3149,6 @@ xqf_dT_add (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 
   XQI_SET (xqi, tree->_.xp_func.res, xqf_DT_from_secs (a1 + a2));
 }
-
 static void
 xqf_dT_sub (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -3165,7 +3157,6 @@ xqf_dT_sub (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 
   XQI_SET (xqi, tree->_.xp_func.res, xqf_DT_from_secs (a1 - a2));
 }
-
 static void
 xqf_dT_mult (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -3178,7 +3169,6 @@ xqf_dT_mult (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
   XQI_SET (xqi, tree->_.xp_func.res, xqf_DT_from_secs (a1 * unbox_double (d2)));
   dk_free_box (d2);
 }
-
 static void
 xqf_dT_div (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -3190,7 +3180,6 @@ xqf_dT_div (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
   XQI_SET (xqi, tree->_.xp_func.res, xqf_DT_from_secs (a1 / unbox_double (d2)));
   dk_free_box (d2);
 }
-
 static void
 xqf_dT_div_dT (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -3201,7 +3190,6 @@ xqf_dT_div_dT (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 
   XQI_SET (xqi, tree->_.xp_func.res, box_double (a1 / a2));
 }
-
 static void
 xqf_adj_tz (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -3212,7 +3200,6 @@ xqf_adj_tz (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
   DT_SET_TZ (res, mins);
   XQI_SET (xqi, tree->_.xp_func.res, res);
 }
-
 static void
 xqf_dT_sub_yMD (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -3630,6 +3617,7 @@ bif_xqf_str_parse_to_rdf_box (caddr_t * qst, caddr_t * err_ret, state_slot_t ** 
 	  xte->xe_doc.xd->xd_id_scan = XD_ID_SCAN_COMPLETED;
 	  xte->xe_doc.xd->xd_ns_2dict = ns_2dict;
 	  xte->xe_doc.xd->xd_namespaces_are_valid = 0;
+	  xte->xe_doc.xd->xout_encoding = box_dv_short_string ("UTF-8");
 	  /* test only : xte_word_range(xte,&l1,&l2); */
 	  return ((caddr_t) xte);
 	}
@@ -3643,7 +3631,7 @@ bif_xqf_str_parse_to_rdf_box (caddr_t * qst, caddr_t * err_ret, state_slot_t ** 
 	  if (!err)
 	    {
 	      rdf_box_t *rb = rb_allocate ();
-	      geo_calc_bounding (g, GEO_CALC_BOUNDING_DO_ALL);
+	      geo_calc_bounding ((geo_t *) g, GEO_CALC_BOUNDING_DO_ALL);
 	      rb->rb_type = RDF_BOX_GEO;
 	      rb->rb_lang = RDF_BOX_DEFAULT_LANG;
 	      rb->rb_box = g;

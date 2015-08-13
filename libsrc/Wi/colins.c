@@ -605,6 +605,48 @@ oow:
   col_ins_error = 1;
 }
 
+
+void
+itc_str_seg_check (it_cursor_t * itc, buffer_desc_t * buf)
+{
+  /* take a seg of str and the planned inserts and check that the result would be in order */
+  dbe_key_t *key = itc->itc_insert_key;
+  caddr_t *rev = itc_box_col_seg (itc, buf, &key->key_row_var[0]);
+  int n_rows = BOX_ELEMENTS (rev);
+  db_buf_t rev_1, rev_prev;
+  int is_first = 1, str2_cmp, word_cmp;
+  mem_pool_t *mp = mem_pool_alloc ();
+  int first_set = itc->itc_set;
+  int set = 0, row = 0;
+
+  while (row < n_rows || set < itc->itc_range_fill)
+    {
+      if (set < itc->itc_range_fill && row == itc->itc_ranges[set].r_first)
+	{
+	  rev_1 = (db_buf_t) mp_box_deserialize_string (mp, (caddr_t) itcp (itc, 0, set + first_set), INT32_MAX, 0);
+	  set++;
+	}
+      else if (row < n_rows)
+	{
+	  rev_1 = (db_buf_t) rev[row];
+	  row++;
+	}
+      if (!is_first)
+	{
+	  str2_cmp = cmp_boxes ((caddr_t) rev_prev, (caddr_t) rev_1, NULL, NULL);
+	  if (DVC_LESS != str2_cmp)
+	    goto oow;
+	  is_first = 0;
+	}
+      rev_prev = rev_1;
+    }
+  dk_free_tree ((caddr_t) rev);
+  mp_free (mp);
+  return;
+oow:
+  col_ins_error = 1;
+}
+
 int rq_check_ctr = 0;
 int rq_check_mod = 1;
 int rq_check_min = 0;
@@ -622,7 +664,8 @@ extern client_connection_t *rfwd_cli;
 //#define RQ_CHECK_TEXT "select count (*)  from rdf_quad a table option (index rdf_quad_gs, index_only, no cluster) where not exists (select 1 from rdf_quad b table option (loop, index rdf_quad_gs, index_only, no cluster) where  a.g = b.g and a.s = b.s )"
 //#define RQ_CHECK_TEXT "select count (*) from post_tag a where not exists (select 1 from  post_tag b  table option (loop) where a.pst_tagid = b.pst_tagid and a.pst_postid = b.pst_postid)"
 //#define RQ_CHECK_TEXT "select 0, count (s), count (p), count (o), count (g) from rdf_quad table option (index rdf_quad) where p =  #i292339462 and s > #ib390000000"
-#define RQ_CHECK_TEXT "select count (*) from post_tag where idn (pst_postid) > 100714751188136"
+//#define RQ_CHECK_TEXT "select count (*) from post_tag where idn (pst_postid) > 100714751188136"
+#define RQ_CHECK_TEXT "select count (*) from r_good a where not exists (select 1 from  r_good b table  option (loop) where a.p = b.p)"
 
 #define RQ_RANGE_CHECK_TEXT_1 "select count (*) from rdf_quad a table option (loop, index rdf_quad_pogs, no cluster) where not exists (select 1 from rdf_quad b table option (loop, index rdf_quad_pogs, no cluster)  where a.g = b.g and a.p = b.p and a.o = b.o and a.s = b.s) and p = ? and o >= ? and o <= ?"
 #define RQ_RANGE_CHECK_TEXT_2 "select count (*) from rdf_quad a table option (loop, index rdf_quad_pogs, no cluster) where not exists (select 1 from rdf_quad b table option (loop, index rdf_quad_pogs, no cluster)  where a.g = b.g and a.p = b.p and a.o = b.o and a.s = b.s) and p >= ? and p <= ?"
@@ -2352,7 +2395,10 @@ cr_insert (ce_ins_ctx_t * ceic, buffer_desc_t * buf, col_data_ref_t * cr)
     }
 done:
   if (nth_range < itc->itc_range_fill)
-    GPF_T1 ("Too few rows in seg for insert");
+    {
+      log_error ("Broken index %s", itc->itc_insert_key->key_name ? itc->itc_insert_key->key_name : "temp key");
+      GPF_T1 ("Too few rows in seg for insert");
+    }
   itc->itc_set = itc_set_save;
 }
 
@@ -4514,6 +4560,9 @@ itc_col_ins_dups (it_cursor_t * itc, buffer_desc_t * buf, insert_node_t * ins)
 	      if (!itc_is_own_del_clk (itc, itc->itc_ranges[inx].r_first, &clk, &point, &next))
 		continue;
 	      clk->clk_change &= ~CLK_DELETE_AT_COMMIT;
+	      if (ins->ins_mode == INS_SOFT && (ins->ins_key_only || cl_run_local_only == CL_RUN_CLUSTER
+		      || itc->itc_insert_key->key_is_primary))
+		log_insert (itc->itc_ltrx, itc->itc_vec_rds[itc->itc_param_order[inx]], itc->itc_ins_flags);
 	      if (itc->itc_insert_key->key_n_significant * 2 == itc->itc_insert_key->key_n_parts)
 		continue;
 	    }
@@ -4768,6 +4817,8 @@ itc_col_vec_insert (it_cursor_t * itc, insert_node_t * ins)
 	    itc_pogs_seg_check (itc, buf);
 	  else if (strstr (itc->itc_insert_key->key_name, "post_tag"))
 	    itc_gs_seg_check (itc, buf);
+	  else if (strstr (itc->itc_insert_key->key_name, "r_good"))
+	    itc_str_seg_check (itc, buf);
 	}
       if (col_ins_error)
 	{

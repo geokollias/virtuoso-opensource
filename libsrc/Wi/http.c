@@ -88,7 +88,6 @@ char *http_methods[] = { "NONE", "GET", "HEAD", "POST", "PUT", "DELETE", "OPTION
   "REPORT",			/* CalDAV */
   "TRACE", "PATCH", NULL
 };
-
 resource_t *ws_dbcs;
 basket_t ws_queue;
 dk_mutex_t *ws_queue_mtx;

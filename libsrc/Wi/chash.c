@@ -857,11 +857,15 @@ setp_non_agg_dep (setp_node_t * setp, caddr_t * inst, int nth_col, int set, char
 int
 cha_is_null (setp_node_t * setp, caddr_t * inst, int nth_col, int row_no)
 {
-  data_col_t *dc = QST_BOX (data_col_t *, inst, setp->setp_ha->ha_slots[nth_col]->ssl_index);
+  state_slot_t *ssl = setp->setp_ha->ha_slots[nth_col];
+  data_col_t *dc = QST_BOX (data_col_t *, inst, ssl->ssl_index);
   if (!dc->dc_any_null)
     return 0;
+  if (SSL_REF == ssl->ssl_type)
+    row_no = sslr_set_no (inst, ssl, row_no);
   return dc_is_null (dc, row_no);
 }
+
 
 int64 *
 cha_new_gb (setp_node_t * setp, caddr_t * inst, db_buf_t ** key_vecs, chash_t * cha, uint64 hash_no, int row_no, int base,
@@ -2920,7 +2924,10 @@ cha_ent_merge (setp_node_t * setp, chash_t * cha, int64 * tar, int64 * ent)
   {
     int op = go->go_op;
     if (GB_IS_NULL (ha, ent, inx))
-      continue;
+      {
+	inx++;
+	continue;
+      }
     switch (AGG_C (cha->cha_sqt[inx].sqt_dtp, op))
       {
       case AGG_C (DV_LONG_INT, AMMSC_COUNT):

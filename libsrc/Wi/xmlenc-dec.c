@@ -588,22 +588,18 @@ void
 wsse_dsakeyvalue_callback (char *uri, char *name, caddr_t * curr, wsse_ctx_t * ctx)
 {
 }
-
 void
 wsse_p_callback (char *uri, char *name, caddr_t * curr, wsse_ctx_t * ctx)
 {
 }
-
 void
 wsse_q_callback (char *uri, char *name, caddr_t * curr, wsse_ctx_t * ctx)
 {
 }
-
 void
 wsse_g_callback (char *uri, char *name, caddr_t * curr, wsse_ctx_t * ctx)
 {
 }
-
 void
 wsse_y_callback (char *uri, char *name, caddr_t * curr, wsse_ctx_t * ctx)
 {
@@ -957,7 +953,6 @@ wss_binarysectoken_c (char *uri, char *name, caddr_t * curr, wsse_ctx_t * ctx)
       id_hash_set (ctx->wc_id_cache, (caddr_t) & id_1, (caddr_t) & kname);
     }
 }
-
 void
 wss_reference_c (char *uri, char *name, caddr_t * curr, wsse_ctx_t * ctx)
 {
@@ -978,7 +973,6 @@ wss_reference_c (char *uri, char *name, caddr_t * curr, wsse_ctx_t * ctx)
 	}
     }
 }
-
 void
 wss_keyidentifier_c (char *uri, char *name, caddr_t * curr, wsse_ctx_t * ctx)
 {

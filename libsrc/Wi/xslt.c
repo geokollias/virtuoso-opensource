@@ -2925,7 +2925,8 @@ shuric_uri_to_text__xslt (caddr_t uri, query_instance_t * qi, void *env, caddr_t
     {
       GPF_T;
 #if 0
-      This should never happen.err_ret[0] =
+      This should never happen.
+	  err_ret[0] =
 	  srv_make_new_error ("37XQR", "SQ195", "Unable to retrieve '%.1000s' from SQL compiler due to danger of fatal deadlock");
       return NULL;
 #endif

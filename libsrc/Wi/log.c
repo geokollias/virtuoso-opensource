@@ -334,6 +334,7 @@ log_fsync (dk_session_t * ses)
 
 
 extern long dbf_log_no_disk;
+long tc_log_write_clocks;
 
 int
 log_commit (lock_trx_t * lt)
@@ -344,10 +345,12 @@ log_commit (lock_trx_t * lt)
   dk_session_t *volatile log_ses;
   long bytes = strses_length (lt->lt_log);
   caddr_t *cbox;
+  uint64 ts;
   if (lt->lt_replicate == REPL_NO_LOG || (LT_CL_PREPARED != lt->lt_status && !bytes) || cl_non_logged_write_mode)
     return LTE_OK;
   if (dbf_log_no_disk)
     return LTE_LOG_FAILED;
+  ts = rdtsc ();
   ASSERT_IN_MTX (log_write_mtx);
   prev_length = dbs->dbs_log_length;
   log_ses = dbs->dbs_log_session;
@@ -388,7 +391,16 @@ log_commit (lock_trx_t * lt)
       cbox[LOGH_CL_2PC] = id;
     }
   else
-    cbox[LOGH_CL_2PC] = 0;
+    {
+#ifndef NDEBUG
+      caddr_t id = dk_alloc_box (10, DV_STRING);
+      id[0] = LOG_2PC_COMMIT;
+      INT64_SET_NA (id + 1, lt->lt_w_id);
+      cbox[LOGH_CL_2PC] = id;
+#else
+      cbox[LOGH_CL_2PC] = 0;
+#endif
+    }
   if (!lt->lt_branch_of && lt->lt_client && lt->lt_client->cli_user)
     cbox[LOGH_USER] = box_string (lt->lt_client->cli_user->usr_name);
   else
@@ -470,6 +482,8 @@ log_commit (lock_trx_t * lt)
     }
   else
     dk_free_tree ((caddr_t) cbox);
+
+  tc_log_write_clocks += rdtsc () - ts;
 
   if (!DKSESSTAT_ISSET (log_ses, SST_OK))
     {
@@ -2207,10 +2221,10 @@ log_key_ins_del_qr (dbe_key_t * key, caddr_t * err_ret, int op, int ins_mode, in
       {
 	int n_cols, k, need_comma = 0;
 	caddr_t *names;
-	sb_printf (&sb, "INSERT %s \"%s\".\"%s\".\"%s\"", ((LOG_INSERT_SOFT == op || INS_SOFT == ins_mode
-		    || -1 == ins_mode) ? "SOFT" : ((op == LOG_INSERT_REPL
-			|| ins_mode == LOG_INSERT_REPL) ? "REPLACING" : "INTO")), ESC (key_table->tb_qualifier, 1),
-	    ESC (key_table->tb_owner, 2), ESC (key_table->tb_name_only, 3));
+	char *mode = ((LOG_INSERT_SOFT == op || INS_SOFT == ins_mode || -1 == ins_mode) ? "SOFT" : ((op == LOG_INSERT_REPL
+		    || ins_mode == LOG_INSERT_REPL) ? "REPLACING" : "INTO"));
+	sb_printf (&sb, "INSERT %s \"%s\".\"%s\".\"%s\"", mode, ESC (key_table->tb_qualifier, 1), ESC (key_table->tb_owner, 2),
+	    ESC (key_table->tb_name_only, 3));
 	if (op == LOG_KEY_INSERT && !old_key)
 	  {
 	    sb_printf (&sb, " INDEX \"%s\"", key->key_name);	/* FIXME */
@@ -2371,7 +2385,7 @@ get_vec_query (lre_request_t * request, dbe_key_t * key, int flag, caddr_t * err
     }
   while (key->key_migrate_to)
     key = sch_id_to_key (wi_inst.wi_schema, key->key_migrate_to);
-  res = log_key_ins_del_qr (key, err_ret, op, flag, 1);
+  res = log_key_ins_del_qr (key, err_ret, op, op == LOG_KEY_INSERT && flag == LOG_INSERT_SOFT ? INS_SOFT : flag, 1);
   sethash ((void *) (ptrlong) op, lq->lrq_qrs, (void *) res);
   return res;
 }
@@ -3684,7 +3698,8 @@ log_checkpoint (dbe_storage_t * dbs, char *new_log, int shutdown)
 	  new_fd = fd_open (new_log, LOG_OPEN_FLAGS);
 	  if (new_fd < 0)
 	    {
-	      log_error ("Cannot change to log file %s", new_log);
+	      int errn = errno;
+	      log_error ("Cannot change to log file %s, error : %s", new_log, virt_strerror (errn));
 	      call_exit (1);
 	    }
 	  fd_close (tcpses_get_fd (dbs->dbs_log_session->dks_session), dbs->dbs_log_name);

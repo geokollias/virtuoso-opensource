@@ -374,7 +374,7 @@ extern server_lock_t server_lock;
 
 void plh_free (placeholder_t * plh);
 
-EXE_EXPORT (caddr_t, srv_make_new_error, (const char *code, const char *virt_code, const char *msg, ...));
+EXE_EXPORT (caddr_t, srv_make_new_error, (const char *code, const char *virt_code, const char *msg,...));
 #ifndef _USRDLL
 #ifdef __GNUC__
 caddr_t srv_make_new_error (const char *code, const char *virt_code, const char *msg, ...) __attribute__ ((format (printf, 3, 4)));
@@ -672,7 +672,7 @@ void ssl_alias (state_slot_t * alias, state_slot_t * real);
 void ssl_copy_types (state_slot_t * to, state_slot_t * from);
 
 EXE_EXPORT (caddr_t, qr_rec_exec, (query_t * qr, client_connection_t * cli, local_cursor_t ** lc_ret, query_instance_t * caller,
-	stmt_options_t * opts, long n_pars, ...));
+	stmt_options_t * opts, long n_pars,...));
 
 EXE_EXPORT (caddr_t, lc_nth_col, (local_cursor_t * lc, int n));
 
@@ -1180,6 +1180,7 @@ dk_session_t *dbs_read_registry (dbe_storage_t * dbs, client_connection_t * cli)
 
 boxint safe_atoi (const char *data, caddr_t * err_ret);
 double safe_atof (const char *data, caddr_t * err_ret);
+double box_to_double (caddr_t data, dtp_t dtp);
 caddr_t box_to_any (caddr_t data, caddr_t * err_ret);
 caddr_t box_to_any_1 (caddr_t data, caddr_t * err_ret, auto_pool_t * ap, int ser_flags);
 caddr_t mp_box_to_any_1 (caddr_t data, caddr_t * err_ret, mem_pool_t * ap, int ser_flags);

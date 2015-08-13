@@ -5272,7 +5272,7 @@ sqlg_make_sort_nodes (sqlo_t * so, data_source_t ** head, ST ** order_by,
 		}
 	      aggregate = sqlg_dfe_ssl (so, sqlo_df (so, fref));
 	      if (AMMSC_USER != fref->_.fn_ref.fn_code)
-		sqlg_find_aggregate_sqt (sc->sc_cc->cc_schema, &(arg->ssl_sqt), fref, &(aggregate->ssl_sqt));
+		sqlg_find_aggregate_sqt (wi_inst.wi_schema, &(arg->ssl_sqt), fref, &(aggregate->ssl_sqt));
 	      else
 		aggregate->ssl_sqt.sqt_dtp = DV_ARRAY_OF_POINTER;
 	      if (!dk_set_member (out_slots, aggregate))
@@ -6265,12 +6265,11 @@ sqlg_add_fail_stub (sqlo_t * so, data_source_t ** head)
   sql_node_append (head, (data_source_t *) en);
 }
 
-
 data_source_t *
 sqlg_add_breakup_node (sql_comp_t * sc, data_source_t ** head, state_slot_t *** ssl_ret, int n_per_set, dk_set_t * code)
 {
   state_slot_t **ssl_out = *ssl_ret;
-  int inx;
+  int inx, alen = box_length (ssl_out) / sizeof (caddr_t);
   SQL_NODE_INIT (breakup_node_t, brk, breakup_node_input, breakup_node_free);
   brk->brk_all_output = ssl_out;
   DO_BOX (state_slot_t *, ssl, inx, ssl_out)
@@ -6298,7 +6297,12 @@ sqlg_add_breakup_node (sql_comp_t * sc, data_source_t ** head, state_slot_t *** 
   brk->brk_output = dk_alloc_box (sizeof (caddr_t) * n_per_set, DV_BIN);
   brk->brk_current_slot = cc_new_instance_slot (sc->sc_cc);
   for (inx = 0; inx < n_per_set; inx++)
-    brk->brk_output[inx] = brk->brk_all_output[inx];
+    {
+      state_slot_t *ssl = brk->brk_all_output[inx];
+      state_slot_t *v = ssl_new_inst_variable (sc->sc_cc, ssl->ssl_name, ssl->ssl_sqt.sqt_dtp);
+      v->ssl_sqt.sqt_non_null = ssl->ssl_sqt.sqt_non_null;
+      brk->brk_output[inx] = v;
+    }
   sql_node_append (head, (data_source_t *) brk);
   *ssl_ret = (state_slot_t **) box_copy ((caddr_t) brk->brk_output);
   return (data_source_t *) brk;
@@ -7228,7 +7232,6 @@ sqlg_top_1 (sqlo_t * so, df_elt_t * dfe, state_slot_t *** sel_out_ret)
   comp_context_t *outer_cc = so->so_sc->sc_cc;
   comp_context_t inner_cc;
   memset (&inner_cc, 0, sizeof (inner_cc));
-  inner_cc.cc_schema = outer_cc->cc_schema;
   inner_cc.cc_super_cc = outer_cc->cc_super_cc;
   inner_cc.cc_query = outer_cc->cc_query;
   so->so_sc->sc_cc = &inner_cc;

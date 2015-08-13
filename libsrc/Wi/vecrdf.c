@@ -166,12 +166,14 @@ rb_serialize_complete (caddr_t x, dk_session_t * ses)
     flags |= RBS_HAS_LANG;
   if (RDF_BOX_DEFAULT_TYPE != rb->rb_type)
     flags |= RBS_HAS_TYPE;
-  if (rb->rb_chksum_tail)
+  if (rb->rb_chksum_tail && rb->rb_ro_id)
     flags |= RBS_CHKSUM;
 
   flags |= RBS_COMPLETE;
   session_buffered_write_char (flags, ses);
-  if (!rb->rb_box)
+  if (rb->rb_chksum_tail && rb->rb_ro_id)
+    print_object (((rdf_bigbox_t *) rb)->rbb_chksum, ses, NULL, NULL);
+  else if (!rb->rb_box)
     print_int (0, ses);		/* a zero int with should be printed with int tag for partitioning etc */
   else
     print_object (rb->rb_box, ses, NULL, NULL);
@@ -186,7 +188,7 @@ rb_serialize_complete (caddr_t x, dk_session_t * ses)
     print_short (rb->rb_type, ses);
   if (RDF_BOX_DEFAULT_LANG != rb->rb_lang)
     print_short (rb->rb_lang, ses);
-  if (rb->rb_chksum_tail)
+  if (rb->rb_chksum_tail && rb->rb_ro_id)
     session_buffered_write_char (((rdf_bigbox_t *) rb)->rbb_box_dtp, ses);
 
 }
@@ -294,7 +296,7 @@ dc_rb_id (data_col_t * dc, int inx)
 }
 
 void
-dc_set_rb (data_col_t * dc, int inx, int dt_lang, int flags, caddr_t val, caddr_t lng, int64 ro_id)
+dc_set_rb (data_col_t * dc, int inx, uint32 dt_lang, int flags, caddr_t val, caddr_t lng, int64 ro_id)
 {
   int save;
   rdf_bigbox_t rbbt;
@@ -412,7 +414,7 @@ bif_ro2lo_vec (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, state_slo
       while (lc_next (&lc))
 	{
 	  int set = qst_vec_get_int64 (lc.lc_inst, sel->sel_set_no, lc.lc_position);
-	  int dt_lang = qst_vec_get_int64 (lc.lc_inst, sel->sel_out_slots[0], lc.lc_position);
+	  uint32 dt_lang = qst_vec_get_int64 (lc.lc_inst, sel->sel_out_slots[0], lc.lc_position);
 	  int flags = qst_vec_get_int64 (lc.lc_inst, sel->sel_out_slots[1], lc.lc_position);
 	  caddr_t val = lc_nth_col (&lc, 2);
 	  caddr_t lng = lc_nth_col (&lc, 3);
@@ -541,7 +543,7 @@ bif_ro2sq_vec_1 (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, state_s
 	rb_sets[rb_fill++] = set;
 	rb_bits[set >> 3] |= 1 << (set & 7);
 	((db_buf_t *) dc->dc_values)[set] = empty_mark;
-	dc->dc_n_values = set + 1;
+	dc->dc_n_values = MAX (dc->dc_n_values, set + 1);
       }
     else if ((DV_IRI_ID == dtp || DV_IRI_ID_8 == dtp) && !no_iris)
       {
@@ -552,7 +554,7 @@ bif_ro2sq_vec_1 (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, state_s
 	  }
 	iri_bits[set >> 3] |= 1 << (set & 7);
 	((db_buf_t *) dc->dc_values)[set] = empty_mark;
-	dc->dc_n_values = set + 1;
+	dc->dc_n_values = MAX (dc->dc_n_values, set + 1);
       }
     else
       {
@@ -697,7 +699,7 @@ from DB.DBA.RDF_OBJ where RO_ID = rdf_box_ro_id (?)", qi->qi_client, &err, SQLC_
 	rb_sets[rb_fill++] = set;
 	rb_bits[set >> 3] |= 1 << (set & 7);
 	((db_buf_t *) dc->dc_values)[set] = empty_mark;
-	dc->dc_n_values = set + 1;
+	dc->dc_n_values = MAX (dc->dc_n_values, set + 1);
       }
 #if 0				/* write something meaningful here */
     else if ((DV_IRI_ID == dtp || DV_IRI_ID_8 == dtp))
@@ -709,7 +711,7 @@ from DB.DBA.RDF_OBJ where RO_ID = rdf_box_ro_id (?)", qi->qi_client, &err, SQLC_
 	  }
 	iri_bits[set >> 3] |= 1 << (set & 7);
 	((db_buf_t *) dc->dc_values)[set] = empty_mark;
-	dc->dc_n_values = set + 1;
+	dc->dc_n_values = MAX (dc->dc_n_values, set + 1);
       }
     else
       {
@@ -920,6 +922,7 @@ bif_str_vec (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, state_slot_
   END_SET_LOOP;
 }
 
+void cu_rl_local_exec (cucurbit_t * cu);
 
 void
 bif_iri_to_id_vec (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, state_slot_t * ret)

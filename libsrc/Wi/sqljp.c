@@ -211,6 +211,7 @@ st_ignore_pred (ST * tree)
   return st_is_call (tree, "isiri_id", 1) || st_is_call (tree, "is_named_iri_id", 1);
 }
 
+
 int
 dfe_is_iri_id_test (df_elt_t * pred)
 {
@@ -324,7 +325,7 @@ jp_fanout (join_plan_t * jp)
 	      misc_card *= 0.3;
 	      continue;
 	    }
-	  if (!PRED_IS_EQ (ps->ps_pred))
+	  if (!PRED_IS_EQ_OR_IN (ps->ps_pred))
 	    {
 	      df_elt_t **in_list = sqlo_in_list (ps->ps_pred, NULL, NULL);
 	      if (sqlo_is_sec_in_list (in_list))
@@ -407,7 +408,14 @@ jp_fanout (join_plan_t * jp)
       if (is_s && !is_o)
 	return jp->jp_fanout = (p_stat[0] / s_card) * misc_card;
       if (!is_s && is_o)
-	return jp->jp_fanout = (p_stat[0] / o_card) * misc_card;
+	{
+	  if (DFE_BOP_PRED == is_o->dfe_type && 1 == is_o->_.bin.is_in_list)
+	    {
+	      ST **in_list = sqlo_in_list (is_o, NULL, NULL);
+	      misc_card *= BOX_ELEMENTS (in_list) - 1;
+	    }
+	  return jp->jp_fanout = (p_stat[0] / o_card) * misc_card;
+	}
       if (is_s && is_o)
 	return (p_stat[0] / s_card / o_card) * misc_card;
       return jp->jp_fanout = p_stat[0] * misc_card;
@@ -431,7 +439,15 @@ jp_fanout (join_plan_t * jp)
       jp->jp_fanout = card;
     }
   else
-    jp->jp_fanout = 0.9;
+    {
+      op_table_t *ot = jp->jp_tb_dfe->_.sub.ot;
+      if (ot->ot_is_proc_view)
+	jp->jp_fanout = 0.5;
+      else
+	jp->jp_fanout = 10;
+    }
+  if (jp->jp_tb_dfe->_.table.ot->ot_is_outer && jp->jp_fanout < 1)
+    jp->jp_fanout = 1;
   return jp->jp_fanout;
 }
 

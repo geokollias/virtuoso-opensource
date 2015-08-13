@@ -163,6 +163,7 @@ stn_divide_bulk_input (stage_node_t * stn, caddr_t * inst)
     dfg_slice_set_thread (inst, cm);
     stn_in_batch (target_stn, inst, cm, NULL, 0, 0);
     dk_free_box (cm->cm_cl_stack);
+    CM_FREE_TRACE (cm, __FILE__, __LINE__);
     dk_free ((caddr_t) cm, sizeof (cl_message_t));
   }
   END_DO_RBUF;
@@ -545,6 +546,7 @@ aq_dfg_local_func (caddr_t av, caddr_t * err_ret)
   claq->claq_of_parent = 2;
   cli->cli_claq = NULL;
   claq_free (claq);
+  qi->qi_client = NULL;
   IN_CLL;
   qi->qi_dfg_running = 0;
   qi->qi_thread = NULL;

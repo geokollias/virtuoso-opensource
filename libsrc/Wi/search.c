@@ -641,7 +641,6 @@ dv_base_type (dtp_t dtp)
       return dtp;
     }
 }
-
 void
 dv_num_offset (db_buf_t dv, int64 offset, db_buf_t tmp, int sz)
 {
@@ -3171,11 +3170,13 @@ itc_up_rnd_check (it_cursor_t * itc, buffer_desc_t ** buf_ret)
 
 
 int
-col_is_leading (dbe_column_t * col)
+col_is_leading (dbe_column_t * col, dbe_key_t * sample_key)
 {
   dbe_table_t *tb = col->col_defined_in;
   DO_SET (dbe_key_t *, key, &tb->tb_keys)
   {
+    if (key != sample_key)
+      continue;
     if (key->key_parts && (void *) col == key->key_parts->data)
       return 1;
   }
@@ -3291,6 +3292,8 @@ cs_set_hist (col_stat_t * cs, dbe_column_t * col, caddr_t * hist, int64 est, it_
     }
   if (bcnt)
     dk_set_push (&buckets, list (2, box_num (prev_cnt * mpy), box_copy_tree (hist[prev_inx])));
+  if (hist[len - 1])
+    dk_set_push (&buckets, list (2, box_num (est), box_copy (hist[len - 1])));
   col->col_hist = list_to_array (dk_set_nreverse (buckets));
   if (!keep_cs)
     dk_free_tree ((caddr_t) hist);
@@ -3430,7 +3433,7 @@ itc_col_stat_free (it_cursor_t * itc, int upd_col, float est)
 		  /* if it is an int then the max distinct is the difference between min and max seen */
 		  col->col_min = box_num (min);
 		  col->col_max = box_num (max);
-		  if (col->col_n_distinct > max - min && !col_is_leading (col))
+		  if (col->col_n_distinct > max - min && !col_is_leading (col, key))
 		    col->col_n_distinct = MAX (1, max - min);
 		}
 	      if (!is_int && !hist)
@@ -3438,6 +3441,8 @@ itc_col_stat_free (it_cursor_t * itc, int upd_col, float est)
 		  col->col_min = col_min_max_trunc (minb);
 		  col->col_max = col_min_max_trunc (maxb);
 		}
+	      if (col == (dbe_column_t *) key->key_parts->data && key->key_is_primary && 1 == key->key_n_significant)
+		col->col_n_distinct = est;
 	    }
 	  else if (key && !key->key_distinct)
 	    {

@@ -219,6 +219,7 @@ typedef struct sql_comp_s
   dk_set_t sc_jt_preds;
 
   dk_set_t sc_compound_scopes;
+  dk_set_t sc_with_list;
   int sc_is_trigger_decl;
   int sc_in_cursor_def;
   state_slot_t *sc_grouping;

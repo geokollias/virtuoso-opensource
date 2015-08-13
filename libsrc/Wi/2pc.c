@@ -119,7 +119,6 @@ def_prepare_done (void *res, int trx_status)
   semaphore_leave (future->ft_sem);
   return 0;
 }
-
 static unsigned long
 def_commit_done (void *res, int trx_status)
 {
@@ -129,7 +128,6 @@ def_commit_done (void *res, int trx_status)
   semaphore_leave (future->ft_sem);
   return 0;
 }
-
 static unsigned long
 def_abort_done (void *res, int trx_status)
 {
@@ -173,7 +171,6 @@ static queue_vtbl_t tp_vtbl = {
   def_abort_done,
   def_prep_log
 };
-
 static queue_vtbl_t xa_tp_vtbl = {
   def_prepare_done,
   def_commit_done,
@@ -1031,7 +1028,6 @@ tp_set_trx_id (caddr_t trx_uuid_rw, long trx_id)
   trx_uuid_t *trx_uuid = (trx_uuid_t *) trx_uuid_rw;
   trx_uuid->p_uuid.trx_id = htonl (trx_id);
 }
-
 static void
 tp_set_port (caddr_t trx_uuid_rw, long port)
 {

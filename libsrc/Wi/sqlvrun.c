@@ -2425,6 +2425,8 @@ ts_scan_counted (table_source_t * ts, caddr_t * inst)
   key->key_rows_in_sampled_segs = da->da_scan_rows;
   tb->tb_count_estimate = da->da_scan_rows;
   tb->tb_count_delta = 0;
+  if (1 == tb->tb_primary_key->key_n_significant)
+    ((dbe_column_t *) tb->tb_primary_key->key_parts->data)->col_n_distinct = tb->tb_count_estimate;
   tb->tb_is_counted = 1;
 }
 
@@ -2636,15 +2638,18 @@ aq_qr_func (caddr_t av, caddr_t * err_ret)
     cli_set_slice (cli, NULL, QI_NO_SLICE, NULL);
     if (RST_GB_ENOUGH == reset_code)
       {
+	qi->qi_client = NULL;
 	return (caddr_t) qi;
       }
     if (RST_ENOUGH == reset_code)
       {
+	qi->qi_client = NULL;
 	return (caddr_t) qi;
       }
     if (RST_ERROR == reset_code)
       {
 	*err_ret = thr_get_error_code (prev_qi_thread);
+	qi->qi_client = NULL;
 	return (caddr_t) qi;
       }
   }
@@ -2654,6 +2659,7 @@ aq_qr_func (caddr_t av, caddr_t * err_ret)
   CLAQ_IN_CLL;
   qi->qi_threads = 0;
   qi->qi_thread = NULL;
+  qi->qi_client = NULL;
   CLAQ_LEAVE_CLL;
   return (caddr_t) qi;
 }

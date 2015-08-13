@@ -37,6 +37,7 @@
 #include "sqlo.h"
 #include "list2.h"
 #include "rdfinf.h"
+#include "datesupp.h"
 
 
 #define TA_NTH_IN_ITEM 5001
@@ -727,7 +728,6 @@ dfe_vec_inx_cost (df_elt_t * dfe, index_choice_t * ic, int64 sample)
   df_elt_t *prev_tb;
   float card_between = 1;
   int eq_on_ordering = 0, slices;
-  ;
   int order, cl_colocated = 0;
   float spacing;
   dbe_key_t *key = dfe->_.table.key;
@@ -1098,6 +1098,19 @@ dfe_pk_fk_ref_card (df_elt_t * pred, float *a1)
   return 0;
 }
 
+int
+col_believe_card (dbe_column_t * col)
+{
+  /* an int col card that is equal to max - min is CREDIBLE */
+  if (DV_LONG_INT == dtp_canonical[col->col_sqt.sqt_dtp] && (col->col_min || col->col_max))
+    {
+      int64 min = unbox (col->col_min);
+      int64 max = unbox (col->col_max);
+      return (max - min) == col->col_n_distinct;
+    }
+  return 0;
+}
+
 
 void
 sqlo_eq_cost (dbe_column_t * left_col, df_elt_t * right, df_elt_t * lower, float *a1)
@@ -1152,7 +1165,7 @@ sqlo_eq_cost (dbe_column_t * left_col, df_elt_t * right, df_elt_t * lower, float
 	  if (!is_rdf_col && right_col && right_col->col_n_distinct > 0 && right_col->col_n_distinct < left_col->col_n_distinct)
 	    n_dist = right_col->col_n_distinct;
 	  if (!is_rdf_col && right_col && COL_KP_UNQ != left_col->col_is_key_part && COL_KP_UNQ == right_col->col_is_key_part
-	      && right_col->col_n_distinct > 0)
+	      && right_col->col_n_distinct > 0 && !col_believe_card (left_col))
 	    n_dist = right_col->col_n_distinct;
 	  if (!right_col && DFE_COLUMN == right->dfe_type && right->_.col.card > 0 && n_dist > right->_.col.card)
 	    n_dist = right->_.col.card;
@@ -1289,6 +1302,214 @@ no_index:
 
 int dfe_range_card (df_elt_t * tb_dfe, df_elt_t * lower, df_elt_t * upper, float *card);
 
+int
+dfe_has_const (df_elt_t * dfe, caddr_t * const_ret)
+{
+  if (DFE_CONST == dfe->dfe_type)
+    {
+      if (const_ret)
+	*const_ret = (caddr_t) dfe->dfe_tree;
+      return 1;
+    }
+  if (dfe->dfe_dc && 1 == dfe->dfe_dc->dc_n_values)
+    {
+      if (const_ret)
+	{
+	  caddr_t box = dc_box (dfe->dfe_dc, 0);
+	  *const_ret = t_box_copy_tree (box);
+	  dk_free_tree (box);
+	}
+      return 1;
+    }
+  return 0;
+}
+
+
+
+#define IS_LOWER_CONST(dfe, cnst) ((BOP_GT == dfe->_.bin.op || BOP_GTE == dfe->_.bin.op) && dfe_has_const (dfe->_.bin.right, cnst))
+#define IS_UPPER_CONST(dfe, cnst) ((BOP_LT == dfe->_.bin.op || BOP_LTE == dfe->_.bin.op) && dfe_has_const (dfe->_.bin.right, cnst))
+
+int
+col_is_comparable (dbe_column_t * col, caddr_t cnst)
+{
+  dtp_t dtp;
+  if (DV_ANY == col->col_sqt.sqt_dtp)
+    return 1;
+  dtp = DV_TYPE_OF (cnst);
+  if (IS_NUM_DTP (dtp) && IS_NUM_DTP (col->col_sqt.sqt_dtp))
+    return 1;
+  return dtp_canonical[dtp] == dtp_canonical[col->col_sqt.sqt_dtp];
+}
+
+
+int
+col_may_use_hist (dbe_column_t * col, df_elt_t * lower, df_elt_t * upper)
+{
+  caddr_t cnst = NULL, cnst2 = NULL;
+  if (!col->col_hist)
+    return 0;
+  if (lower && upper && IS_LOWER_CONST (lower, &cnst) && IS_UPPER_CONST (upper, &cnst2))
+    return col_is_comparable (col, cnst) && col_is_comparable (col, cnst2);
+  if (IS_LOWER_CONST (lower, &cnst) || IS_UPPER_CONST (lower, &cnst))
+    return col_is_comparable (col, cnst);
+  if (upper && IS_UPPER_CONST (upper, &cnst))
+    return col_is_comparable (col, cnst);
+  return 0;
+}
+
+double
+hist_diff (caddr_t lower, caddr_t upper)
+{
+  /*  a metric of distance between points.  If number, this is the difference, if dates this is seconds between, if strings, undefined (-1) */
+  dtp_t dtp1 = DV_TYPE_OF (lower);
+  dtp_t dtp2 = DV_TYPE_OF (upper);
+  if (IS_NUM_DTP (dtp1) && IS_NUM_DTP (dtp2))
+    {
+      caddr_t diff = box_sub (upper, lower, NULL, NULL);
+      double d = box_to_double (diff, DV_TYPE_OF (diff));
+      dk_free_box (diff);
+      return d;
+    }
+  if (DV_DATETIME == dtp1 && DV_DATETIME == dtp2)
+    {
+      return dt_seconds (upper) - dt_seconds (lower);
+    }
+  return 0;
+}
+
+uint64
+hist_rows (caddr_t ** hist, int lower, int upper)
+{
+  if (lower >= upper)
+    return 0;
+  return unbox (hist[upper][0]) - unbox (hist[lower][0]);
+}
+
+int
+col_hist_bucket (dbe_column_t * col, caddr_t value, int is_upper, double *dist_ret, double *width_ret)
+{
+  /* returns the bucket where the value falls.  -1 if below first, len + 1 if above last, dist is set to distance of value from
+   * start of bucket, width is set to distance between start and end of bucket, set to -1 if value below first or abobve last  */
+  caddr_t **hist = (caddr_t **) col->col_hist;
+  int len = BOX_ELEMENTS (hist), rc;
+  int below = len, at_or_above = 0, guess;
+  for (;;)
+    {
+      if (below - at_or_above <= 1)
+	{
+	  rc = cmp_boxes (value, hist[at_or_above][1], col->col_collation, col->col_collation);
+	  if (DVC_LESS == rc)
+	    {
+	      if (0 == at_or_above)
+		return -1;
+	      *dist_ret = hist_diff (hist[at_or_above - 1][1], value);
+	      *width_ret = hist_diff (hist[at_or_above - 1][1], hist[at_or_above][1]);
+	      return at_or_above - 1;
+	    }
+	  if (DVC_MATCH == rc)
+	    {
+	      *dist_ret = 0;
+	      return at_or_above;
+	    }
+	  if (at_or_above == len - 1)
+	    return len;
+	  *dist_ret = hist_diff (hist[at_or_above][1], value);
+	  *width_ret = hist_diff (hist[at_or_above][1], hist[at_or_above + 1][1]);
+	  return at_or_above;
+	}
+      guess = (at_or_above + below) / 2;
+      rc = cmp_boxes (value, hist[guess][1], col->col_collation, col->col_collation);
+      if (DVC_MATCH == rc)
+	{
+	  if (!is_upper)
+	    below = guess;
+	  else
+	    at_or_above = guess;
+	}
+      else if (DVC_LESS == rc)
+	below = guess;
+      else
+	at_or_above = guess;
+    }
+}
+
+
+
+float
+col_hist_card (df_elt_t * col_dfe, df_elt_t * lower, df_elt_t * upper)
+{
+  double lower_width = 1, lower_dist = 0, upper_width = 1, upper_dist = 1, mpy = 1;
+  int lower_pos, upper_pos;
+  df_elt_t *pred = lower ? lower : upper;
+  dbe_column_t *col = pred->_.bin.left->_.col.col;
+  caddr_t **hist = (caddr_t **) col->col_hist;
+  int len = BOX_ELEMENTS (hist);
+  double rows, tb_card = unbox (hist[len - 1][0]), lower_closed = 0, upper_closed = 0;
+  if (!upper && IS_UPPER_CONST (lower, NULL))
+    {
+      upper = lower;
+      lower = NULL;
+    }
+  if (upper && lower)
+    {
+      if (!DFE_IS_CONST (lower->_.bin.right))
+	{
+	  mpy = 0.3;
+	  lower = NULL;
+	}
+      if (!DFE_IS_CONST (upper->_.bin.right))
+	{
+	  upper = NULL;
+	  mpy = 0.3;
+	}
+    }
+  if (lower)
+    {
+      lower_pos = col_hist_bucket (col, (caddr_t) lower->_.bin.right->dfe_tree, 0, &lower_dist, &lower_width);
+      lower->_.bin.rng_by_hist = 1;
+    }
+  if (upper)
+    {
+      upper_pos = col_hist_bucket (col, (caddr_t) upper->_.bin.right->dfe_tree, 1, &upper_dist, &upper_width);
+      upper->_.bin.rng_by_hist = 1;
+    }
+  if (upper && upper_pos >= len)
+    upper = NULL;
+  else if (upper && upper_pos < 0)
+    goto empty;
+  if (lower && lower_pos < 0)
+    lower = NULL;
+  else if (lower && lower_pos >= len - 1)
+    goto empty;
+  if (!upper && !lower)
+    return 1;
+  if (lower && BOP_GTE == lower->_.bin.op)
+    lower_closed = (double) tb_card / col->col_n_distinct;
+  if (upper && BOP_LTE == upper->_.bin.op)
+    upper_closed = (double) tb_card / col->col_n_distinct;
+  if (lower && upper)
+    {
+      if (lower_pos == upper_pos)
+	{
+	  uint64 n_rows = hist_rows (hist, lower_pos, lower_pos + 1);
+	  double frac = (upper_dist - lower_dist) / lower_width;
+	  rows = n_rows * frac + lower_closed + upper_closed;
+	}
+      else
+	rows = hist_rows (hist, lower_pos + 1, upper_pos)
+	    + hist_rows (hist, lower_pos, lower_pos + 1) * (1 - (lower_dist / lower_width))
+	    + hist_rows (hist, upper_pos, upper_pos + 1) * (upper_dist / upper_width) + lower_closed + upper_closed;
+    }
+  else if (lower)
+    rows = hist_rows (hist, lower_pos + 1, len - 1) + hist_rows (hist, lower_pos, lower_pos + 1) * (1 - (lower_dist / lower_width));
+  else
+    rows = hist_rows (hist, 0, upper_pos - 1)
+	+ hist_rows (hist, upper_pos, upper_pos + 1) * (upper_dist / upper_width) + upper_closed;
+  return mpy * rows / tb_card;
+empty:
+  return 1e-3;
+}
+
 
 
 void
@@ -1337,6 +1558,11 @@ sqlo_pred_unit_1 (df_elt_t * lower, df_elt_t * upper, df_elt_t * in_tb, float *u
 	{
 	  sqlo_eq_cost (left_col, lower->_.bin.right, lower, a1);
 	}
+      else if (col_may_use_hist (left_col, lower, upper))
+	{
+	  *a1 = col_hist_card (lower, lower, upper);
+	  return;
+	}
       else if (lower->_.bin.op == BOP_GT || lower->_.bin.op == BOP_GTE)
 	{
 	  if (DFE_IS_CONST (lower->_.bin.right) &&
@@ -1345,22 +1571,6 @@ sqlo_pred_unit_1 (df_elt_t * lower, df_elt_t * upper, df_elt_t * in_tb, float *u
 		  left_col->col_collation, left_col->col_collation))
 	    {			/* lower boundary is a constant and it's above the max */
 	      *a1 = 0.001;
-	    }
-	  else if (DFE_IS_CONST (lower->_.bin.right) && left_col->col_hist)
-	    {			/* lower boundary is a constant and there's a col histogram */
-	      int inx;
-	      lower->_.bin.rng_by_hist = 1;
-	      *a1 = 0.95;
-	      DO_BOX (caddr_t *, bucket, inx, ((caddr_t **) left_col->col_hist))
-	      {
-		if (DVC_GREATER == cmp_boxes ((caddr_t) lower->_.bin.right->dfe_tree, bucket[1],
-			left_col->col_collation, left_col->col_collation))
-		  {
-		    *a1 = (float) (1.00 - ((float) inx + 1) / BOX_ELEMENTS (left_col->col_hist));
-		    break;
-		  }
-	      }
-	      END_DO_BOX;
 	    }
 	}
       else if (lower->_.bin.op == BOP_LT || lower->_.bin.op == BOP_LTE)
@@ -1371,22 +1581,6 @@ sqlo_pred_unit_1 (df_elt_t * lower, df_elt_t * upper, df_elt_t * in_tb, float *u
 		  left_col->col_collation, left_col->col_collation))
 	    {			/* upper boundary is a constant and it's below the min */
 	      *a1 = 0.001;
-	    }
-	  else if (DFE_IS_CONST (lower->_.bin.right) && left_col->col_hist)
-	    {			/* upper boundary is a constant and there's a col histogram */
-	      int inx;
-	      lower->_.bin.rng_by_hist = 1;
-	      *a1 = 0.95;
-	      DO_BOX (caddr_t *, bucket, inx, ((caddr_t **) left_col->col_hist))
-	      {
-		if (DVC_LESS == cmp_boxes ((caddr_t) lower->_.bin.right->dfe_tree, bucket[1],
-			left_col->col_collation, left_col->col_collation))
-		  {
-		    *a1 = ((float) inx) / BOX_ELEMENTS (left_col->col_hist);
-		    break;
-		  }
-	      }
-	      END_DO_BOX;
 	    }
 	}
       else if (lower->_.bin.op == BOP_LIKE)
@@ -2813,7 +3007,9 @@ itc_row_selectivity (it_cursor_t * itc, int64 inx_est)
 	return (float) itc->itc_st.n_row_spec_matches / (float) itc->itc_st.n_rows_sampled;
       else
 	{
-	  float cnt = dbe_key_count (itc->itc_insert_key);
+	  /* in case of cluster, no recursive sample here, do not access tb count since can trigger sampling inside sampling */
+	  float cnt =
+	      CL_RUN_CLUSTER == cl_run_local_only ? MAX (10, 10 * itc->itc_st.n_rows_sampled) : dbe_key_count (itc->itc_insert_key);
 	  return MAX (0.5 / cnt, 0.7 / itc->itc_st.n_rows_sampled);
 	}
     }
@@ -3015,6 +3211,7 @@ void
 ric_set_sample (rdf_inf_ctx_t * ctx, caddr_t sc_key, int64 est, float inx_card)
 {
   tb_sample_t smp;
+  tb_sample_t *place = NULL;
   memset (&smp, 0, sizeof (smp));
   smp.smp_card = est;
   smp.smp_inx_card = inx_card;
@@ -3030,7 +3227,14 @@ ric_set_sample (rdf_inf_ctx_t * ctx, caddr_t sc_key, int64 est, float inx_card)
 	  dk_free_tree (key);
 	}
     }
-  id_hash_set (ctx->ric_samples, (caddr_t) & sc_key, (caddr_t) & smp);
+  place = (tb_sample_t *) id_hash_get (ctx->ric_samples, (caddr_t) & sc_key);
+  if (place)
+    {
+      dk_free_tree (sc_key);
+      memcpy (place, &smp, sizeof (tb_sample_t));
+    }
+  else
+    id_hash_set (ctx->ric_samples, (caddr_t) & sc_key, (caddr_t) & smp);
   mutex_leave (ctx->ric_mtx);
 }
 
@@ -3479,7 +3683,7 @@ sqlo_inx_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_elt_
 	  sop.sop_ric = empty_ric;
 	  sop.sop_sc_key_ret = &sc_key;
 	  c = sqlo_inx_sample_1 (tb_dfe, key, lowers, uppers, n_parts, &sop, ic);
-	  if (!sop.sop_res_from_ric_cache && c >= 0)
+	  if (!sop.sop_res_from_ric_cache && c >= 0 && sc_key)
 	    {
 	      ric_set_sample (empty_ric, sc_key, c, ic->ic_inx_card);
 	    }
@@ -4620,6 +4824,46 @@ dfe_sample_dep_only (df_elt_t * dfe, float col_card)
 
 
 void
+dfe_table_narrow_fk (df_elt_t * dfe, index_choice_t * ic, float tb_card, float *inx_card_ret, df_elt_t ** eq_preds, int eq_fill,
+    float *col_card_ret)
+{
+  /* fk with low card refs pk with high card, like tpc ds fact tables to date_dim.  Adjust the col selectivity to be as if the refd table had fk card worth rows */
+  int inx;
+  float rcard, tcard;
+  dbe_table_t *tb = dfe->_.table.ot->ot_table;
+  if (tb_is_rdf_quad (tb))
+    return;
+  if (1 != tb->tb_primary_key->key_n_significant)
+    return;
+  for (inx = 0; inx < eq_fill; inx++)
+    {
+      df_elt_t *pred = eq_preds[inx], *left, *right;
+      if (!pred)
+	continue;
+      left = pred->_.bin.left;
+      if (left->_.col.col != (dbe_column_t *) dfe->_.table.ot->ot_table->tb_primary_key->key_parts->data)
+	continue;		/* consider only eq with a single pk column */
+      right = pred->_.bin.right;
+      if (!right || !right->dfe_tables || dk_set_member (right->dfe_tables, dfe->_.table.ot))
+	continue;
+      rcard = dfe_exp_card (dfe->dfe_sqlo, right);
+      tcard = tb_card * *inx_card_ret * *col_card_ret;
+      if (rcard < tb_card * 0.9)
+	{
+	  /* the right side (fk) is  lower card than the pk. */
+	  if (tcard > rcard)
+	    {
+	      /* more rows on the dim table are selected than distinct fks in the fact table.  All fk's are expected to hit */
+	      return;
+	    }
+	  *col_card_ret *= tb_card / rcard;
+	  return;
+	}
+    }
+}
+
+
+void
 dfe_table_unq_card (df_elt_t * dfe, index_choice_t * ic, float tb_card, float *inx_card_ret, df_elt_t ** eq_preds, int eq_fill,
     float *col_card_ret)
 {
@@ -4659,7 +4903,9 @@ dfe_table_unq_card (df_elt_t * dfe, index_choice_t * ic, float tb_card, float *i
 independent:
   inx_card = MIN (1, inx_card);
   *inx_card_ret = inx_card;
+  dfe_table_narrow_fk (dfe, ic, tb_card, inx_card_ret, eq_preds, eq_fill, col_card_ret);
 }
+
 
 extern caddr_t rdfs_type;
 

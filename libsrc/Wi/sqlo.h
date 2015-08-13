@@ -129,6 +129,8 @@ typedef struct op_table_s
   dk_set_t ot_all_dts;		/* all currently placed dts,scalar subqs.  Can look for intermediate reuse. In top ot only */
   dk_set_t ot_lp_cols;		/* late projection cols, to fetch after gby or top oby */
   float ot_initial_cost;	/* cost of initial plan with this ot in first position */
+  float ot_joined_card;
+  char ot_is_rdf;
   char ot_any_plan;		/* true if there is at least one full plan with this ot in first position */
   char ot_is_right_oj;		/* for a dt ot, set if trying a right hash oj plan.  Only hash join is considered */
   char ot_has_top_test;
@@ -814,7 +816,7 @@ struct dfe_reuse_s
   df_elt_t *dfr_last;		/* if the reuse is only for the start of the dt, this is the last dfe in the reusable leading sect */
   dk_set_t dfr_extra_cols;	/* what cols would have to be added to the reuse candidate */
   dk_set_t dfr_extra_preds;	/* if reused, these preds must be added to filter out the data for reuse. */
-  dk_hash_t *dfr_cn_map;	/* from reuser correlation no to reused correlation no */
+  id_hash_t *dfr_cn_map;	/* from reuser correlation no to reused correlation no */
 };
 
 

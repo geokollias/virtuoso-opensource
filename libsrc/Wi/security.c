@@ -745,7 +745,6 @@ failed_login_from (dk_session_t * ses)
       mutex_leave (failed_login_mtx);
     }
 }
-
 void sec_call_find_user_hook (caddr_t uname, dk_session_t * ses);
 
 

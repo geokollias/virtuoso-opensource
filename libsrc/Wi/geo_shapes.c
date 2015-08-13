@@ -1694,7 +1694,7 @@ ewkt_find_metas_by_geotype (int geotype)
 	  sethash (((void *) ((ptrlong) (ptr->kwd_subtype))), ewkt_geotype_metas, ptr);
 	}
     }
-  return gethash (((void *) ((ptrlong) geotype)), ewkt_geotype_metas);
+  return (ewkt_kwd_metas_t *) gethash (((void *) ((ptrlong) geotype)), ewkt_geotype_metas);
 }
 
 int
@@ -1746,7 +1746,7 @@ ewkt_get_token (ewkt_input_t * in, ewkt_token_val_t * val)
 	  char *buf_tail = buf;
 	  do
 	    {
-	      (buf_tail++)[0] = (in->ewkt_tail++)[0];
+	      (buf_tail++)[0] = toupper ((in->ewkt_tail++)[0]);
 	    }
 	  while (isalnum (in->ewkt_tail[0]) && buf_tail < buf + sizeof (buf) - 1);
 	  buf_tail[0] = '\0';

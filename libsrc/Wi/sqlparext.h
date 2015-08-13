@@ -103,11 +103,13 @@
 #define PROC_TABLE		(ptrlong)121
 #define SELECT_TOP		(ptrlong)122
 #define SELECT_BREAKUP 		(ptrlong)123
-
+#define WITH_STMT ((ptrlong)124)
+#define WITH_DT 125
 #define TABLE_DOTTED		(ptrlong)200
 #define COL_DOTTED		(ptrlong)201
 #define QUOTE			(ptrlong)202
 #define COMMA_EXP		(ptrlong)203
+#define ANALYTICAL_EXP ((ptrlong)204)
 
 #define STAR			(caddr_t) 1L
 
@@ -465,6 +467,13 @@ typedef struct sql_tree_s
     } fn_ref;
     struct
     {
+      ST *call;
+      ST **partition;
+      ST **order;
+      ST *window;
+    } anf;
+    struct
+    {
       ST *table;
       ST **cols;
       ST **vals;
@@ -567,6 +576,16 @@ typedef struct sql_tree_s
       caddr_t text;		/* source text, put intp SYS_VIEWS */
       ptrlong check;
     } view_def;
+    struct
+    {
+      ST **dts;
+      ST *body;
+    } with_stmt;
+    struct
+    {
+      caddr_t name;
+      ST *dt;
+    } with_dt;
     struct
     {
       caddr_t *fk_cols;

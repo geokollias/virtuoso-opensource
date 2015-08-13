@@ -282,7 +282,7 @@ sqlc_add_table_ref (sql_comp_t * sc, ST * tree, dk_set_t * res)
       break;
     case TABLE_DOTTED:
       {
-	dbe_table_t *tb = sch_name_to_table (sc->sc_cc->cc_schema, tree->_.table.name);
+	dbe_table_t *tb = sch_name_to_table (wi_inst.wi_schema, tree->_.table.name);
 	t_NEW_VARZ (comp_table_t, ct);
 	if (!tb)
 	  sqlc_new_error (sc->sc_cc, "42S02", "SQ069", "No table %s", tree->_.table.name);
@@ -293,7 +293,7 @@ sqlc_add_table_ref (sql_comp_t * sc, ST * tree, dk_set_t * res)
 	ct->ct_table = tb;
 	ct->ct_u_id = (oid_t) unbox (tree->_.table.u_id);
 	ct->ct_g_id = (oid_t) unbox (tree->_.table.g_id);
-	ct->ct_derived = (ST *) t_box_copy_tree (sch_view_def (sc->sc_cc->cc_schema, tb->tb_name));
+	ct->ct_derived = (ST *) t_box_copy_tree (sch_view_def (wi_inst.wi_schema, tb->tb_name));
 	if (ct->ct_derived)
 	  {
 	    if (!sec_tb_check (tb, ct->ct_u_id, ct->ct_u_id, GR_SELECT))
@@ -765,15 +765,15 @@ sqlc_check_mpu_name (caddr_t name, mpu_name_type_t type)
   char err_str[300];
 
   err_str[0] = 0;
-  if (NULL != (udt = sch_name_to_type (top_sc->sc_cc->cc_schema, name)) && (type != MPU_UDT || udt->scl_defined))
+  if (NULL != (udt = sch_name_to_type (wi_inst.wi_schema, name)) && (type != MPU_UDT || udt->scl_defined))
     {
       snprintf (err_str, sizeof (err_str), "An user defined type with name %.200s already exists", udt->scl_name);
     }
-  else if (NULL != (module_qr = sch_module_def (top_sc->sc_cc->cc_schema, name)))
+  else if (NULL != (module_qr = sch_module_def (wi_inst.wi_schema, name)))
     {
       snprintf (err_str, sizeof (err_str), "A SQL module with name %.200s already exists", module_qr->qr_proc_name);
     }
-  else if (NULL != (proc_qr = sch_proc_def (top_sc->sc_cc->cc_schema, name)) && type != MPU_PROC)
+  else if (NULL != (proc_qr = sch_proc_def (wi_inst.wi_schema, name)) && type != MPU_PROC)
     {
       snprintf (err_str, sizeof (err_str), "An SQL stored procedure with name %.200s already exists", proc_qr->qr_proc_name);
     }
@@ -804,10 +804,10 @@ sqlc_table_has_subtables (sql_comp_t * sc, ST * tree)
       return 0;
     }
 
-  super = sch_name_to_table (sc->sc_cc->cc_schema, tb_name);
+  super = sch_name_to_table (wi_inst.wi_schema, tb_name);
   if (!super)
     return 0;
-  id_casemode_hash_iterator (&hit, sc->sc_cc->cc_schema->sc_name_to_object[sc_to_table]);
+  id_casemode_hash_iterator (&hit, wi_inst.wi_schema->sc_name_to_object[sc_to_table]);
   while (id_casemode_hit_next (&hit, (caddr_t *) & tbptr))
     {
       dbe_table_t *the_table = *tbptr;
@@ -840,9 +840,10 @@ sql_stmt_comp (sql_comp_t * sc, ST ** ptree)
     sqlc_error (sc->sc_cc, ".....", "Out of memory");
   switch (tree->type)
     {
+    case WITH_STMT:
     case SELECT_STMT:
       {
-	if (enable_vec && !(tree->_.select_stmt.table_exp
+	if (enable_vec && !(SELECT_STMT == tree->type && tree->_.select_stmt.table_exp
 		&& sqlo_opt_value (tree->_.select_stmt.table_exp->_.table_exp.opts, OPT_NOT_VECTORED)))
 	  sc->sc_cc->cc_query->qr_proc_vectored = QR_VEC_STMT;
 	sqlo_top_select (sc, ptree);
@@ -1633,7 +1634,7 @@ query_t *DBG_NAME (sql_compile_1) (DBG_PARAMS const char *string2, client_connec
     {
 /* Procedure's calls published for replication keep old account name*/
       query_t *old_place = qr->qr_module ?
-	  sch_module_def (sc.sc_cc->cc_schema, qr->qr_proc_name) : sch_proc_def (sc.sc_cc->cc_schema, qr->qr_proc_name);
+	  sch_module_def (wi_inst.wi_schema, qr->qr_proc_name) : sch_proc_def (wi_inst.wi_schema, qr->qr_proc_name);
       user_t *p_user = cli->cli_user;
 
       /* Only DBA can create procedures with owner different than creator */
@@ -1649,7 +1650,7 @@ query_t *DBG_NAME (sql_compile_1) (DBG_PARAMS const char *string2, client_connec
 	      qr = NULL;
 	    }
 	}
-      if (qr && !QR_IS_MODULE (qr) && sch_module_def (sc.sc_cc->cc_schema, qr->qr_proc_name))
+      if (qr && !QR_IS_MODULE (qr) && sch_module_def (wi_inst.wi_schema, qr->qr_proc_name))
 	{
 	  if (err)
 	    *err = srv_make_new_error ("37000", "SQ133", "Procedure declaration tries to overwrite a module with the same name");
@@ -1668,10 +1669,10 @@ query_t *DBG_NAME (sql_compile_1) (DBG_PARAMS const char *string2, client_connec
 	    }
 
 	  if (QR_IS_MODULE (qr))
-	    sch_set_module_def (sc.sc_cc->cc_schema, qr->qr_proc_name, qr);
+	    sch_set_module_def (wi_inst.wi_schema, qr->qr_proc_name, qr);
 	  else if (!qr->qr_trig_table)
 	    {
-	      sch_set_proc_def (sc.sc_cc->cc_schema, qr->qr_proc_name, qr);
+	      sch_set_proc_def (wi_inst.wi_schema, qr->qr_proc_name, qr);
 	      if (DO_LOG_INT (LOG_DDL))
 		{
 		  LOG_GET;

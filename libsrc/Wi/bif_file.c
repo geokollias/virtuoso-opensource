@@ -1309,6 +1309,17 @@ bif_sys_dirlist (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 	  goto error_end;
 	}
     }
+  if (dk_set_length (dir_list) >= MAX_BOX_ELEMENTS)
+    {
+      caddr_t box;
+      *err_ret =
+	  srv_make_new_error ("22003", "SR346", "Out of memory allocation limits: the composed vector contains too many items");
+      while (NULL != (box = (caddr_t) dk_set_pop (&dir_list)))
+	{
+	  dk_free_tree (box);
+	}
+      goto error_end;
+    }
   lst = list_to_array (dk_set_nreverse (dir_list));
   if (BOX_ELEMENTS (args) > 3 && bif_long_arg (qst, args, 3, "sys_dirlist") && IS_BOX_POINTER (lst) && BOX_ELEMENTS (lst))
     qsort (lst, BOX_ELEMENTS (lst), sizeof (caddr_t), str_compare);
@@ -2490,13 +2501,13 @@ bif_md5_update (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   caddr_t sctx = bif_string_arg (qst, args, 0, "md5_update");
   caddr_t str = bif_arg (qst, args, 1, "md5_update");
   dtp_t dtp = DV_TYPE_OF (str);
-  if (DV_STRING == dtp)
+  if (DV_STRING == dtp || DV_RDF == dtp)
     str = bif_string_arg (qst, args, 1, "md5_update");
   else
     str = bif_strses_arg (qst, args, 1, "md5_update");
 
   string_to_md5ctx (&ctx, sctx);
-  if (DV_STRING == dtp)
+  if (DV_STRING == dtp || DV_RDF == dtp)
     MD5Update (&ctx, (unsigned char *) str, box_length (str) - 1);
   else
     {

@@ -40,6 +40,10 @@
 #include "sqlbif.h"
 #include "mhash.h"
 
+#if (GCC_VERSION >= 3004) || defined (__clang__)
+#define ENABLE_GCC_OPTS
+#endif
+
 #define IS_64(n) \
   (!((n) >= (int64) INT32_MIN && (n) <= (int64) INT32_MAX))
 
@@ -973,7 +977,7 @@ void
 ce_head_info (db_buf_t ce, int *r_bytes, int *r_values, dtp_t * r_ce_type, dtp_t * r_flags, int *r_hl)
 {
   dtp_t flags, ce_type;
-  int n_bytes, n_values, hl, is_null;
+  int n_bytes = 0, n_values = 0, hl = 0, is_null;
   flags = ce[0];
   ce_type = flags & CE_TYPE_MASK;
   if (ce_type < CE_BITS)
@@ -1059,7 +1063,7 @@ int enable_ce_skip_bits_2 = 0;
   {if (enable_ce_skip_bits_2) ce_skip_bits_2 (bits, skip, byte, bit);	\
    else ce_skip_bits (bits, skip, byte, bit);}
 
-#if !defined (ENABLE_GCC)
+#if !defined (ENABLE_GCC_OPTS)
 uint64
 popcount (uint64 x)
 {
@@ -1857,12 +1861,12 @@ new_ce:
   while (ce < first_ce + str_bytes)
     {
       dtp_t flags, ce_type, is_null;
-      unsigned short n_bytes, n_values;
+      unsigned short n_bytes, n_values = 0;
       dtp_t *ce_first, *ce_first_val;
       dtp_t *ce_end;
       int64 first;
       ce_op_t ce_op;
-      int skip = 0, hl, first_len;
+      int skip = 0, hl, first_len = 0;
 
       {
 	flags = ce[0];
@@ -2729,7 +2733,7 @@ cs_write_rld (compress_state_t * cs, int from, int to)
   cs_append_header (cs->cs_asc_output, &cs->cs_asc_fill, CE_RL_DELTA | flags, to - from, 1000);
   fill = cs->cs_asc_fill;
   org_fill = fill;
-  cs_append_any (cs, cs->cs_asc_output, &fill, from, 0), flags;
+  cs_append_any (cs, cs->cs_asc_output, &fill, from, 0);
   for (inx = from + 1; inx < to; inx++)
     {
       int64 n = numbers[inx];
@@ -4858,6 +4862,7 @@ v = v + (v >> 16); \
   w += w >> 32; \
   w &= 0xff;
 
+#if 0
 void
 test_restr (int **res, int *a1, int *a2, int n)
 {
@@ -5032,7 +5037,7 @@ dveq (db_buf_t dv1, db_buf_t dv2)
   DB_BUF_TLEN (len2, dv2[0], dv2);
   if (len1 != len2)
     return 1;
-#if defined(ENABLE_GCC)
+#if defined(ENABLE_GCC_OPTS)
   return __builtin_memcmp (dv1, dv2, len1);
 #else
   return memcmp (dv1, dv2, len1);
@@ -5128,7 +5133,7 @@ dveq_test (int mode, int repeats)
 int
 memcmp_inl (char *s1, char *s2, int l)
 {
-#if defined(ENABLE_GCC)
+#if defined(ENABLE_GCC_OPTS)
   return __builtin_memcmp (s1, s2, l);
 #else
   return memcmp (s1, s2, l);
@@ -5223,11 +5228,9 @@ test_if (int n)
 int
 test_popcnt (unsigned long l)
 {
-#if defined(ENABLE_GCC)
   return __builtin_popcountl (l);
-#endif
-  return 0;
 }
+
 
 #include "simd.h"
 #include "mhash.h"
@@ -5281,7 +5284,7 @@ mhash64 (const void *key, int len, uint64 seed)
 
 
 
-#if defined(ENABLE_GCC)
+#if defined(ENABLE_GCC_OPTS)
 v2di_t mhash_r_v;
 v2di_t mhash_m_v;
 
@@ -5300,7 +5303,6 @@ v2di_t mhash_m_v;
 #endif
 
 
-#if 0
 void
 vhtst (v2di_t data, v2di_t h)
 {
@@ -5312,7 +5314,6 @@ vhtst (v2di_t data, v2di_t h)
   h ^= k;
   h *= mhash_m_v;
 }
-#endif
 
 
 uint64 *hash_test_m;
@@ -5365,7 +5366,6 @@ hash_test_4 (uint64 * in, int n)
 
 v2di_u_t test_vs;
 
-#if 0
 int
 hash_test_4v (uint64 * in, int n)
 {
@@ -5401,7 +5401,6 @@ hash_test_4v (uint64 * in, int n)
     }
   return res;
 }
-#endif
 
 
 int
@@ -5428,7 +5427,7 @@ test_add_2 (int64 * str, int n)
 void
 bzero16 (long *p, int n)
 {
-#if defined(ENABLE_GCC)
+#if defined(ENABLE_GCC_OPTS)
   int i;
   v2di_u_t z;
   z.l[0] = 0;
@@ -5447,7 +5446,7 @@ bzero16 (long *p, int n)
 void
 cpy16 (long *t, long *s, int n)
 {
-#if defined(ENABLE_GCC)
+#if defined(ENABLE_GCC_OPTS)
   ptrlong t2 = (ptrlong) t;
   ptrlong s2 = (ptrlong) s;
   int i;
@@ -5470,7 +5469,7 @@ cpy16 (long *t, long *s, int n)
 void
 memcpy_c_inl (char *s1, char *s2, int l)
 {
-#if defined(ENABLE_GCC)
+#if defined(ENABLE_GCC_OPTS)
   __builtin_memcpy (s1, s2, l);
 #else
   memcpy (s1, s2, l);
@@ -5480,7 +5479,7 @@ memcpy_c_inl (char *s1, char *s2, int l)
 void
 memcpy_d_inl (long *s1, long *s2, int l)
 {
-#if defined(ENABLE_GCC)
+#if defined(ENABLE_GCC_OPTS)
   __builtin_memcpy (s1, s2, l);
 #else
   memcpy (s1, s2, l);
@@ -5491,7 +5490,7 @@ memcpy_d_inl (long *s1, long *s2, int l)
 void
 test_bzero (long *p, int n)
 {
-#if defined(ENABLE_GCC)
+#if defined(ENABLE_GCC_OPTS)
   __builtin_memset (p, 0, 8 * n);
 #endif
 }
@@ -5513,7 +5512,7 @@ test_vecplus (double *res, double *d1, double *d2, int n)
 int
 test_cmp (char *s1, char *s2)
 {
-#if defined(ENABLE_GCC)
+#if defined(ENABLE_GCC_OPTS)
   v2di_u_t r;
   r.v = *(v2di_t *) s1 - *(v2di_t *) s2;
   if (0 == (r.l[0] | r.l[1]))
@@ -5574,7 +5573,7 @@ test_bits_2 (query_instance_t * qi, dtp_t * set_mask, int n_sets)
     }
   return res;
 }
-
+#endif
 
 
 
@@ -5582,7 +5581,7 @@ caddr_t
 bif_rnd_string (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   caddr_t str;
-  static int s;
+  static int32 s;
   int len = bif_long_arg (qst, args, 0, "rnd_string");
   int inx;
   str = dk_alloc_box (len * 8, DV_STRING);
@@ -5592,6 +5591,7 @@ bif_rnd_string (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 }
 
 
+#if 0
 int
 crc_test (caddr_t str, int rep)
 {
@@ -5634,6 +5634,7 @@ mhash_no_test (caddr_t str, int rep)
     }
   return h;
 }
+#endif
 
 
 caddr_t
@@ -5861,6 +5862,7 @@ bif_string_test (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 }
 
 
+#ifdef TEST_BIFS
 int
 f_clz (int64 arg)
 {
@@ -5934,6 +5936,7 @@ print_primes (int p1, int p2, int pct)
     }
   printf ("\n");
 }
+#endif
 
 
 int ce_op_fill = 1;
@@ -6187,9 +6190,11 @@ col_init ()
   bif_define ("col_count_test", bif_col_count_test);
   bif_define ("rnd_string", bif_rnd_string);
   bif_define ("__dcv_test", bif_dcvt);
+#ifdef TEST_BIFS
   bif_define_typed ("__hash", bif_hash_test, &bt_integer);
   bif_define_typed ("__next_prime", bif_next_prime, &bt_integer);
   bif_define ("__string_test", bif_string_test);
+#endif
   bif_define ("__ddl_table_col_drop_update", bif_ddl_table_col_update);
   dtp_no_dict[DV_COL_BLOB_SERIAL] = 1;
   dtp_no_dict[DV_ARRAY_OF_POINTER] = 1;

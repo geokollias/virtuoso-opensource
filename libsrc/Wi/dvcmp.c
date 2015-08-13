@@ -44,6 +44,10 @@ dv_compare (db_buf_t dv1, db_buf_t dv2, collation_t * collation, offset_t offset
     }
   if (DV_BOX_FLAGS == dtp2)
     {
+#if 0
+      if (!dv1_flags)
+	bing ();
+#endif
       dv2_flags = LONG_REF_NA (dv2 + 1);
       dv2 += 5;
       dtp2 = *dv2;

@@ -137,6 +137,8 @@ long tc_release_pl_on_deleted_dp;
 long tc_release_pl_on_absent_dp;
 long tc_cpt_lt_start_wait;
 long tc_cpt_rollback;
+long tc_cpt_unremap_dirty;
+long tc_cpt_restore_uncommitted;
 long tc_wait_for_closing_lt;
 long tc_pl_non_owner_wait_ref_deld;
 long tc_pl_split;
@@ -210,6 +212,7 @@ extern long tc_dc_alloc;
 extern long tc_dc_size;
 extern long tc_dc_extend;
 extern long tc_dc_extend_values;
+extern long tc_log_write_clocks;
 
 
 extern int32 em_ra_window;
@@ -226,6 +229,11 @@ extern int32 enable_dt_leaf;
 extern int32 enable_join_sample;
 extern int32 sqlo_sample_batch_sz;
 extern int32 sqlo_compiler_exceeds_run_factor;
+extern int sqlo_n_layout_steps;
+extern int sqlo_n_best_layouts;
+extern int sqlo_n_full_layouts;
+
+extern int enable_n_best_plans;
 extern int enable_mem_hash_join;
 extern int32 enable_qrc;
 extern int32 qrc_tolerance;
@@ -1579,11 +1587,14 @@ stat_desc_t stat_descs[] = {
   {"tc_reentry_split", &tc_reentry_split, NULL},
   {"tc_kill_closing", &tc_kill_closing, NULL},
   {"tc_get_buf_failed", &tc_get_buf_failed, NULL},
+  {"tc_log_write_clocks", &tc_log_write_clocks, NULL},
 
   {"tc_release_pl_on_deleted_dp", &tc_release_pl_on_deleted_dp, NULL},
   {"tc_release_pl_on_absent_dp", &tc_release_pl_on_absent_dp, NULL},
   {"tc_cpt_lt_start_wait", &tc_cpt_lt_start_wait, NULL},
   {"tc_cpt_rollback", &tc_cpt_rollback, NULL},
+  {"tc_cpt_unremap_dirty", &tc_cpt_unremap_dirty, NULL},
+  {"tc_cpt_restore_uncommitted", &tc_cpt_restore_uncommitted, NULL},
   {"tc_wait_for_closing_lt", &tc_wait_for_closing_lt, NULL},
   {"tc_pl_non_owner_wait_ref_deld", &tc_pl_non_owner_wait_ref_deld, NULL},
   {"tc_pl_split", &tc_pl_split, NULL},
@@ -1829,7 +1840,11 @@ stat_desc_t dbf_descs[] = {
   {"enable_dt_leaf", &enable_dt_leaf, SD_INT32},
   {"enable_join_sample", &enable_join_sample, SD_INT32},
   {"sqlo_sample_batch_sz", &sqlo_sample_batch_sz, SD_INT32},
+  {"sqlo_n_layout_steps", &sqlo_n_layout_steps, SD_INT32},
+  {"sqlo_n_best_layouts", &sqlo_n_best_layouts, SD_INT32},
+  {"sqlo_n_full_layouts", &sqlo_n_full_layouts, SD_INT32},
   {"sqlo_compiler_exceeds_run_factor", &sqlo_compiler_exceeds_run_factor, SD_INT32},
+  {"enable_n_best_plans", &enable_n_best_plans, SD_INT32},
   {"enable_hash_merge", (long *) &enable_hash_merge, SD_INT32},
   {"enable_hash_fill_join", (long *) &enable_hash_fill_join, SD_INT32},
   {"enable_subscore", (long *) &enable_subscore, SD_INT32},
@@ -4734,10 +4749,15 @@ sc_data_to_ext (query_instance_t * qi, caddr_t dt)
   dtp_t dtp = DV_TYPE_OF (dt);
   if (DV_IRI_ID == dtp)
     {
-      caddr_t str = key_id_to_iri (qi, *(iri_id_t *) dt);
-      if (str)
-	box_flags (str) = BF_IRI;
-      return str;
+      if (MIN_64BIT_BNODE_IRI_ID <= unbox_iri_id (dt))
+	return box_copy (dt);
+      else
+	{
+	  caddr_t str = key_id_to_iri (qi, *(iri_id_t *) dt);
+	  if (str)
+	    box_flags (str) = BF_IRI;
+	  return str;
+	}
     }
   else if (DV_ARRAY_OF_POINTER == dtp)
     {
@@ -4821,13 +4841,66 @@ bif_stat_export (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     id_hash_iterator (&hit, ric->ric_samples);
     while (hit_next (&hit, (caddr_t *) & s_key, (caddr_t *) & smp))
       {
-	dk_set_push (&smps, list (3, sc_data_to_ext (qi, *(caddr_t *) s_key), box_float (smp->smp_card),
-		box_float (smp->smp_inx_card)));
+	caddr_t *ent = sc_data_to_ext (qi, *(caddr_t *) s_key);
+	dbe_key_t *key = sch_id_to_key (wi_inst.wi_schema, unbox (ent[0]));
+	if (key)
+	  {
+	    dk_free_box (ent[0]);
+	    ent[0] = box_dv_short_string (key->key_name);
+	  }
+	dk_set_push (&smps, list (3, ent, box_float (smp->smp_card), box_float (smp->smp_inx_card)));
       }
     dk_set_push (&rics, list (2, box_string (ric->ric_name), list_to_array (smps)));
   }
   END_DO_IDHASH;
   return list (3, list_to_array (cols), list_to_array (keys), list_to_array (rics));
+}
+
+dbe_key_t *
+key_by_name (char *name)
+{
+  DO_HT (ptrlong, id, dbe_key_t *, key, wi_inst.wi_schema->sc_id_to_key)
+  {
+    if (!strcmp (key->key_name, name))
+      return key;
+  }
+  END_DO_HT;
+  return NULL;
+}
+
+
+char *stat_trap = NULL;
+
+void
+stat_adjust_key (caddr_t * k)
+{
+  int64 op = unbox (k[1]);
+  int key_id = 0;
+  caddr_t kn = k[0];
+  if (DV_STRINGP (kn))
+    {
+      dbe_key_t *key = key_by_name (kn);
+      if (key)
+	{
+	  dk_free_box (kn);
+	  k[0] = box_num (key->key_id);
+	  int key_id = unbox (k[0]);
+	}
+    }
+  else
+    key_id = unbox (k[0]);
+
+  if (66 == op && BOX_ELEMENTS (k) == 4 && DV_IRI_ID == DV_TYPE_OF (k[2]) && !k[3])
+    k[3] = box_iri_id (MIN_64BIT_BNODE_IRI_ID);
+#if 0
+  switch (key_id)
+    {
+    case 1001:
+      k[0] = (caddr_t) 275;
+      break;
+    default:;
+    }
+#endif
 }
 
 
@@ -4895,7 +4968,19 @@ bif_stat_import (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     DO_BOX (caddr_t *, smp, inx2, rc[1])
     {
       caddr_t k = sc_ext_to_data (qi, smp[0]);
+      if (stat_trap)
+	{
+	  caddr_t *k = (caddr_t *) smp[0];
+	  int inx;
+	  for (inx = 2; inx < BOX_ELEMENTS (k); inx++)
+	    {
+	      caddr_t *elt = k[inx];
+	      if (DV_STRINGP (elt) && strstr (elt, stat_trap))
+		bing ();
+	    }
+	}
       tb_sample_t smpl;
+      stat_adjust_key ((caddr_t *) k);
       memzero (&smpl, sizeof (smpl));
       smpl.smp_time = approx_msec_real_time ();
       smpl.smp_card = unbox_float (smp[1]);

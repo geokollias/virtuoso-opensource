@@ -932,6 +932,8 @@ typedef struct cl_self_message_s
 #define MTX_TS_SET_2(f, m, fl)
 #endif
 
+#define CM_FREE_TRACE(cm, file, line) {cm->cm_freed_file = file; cm->cm_freed_line = line;}
+
 
 struct cl_message_s
 {
@@ -970,6 +972,10 @@ struct cl_message_s
   cl_op_t *cm_sec;
   cl_message_t **cm_extra_cm;	/* when many consec cms together because of dfg follows, this is the array of non first cms */
   int cm_n_extra;
+#ifdef CM_FREE_TRACE
+  char *cm_freed_file;
+  int cm_freed_line;
+#endif
    MTX_TS_T (cm_queue_ts) MTX_TS_T (cm_dfg_detach_ts) MTX_TS_T (cm_dfg_skip_ts) MTX_TS_T (cm_dfg_reg_ts)
 #ifdef MTX_METER
   uint64 cm_id;
@@ -1226,7 +1232,7 @@ int dfg_fetch_qr (uint64 qf_id, query_t ** qr_ret, cl_thread_t * clt);
 int dfg_fetch_qr_local (uint64 qf_id, query_t ** qr_ret, cl_thread_t * clt);
 void qf_assign_id (query_frag_t * qf);
 stage_node_t **stn_array (dk_set_t nodes, int n_stages);
-client_connection_t *cl_cli_1 (int must_have);
+EXE_EXPORT (client_connection_t *, cl_cli_1, (int must_have));
 #define cl_cli() cl_cli_1 (1)
 
 void clib_add_local_error (cll_in_box_t * clib, caddr_t err);

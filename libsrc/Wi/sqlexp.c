@@ -107,7 +107,6 @@ bop_to_artm_code (int bop)
       return INS_NOT_VALID;
     }
 }
-
 const char *
 ins_type_to_artm_name (char type)
 {
@@ -149,7 +148,6 @@ sqlc_call_ret_name (ST * tree, char *func_name, state_slot_t * ssl)
 	}
     }
 }
-
 int tn_step_refers_to_input;
 
 
@@ -343,13 +341,12 @@ sqlc_call_exp (sql_comp_t * sc, dk_set_t * code, state_slot_t * ret, ST * tree)
 	{
 	  char rq[MAX_NAME_LEN], ro[MAX_NAME_LEN], rn[MAX_NAME_LEN];
 	  sch_split_name (cli_qual (sqlc_client ()), sc->sc_super->sc_cc->cc_query->qr_proc_name, rq, ro, rn);
-	  full_name = sch_full_proc_name_1 (sc->sc_cc->cc_schema, fun_name,
-	      cli_qual (sqlc_client ()), CLI_OWNER (sqlc_client ()), rn);
+	  full_name = sch_full_proc_name_1 (wi_inst.wi_schema, fun_name, cli_qual (sqlc_client ()), CLI_OWNER (sqlc_client ()), rn);
 	}
       else
-	full_name = sch_full_proc_name (sc->sc_cc->cc_schema, fun_name, cli_qual (sqlc_client ()), CLI_OWNER (sqlc_client ()));
+	full_name = sch_full_proc_name (wi_inst.wi_schema, fun_name, cli_qual (sqlc_client ()), CLI_OWNER (sqlc_client ()));
       if (full_name)
-	proc = sch_proc_def (sc->sc_cc->cc_schema, full_name);
+	proc = sch_proc_def (wi_inst.wi_schema, full_name);
     }
 
   if (!fun_udt_name && sqlc_udt_method_call (sc, fun_name, code, ret, params, (caddr_t) ret_param, type_name))
@@ -478,7 +475,7 @@ sqlg_unplace_ssl (sqlo_t * so, ST * tree)
   int inx;
   if (DV_ARRAY_OF_POINTER != DV_TYPE_OF (tree))
     return;
-  if (ST_P (tree, COL_DOTTED))
+  if (ST_COLUMN (tree, COL_DOTTED))
     return;
   dfe = sqlo_df_elt (so, tree);
   if (dfe && dfe->dfe_ssl)
@@ -680,12 +677,12 @@ sqlc_coalesce_exp (sql_comp_t * sc, ST * tree, dk_set_t * code)
     {
       jmp_label_t ok = sqlc_new_label (sc);
       jmp_label_t next = sqlc_new_label (sc);
-      if (1 == inx)
-	sqlg_cond_start (sc);
       ST *cond = exps[inx];
       state_slot_t *cres;
       DEF_PRIVATE_ELTS;
 
+      if (1 == inx)
+	sqlg_cond_start (sc);
       SET_PRIVATE_ELTS (sc, dfe, inx);
       GENERATE_CONTROL_EXP (sc, dfe, inx, code);
       cres = scalar_exp_generate (sc, cond, code);
@@ -785,7 +782,7 @@ scalar_exp_generate (sql_comp_t * sc, ST * tree, dk_set_t * code)
     {
       seg_return (ssl_new_constant (sc->sc_cc, (caddr_t) tree->_.op.arg_1));
     }
-  if (ST_P (tree, COL_DOTTED) || ST_P (tree, FUN_REF))
+  if (ST_COLUMN (tree, COL_DOTTED) || ST_P (tree, FUN_REF))
     {
       state_slot_t *ssl;
       if (sc->sc_so)
@@ -1437,7 +1434,7 @@ cv_call_set_type (sql_comp_t * sc, instruction_t * ins, query_t * qr_found)
     }
   else
     {
-      query_t *qr = qr_found ? qr_found : sch_proc_def (sc->sc_cc->cc_schema, ins->_.call.proc);
+      query_t *qr = qr_found ? qr_found : sch_proc_def (wi_inst.wi_schema, ins->_.call.proc);
       if (!qr || IS_REMOTE_ROUTINE_QR (qr) || !qr->qr_proc_ret_type)
 	goto generic_box;
       else

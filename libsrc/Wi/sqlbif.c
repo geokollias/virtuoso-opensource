@@ -2712,6 +2712,13 @@ bif_substr (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 }
 
 
+caddr_t
+bif_substr_2 (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  return bif_substr (qst, err_ret, args);
+}
+
+
 /* left(str,n) takes n first characters of str. */
 caddr_t
 bif_left (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
@@ -9604,6 +9611,19 @@ bif_tlsf_dump (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   return NULL;
 }
 
+caddr_t
+bif_tlsf_dump_all (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  QNCAST (QI, qi, qst);
+  char *fn = bif_string_or_null_arg (qst, args, 0, "tlsf_dump_bp");
+  id_hash_iterator_t *hit;
+  id_hash_t *ht = NULL;
+  int ht_mode = AB_ALLOCD;
+  int tlp;
+  for (tlp = 0; tlp < MAX_TLSFS; tlp++)
+    tlsf_dump_1 (tlp, fn, ht, ht_mode);
+  return NULL;
+}
 
 caddr_t
 bif_mem_get_current_total (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
@@ -11985,8 +12005,7 @@ print_object_to_new_string (caddr_t xx, const char *fun_name, caddr_t * err_ret,
   END_WRITE_FAIL (out);
   if (!STRSES_CAN_BE_STRING (out))
     {
-      *err_ret = STRSES_LENGTH_ERROR ("serialize");
-      res = NULL;
+      return out;
     }
   else
     res = strses_string (out);
@@ -12014,6 +12033,10 @@ bif_deserialize (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     return (box_deserialize_string (xx, 0, 0));
   if (DV_DB_NULL == dtp)
     return NEW_DB_NULL;
+  if (DV_STRING_SESSION == dtp)
+    {
+      return read_object (xx);
+    }
   if (!IS_BLOB_HANDLE_DTP (dtp))
     sqlr_new_error ("22023", "SR581", "deserialize() requires a blob or NULL or string argument");
   if (((blob_handle_t *) xx)->bh_ask_from_client)
@@ -16335,6 +16358,7 @@ sql_bif_init (void)
   bif_define_ex ("subseq", bif_subseq, BMD_RET_TYPE, &bt_string, BMD_MIN_ARGCOUNT, 2, BMD_MAX_ARGCOUNT, 3, BMD_IS_PURE, BMD_DONE);
   bif_define_ex ("substring", bif_substr, BMD_RET_TYPE, &bt_string, BMD_MIN_ARGCOUNT, 2, BMD_MAX_ARGCOUNT, 3, BMD_IS_PURE,
       BMD_DONE);
+  bif_define_ex ("substr", bif_substr_2, BMD_RET_TYPE, &bt_string, BMD_MIN_ARGCOUNT, 2, BMD_MAX_ARGCOUNT, 3, BMD_IS_PURE, BMD_DONE);
   bif_define_ex ("left", bif_left, BMD_RET_TYPE, &bt_string, BMD_MIN_ARGCOUNT, 2, BMD_MAX_ARGCOUNT, 2, BMD_IS_PURE, BMD_DONE);
   bif_define_ex ("right", bif_right, BMD_RET_TYPE, &bt_string, BMD_MIN_ARGCOUNT, 2, BMD_MAX_ARGCOUNT, 2, BMD_IS_PURE, BMD_DONE);
   bif_define_ex ("ltrim", bif_ltrim, BMD_RET_TYPE, &bt_string, BMD_MIN_ARGCOUNT, 1, BMD_MAX_ARGCOUNT, 2, BMD_IS_PURE, BMD_DONE);
@@ -16743,6 +16767,7 @@ sql_bif_init (void)
   bif_define ("mem_summary", bif_mem_summary);
   bif_define ("tlsf_dump_bp", bif_tlsf_dump_bp);
   bif_define ("tlsf_dump", bif_tlsf_dump);
+  bif_define ("tlsf_dump_all", bif_tlsf_dump_all);
 
 #ifdef MALLOC_STRESS
   bif_define ("set_hard_memlimit", bif_set_hard_memlimit);

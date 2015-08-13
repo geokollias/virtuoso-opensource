@@ -98,7 +98,6 @@ static unsigned char *uu_enctabs[UUNTABLES] =
       /*! */ , uu_enctab_binhex
       /*! */
 };
-
 static int *uu_xlats[UUNTABLES] =
     /*! */ { NULL
       /*! */ , uu_xlat_native

@@ -941,8 +941,6 @@ ric_allocate (caddr_t n2)
   id_hash_set_rehash_pct (ctx->ric_ifp_exclude, 200);
   ctx->ric_ifp_exclude = id_hash_allocate (61, sizeof (caddr_t), sizeof (caddr_t), treehash, treehashcmp);
   ctx->ric_mtx = mutex_allocate ();
-  ctx->ric_samples = id_hash_allocate (601, sizeof (caddr_t), sizeof (tb_sample_t), treehash, treehashcmp);
-  id_hash_set_rehash_pct (ctx->ric_samples, 200);
   ctx->ric_p_stat = hash_table_allocate (11);
   return ctx;
 }
@@ -1735,7 +1733,6 @@ cl_rdf_bif_check_init (bif_t bif)
 	}
     }
 }
-
 rdf_inf_ctx_t *empty_ric;
 
 void

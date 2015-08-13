@@ -519,7 +519,7 @@ dbe_storage_t *cpt_dbs;
 
 it_cursor_t *mcp_itc;
 
-long tc_cpt_unremap_dirty;
+extern long tc_cpt_unremap_dirty;
 
 
 
@@ -1023,6 +1023,7 @@ cpt_pl_restore (page_lock_t * pl, it_cursor_t * itc)
   rd_list_free (rds);
 }
 
+extern long tc_cpt_restore_uncommitted;
 
 void
 cpt_restore_uncommitted (it_cursor_t * itc)
@@ -1070,6 +1071,7 @@ cpt_restore_uncommitted (it_cursor_t * itc)
       uc_insert_t *next = cpt_uci_list->uci_next;
       cpt_reinsert_uci (cpt_uci_list, itc);
       n_uci++;
+      TC (tc_cpt_restore_uncommitted);
       cpt_trx_rc_ck ();
       dk_free ((caddr_t) cpt_uci_list, sizeof (uc_insert_t));
       cpt_uci_list = next;
