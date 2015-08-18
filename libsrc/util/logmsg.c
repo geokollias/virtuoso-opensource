@@ -4,27 +4,18 @@
  *  $Id$
  *
  *  Logfile routines
- *  
- *  This file is part of the OpenLink Software Virtuoso Open-Source (VOS)
- *  project.
- *  
- *  Copyright (C) 1998-2014 OpenLink Software
- *  
- *  This project is free software; you can redistribute it and/or modify it
- *  under the terms of the GNU General Public License as published by the
- *  Free Software Foundation; only version 2 of the License, dated June 1991.
- *  
- *  This program is distributed in the hope that it will be useful, but
- *  WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- *  General Public License for more details.
- *  
- *  You should have received a copy of the GNU General Public License along
- *  with this program; if not, write to the Free Software Foundation, Inc.,
- *  51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
- *  
- *  
-*/
+ *
+ *  Copyright (C) 1993-2015 OpenLink Software.
+ *  All Rights Reserved.
+ *
+ *  The copyright above and this notice must be preserved in all
+ *  copies of this source code.  The copyright above does not
+ *  evidence any actual or intended publication of this source code.
+ *
+ *  This is unpublished proprietary trade secret of OpenLink Software.
+ *  This source code may not be copied, disclosed, distributed, demonstrated
+ *  or licensed except as authorized by OpenLink Software.
+ */
 
 #include "libutil.h"
 #include <util/listmac.h>
@@ -204,9 +195,44 @@ fix_format (char *format_in, char *format_out, int len, int errno_save, char *fi
 }
 
 
+#if defined(va_copy) || defined(__va_copy) || !defined(HAVE_VSNPRINTF)
+/*
+ *  Corrects bug on various systems (ppc, amd64 and others) where
+ *  va_list is modified after use :-(
+ */
+static void
+my_vsnprintf (char *buffer, size_t size, char *format, va_list ap)
+{
+  va_list save_ap;
+
+# if defined(va_copy)
+  va_copy (save_ap, ap);
+# elif defined(__va_copy)
+  __va_copy (save_ap, ap);
+# else
+# define save_ap ap
+# endif
+
+# if defined(HAVE_VSNPRINTF)
+  vsnprintf (buffer, size, format, save_ap);
+# else
+  vsprintf (buffer, format, save_ap);
+# endif
+
+# if !defined(save_ap)
+  va_end (save_ap);
+# endif
+}
+
+# undef save_ap
+# define vsnprintf my_vsnprintf
+#endif
+
+
 int
 logmsg_ap (int level, char *file, int line, int mask, char *format, va_list ap)
 {
+  int printed = 0;
   LOG *log;
   char buf[BUFSIZ];
   char *bufptr;
@@ -220,9 +246,6 @@ logmsg_ap (int level, char *file, int line, int mask, char *format, va_list ap)
   time_t now;
   int month, day, year;
   size_t remain;
-#if defined (HAVE_VA_COPY) || defined (HAVE___VA_COPY)
-  va_list save_ap;
-#endif
 #ifdef HAVE_LOCALTIME_R
   struct tm keeptime;
 #endif
@@ -350,32 +373,11 @@ logmsg_ap (int level, char *file, int line, int mask, char *format, va_list ap)
 	   */
 	  remain = sizeof (buf) - (bufptr - &buf[0]);
 
-	  /* 
- 	   *  Corrects bug on various systems 
-	   *  va_list is modified after use :-(
-	   */
-#if defined (HAVE_VA_COPY)
-#define AP save_ap
-	  va_copy (save_ap, ap);
-#elif defined (HAVE___VA_COPY)
-#define AP save_ap
-	  __va_copy (save_ap, ap);
-#else
-#define AP ap
-#endif
-
-#if defined (WIN32)
-	  _vsnprintf (bufptr, remain, formatbuf, AP);
-#elif defined (HAVE_VSNPRINTF)
-	  vsnprintf (bufptr, remain, formatbuf, AP);
-#else
-	  vsprintf (bufptr, formatbuf, AP);
-#endif
-
-#if defined (HAVE_VA_COPY) || defined (HAVE___VA_COPY)
-#undef AP
-	  va_end (save_ap);
-#endif
+	  if (!printed)
+	    {
+	      vsnprintf (bufptr, remain, formatbuf, ap);
+	      printed = 1;
+	    }
 
 	  if (log->emitter)
 	    (*log->emitter) (log, level, buf);
