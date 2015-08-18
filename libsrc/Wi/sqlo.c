@@ -1023,7 +1023,7 @@ sqlo_add_table_ref (sqlo_t * so, ST ** tree_ret, dk_set_t * res)
 	    if (BOX_ELEMENTS (tree) > 3)
 	      opts = tree->_.dt_ref.opts;
 	    if (opts && sel_opts)
-	      opts = (caddr_t *) t_box_conc ((caddr_t) opts, sel_opts);
+	      opts = (caddr_t *) t_box_conc ((caddr_t) opts, (caddr_t) sel_opts);
 	    else if (sel_opts)
 	      opts = sel_opts;
 	    ot->ot_opts = ot->ot_dt_opts = opts;
@@ -3109,6 +3109,8 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
       }
 
       int32 enable_rdf_box_const = 2;
+      int enable_remove_absent_values;
+#define ST_ABSENT ((ST*)-1)
 
       int sqlo_check_rdf_lit (sqlo_t * so, ST ** ptree)
       {
@@ -3137,8 +3139,9 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
 	      {
 		if (!rdf_obj_of_typed_sqlval (name, vtype, lang, (caddr_t *) & data))
 		  return KS_CAST_UNDEF;
-
 	      }
+	    else if (RDF_SCALAR == vtype)
+	      data = (ST *) name;
 	    else
 	      return KS_CAST_UNDEF;
 	  }
@@ -3174,7 +3177,160 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
       }
 
 
+      int st_is_vec (ST * tree)
+      {
+	return ST_P (tree, CALL_STMT) && SINV_DV_STRINGP (tree->_.call.name) && !stricmp (tree->_.call.name, "vector");
+      }
+
+
+      int st_is_absent (ST * st)
+      {
+	int inx;
+	if (ST_ABSENT == st)
+	  return 1;
+	if (DV_ARRAY_OF_POINTER == DV_TYPE_OF (st))
+	  {
+	    DO_BOX (ST *, st2, inx, st)
+	    {
+	      if (ST_ABSENT == st2)
+		return 1;
+	    }
+	    END_DO_BOX;
+	  }
+	return 0;
+      }
+
+
+      void sqlo_remove_absent (ST *** arr)
+      {
+	int inx, n_abs = 0;
+	dk_set_t res = NULL;
+	if (!enable_remove_absent_values)
+	  return;
+	DO_BOX (ST *, st, inx, *arr) if (st_is_absent (st))
+	  n_abs++;
+	else
+	  t_set_push (&res, (void *) st);
+	END_DO_BOX;
+	if (n_abs)
+	  *arr = (ST **) t_list_to_array (dk_set_nreverse (res));
+      }
+
+
+      int sqlo_lit_value (sqlo_t * so, ST ** ptree)
+      {
+	ST *tree = *ptree;
+	int rc;
+	if (DV_ARRAY_OF_POINTER != DV_TYPE_OF (tree))
+	  return 1;
+	rc = sqlo_check_rdf_lit (so, ptree);
+	if (KS_CAST_UNDEF == rc)
+	  {
+	    if (enable_remove_absent_values && (st_is_call (*ptree, "__i2id", 1) || st_is_call (*ptree, "__i2idn", 1)))
+	      {
+		*ptree = ST_ABSENT;
+		return 1;
+	      }
+	    return 0;
+	  }
+	if (st_is_call (*ptree, "rdflit", 1))
+	  *ptree = (*ptree)->_.call.params[0];
+	return 1;
+      }
+
+      int sqlo_lit_only_vector (sqlo_t * so, ST * vec, caddr_t ** ret)
+      {
+	ST **copy, **args;
+	int inx;
+	int len;
+	ST *first;
+	if (!st_is_vec (vec))
+	  return 0;
+	args = vec->_.call.params;
+	len = BOX_ELEMENTS (args);
+	if (!len)
+	  {
+	    *ret = (caddr_t *) t_listst (0);
+	    return 1;
+	  }
+	first = args[0];
+	if (!sqlo_lit_value (so, &first))
+	  return 0;
+	copy = (ST **) t_box_copy ((caddr_t) args);
+	copy[0] = first;
+	for (inx = 1; inx < len; inx++)
+	  {
+	    if (!sqlo_lit_value (so, &copy[inx]))
+	      return 0;
+	  }
+	*ret = (caddr_t *) copy;
+	return 1;
+      }
+
+      extern int enable_qrc;
+
+      int sqlo_check_lit_vector (sqlo_t * so, ST ** ptree)
+      {
+	ST *tree = *ptree, *first, **copy;
+	int len;
+	ST **args = tree->_.call.params;
+	int inx;
+	st_lit_state_t *stl = so->so_stl;
+	if (!stl || !enable_qrc || stl->stl_no_record)
+	  return 0;
+	len = BOX_ELEMENTS (args);
+	if (!len)
+	  return 0;
+	stl->stl_no_record = 1;
+	first = args[0];
+	if (st_is_vec (first))
+	  {
+	    copy = (ST **) t_box_copy ((caddr_t) args);
+	    for (inx = 0; inx < len; inx++)
+	      {
+		if (!sqlo_lit_only_vector (so, copy[inx], (caddr_t **) & copy[inx]))
+		  {
+		    stl->stl_no_record = 0;
+		    return 0;
+		  }
+	      }
+	    sqlo_remove_absent (&copy);
+	    *ptree = t_listst (3, CALL_STMT, t_sqlp_box_id_upcase ("__rdflit"), t_listst (1, copy));
+	    stl->stl_no_record = 0;
+	    sqlo_lit_param (so, (ST **) & (*ptree)->_.call.params[0]);
+	    return 1;
+	  }
+	if (!sqlo_lit_only_vector (so, (ST *) tree, &copy))
+	  {
+	    stl->stl_no_record = 0;
+	    return 0;
+	  }
+	stl->stl_no_record = 0;
+	sqlo_remove_absent (&copy);
+	*ptree = t_listst (3, CALL_STMT, t_sqlp_box_id_upcase ("__rdflit"), t_listst (1, copy));
+	sqlo_lit_param (so, (ST **) & (*ptree)->_.call.params[0]);
+	return 1;
+      }
+
+      void sqlo_in_as_vec_param (sqlo_t * so, ST * tree)
+      {
+	/* if the in is with a vector of iris, make these a single popaque parameter */
+	ST **args = tree->_.call.params;
+	int len = BOX_ELEMENTS (args);
+	ST *vec;
+	ST **copy = (ST **) t_alloc_box (sizeof (caddr_t) * (len - 1), DV_ARRAY_OF_POINTER);
+	memcpy (copy, &args[1], sizeof (caddr_t) * (len - 1));
+	vec = t_listst (3, CALL_STMT, t_sqlp_box_id_upcase ("vector"), copy);
+	if (sqlo_check_lit_vector (so, &vec))
+	  {
+	    tree->_.call.params = (ST **) t_listst (2, tree->_.call.params[0], vec);
+	  }
+      }
+
+
+
       extern caddr_t uname_one_of_these;
+      int enable_in_vector_param;
 
       ST *sqlo_iri_in_opt (sqlo_t * so, ST * tree)
       {
@@ -3184,7 +3340,6 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
 	return tree;
       }
 
-      extern int enable_qrc;
 
       int sqlo_func_no_lit_params (sqlo_t * so, caddr_t call_name)
       {
@@ -3306,7 +3461,14 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
 		so->so_scope->sco_fun_refs_allowed = 0;
 	      if (NULL != tree->_.fn_ref.fn_arg)
 		{
-		  sqlo_scope (so, &(tree->_.fn_ref.fn_arg));
+		  if (DV_ARRAY_OF_POINTER != DV_TYPE_OF (tree->_.fn_ref.fn_arg))
+		    {
+		      NO_LIT_PARS;
+		      sqlo_scope (so, &(tree->_.fn_ref.fn_arg));
+		      RESTORE_LIT_PARS;
+		    }
+		  else
+		    sqlo_scope (so, &(tree->_.fn_ref.fn_arg));
 		  if (!tree->_.fn_ref.all_distinct && AMMSC_COUNTSUM == tree->_.fn_ref.fn_code
 		      && st_is_call (tree->_.fn_ref.fn_arg, "isnotnull", 1)
 		      && !sqlo_exp_nullable (so, tree->_.fn_ref.fn_arg->_.call.params[0]))
@@ -3349,9 +3511,15 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
 	      else
 		{
 		  CHECK_METHOD_CALL (ptree);
+#if 1
+		  if (!stricmp (call_name, "vector") && sqlo_check_lit_vector (so, ptree))
+		    return;
+#endif
 		  if (KS_CAST_OK == sqlo_check_rdf_lit (so, ptree))
 		    return;
 		}
+	      if (call_name == uname_one_of_these && enable_in_vector_param)
+		sqlo_in_as_vec_param (so, tree);
 	      /* mark qr to do lock if it is for SPARQL insert/delete triples */
 	      if (DV_STRINGP (call_name) &&
 		  (!casemode_strcmp (call_name, "DB.DBA.SPARQL_INSERT_DICT_CONTENT") ||
@@ -3527,7 +3695,7 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
 	  return;
 	if (box_equal (tree, old_tree))
 	  {
-	    *ptree = t_box_copy_tree (new_tree);
+	    *ptree = (ST *) t_box_copy_tree (new_tree);
 	    return;
 	  }
 	DO_BOX (ST *, exp, inx, ((caddr_t *) tree))

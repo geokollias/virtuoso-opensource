@@ -2603,6 +2603,20 @@ sqlo_rdf_obj_const_value (ST * tree, caddr_t * val_ret, caddr_t * lang_ret)
 	*lang_ret = (caddr_t) tree->_.call.params[2];
       return RDF_LANG_STRING;
     }
+  if (ST_P (tree, CALL_STMT) && 3 == BOX_ELEMENTS (tree->_.call.params)
+      && DV_STRINGP (tree->_.call.name) && nc_strstr ((dtp_t *) tree->_.call.name, (dtp_t *) "RDF_MAKE_LONG_OF_TYPEDSQLVAL_STRINGS")
+      && DV_STRINGP (tree->_.call.params[1]))
+    {
+      caddr_t val;
+      int is_err = 0;
+      val = xqf_str_parse_to_rdf_box (tree->_.call.params[0], tree->_.call.params[1], &is_err);
+      if (val_ret && !is_err)
+	{
+	  *val_ret = val;
+	  return RDF_SCALAR;
+	}
+      return 0;
+    }
   return 0;
 }
 
@@ -3017,6 +3031,24 @@ itc_row_selectivity (it_cursor_t * itc, int64 inx_est)
 }
 
 
+int
+sqlo_named_check_card (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_elt_t ** uppers, int n_parts,
+    sample_opt_t * sop, index_choice_t * ic)
+{
+  if (n_parts == 2 && tb_is_rdf_quad (ic->ic_key->key_table) && uppers[1])
+    {
+      ST *r = uppers[1]->_.bin.right->dfe_tree;
+      if (DV_IRI_ID == DV_TYPE_OF (r) && MIN_64BIT_BNODE_IRI_ID == unbox_iri_id (r))
+	{
+	  ic->ic_inx_card = ic->ic_arity = dfe_scan_card (tb_dfe);
+	  ic->ic_col_card_corr = 1;
+	  return 1;
+	}
+    }
+  return 0;
+}
+
+
 float
 sqlo_inx_sample_1 (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_elt_t ** uppers, int n_parts,
     sample_opt_t * sop, index_choice_t * ic)
@@ -3034,6 +3066,10 @@ sqlo_inx_sample_1 (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_el
   search_spec_t **prev_sp;
   dk_set_t added_cols = NULL;
   float row_sel = 1;
+  if (sqlo_named_check_card (tb_dfe, key, lowers, uppers, n_parts, sop, ic))
+    {
+      return ic->ic_arity;
+    }
   itc_clear_stats (itc);
   ic->ic_sampled_col_preds = 0;
   if (sop)
@@ -4912,6 +4948,17 @@ extern caddr_t rdfs_type;
 int dfe_rdfs_type_check_card (df_elt_t * dfe, index_choice_t * ic, df_elt_t ** eqs, int n_eqs, float *inx_cost_ret);
 int sqlo_pred_indexable (df_elt_t * lower, df_elt_t * upper);
 
+int dfe_cost_trap = -1;
+
+int
+dfe_is_first_tb (df_elt_t * dfe)
+{
+  for (dfe = dfe->dfe_prev; dfe && DFE_HEAD != dfe->dfe_type; dfe = dfe->dfe_prev)
+    if (DFE_TABLE == dfe->dfe_type && !dfe->_.table.hash_role)
+      return 0;
+  return 1;
+}
+
 
 void
 dfe_table_cost_ic_1 (df_elt_t * dfe, index_choice_t * ic, int inx_only)
@@ -4937,6 +4984,8 @@ dfe_table_cost_ic_1 (df_elt_t * dfe, index_choice_t * ic, int inx_only)
   df_elt_t *inx_uppers[5] = { 0, 0, 0, 0, 0 };
   df_elt_t *inx_lowers[5] = { 0, 0, 0, 0, 0 };
   int is_inx_const = 1, inx_const_fill = 0, p_stat = 0;
+  if (-1 != dfe_cost_trap && OT_NO (dfe->_.table.ot->ot_new_prefix) == dfe_cost_trap && dfe_is_first_tb (dfe))
+    bing ();
   if (dfe->_.table.index_path)
     {
       dfe_table_ip_cost (dfe, ic);
@@ -5599,8 +5648,8 @@ dfe_top_tb_dfe_cost (df_elt_t * dfe, float *u1, float *a1)
 	    prev = prev->dfe_super;
 	  if (!prev || prev->dfe_type == DFE_HEAD)
 	    {
-	      dfe->dfe_arity = *a1 = 1.0;
 	      bing ();
+	      dfe->dfe_arity = *a1 = 1.0;
 	      break;
 	    }
 	}

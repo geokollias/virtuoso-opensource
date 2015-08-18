@@ -290,8 +290,8 @@ typedef struct _qc_data_s
 {
   /* a group of cached compilationhs of one text with different parametrizable literals */
   int qcd_ref_count;
-  short qcd_n_queries;
   char qcd_to_drop;		/* last reader will free when exiting */
+  uint64 qcd_hash;
   caddr_t qcd_tree;
   query_t **qcd_queries;
   dk_set_t qcd_to_add;
@@ -306,7 +306,6 @@ typedef struct qr_cache_ent_s
   int qce_n_used;
   uint64 qce_exec_msec;
   uint32 qce_last_used;
-  uint32 qce_size;		/* approx size of plan in qns */
   oid_t qce_user;		/* user account */
   char qce_user_only;
   char qce_free_when_done;
@@ -350,6 +349,7 @@ struct query_s
   bitf_t qr_need_cli_sec:1;
   char qr_hidden_columns;
   char qr_n_stages;		/* if represents distr frag */
+  ushort qr_size;		/* approx count of operators fir tracking qrc space */
   /* The query state array's description */
   dk_set_t qr_state_map;
   state_slot_t **qr_freeable_slots;

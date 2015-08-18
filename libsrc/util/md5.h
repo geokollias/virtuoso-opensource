@@ -21,7 +21,7 @@
  */
 
 #include "libutil.h"
-#ifdef _SSL
+#if defined (_SSL) | defined (OPENSSL_NO_KRB5)
 #include <openssl/md5.h>
 #define MD5Init   MD5_Init
 #define MD5Update MD5_Update

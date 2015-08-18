@@ -298,6 +298,7 @@ typedef struct sql_comp_s
   int sc_cn_ctr2;
   dk_set_t sc_dfe_reuses;	/* list of allocd for freeing at end */
   struct st_lit_state_s *sc_stl;
+  int sc_qr_size;
   char sc_no_lit_param;		/* a lit in this place will not be a param even if the same lit is so elsewhere */
   char sc_is_rdf_type_p;
   qf_level_t *sc_qfl;
@@ -738,8 +739,10 @@ dbe_key_t *sqlg_flood_key ();
 
 #define  RDF_UNTYPED ((caddr_t) 1)
 #define RDF_LANG_STRING ((caddr_t) 2)
+#define RDF_SCALAR ((caddr_t)3)
 
 caddr_t sqlo_rdf_obj_const_value (ST * tree, caddr_t * val_ret, caddr_t * lang_ret);
+caddr_t xqf_str_parse_to_rdf_box (caddr_t arg, caddr_t type_iri, int *err_ret);
 int rdf_obj_of_sqlval (caddr_t val, caddr_t * data_ret);
 int rdf_obj_of_typed_sqlval (caddr_t val, caddr_t vtype, caddr_t lang, caddr_t * data_ret);
 int setp_is_high_card (setp_node_t * setp);

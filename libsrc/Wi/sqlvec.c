@@ -3708,7 +3708,7 @@ qn_vec_slots (sql_comp_t * sc, data_source_t * qn, dk_hash_t * res, dk_hash_t * 
 {
   int inx, src_resets_done;
   sc->sc_ssl_prereset_only = NULL;
-
+  sc->sc_qr_size++;
   if (sc->sc_cc->cc_super_cc->cc_instance_fill >= STATE_SLOT_LIMIT)
     SQL_GPF_T1 (sc->sc_cc, "Query too large, variables in state over the limit");
 
@@ -5337,4 +5337,5 @@ sqlg_vector (sql_comp_t * sc, query_t * qr)
       sqlg_vector_subq (sc);
     }
   qr_set_vec_ssls (qr);
+  qr->qr_size = sc->sc_qr_size < 0xffff ? sc->sc_qr_size : 0xffff;
 }

@@ -29,6 +29,9 @@
 #ifndef _DK_H
 #define _DK_H	/* libutil needs this name !!! */
 
+#define _SSL
+#define INPROCESS_CLIENT
+#define VIRTTP
 #include "plugin/exe_export.h"
 
 #ifdef LONGJMP_DEBUG

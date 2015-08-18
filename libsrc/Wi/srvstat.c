@@ -226,6 +226,7 @@ extern int sqlo_max_layouts;
 extern size_t sqlo_max_mp_size;
 extern int enable_initial_plan;
 extern int32 enable_dt_leaf;
+extern int enable_rq_obvious;
 extern int32 enable_join_sample;
 extern int32 sqlo_sample_batch_sz;
 extern int32 sqlo_compiler_exceeds_run_factor;
@@ -237,10 +238,14 @@ extern int enable_n_best_plans;
 extern int enable_mem_hash_join;
 extern int32 enable_qrc;
 extern int32 qrc_tolerance;
+extern size_t qrc_fill;
+extern size_t qrc_capacity;
 extern long tc_qrc_hit;
 extern long tc_qrc_miss;
 extern long tc_qrc_recompile;
 extern long tc_qrc_plan_miss;
+extern int enable_in_vector_param;
+extern int enable_remove_absent_values;
 
 
 #ifdef CACHE_MALLOC
@@ -1838,6 +1843,7 @@ stat_desc_t dbf_descs[] = {
   {"sqlo_max_mp_size", &sqlo_max_mp_size},
   {"enable_initial_plan", &enable_initial_plan, SD_INT32},
   {"enable_dt_leaf", &enable_dt_leaf, SD_INT32},
+  {"enable_rq_obvious", &enable_rq_obvious, SD_INT32},
   {"enable_join_sample", &enable_join_sample, SD_INT32},
   {"sqlo_sample_batch_sz", &sqlo_sample_batch_sz, SD_INT32},
   {"sqlo_n_layout_steps", &sqlo_n_layout_steps, SD_INT32},
@@ -1856,6 +1862,10 @@ stat_desc_t dbf_descs[] = {
   {"enable_stream_gb", (long *) &enable_stream_gb, SD_INT32},
   {"enable_qrc", &enable_qrc, SD_INT32},
   {"qrc_tolerance", &qrc_tolerance, SD_INT32},
+  {"qrc_fill", &qrc_fill},
+  {"qrc_capacity", &qrc_capacity},
+  {"enable_in_vector_param", &enable_in_vector_param, SD_INT32},
+  {"enable_remove_absent_values", &enable_remove_absent_values, SD_INT32},
   {"tc_qrc_hit", &tc_qrc_hit, NULL},
   {"tc_qrc_miss", &tc_qrc_miss, NULL},
   {"tc_qrc_recompile", &tc_qrc_recompile, NULL},
@@ -4884,7 +4894,7 @@ stat_adjust_key (caddr_t * k)
 	{
 	  dk_free_box (kn);
 	  k[0] = box_num (key->key_id);
-	  int key_id = unbox (k[0]);
+	  key_id = unbox (k[0]);
 	}
     }
   else
@@ -4967,6 +4977,7 @@ bif_stat_import (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       continue;
     DO_BOX (caddr_t *, smp, inx2, rc[1])
     {
+      tb_sample_t smpl;
       caddr_t k = sc_ext_to_data (qi, smp[0]);
       if (stat_trap)
 	{
@@ -4979,7 +4990,6 @@ bif_stat_import (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 		bing ();
 	    }
 	}
-      tb_sample_t smpl;
       stat_adjust_key ((caddr_t *) k);
       memzero (&smpl, sizeof (smpl));
       smpl.smp_time = approx_msec_real_time ();

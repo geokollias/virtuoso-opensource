@@ -571,6 +571,7 @@ struct sqlo_s
   char so_place_code_forr_cond;	/* inside cond exp, do not precalculate */
   char so_inside_control_exp;	/* if set, do not place things outside of the innermost enclosing control exp */
   char so_for_late_proj;
+  char so_lit_param;
   dk_set_t so_hash_fillers;
   dk_set_t so_hash_probes;	/* when making a join in build, do not include these tables these are directly on the probe side either directly or on the probe side of a containing hash filler */
   dk_set_t so_inside_subq;	/* list of exists/scalar subq being made.   Contains rename-insensitive hash no.  Used to avoid importing a subq pred as restriction inside itself */

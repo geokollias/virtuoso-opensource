@@ -491,7 +491,8 @@ sqlg_non_index_ins (sql_comp_t * sc, df_elt_t * tb_dfe, key_source_t * ks)
 	df_elt_t **pred;
 	df_elt_t *call = cp->_.bin.right;
 	dbe_column_t *left_col = dfe_in_list_left (call, subr);
-	if (call->_.call.extra && dk_set_member (ks->ks_key->key_parts, (void *) left_col))
+	if (call->_.call.extra
+	    && sqlg_qn_dfe ((data_source_t *) call->_.call.extra) && dk_set_member (ks->ks_key->key_parts, (void *) left_col))
 	  {
 	    /* this is an invisible hash join against a chash filled by chash_in_init */
 	    dk_set_push (&ks->ks_hash_spec, sqlg_chash_in_spec (sc, ks, call, subr, cp->_.bin.is_not));
@@ -7213,7 +7214,10 @@ sqlg_lit_params (sql_comp_t * sc)
       char str[20];
       state_slot_t *ssl;
       if (!dfe)
-	continue;
+	{
+	  dfe = sqlo_new_dfe (sc->sc_so, DFE_CONST, NULL);
+	  dfe->dfe_nth_param = inx + 1;
+	}
       snprintf (str, sizeof (str), ":lp%d", dfe->dfe_nth_param);
       ssl = ssl_new_parameter (sc->sc_cc, str);
       dk_set_push (&qr->qr_parms, (void *) ssl);

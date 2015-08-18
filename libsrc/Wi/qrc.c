@@ -19,6 +19,8 @@ id_hash_t *qr_cache;
 dk_mutex_t qrc_mtx;
 int32 enable_qrc = 0;
 int qrc_fast_hash = 1;
+size_t qrc_fill;
+size_t qrc_capacity = 50000;
 long tc_qrc_hit;
 long tc_qrc_miss;
 long tc_qrc_recompile;
@@ -104,6 +106,8 @@ sqlo_lit_param (sqlo_t * so, ST ** plit)
   if (!stl || stl->stl_no_record)
     return;
   lit = *plit;
+  if (DV_IRI_ID == DV_TYPE_OF (lit) && MIN_64BIT_BNODE_IRI_ID == unbox_iri_id ((caddr_t) lit))
+    return;
   place = (int64 *) id_hash_get (stl->stl_tree_to_lit, (caddr_t) & lit);
   if (!place)
     {
@@ -289,12 +293,14 @@ qrc_samples (st_lit_state_t * stl, query_t * qr)
   return s;
 }
 
-int32 qrc_tolerance = 20;
+int32 qrc_tolerance = 40;
 
 int
 qrc_card_in_range (float c1, float c2)
 {
   if (c1 == c2)
+    return 1;
+  if (c1 < 0.5 && c2 < 0.5)
     return 1;
   if (0 == c1 || 0 == c2)
     return 0;
@@ -396,6 +402,7 @@ int qrc_sample_compatible (sqlo_t * so, qce_sample_t * qces, caddr_t * lits)
 {
   /* take the sample in qces with the lits in stl and see if close enough */
   float smp = -1;
+  int res;
   tb_sample_t *place;
   caddr_t *sc_key = (caddr_t *) t_box_copy_tree (qces->qces_sc_key);
   int inx;
@@ -418,9 +425,13 @@ int qrc_sample_compatible (sqlo_t * so, qce_sample_t * qces, caddr_t * lits)
     smp = place->smp_card;
   mutex_leave (qces->qces_ric->ric_mtx);
   if (-1 != smp)
-    return qrc_card_in_range (smp, qces->qces_card);
+    {
+      res = qrc_card_in_range (smp, qces->qces_card);
+      return res;
+    }
   smp = qrc_sample_sc_key (so, qces, sc_key);
-  return qrc_card_in_range (smp, qces->qces_card);
+  res = qrc_card_in_range (smp, qces->qces_card);
+  return res;
 }
 
 
@@ -580,6 +591,7 @@ qr_set_qce (query_t * qr, qc_data_t * qcd, qce_sample_t ** samples)
   qr->qr_qce = qce;
   qce->qce_qcd = qcd;
   qce->qce_ref_count = 1;
+  qce->qce_last_used = approx_msec_real_time ();
 }
 
 
@@ -629,6 +641,7 @@ qcd_add_if_new (qc_data_t * qcd, query_t * new_qr, qce_sample_t ** samples, st_l
   else
     dk_set_push (&qcd->qcd_to_add, (void *) new_qr);
   qcd_unref (qcd, 1);
+  qrc_fill += new_qr->qr_size;
   mutex_leave (&qrc_mtx);
   return 1;
 }
@@ -656,6 +669,80 @@ qce_free (qr_cache_ent_t * qce)
 }
 
 
+int qrc_trim_pending;
+
+int
+qr_age_cmp (const void *s1, const void *s2)
+{
+  query_t *qr1 = *(query_t **) s1;
+  query_t *qr2 = *(query_t **) s2;
+  uint32 now = approx_msec_real_time ();
+  uint32 a1 = now - qr1->qr_qce->qce_last_used;
+  uint32 a2 = now - qr2->qr_qce->qce_last_used;
+  return a1 < a2;
+}
+
+void
+qrc_trim ()
+{
+  size_t target = (qrc_capacity / 3) * 2;
+  query_t **arr;
+  size_t cum_size = 0;
+  int ctr = 0, inx;
+  dk_set_t qrs = NULL;
+  qrc_trim_pending = 1;
+  id_hash_iterator_t hit;
+  qc_data_t **pqcd, *qcd;
+  qc_key_t *qck;
+  ASSERT_IN_MTX (&qrc_mtx);
+  id_hash_iterator (&hit, qr_cache);
+  while (hit_next (&hit, (caddr_t *) & qck, (caddr_t *) & pqcd))
+    {
+      int inx;
+      qcd = *pqcd;
+      if (qcd->qcd_ref_count)
+	continue;
+      DO_BOX (query_t *, qr, inx, qcd->qcd_queries)
+      {
+	if (qr && qr->qr_qce)
+	  {
+	    qr->qr_qce->qce_ref_count++;
+	    t_set_push (&qrs, (void *) qr);
+	    if (++ctr > 100000)
+	      goto enough;
+	  }
+      }
+      END_DO_BOX;
+    }
+enough:
+  mutex_leave (&qrc_mtx);
+  arr = (query_t **) t_list_to_array (qrs);
+  qsort (arr, ctr, sizeof (caddr_t), qr_age_cmp);
+  for (inx = ctr - 1; inx >= 0; inx--)
+    {
+      query_t *qr = arr[inx];
+      if (qrc_fill - cum_size < target && (!qr->qr_qce->qce_free_when_done || qr->qr_to_recompile))
+	{
+	  mutex_enter (&qrc_mtx);
+	  qr->qr_qce->qce_ref_count--;
+	  mutex_leave (&qrc_mtx);
+	}
+      else
+	{
+	  qr->qr_qce->qce_free_when_done = 1;
+	  if (qrc_free (qr))
+	    {
+	      cum_size += qr->qr_size;
+	      qr_free (qr);
+	    }
+	}
+    }
+  mutex_enter (&qrc_mtx);
+  qrc_fill -= cum_size;
+  qrc_trim_pending = 0;
+}
+
+
 
 void
 qrc_set (sql_comp_t * sc, query_t * qr)
@@ -672,6 +759,8 @@ qrc_set (sql_comp_t * sc, query_t * qr)
   qck.qck_hash = stl->stl_hash;
   qck.qck_tree = stl->stl_tree;
   mutex_enter (&qrc_mtx);
+  if (qr->qr_size + qrc_fill > qrc_capacity && !qrc_trim_pending)
+    qrc_trim ();
   place = (qc_data_t **) id_hash_get (qr_cache, (caddr_t) & qck);
   if (place)
     {
@@ -702,7 +791,9 @@ qrc_set (sql_comp_t * sc, query_t * qr)
       qr->qr_qce = NULL;
       return;
     }
+  qcd->qcd_hash = qck.qck_hash;
   id_hash_set (qr_cache, (caddr_t) & qck, (caddr_t) & qcd);
+  qrc_fill += qr->qr_size;
   mutex_leave (&qrc_mtx);
 }
 
@@ -731,7 +822,7 @@ qrc_remove (query_t * qr, int is_in_qrc)
 {
   int inx;
   qc_data_t *qcd;
-  int any = 0;
+  int any = 0, n_qs;
   qr_cache_ent_t *qce = NULL;
   if (!is_in_qrc)
     mutex_enter (&qrc_mtx);
@@ -742,11 +833,13 @@ qrc_remove (query_t * qr, int is_in_qrc)
 	mutex_leave (&qrc_mtx);
       return;
     }
-  for (inx = 0; inx < qcd->qcd_n_queries; inx++)
+  n_qs = BOX_ELEMENTS (qcd->qcd_queries);
+  for (inx = 0; inx < n_qs; inx++)
     {
       if (qcd->qcd_queries[inx] == qr)
 	{
 	  qcd->qcd_queries[inx] = NULL;
+	  qrc_fill -= qr->qr_size;
 	  qce = qr->qr_qce;
 	  qce->qce_free_when_done = 1;
 	}
@@ -757,16 +850,20 @@ qrc_remove (query_t * qr, int is_in_qrc)
     {
       qc_key_t k;
       k.qck_tree = qcd->qcd_tree;
-      id_hash_remove (qr_cache, (caddr_t) & k);
+      k.qck_hash = qcd->qcd_hash;
+      if (!id_hash_remove (qr_cache, (caddr_t) & k))
+	any = 1;		/* safety, if goes empty but hash rm does not hit, do not free */
     }
   if (!is_in_qrc)
     mutex_leave (&qrc_mtx);
   if (!any)
     {
+      dk_free_box ((caddr_t) qcd->qcd_queries);
       dk_free_tree (qcd->qcd_tree);
       dk_free ((caddr_t) qcd, sizeof (qc_data_t));
     }
 }
+
 
 
 caddr_t
@@ -834,6 +931,7 @@ void
 qrc_status ()
 {
   uint32 now = get_msec_real_time ();
+  size_t total = 0;
   id_hash_iterator_t hit;
   qc_data_t **pqcd, *qcd;
   qc_key_t *qck;
@@ -850,6 +948,7 @@ qrc_status ()
       {
 	if (!qr)
 	  continue;
+	total += qr->qr_size;
 	if (first)
 	  {
 	    trset_printf ("stmt %s\n", qr->qr_text);
@@ -861,6 +960,7 @@ qrc_status ()
       END_DO_BOX;
     }
   mutex_leave (&qrc_mtx);
+  trset_printf ("total query nodes = %ld\n", (long) total);
 }
 
 
