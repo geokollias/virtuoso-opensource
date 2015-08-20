@@ -371,6 +371,8 @@ qrc_sample_sc_key (sqlo_t * so, qce_sample_t * qces, caddr_t * sc_key)
   df_elt_t *upper[10];
   sample_cache_key_t *sck = (sample_cache_key_t *) sc_key[0];
   dbe_key_t *key = sch_id_to_key (wi_inst.wi_schema, sck->sck_key);
+  if (!key)
+    return -1;
   memzero (&ic, sizeof (ic));
   memzero (lower, sizeof (lower));
   memzero (upper, sizeof (upper));
@@ -430,6 +432,8 @@ int qrc_sample_compatible (sqlo_t * so, qce_sample_t * qces, caddr_t * lits)
       return res;
     }
   smp = qrc_sample_sc_key (so, qces, sc_key);
+  if (-1 == smp)
+    return 0;
   res = qrc_card_in_range (smp, qces->qces_card);
   return res;
 }

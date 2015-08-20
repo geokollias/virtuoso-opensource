@@ -3276,7 +3276,7 @@ dcp_find (data_col_t * dc, int64 x)
 
 
 char *
-strnstr (char *str1, int len1, char *str2, int len2)
+virt_strnstr (char *str1, int len1, char *str2, int len2)
 {
   int start;
   for (start = 0; start <= len1 - len2; start++)
@@ -3295,7 +3295,7 @@ dcp_str_find (data_col_t * dc, char *str)
       long l, hl;
       db_buf_t dv = ((db_buf_t *) dc->dc_values)[inx];
       db_buf_length (dv, &hl, &l);
-      if (strnstr (dv + hl, l, str, len))
+      if (virt_strnstr (dv + hl, l, str, len))
 	{
 	  if (-1 == first)
 	    first = inx;

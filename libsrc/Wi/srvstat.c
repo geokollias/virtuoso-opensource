@@ -65,7 +65,7 @@
 #endif
 
 
-
+extern char *git_head;
 long tc_try_land_write;
 long tc_try_land_reset;
 long tc_up_transit_parent_change;

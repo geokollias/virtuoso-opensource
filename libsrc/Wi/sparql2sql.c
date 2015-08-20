@@ -794,6 +794,113 @@ sparp_gp_trav_cu_out_triples_1 (sparp_t * sparp, SPART * curr, sparp_trav_state_
 }
 
 int
+sparp_gp_trav_cu_out_triples_1_flatten_trivial_optionals (sparp_t * sparp, SPART * curr, sparp_trav_state_t * sts_this,
+    void *common_env)
+{
+  int sub_eq_ctr;
+  SPART **left_membs, **left_filts;
+  SPART *left_memb, *opt_memb;
+  sparp_gp_trav_cu_out_triples_1 (sparp, curr, sts_this, common_env);
+  if (SPAR_GP != SPART_TYPE (curr))
+    return 0;
+  if (!((0 == curr->_.gp.subtype) || (OPTIONAL_L == curr->_.gp.subtype) || (WHERE_L == curr->_.gp.subtype)))
+    return 0;
+  if (2 > BOX_ELEMENTS (curr->_.gp.members))
+    return 0;
+  left_memb = curr->_.gp.members[0];
+  if (SPAR_GP != SPART_TYPE (left_memb))
+    return 0;
+  if (0 != left_memb->_.gp.subtype)
+    return 0;
+  if (0 != left_memb->_.gp.glued_filters_count)
+    return 0;
+  if (1 >= BOX_ELEMENTS (left_memb->_.gp.members))
+    return 0;			/* Expanding of a single thing is not quite useful */
+  opt_memb = curr->_.gp.members[1];
+  if (SPAR_GP != SPART_TYPE (opt_memb))
+    return 0;
+  if (OPTIONAL_L != opt_memb->_.gp.subtype)
+    return 0;
+/* Check of vars from OPTIONAL: any var connected from optional MUST be set before optional if it MAY be set after optional */
+  SPARP_FOREACH_GP_EQUIV (sparp, opt_memb, sub_eq_ctr, sub_eq)
+  {
+    int eq_ctr;
+    DO_BOX_FAST (ptrlong, eq_idx, eq_ctr, sub_eq->e_receiver_idxs)
+    {
+      sparp_equiv_t *eq = SPARP_EQUIV (sparp, eq_idx);
+      int good_assignments_before = 0;
+      int any_assignments_after = 0;
+      int var_ctr;
+      int var_subv_ctr;
+      SPART *var;
+      for (var_ctr = 0; var_ctr < eq->e_var_count; var_ctr++)
+	{
+	  var = eq->e_vars[var_ctr];
+	  if ((SPART_VARR_GLOBAL | SPART_VARR_EXTERNAL) & var->_.var.rvr.rvrRestrictions)
+	    {
+	      if (SPART_VARR_NOT_NULL & var->_.var.rvr.rvrRestrictions)
+		good_assignments_before++;
+	    }
+	  else if (NULL != var->_.var.tabid)
+	    any_assignments_after++;
+	}
+      DO_BOX_FAST (ptrlong, subv_eq_idx, var_subv_ctr, eq->e_subvalue_idxs)
+      {
+	sparp_equiv_t *subv_eq = SPARP_EQUIV (sparp, subv_eq_idx);
+	if (subv_eq->e_gp == left_memb)
+	  {
+	    if (SPART_VARR_NOT_NULL & eq->e_rvr.rvrRestrictions)
+	      good_assignments_before++;
+	  }
+	else if (subv_eq->e_gp != opt_memb)
+	  any_assignments_after++;
+      }
+      END_DO_BOX_FAST;
+      if (!good_assignments_before && any_assignments_after)
+	return 0;
+    }
+    END_DO_BOX_FAST;
+  }
+  END_SPARP_FOREACH_GP_EQUIV;
+/* Check of vars from left_memb: any var used in local filters or optionals that MAY stay unbound in left_memb MUST NOT be set outside */
+  SPARP_FOREACH_GP_EQUIV (sparp, left_memb, sub_eq_ctr, sub_eq)
+  {
+    int eq_ctr;
+    if (SPART_VARR_NOT_NULL & sub_eq->e_rvr.rvrRestrictions)
+      continue;
+    if ((0 == sub_eq->e_const_reads) && (0 == sub_eq->e_nested_optionals) && (0 == sub_eq->e_optional_reads))
+      continue;
+    DO_BOX_FAST (ptrlong, eq_idx, eq_ctr, sub_eq->e_receiver_idxs)
+    {
+      sparp_equiv_t *eq = SPARP_EQUIV (sparp, eq_idx);
+      int var_subv_ctr;
+      if (eq->e_gspo_uses)
+	return 0;
+      DO_BOX_FAST (ptrlong, subv_eq_idx, var_subv_ctr, eq->e_subvalue_idxs)
+      {
+	sparp_equiv_t *subv_eq = SPARP_EQUIV (sparp, subv_eq_idx);
+	if (subv_eq->e_gp == left_memb)
+	  continue;
+	if (0 != subv_eq->e_nested_bindings)
+	  return 0;
+      }
+      END_DO_BOX_FAST;
+    }
+    END_DO_BOX_FAST;
+  }
+  END_SPARP_FOREACH_GP_EQUIV;
+  sparp_equiv_audit_all (sparp, 0);
+  left_filts = sparp_gp_detach_all_filters (sparp, left_memb, 1, NULL);
+  left_membs = sparp_gp_detach_all_members (sparp, left_memb, NULL);
+  sparp_gp_detach_member (sparp, curr, 0, NULL);
+  sparp_gp_attach_many_members (sparp, curr, left_membs, 0, NULL);
+  sparp_gp_attach_many_filters (sparp, curr, left_filts, 0, NULL);
+  sparp_equiv_audit_all (sparp, 0);
+  sparp_gp_deprecate (sparp, left_memb, 0);
+  return 0;
+}
+
+int
 sparp_gp_trav_cu_out_triples_1_merge_recvs (sparp_t * sparp, SPART * curr, sparp_trav_state_t * sts_this, void *common_env)
 {
   int eq_ctr;
@@ -2247,7 +2354,7 @@ sparp_make_aliases (sparp_t * sparp, SPART * req_top)
       sparp_gp_trav_make_common_aliases_gp_in, sparp_gp_trav_cu_out_triples_1_merge_recvs,
       NULL, NULL, sparp_gp_trav_make_aliases_expn_subq, NULL);
   sparp_gp_trav_top_pattern (sparp, req_top, NULL,
-      sparp_gp_trav_remove_unused_aliases, sparp_gp_trav_cu_out_triples_1, NULL, NULL, NULL, NULL);
+      sparp_gp_trav_remove_unused_aliases, sparp_gp_trav_cu_out_triples_1_flatten_trivial_optionals, NULL, NULL, NULL, NULL);
   sparp_trav_out_clauses (sparp, req_top, NULL, NULL, NULL /* was sparp_gp_trav_cu_out_triples_1 */ ,
       NULL, NULL, sparp_gp_trav_make_aliases_expn_subq, NULL);
 }
