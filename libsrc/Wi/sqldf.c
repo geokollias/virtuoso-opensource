@@ -6762,7 +6762,7 @@ dfe_join_score (sqlo_t * so, op_table_t * ot, df_elt_t * tb_dfe, dk_set_t * res)
   return score;
 }
 
-int enable_dt_leaf = 0;
+int enable_dt_leaf = 1;
 
 
 int
@@ -7082,7 +7082,7 @@ sqlo_add_right_oj (dk_set_t from_dfes, dk_set_t * plans)
       df_elt_t *tb2 = (df_elt_t *) from_dfes->next->data;
       if (DFE_TABLE == tb1->dfe_type && DFE_TABLE == tb2->dfe_type && tb2->_.table.ot->ot_is_outer)
 	{
-	  if (enable_roj < 2 && (tb_is_rdf_quad (tb1->_.table.ot->ot_table) || tb_is_rdf_quad (tb1->_.table.ot->ot_table)))
+	  if (enable_roj < 2 && (tb_is_rdf_quad (tb1->_.table.ot->ot_table) || tb_is_rdf_quad (tb2->_.table.ot->ot_table)))
 	    return;		/* enable_roj 1 is sql only, 2 is also for rdf */
 	  t_set_push (plans, t_CONS (tb2, t_CONS (tb1, NULL)));
 	}
@@ -7177,7 +7177,7 @@ sqlo_trans_placeable (sqlo_t * so, op_table_t * ot, df_elt_t * dfe, int *any_tra
 
 
 int enable_leaves = 1;
-int enable_joins_only = 0;
+int enable_joins_only = 1;
 int enable_jp = 1;
 int enable_initial_plan = 0;
 int enable_n_best_plans = 0;

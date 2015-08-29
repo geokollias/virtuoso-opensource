@@ -3220,7 +3220,7 @@ sqlo_inx_sample_1 (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_el
   itc->itc_st.cols = NULL;
   tb_count = dbe_key_count (key->key_table->tb_primary_key);
   res = MIN (tb_count, res);
-  if (!sop || sop->sop_ric || sop->sop_use_sc_cache)
+  if ((!sop || sop->sop_ric || sop->sop_use_sc_cache) && !ic_is_insufficient_slices (ic))
     {
       tb_sample_t smp;
       memset (&smp, 0, sizeof (tb_sample_t));
@@ -3339,7 +3339,8 @@ sqlo_inx_inf_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_
 	{
 	  est += s;
 	  inx_card += ic->ic_inx_card;
-	  any_est = 1;
+	  if (!ic_is_insufficient_slices (ic))
+	    any_est = 1;
 	}
     }
   if (sc_key)
@@ -3667,7 +3668,7 @@ sqlo_record_lit_param_sample (df_elt_t * tb_dfe, caddr_t sc_key, index_choice_t 
 
 
 float
-sqlo_inx_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_elt_t ** uppers, int n_parts, index_choice_t * ic)
+sqlo_inx_sample_inner (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_elt_t ** uppers, int n_parts, index_choice_t * ic)
 {
   rdf_inf_ctx_t *ctx = ic->ic_ric;
   float c;
@@ -3719,7 +3720,7 @@ sqlo_inx_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_elt_
 	  sop.sop_ric = empty_ric;
 	  sop.sop_sc_key_ret = &sc_key;
 	  c = sqlo_inx_sample_1 (tb_dfe, key, lowers, uppers, n_parts, &sop, ic);
-	  if (!sop.sop_res_from_ric_cache && c >= 0 && sc_key)
+	  if (!sop.sop_res_from_ric_cache && c >= 0 && sc_key && !ic_is_insufficient_slices (ic))
 	    {
 	      ric_set_sample (empty_ric, sc_key, c, ic->ic_inx_card);
 	    }
@@ -3755,14 +3756,14 @@ sqlo_inx_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_elt_
 	      sop.sop_sc_key_ret = &sc_key;
 	      ic->ic_n_lookups = 1;
 	      c = sqlo_inx_sample_1 (tb_dfe, key, lowers, uppers, n_parts, &sop, ic);
-	      if (!sop.sop_res_from_ric_cache && c >= 0 && sop.sop_ric)
+	      if (!sop.sop_res_from_ric_cache && c >= 0 && sop.sop_ric && !ic_is_insufficient_slices (ic))
 		ric_set_sample (sop.sop_ric, sc_key, c, ic->ic_inx_card);
 	      else
 		free_sc_key = sc_key;
 	    }
 	}
       dk_free_box (o_const);
-      if (is_p && sqlo_record_rdf_p (&sop, key, p_const, c, prev_est, &is_p))
+      if (is_p && !ic_is_insufficient_slices (ic) && sqlo_record_rdf_p (&sop, key, p_const, c, prev_est, &is_p))
 	goto redo;
       dk_free_box (p_const);
     }
@@ -3771,14 +3772,14 @@ sqlo_inx_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_elt_
       sop.sop_ric = empty_ric;
       sop.sop_sc_key_ret = &sc_key;
       c = sqlo_inx_sample_1 (tb_dfe, key, lowers, uppers, n_parts, &sop, ic);
-      if (!sop.sop_res_from_ric_cache && c >= 0 && sop.sop_ric)
+      if (!sop.sop_res_from_ric_cache && c >= 0 && sop.sop_ric && !ic_is_insufficient_slices (ic))
 	{
 	  ric_set_sample (empty_ric, sc_key, c, ic->ic_inx_card);
 	}
       else
 	free_sc_key = sc_key;
     }
-  if (ic->ic_lit_param_nos)
+  if (ic->ic_lit_param_nos && !ic_is_insufficient_slices (ic))
     {
       sqlo_record_lit_param_sample (tb_dfe, sc_key, ic, c);
     }
@@ -3786,6 +3787,35 @@ sqlo_inx_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_elt_
     dk_free_tree (sc_key);
   return c;
 }
+
+
+int
+ic_is_insufficient_slices (index_choice_t * ic)
+{
+  if (!ic->ic_n_slices || 100 == ic->ic_slice_pct)
+    return ic->ic_insufficient_slices = 0;	/* not partitioned */
+  return ic->ic_insufficient_slices = ic->ic_n_small_slices > ic->ic_n_slices / 3;
+}
+
+
+extern int cl_slice_sample_pct;
+
+float
+sqlo_inx_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_elt_t ** uppers, int n_parts, index_choice_t * ic)
+{
+  float res;
+  if (0 == ic->ic_slice_pct)
+    ic->ic_slice_pct = cl_slice_sample_pct;
+  ic->ic_n_slices = ic->ic_n_small_slices = 0;
+  res = sqlo_inx_sample_inner (tb_dfe, key, lowers, uppers, n_parts, ic);
+  if (ic->ic_insufficient_slices)
+    {
+      ic->ic_slice_pct = 100;
+      res = sqlo_inx_sample_inner (tb_dfe, key, lowers, uppers, n_parts, ic);
+    }
+  return res;
+}
+
 
 
 int enable_range_card = 1;

@@ -1550,6 +1550,13 @@ query_t *DBG_NAME (sql_compile_1) (DBG_PARAMS const char *string2, client_connec
 	db_activity_t tmp;
 	qr_free (qr);
 	qr = sc.sc_cc->cc_query;
+	if (prof_on)
+	  {
+	    uint32 elapsed = get_msec_real_time () - msecs;
+	    prof_n_compile++;
+	    prof_compile_time += elapsed;
+	    cli->cli_compile_msec += elapsed;
+	  }
 	CLI_THREAD_TIME (cli);
 	tmp = cli->cli_activity;
 	da_sub (&tmp, &da_before);
@@ -1557,6 +1564,7 @@ query_t *DBG_NAME (sql_compile_1) (DBG_PARAMS const char *string2, client_connec
 	da_sub (&cli->cli_activity, &tmp);
 	MP_DONE ();
 	sc_free (&sc);
+	self->thr_tlsf = save_tlsf;
 	return qr;
       }
     if (qr && qr->qr_proc_name)

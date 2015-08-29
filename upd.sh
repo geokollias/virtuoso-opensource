@@ -19,9 +19,9 @@ cd binsrc/cached_resources
 cp $SRC/binsrc/cached_resources/*.c .
 cd ../..
 cd binsrc/dav 
-cp $SRC/binsrc/dav/* .
+#cp $SRC/binsrc/dav/* .
 cd ../yacutia
-cp $SRC/binsrc/yacutia/* .
+#cp $SRC/binsrc/yacutia/* .
 cd ../virtuoso
 cp $SRC/binsrc/virtuoso/*.[ch] .
 cd ../..

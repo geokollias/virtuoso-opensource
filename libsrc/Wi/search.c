@@ -35,6 +35,8 @@
 #include "sqlbif.h"
 #include "srvstat.h"
 #include "geo.h"
+#include "sqlcmps.h"
+#include "sqlo.h"
 
 
 signed char db_buf_const_length[256];
@@ -3348,7 +3350,8 @@ itc_col_stat_free (it_cursor_t * itc, int upd_col, float est)
       else
 	{
 	  int fill = 0;
-	  hist = cs_hist (cs, col, est, itc);
+	  if (upd_col)
+	    hist = cs_hist (cs, col, est, itc);
 	  id_hash_iterator (&hit, cs->cs_distinct);
 	  while (hit_next (&hit, (caddr_t *) & data, (caddr_t *) & count))
 	    {
@@ -4401,7 +4404,7 @@ itc_sample (it_cursor_t * itc)
 
 
 unsigned int64
-key_count_estimate_slice (dbe_key_t * key, int n_samples, int upd_col_stats, slice_id_t slice)
+key_count_estimate_slice_inner (dbe_key_t * key, int n_samples, int upd_col_stats, slice_id_t slice, index_choice_t * ic)
 {
   int64 res = 0, sample;
   int n;
@@ -4410,6 +4413,7 @@ key_count_estimate_slice (dbe_key_t * key, int n_samples, int upd_col_stats, sli
   it_cursor_t *itc = &itc_auto;
   ITC_INIT (itc, key->key_fragments[0]->kf_it, NULL);
   itc_clear_stats (itc);
+  itc->itc_sample_ic = ic;
   QR_RESET_CTX
   {
     if (!key->key_is_elastic || CL_RUN_CLUSTER != cl_run_local_only)
@@ -4456,6 +4460,23 @@ key_count_estimate_slice (dbe_key_t * key, int n_samples, int upd_col_stats, sli
   if (upd_col_stats)
     itc_col_stat_free (itc, 1, res / n_samples);
   return res / n_samples;
+}
+
+
+unsigned int64
+key_count_estimate_slice (dbe_key_t * key, int n_samples, int upd_col_stats, slice_id_t slice)
+{
+  index_choice_t ic;
+  unsigned int64 res;
+  memzero (&ic, sizeof (ic));
+  res = key_count_estimate_slice_inner (key, n_samples, upd_col_stats, slice, &ic);
+  if (ic_is_insufficient_slices (&ic))
+    {
+      memzero (&ic, sizeof (ic));
+      ic.ic_slice_pct = 100;
+      res = key_count_estimate_slice_inner (key, n_samples, upd_col_stats, slice, &ic);
+    }
+  return res;
 }
 
 

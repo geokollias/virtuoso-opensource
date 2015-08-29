@@ -924,6 +924,7 @@ log_info_http (ws_connection_t * ws, const char *code, OFF_T clen)
 {
   char *new_log = NULL;
   char tmp[4096];
+  int tmp_len = sizeof (tmp) - sizeof (ws->ws_proto) - 1;
   char format[100];
   char buf[DKSES_OUT_BUFFER_LENGTH];
   char *volatile ptr;
@@ -1051,7 +1052,8 @@ next_fragment:
       }
       break;
     case 'r':
-      strcpy_ck (tmp, ws->ws_req_line && ws->ws_method != WM_ERROR ? ws->ws_req_line : "GET unspecified");
+      snprintf (tmp, sizeof (tmp), "%.*s", tmp_len, ws->ws_req_line
+	  && ws->ws_method != WM_ERROR ? ws->ws_req_line : "GET unspecified");
       strcat_ck (tmp, ws->ws_proto);
       tmp[sizeof (tmp) - 1] = 0;
       break;

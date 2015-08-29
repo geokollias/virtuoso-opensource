@@ -753,6 +753,10 @@ typedef struct index_choice_s
   dk_set_t ic_inx_sample_cols;
   dk_set_t ic_pk_fk_refs;	/* in dfe table cost, list of preds that make up each multipart pk to fk ref for costed table */
   dk_set_t ic_lit_param_nos;
+  float ic_slice_pct;		/* 0 means any, other means set pct, actual pct returned here */
+  int ic_n_slices;		/* no of slices sampled in cluster */
+  int ic_n_small_slices;	/* no of empty or small cluster slices */
+  char ic_insufficient_slices;
 } index_choice_t;
 
 typedef struct pred_score_s
@@ -1102,6 +1106,7 @@ key_source_t *sqlg_key_source_create (sqlo_t * so, df_elt_t * tb_dfe, dbe_key_t 
 void sqlg_non_index_ins (sql_comp_t * sc, df_elt_t * tb_dfe, key_source_t * ks);
 void sqlg_is_text_only (sqlo_t * so, df_elt_t * tb_dfe, table_source_t * ts);
 data_source_t *sqlg_make_path_ts (sqlo_t * so, df_elt_t * tb_dfe);
+int ts_check_unq (table_source_t * ts, int flg);
 int sqlg_rdf_ck (sql_comp_t * sc, table_source_t * ts, int is_wr);
 int dfe_is_eq_pred (df_elt_t * pred);
 float sqlo_index_path_cost (dk_set_t path, float *cost_ret, float *card_ret, char *sure_ret, df_elt_t * tb_dfe);
@@ -1120,6 +1125,7 @@ extern caddr_t uname_one_of_these;
 #define PRED_IS_EQ_OR_IN(dfe) ((DFE_BOP_PRED == dfe->dfe_type || DFE_BOP == dfe->dfe_type) && (BOP_EQ == dfe->_.bin.op || 1 == dfe->_.bin.is_in_list))
 float sqlo_inx_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_elt_t ** uppers, int n_parts,
     index_choice_t * ic);
+int ic_is_insufficient_slices (index_choice_t * ic);
 float arity_scale (float ar);
 caddr_t sqlo_rdf_lit_const (ST * tree);
 caddr_t sqlo_rdf_obj_const_value (ST * tree, caddr_t * val_ret, caddr_t * lang_ret);

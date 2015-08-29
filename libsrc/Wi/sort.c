@@ -45,21 +45,28 @@ uint32 cha_top_id;
 void
 top_int_ck (cl_op_t * clo)
 {
-  caddr_t v = clo->_.top.values;
+#if 0
+  caddr_t *v = clo->_.top.values;
   dtp_t dtp = DV_TYPE_OF (v);
   if (-1 == clo->_.top.cnt || !clo->_.top.fill)
     return;
   if (DV_ARRAY_OF_POINTER == dtp)
     {
       int inx;
-      DO_BOX (caddr_t, n, inx, v) if (inx >= clo->_.top.fill)
-	break;
-      if (DV_LONG_INT == DV_TYPE_OF (n))
-	GPF_T1 ("int in top");
+      DO_BOX (caddr_t, n, inx, v)
+      {
+	if (inx >= clo->_.top.fill)
+	  break;
+	if (inx && DVC_GREATER != cmp_boxes (v[inx - 1], v[inx], NULL, NULL))
+	  bing ();
+	if (DV_LONG_INT == DV_TYPE_OF (n))
+	  GPF_T1 ("int in top");
+      }
       END_DO_BOX;
     }
   else if (DV_LONG_INT == dtp)
     GPF_T1 ("int in top");
+#endif
 }
 
 
@@ -109,7 +116,10 @@ setp_get_top (setp_node_t * setp, caddr_t * inst, int create)
 	  clo->_.top.ref_count = 1;
 	  clo->_.top.id = id;
 	  clo->_.top.cnt = unbox (qst_get (inst, setp->setp_top));
-	  clo->_.top.cmp = setp->setp_key_is_desc && ORDER_DESC & (ptrlong) setp->setp_key_is_desc->data;
+	  if (setp->setp_top_gby)
+	    clo->_.top.cmp = 0 != (2 & setp->setp_top_gby);
+	  else
+	    clo->_.top.cmp = setp->setp_key_is_desc && ORDER_DESC & (ptrlong) setp->setp_key_is_desc->data;
 	  if (setp->setp_top_skip)
 	    clo->_.top.cnt += unbox (qst_get (inst, setp->setp_top_skip));
 	}
@@ -133,7 +143,10 @@ setp_top_init (setp_node_t * setp, caddr_t * inst)
   clo->_.top.ref_count = 1;
   qi->qi_set = 0;
   clo->_.top.cnt = unbox (qst_get (inst, SSL_BASE (setp->setp_top)));
-  clo->_.top.cmp = setp->setp_key_is_desc && ORDER_DESC & (ptrlong) setp->setp_key_is_desc->data;
+  if (setp->setp_top_gby)
+    clo->_.top.cmp = 0 != (2 & setp->setp_top_gby);
+  else
+    clo->_.top.cmp = setp->setp_key_is_desc && ORDER_DESC & (ptrlong) setp->setp_key_is_desc->data;
   if (setp->setp_top_skip)
     clo->_.top.cnt += unbox (qst_get (inst, SSL_BASE (setp->setp_top_skip)));
   dk_mutex_init (&clo->_.top.mtx, MUTEX_TYPE_SHORT);
@@ -238,13 +251,13 @@ setp_top_merge (setp_node_t * setp, caddr_t * inst, cl_op_t * clo, int copy)
   dk_session_t *ser = NULL;
   int changed = 0;
   cl_op_t *top_clo;
-  /*top_int_ck (clo); */
+  top_int_ck (clo);
   if (setp)
     {
       top_clo = setp_get_top (setp, inst, 1);
     }
   /* update top clo by clo */
-  /*top_int_ck (top_clo); */
+  top_int_ck (top_clo);
   mutex_enter (&top_clo->_.top.mtx);
   if (top_clo->_.top.is_full)
     {

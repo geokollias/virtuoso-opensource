@@ -3504,14 +3504,14 @@ setp_chash_changed (setp_node_t * setp, caddr_t * inst, chash_t * cha)
 	      int64 *d_ent = (int64 *) LOW_48 (*drop);
 	      *drop = NULL;
 #if 0
+	      int i1;
 	      for (i1 = 0; i1 < fill; i1++)
 		{
 		  if (!*arr[i1])
 		    bing ();
-		  if (i1 > 0
-		      && DVC_LESS != dv_compare (((db_buf_t ***) arr)[i1 - 1][0][nth_col + 1],
-			  ((db_buf_t ***) arr)[i1][0][nth_col + 1], NULL, 0))
+		  if (i1 > 0 && ((double ***) arr)[i1 - 1][0][nth_col] >= ((double ***) arr)[i1][0][nth_col])
 		    bing ();
+		  //if (i1 > 0 && DVC_LESS != dv_compare (((db_buf_t***)arr)[i1 - 1][0][nth_col], ((db_buf_t***)arr)[i1][0][nth_col], NULL, 0)) bing ();
 		}
 #endif
 	      GB_NO_VALUE (setp->setp_ha, d_ent, n_cols);
@@ -7835,7 +7835,7 @@ cl_chash_fill_init (fun_ref_node_t * fref, caddr_t * inst, index_tree_t * tree)
 	ssl_id = ((int64) setp->setp_ht_id->ssl_index << 48);
       else
 	ssl_id = ssl_id << 48;
-      id = (int64) (qi->qi_client->cli_cl_stack[0].clst_req_no) | ((int64) local_cll.cll_this_host << 32) | ssl_id;
+      id = qi_new_ht_id (qi, ((int64) local_cll.cll_this_host << 32) | ssl_id);
       qst_set (inst, setp->setp_chash_clrg, (caddr_t) clrg);
       qst_set (inst, setp->setp_ht_id, box_num (id));
       tree->it_hi->hi_cl_id = id;

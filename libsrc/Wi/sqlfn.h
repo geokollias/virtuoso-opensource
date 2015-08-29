@@ -1473,7 +1473,7 @@ void update_node_vec_run (update_node_t * upd, caddr_t * inst, caddr_t * state);
 void dc_digit_sort (data_col_t ** dcs, int n_dcs, int *sets, int n_sets);
 void sslr_n_consec_ref (caddr_t * inst, state_slot_ref_t * sslr, int *sets, int set, int n_sets);
 void dc_reset_array (caddr_t * inst, data_source_t * qn, state_slot_t ** ssls, int new_sz);
-
+uint64 qi_new_ht_id (query_instance_t * qi, uint64 high_bits);
 void chash_init ();
 int setp_chash_group (setp_node_t * setp, caddr_t * inst);
 int setp_chash_distinct (setp_node_t * setp, caddr_t * inst);

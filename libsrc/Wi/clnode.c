@@ -37,6 +37,8 @@
 #include "sqlcmps.h"
 #include "sqlintrp.h"
 #include "aqueue.h"
+#include "sqlcmps.h"
+#include "sqlo.h"
 
 
 #if 0

@@ -3546,7 +3546,7 @@ fref_setp_flush (fun_ref_node_t * fref, caddr_t * state)
 uint32 cl_ht_id_ctr;
 
 uint64
-qi_new_ht_id (query_instance_t * qi)
+qi_new_ht_id (query_instance_t * qi, uint64 high_bits)
 {
   return 0;
 }
