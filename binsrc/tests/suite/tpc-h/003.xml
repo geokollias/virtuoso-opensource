@@ -1,0 +1,231 @@
+<test>
+    <comment>#line 4 tpc-h/3.sql
+select top 10
+	l_orderkey,
+	sum(l_extendedprice * (1 - l_discount)) as revenue,
+	o_orderdate,
+	o_shippriority
+from
+	customer,
+	orders,
+	lineitem
+where
+	c_mktsegment = BUILDING
+	and c_custkey = o_custkey
+	and l_orderkey = o_orderkey
+	and o_orderdate &lt; cast (1995-03-15 as date)
+	and l_shipdate &gt; cast (1995-03-15 as date)
+group by
+	l_orderkey,
+	o_orderdate,
+	o_shippriority
+order by
+	revenue desc,
+	o_orderdate
+</comment>
+    <query><![CDATA[#line 4 "tpc-h/3.sql"
+select top 10
+	l_orderkey,
+	sum(l_extendedprice * (1 - l_discount)) as revenue,
+	o_orderdate,
+	o_shippriority
+from
+	customer,
+	orders,
+	lineitem
+where
+	c_mktsegment = 'BUILDING'
+	and c_custkey = o_custkey
+	and l_orderkey = o_orderkey
+	and o_orderdate < cast ('1995-03-15' as date)
+	and l_shipdate > cast ('1995-03-15' as date)
+group by
+	l_orderkey,
+	o_orderdate,
+	o_shippriority
+order by
+	revenue desc,
+	o_orderdate
+    ]]></query>
+    <plans>
+	<plan>
+	    <verify result-order="1" col-names="1" plan-xpath="/report[hf[ts[following::setp]][following::fref[fref[ts[following::hs[following::ts[following::stn[following::setp]]]]][following::setp]][following::sel]]]">
+		<da-below rnd="0" seq="0" same-seg="" />
+	    </verify>
+<text><![CDATA[{ 
+{ hash filler
+CUSTOMER     3e+04 rows(.C_CUSTKEY)
+ C_MKTSEGMENT = <c BUILDING>
+Sort hf 35      3e+04 rows(.C_CUSTKEY)
+}
+{ fork
+{ fork
+ORDERS   7.3e+05 rows(.O_CUSTKEY, .O_ORDERKEY, .O_ORDERDATE, .O_SHIPPRIORITY)
+ O_ORDERDATE < <tag 211 c 1995-03-15>
+hash partition+bloom by 39 (tmp)hash join merged always card       0.2 -> ()
+Hash source 35 merged into ts        0.2 rows(.O_CUSTKEY) -> ()
+LINEITEM       2.5 rows(.L_ORDERKEY, .L_EXTENDEDPRICE, .L_DISCOUNT)
+ inlined  L_ORDERKEY = .O_ORDERKEY L_SHIPDATE > <tag 211 c 1995-03-15>
+ 
+Precode:
+      0: temp := artm  1  - .L_DISCOUNT
+      4: temp := artm .L_EXTENDEDPRICE * temp
+      8: BReturn 0
+Stage 2
+Sort (q_.L_ORDERKEY, .O_ORDERDATE, .O_SHIPPRIORITY) -> (temp)
+ 
+}
+group by read node  
+(.L_ORDERKEY, .O_ORDERDATE, .O_SHIPPRIORITY, REVENUE)in each partition slice
+Sort (REVENUE, .O_ORDERDATE) -> (.L_ORDERKEY, .O_SHIPPRIORITY)
+ 
+}
+top order by read (.L_ORDERKEY, REVENUE, .O_ORDERDATE, .O_SHIPPRIORITY)
+Select (.L_ORDERKEY, REVENUE, .O_ORDERDATE, .O_SHIPPRIORITY)
+}
+]]></text>
+	    <xmlplan>
+<report>
+<sctr sctr_ose='0'/>
+<hf sets='154'><ts key='CUSTOMER' table='DB.DBA.CUSTOMER'>
+<ks_row_spec>
+<sp col='C_MKTSEGMENT'>
+<op code='=' >
+<ssl constant='BUILDING' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='29' name='.C_CUSTKEY' />
+</ks_out_slots>
+</ts>
+<setp ha_op='build' hf='35' sets='149'><key><ssl index='29' name='.C_CUSTKEY' />
+</key><dep></dep></setp>
+</hf>
+<fref sets='222'><fref sets='208'><ts key='ORDERS' table='DB.DBA.ORDERS'>
+<ks_row_spec>
+<sp col='O_ORDERDATE'>
+<op code='&lt;' >
+<ssl constant='1995-03-15' />
+</op>
+</sp></ks_row_spec>
+<ks_hash_spec>
+<hrng hs='168' flags='0' /></ks_hash_spec>
+<ks_out_slots>
+<ssl index='45' name='.O_CUSTKEY' />
+<ssl index='44' name='.O_ORDERKEY' />
+<ssl index='43' name='.O_ORDERDATE' />
+<ssl index='42' name='.O_SHIPPRIORITY' />
+</ks_out_slots>
+</ts>
+<hs hf='154'></hs>
+<ts key='LINEITEM' table='DB.DBA.LINEITEM'>
+<ks_spec>
+<sp col='L_ORDERKEY'>
+<op code='=' >
+<ssl index='44' name='.O_ORDERKEY' />
+</op>
+</sp></ks_spec><ks_row_spec>
+<sp col='L_SHIPDATE'>
+<op code='&gt;' >
+<ssl constant='1995-03-15' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='54' name='.L_ORDERKEY' />
+<ssl index='53' name='.L_EXTENDEDPRICE' />
+<ssl index='52' name='.L_DISCOUNT' />
+</ks_out_slots>
+</ts>
+<stn nth='2'/>
+<setp ha_op='group' hf='0' sets='203'><key><ssl index='193' name='q_.L_ORDERKEY' />
+<ssl index='197' name='.O_ORDERDATE' />
+<ssl index='201' name='.O_SHIPPRIORITY' />
+</key><dep><ssl index='199' name='temp' />
+</dep></setp>
+</fref>
+<chash />
+<setp ha_op='order' hf='0' sets='217'><key><ssl index='64' name='REVENUE' />
+<ssl index='43' name='.O_ORDERDATE' />
+</key><dep><ssl index='54' name='.L_ORDERKEY' />
+<ssl index='42' name='.O_SHIPPRIORITY' />
+</dep></setp>
+</fref>
+<sr />
+<sel><ssl index='54' name='.L_ORDERKEY' />
+<ssl index='64' name='REVENUE' />
+<ssl index='43' name='.O_ORDERDATE' />
+<ssl index='42' name='.O_SHIPPRIORITY' />
+</sel>
+</report>
+	    </xmlplan>
+	</plan>
+    </plans>
+    <columns>
+         <column name="L_ORDERKEY"/>
+         <column name="REVENUE"/>
+         <column name="O_ORDERDATE"/>
+         <column name="O_SHIPPRIORITY"/>
+    </columns>
+    <result cnt="10">
+<row>
+    <col dtp="189">2456423</col>
+    <col dtp="191">406181.0111</col>
+    <col dtp="211">1995-03-05</col>
+    <col dtp="189">0</col>
+</row>
+<row>
+    <col dtp="189">3459808</col>
+    <col dtp="191">405838.6989</col>
+    <col dtp="211">1995-03-04</col>
+    <col dtp="189">0</col>
+</row>
+<row>
+    <col dtp="189">492164</col>
+    <col dtp="191">390324.061</col>
+    <col dtp="211">1995-02-19</col>
+    <col dtp="189">0</col>
+</row>
+<row>
+    <col dtp="189">1188320</col>
+    <col dtp="191">384537.9359</col>
+    <col dtp="211">1995-03-09</col>
+    <col dtp="189">0</col>
+</row>
+<row>
+    <col dtp="189">2435712</col>
+    <col dtp="191">378673.0558</col>
+    <col dtp="211">1995-02-26</col>
+    <col dtp="189">0</col>
+</row>
+<row>
+    <col dtp="189">4878020</col>
+    <col dtp="191">378376.7952</col>
+    <col dtp="211">1995-03-12</col>
+    <col dtp="189">0</col>
+</row>
+<row>
+    <col dtp="189">5521732</col>
+    <col dtp="191">375153.9215</col>
+    <col dtp="211">1995-03-13</col>
+    <col dtp="189">0</col>
+</row>
+<row>
+    <col dtp="189">2628192</col>
+    <col dtp="191">373133.3094</col>
+    <col dtp="211">1995-02-22</col>
+    <col dtp="189">0</col>
+</row>
+<row>
+    <col dtp="189">993600</col>
+    <col dtp="191">371407.4595</col>
+    <col dtp="211">1995-03-05</col>
+    <col dtp="189">0</col>
+</row>
+<row>
+    <col dtp="189">2300070</col>
+    <col dtp="191">367371.1452000001</col>
+    <col dtp="211">1995-03-13</col>
+    <col dtp="189">0</col>
+</row>
+    </result>
+</test>

@@ -1,0 +1,1045 @@
+<test>
+    <comment>#line 4 tpc-h/20.sql
+select 
+	s_name,
+	s_address
+from
+	supplier,
+	nation
+where
+	s_suppkey in (
+		select
+			ps_suppkey
+		from
+			partsupp
+		where
+			ps_partkey in (
+				select
+					p_partkey
+				from
+					part
+				where
+					p_name like forest%
+			)
+			and ps_availqty &gt; (
+				select
+					0.5 * sum(l_quantity)
+				from
+					lineitem
+				where
+					l_partkey = ps_partkey
+					and l_suppkey = ps_suppkey
+					and l_shipdate &gt;= cast (1994-01-01 as date)
+					and l_shipdate &lt; dateadd (year, 1, cast (1994-01-01 as date))
+			)
+	)
+	and s_nationkey = n_nationkey
+	and n_name = CANADA
+order by
+	s_name
+</comment>
+    <query><![CDATA[#line 4 "tpc-h/20.sql"
+select 
+	s_name,
+	s_address
+from
+	supplier,
+	nation
+where
+	s_suppkey in (
+		select
+			ps_suppkey
+		from
+			partsupp
+		where
+			ps_partkey in (
+				select
+					p_partkey
+				from
+					part
+				where
+					p_name like 'forest%'
+			)
+			and ps_availqty > (
+				select
+					0.5 * sum(l_quantity)
+				from
+					lineitem
+				where
+					l_partkey = ps_partkey
+					and l_suppkey = ps_suppkey
+					and l_shipdate >= cast ('1994-01-01' as date)
+					and l_shipdate < dateadd ('year', 1, cast ('1994-01-01' as date))
+			)
+	)
+	and s_nationkey = n_nationkey
+	and n_name = 'CANADA'
+order by
+	s_name
+    ]]></query>
+    <plans>
+	<plan>
+	    <verify result-order="1" col-names="1" plan-xpath="/report[hf[ts[following::setp]][following::hf[subq[ts[following::hs[following::setp]]]][following::fref[ts[following::ts[following::ts[following::setp[following::sel[following::ts[following::setp]]]]]]][following::ts[following::sel]]]]]">
+		<da-below rnd="0" seq="0" same-seg="" />
+	    </verify>
+<text><![CDATA[{ 
+{ hash filler
+PART   2.2e+03 rows(t68.P_PARTKEY)
+ P_NAME LIKE <c forest%> LIKE <c >
+Sort hf 35    2.2e+03 rows(t68.P_PARTKEY)
+}
+{ hash filler
+Subquery 41 
+{ 
+LINEITEM     9e+05 rows(t70.L_PARTKEY, t70.L_SUPPKEY, t70.L_QUANTITY)
+ L_SHIPDATE >= <tag 211 c 1994-01-01> < <tag 211 c 1995-01-01>
+hash partition+bloom by 39 (tmp)hash join merged always card     0.011 -> ()
+Hash source 35 merged into ts not partitionable     0.011 rows(t70.L_PARTKEY) -> ()
+ 
+After code:
+      0: t70.L_PARTKEY :=  := artm t70.L_PARTKEY
+      4: t70.L_SUPPKEY :=  := artm t70.L_SUPPKEY
+      8: t70.L_QUANTITY :=  := artm t70.L_QUANTITY
+      12: BReturn 0
+Sort hf 65    9.7e+03 rows(t70.L_PARTKEY, t70.L_SUPPKEY) -> (t70.L_QUANTITY)
+ 
+}
+}
+{ fork
+NATION         1 rows(.N_NATIONKEY)
+ N_NAME = <c CANADA>
+PART   2.2e+03 rows(t6.P_PARTKEY)
+ P_NAME LIKE <c forest%> LIKE <c >
+PARTSUPP       1.7 rows(t4.PS_AVAILQTY, t4.PS_PARTKEY, t4.PS_SUPPKEY)
+ inlined  PS_PARTKEY = t6.P_PARTKEY
+END Node
+After test:
+      0: { 
+{ fork
+Hash source 65       0.012 rows(k_t4.PS_PARTKEY, k_t4.PS_SUPPKEY) -> (t8.L_QUANTITY)
+ 
+After code:
+      0:  sum sumt8.L_QUANTITYset no set_ctr
+      5: BReturn 0
+}
+ 
+After code:
+      0: temp := artm  0.5  * sum
+      4: aggregate :=  := artm temp
+      8: BReturn 0
+Subquery Select(aggregate)
+}
+ 
+      8: if (t4.PS_AVAILQTY > scalar) then 12 else 13 unkn 13
+      12: BReturn 1
+      13: BReturn 0
+Distinct (set_no, t4.PS_SUPPKEY)
+ 
+After code:
+      0: PS_SUPPKEY :=  := artm t4.PS_SUPPKEY
+      4: BReturn 0
+Subquery Select(PS_SUPPKEY)
+SUPPLIER unq      0.04 rows (.S_NAME, .S_ADDRESS)
+ inlined  S_SUPPKEY = PS_SUPPKEY S_NATIONKEY = k_.N_NATIONKEY
+Sort (.S_NAME) -> (.S_ADDRESS)
+ 
+}
+Key from temp (.S_NAME, .S_ADDRESS)
+ 
+Select (.S_NAME, .S_ADDRESS)
+}
+]]></text>
+	    <xmlplan>
+<report>
+<sctr sctr_ose='0'/>
+<hf sets='167'><ts key='PART' table='DB.DBA.PART'>
+<ks_row_spec>
+<sp col='P_NAME'>
+<op code='LIKE' >
+<ssl constant='forest%' />
+</op>
+<op code='LIKE' >
+<ssl constant='' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='29' name='t68.P_PARTKEY' />
+</ks_out_slots>
+</ts>
+<setp ha_op='build' hf='35' sets='162'><key><ssl index='29' name='t68.P_PARTKEY' />
+</key><dep></dep></setp>
+</hf>
+<hf sets='205'><subq>
+<ts key='LINEITEM' table='DB.DBA.LINEITEM'>
+<ks_row_spec>
+<sp col='L_SHIPDATE'>
+<op code='&gt;=' >
+<ssl constant='1994-01-01' />
+</op>
+<op code='&lt;' >
+<ssl constant='1995-01-01' />
+</op>
+</sp></ks_row_spec>
+<ks_hash_spec>
+<hrng hs='183' flags='0' /></ks_hash_spec>
+<ks_out_slots>
+<ssl index='49' name='t70.L_PARTKEY' />
+<ssl index='48' name='t70.L_SUPPKEY' />
+<ssl index='47' name='t70.L_QUANTITY' />
+</ks_out_slots>
+</ts>
+<hs hf='167'><after_code><artm op=':='><res><ssl index='42' name='t70.L_PARTKEY' />
+</res><left><ssl index='49' name='t70.L_PARTKEY' />
+</left></artm><artm op=':='><res><ssl index='43' name='t70.L_SUPPKEY' />
+</res><left><ssl index='48' name='t70.L_SUPPKEY' />
+</left></artm><artm op=':='><res><ssl index='44' name='t70.L_QUANTITY' />
+</res><left><ssl index='47' name='t70.L_QUANTITY' />
+</left></artm><bret ret='0'/></after_code></hs>
+<setp ha_op='build' hf='65' sets='200'><key><ssl index='42' name='t70.L_PARTKEY' />
+<ssl index='43' name='t70.L_SUPPKEY' />
+</key><dep><ssl index='44' name='t70.L_QUANTITY' />
+</dep></setp>
+</subq>
+</hf>
+<fref sets='298'><ts key='NATION' table='DB.DBA.NATION'>
+<ks_row_spec>
+<sp col='N_NAME'>
+<op code='=' >
+<ssl constant='CANADA' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='75' name='.N_NATIONKEY' />
+</ks_out_slots>
+</ts>
+<sctr sctr_ose='0'/>
+<ts key='PART' table='DB.DBA.PART'>
+<ks_row_spec>
+<sp col='P_NAME'>
+<op code='LIKE' >
+<ssl constant='forest%' />
+</op>
+<op code='LIKE' >
+<ssl constant='' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='81' name='t6.P_PARTKEY' />
+</ks_out_slots>
+</ts>
+<ts key='PARTSUPP' table='DB.DBA.PARTSUPP'>
+<ks_spec>
+<sp col='PS_PARTKEY'>
+<op code='=' >
+<ssl index='81' name='t6.P_PARTKEY' />
+</op>
+</sp></ks_spec><ks_out_slots>
+<ssl index='86' name='t4.PS_AVAILQTY' />
+<ssl index='85' name='t4.PS_PARTKEY' />
+<ssl index='84' name='t4.PS_SUPPKEY' />
+</ks_out_slots>
+</ts>
+<after_test><subq><params></params><sctr sctr_ose='0'/>
+<fref sets='262'><hs hf='205'><after_code><agg op='sum'><res><ssl index='96' name='sum' />
+</res><arg><ssl index='92' name='t8.L_QUANTITY' />
+</arg><setno><ssl index='93' name='set_ctr' />
+
+</setno></agg><bret ret='0'/></after_code></hs>
+</fref>
+<sel><out><ssl index='105' name='aggregate' />
+</out></sel>
+</subq><if op='&gt;' succ='12' else='13' unkn='13' merge='0'><left><ssl index='86' name='t4.PS_AVAILQTY' />
+</left><right><ssl index='107' name='scalar' />
+</right></if><bret ret='1'/><bret ret='0'/></after_test><end />
+<setp ha_op='distinct' hf='0' sets='273'><key><ssl index='79' name='set_no' />
+
+<ssl index='84' name='t4.PS_SUPPKEY' />
+
+</key><dep></dep></setp>
+<sel><out><ssl index='78' name='PS_SUPPKEY' />
+</out></sel>
+<ts key='SUPPLIER' table='DB.DBA.SUPPLIER'>
+<ks_spec>
+<sp col='S_SUPPKEY'>
+<op code='=' >
+<ssl index='78' name='PS_SUPPKEY' />
+</op>
+</sp></ks_spec><ks_row_spec>
+<sp col='S_NATIONKEY'>
+<op code='=' >
+<ssl index='286' name='k_.N_NATIONKEY' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='127' name='.S_NAME' />
+<ssl index='126' name='.S_ADDRESS' />
+</ks_out_slots>
+</ts>
+<setp ha_op='order' hf='0' sets='293'><key><ssl index='127' name='.S_NAME' />
+</key><dep><ssl index='126' name='.S_ADDRESS' />
+</dep></setp>
+</fref>
+<ts key='temp'>
+<ks_out_slots>
+<ssl index='127' name='.S_NAME' />
+<ssl index='126' name='.S_ADDRESS' />
+</ks_out_slots>
+</ts>
+<sel><ssl index='127' name='.S_NAME' />
+<ssl index='126' name='.S_ADDRESS' />
+</sel>
+</report>
+	    </xmlplan>
+	</plan>
+    </plans>
+    <columns>
+         <column name="S_NAME"/>
+         <column name="S_ADDRESS"/>
+    </columns>
+    <result cnt="186">
+<row>
+    <col dtp="182">Supplier#000000020</col>
+    <col dtp="182">iybAE,RmTymrZVYaFZva2SH,j</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000091</col>
+    <col dtp="182">YV45D7TkfdQanOOZ7q9QxkyGUapU1oOWU6q3</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000205</col>
+    <col dtp="182">rF uV8d0JNEk</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000285</col>
+    <col dtp="182">Br7e1nnt1yxrw6ImgpJ7YdhFDjuBf</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000287</col>
+    <col dtp="182">7a9SP7qW5Yku5PvSg</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000354</col>
+    <col dtp="182">w8fOo5W,aS</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000378</col>
+    <col dtp="182">FfbhyCxWvcPrO8ltp9</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000402</col>
+    <col dtp="182">i9Sw4DoyMhzhKXCH9By,AYSgmD</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000530</col>
+    <col dtp="182">0qwCMwobKY OcmLyfRXlagA8ukENJv,</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000555</col>
+    <col dtp="182">TfB,a5bfl3Ah 3Z 74GqnNs6zKVGM</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000640</col>
+    <col dtp="182">mvvtlQKsTOsJj5Ihk7,cq</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000729</col>
+    <col dtp="182">pqck2ppy758TQpZCUAjPvlU55K3QjfL7Bi</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000736</col>
+    <col dtp="182">l6i2nMwVuovfKnuVgaSGK2rDy65DlAFLegiL7</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000761</col>
+    <col dtp="182">zlSLelQUj2XrvTTFnv7WAcYZGvvMTx882d4</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000887</col>
+    <col dtp="182">urEaTejH5POADP2ARrf</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000935</col>
+    <col dtp="182">ij98czM 2KzWe7dDTOxB8sq0UfCdvrX</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000975</col>
+    <col dtp="182">,AC e,tBpNwKb5xMUzeohxlRn, hdZJo73gFQF8y</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001263</col>
+    <col dtp="182">rQWr6nf8ZhB2TAiIDIvo5Io</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001367</col>
+    <col dtp="182">42YSkFcAXMMcucsqeEefOE4HeCC</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001426</col>
+    <col dtp="182">bPOCc086oFm8sLtS,fGrH</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001446</col>
+    <col dtp="182">lch9HMNU1R7a0LIybsUodVknk6</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001500</col>
+    <col dtp="182">wDmF5xLxtQch9ctVu,</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001602</col>
+    <col dtp="182">uKNWIeafaM644</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001626</col>
+    <col dtp="182">UhxNRzUu1dtFmp0</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001682</col>
+    <col dtp="182">pXTkGxrTQVyH1Rr</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001700</col>
+    <col dtp="182">7hMlCof1Y5zLFg</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001726</col>
+    <col dtp="182">TeRY7TtTH24sEword7yAaSkjx8</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001730</col>
+    <col dtp="182">Rc8e,1Pybn r6zo0VJIEiD0UD vhk</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001746</col>
+    <col dtp="182">qWsendlOekQG1aW4uq06uQaCm51se8lirv7 hBRd</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001806</col>
+    <col dtp="182">M934fuZSnLW</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001855</col>
+    <col dtp="182">MWk6EAeozXb</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001931</col>
+    <col dtp="182">FpJbMU2h6ZR2eBv8I9NIxF</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002022</col>
+    <col dtp="182"> dwebGX7Id2pc25YvY33</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002036</col>
+    <col dtp="182">20ytTtVObjKUUI2WCB0A</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002096</col>
+    <col dtp="182">kuxseyLtq QPLXxm9ZUrnB6Kkh92JtK5cQzzXNU </col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002117</col>
+    <col dtp="182">MRtkgKolHJ9Wh X9J,urANHKDzvjr</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002204</col>
+    <col dtp="182">uYmlr46C06udCqanj0KiRsoTQakZsEyssL</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002218</col>
+    <col dtp="182">nODZw5q4dx kp0K5</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002243</col>
+    <col dtp="182">nSOEV3JeOU79</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002245</col>
+    <col dtp="182">hz2qWXWVjOyKhqPYMoEwz6zFkrTaDM</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002282</col>
+    <col dtp="182">ES21K9dxoW1I1TzWCj7ekdlNwSWnv1Z  6mQ,BKn</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002303</col>
+    <col dtp="182">nCoWfpB6YOymbgOht7ltfklpkHl</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002331</col>
+    <col dtp="182">WRh2w5WFvRg7Z0S1AvSvHCL</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002373</col>
+    <col dtp="182">RzHSxOTQmElCjxIBiVA52Z JB58rJhPRylR</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002419</col>
+    <col dtp="182">qydBQd14I5l5mVXa4fYY</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002571</col>
+    <col dtp="182">JZUugz04c iJFLrlGsz9O N,W 1rVHNIReyq</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002585</col>
+    <col dtp="182">CsPoKpw2QuTY4AV1NkWuttneIa4SN</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002629</col>
+    <col dtp="182">0Bw,q5Zp8su9XrzoCngZ3cAEXZwZ</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002721</col>
+    <col dtp="182">HVdFAN2JHMQSpKm</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002730</col>
+    <col dtp="182">lIFxR4fzm31C6,muzJwl84z</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002775</col>
+    <col dtp="182">yDclaDaBD4ihH</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002799</col>
+    <col dtp="182">lwr, 6L3gdfc79PQut,4XO6nQsTJY63cAyYO</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002934</col>
+    <col dtp="182">m,trBENywSArwg3DhB</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002941</col>
+    <col dtp="182">Naddba 8YTEKekZyP0</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003028</col>
+    <col dtp="182">jouzgX0WZjhNMWLaH4fy</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003095</col>
+    <col dtp="182">HxON3jJhUi3zjt,r mTD</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003143</col>
+    <col dtp="182">hdolgh608uTkHh7t6qfSqkifKaiFjnCH</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003185</col>
+    <col dtp="182">hMa535Cbf2mj1Nw4OWOKWVrsK0VdDkJURrdjSIJe</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003189</col>
+    <col dtp="182">DWdPxt7 RnkZv6VOByR0em</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003201</col>
+    <col dtp="182">E87yws6I,t0qNs4QW7UzExKiJnJDZWue</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003213</col>
+    <col dtp="182">pxrRP4irQ1VoyfQ,dTf3</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003275</col>
+    <col dtp="182">9xO4nyJ2QJcX6vGf</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003288</col>
+    <col dtp="182">EDdfNt7E5Uc,xLTupoIgYL4yY7ujh,</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003314</col>
+    <col dtp="182">jnisU8MzqO4iUB3zsPcrysMw3DDUojS4q7LD</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003373</col>
+    <col dtp="182">iy8VM48ynpc3N2OsBwAvhYakO2us9R1bi</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003421</col>
+    <col dtp="182">Sh3dt9W5oeofFWovnFhrg,</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003422</col>
+    <col dtp="182">DJoCEapUeBXoV1iYiCcPFQvzsTv2ZI960</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003441</col>
+    <col dtp="182">zvFJIzS,oUuShHjpcX</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003590</col>
+    <col dtp="182">sy79CMLxqb,Cbo</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003607</col>
+    <col dtp="182">lNqFHQYjwSAkf</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003625</col>
+    <col dtp="182">qY588W0Yk5iaUy1RXTgNrEKrMAjBYHcKs</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003723</col>
+    <col dtp="182">jZEp0OEythCLcS OmJSrFtxJ66bMlzSp</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003849</col>
+    <col dtp="182">KgbZEaRk,6Q3mWvwh6uptrs1KRUHg 0</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003894</col>
+    <col dtp="182">vvGC rameLOk</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003941</col>
+    <col dtp="182">Pmb05mQfBMS618O7WKqZJ 9vyv</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000004059</col>
+    <col dtp="182">umEYZSq9RJ2WEzdsv9meU8rmqwzVLRgiZwC</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000004207</col>
+    <col dtp="182">tF64pwiOM4IkWjN3mS,e06WuAjLx</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000004236</col>
+    <col dtp="182">dl,HPtJmGipxYsSqn9wmqkuWjst,mCeJ8O6T</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000004278</col>
+    <col dtp="182">bBddbpBxIVp Di9</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000004281</col>
+    <col dtp="182">1OwPHh Pgiyeus,iZS5eA23JDOipwk</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000004304</col>
+    <col dtp="182">hQCAz59k,HLlp2CKUrcBIL</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000004346</col>
+    <col dtp="182">S3076LEOwo</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000004406</col>
+    <col dtp="182">Ah0ZaLu6VwufPWUz,7kbXgYZhauEaHqGIg</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000004430</col>
+    <col dtp="182">yvSsKNSTL5HLXBET4luOsPNLxKzAMk</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000004527</col>
+    <col dtp="182">p pVXCnxgcklWF6A1o3OHY3qW6</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000004655</col>
+    <col dtp="182">67NqBc4 t3PG3F8aO IsqWNq4kGaPowYL</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000004851</col>
+    <col dtp="182">Rj,x6IgLT7kBL99nqp</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000004871</col>
+    <col dtp="182">,phpt6AWEnUS8t4Avb50rFfdg7O9c6nU8xxv8eC5</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000004884</col>
+    <col dtp="182">42Z1uLye9nsn6aTGBNd dI8 x</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000004975</col>
+    <col dtp="182">GPq5PMKY6Wy</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005076</col>
+    <col dtp="182">Xl7h9ifgvIHmqxFLgWfHK4Gjav BkP</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005195</col>
+    <col dtp="182">Woi3b2ZaicPh ZSfu1EfXhE</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005256</col>
+    <col dtp="182">Onc3t57VAMchm,pmoVLaU8bONni9NsuaM PzMMFz</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005257</col>
+    <col dtp="182">f9g8SEHB7obMj3QXAjXS2vfYY22</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005300</col>
+    <col dtp="182">gXG28YqpxU</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005323</col>
+    <col dtp="182">tMCkdqbDoyNo8vMIkzjBqYexoRAuv,T6 qzcu</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005386</col>
+    <col dtp="182">Ub6AAfHpWLWP</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005426</col>
+    <col dtp="182">9Dz2OVT1q sb4BK71ljQ1XjPBYRPvO</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005465</col>
+    <col dtp="182">63cYZenZBRZ613Q1FaoG0,smnC5zl9</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005484</col>
+    <col dtp="182">saFdOR qW7AFY,3asPqiiAa11Mo22pCoN0BtPrKo</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005505</col>
+    <col dtp="182">d2sbjG43KwMPX</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005506</col>
+    <col dtp="182">On f5ypzoWgB</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005631</col>
+    <col dtp="182">14TVrjlzo2SJEBYCDgpMwTlvwSqC</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005642</col>
+    <col dtp="182">ZwKxAv3V40tW E8P7Qwu,zlu,kPsL</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005686</col>
+    <col dtp="182">f2RBKec2T1NIi7yS M</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005730</col>
+    <col dtp="182">5rkb0PSews HvxkL8JaD41UpnSF2cg8H1</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005736</col>
+    <col dtp="182">2dq XTYhtYWSfp</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005737</col>
+    <col dtp="182">dmEWcS32C3kx,d,B95 OmYn48</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005797</col>
+    <col dtp="182">,o,OebwRbSDmVl9gN9fpWPCiqB UogvlSR</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005875</col>
+    <col dtp="182">lK,sYiGzB94hSyHy9xvSZFbVQNCZe2LXZuGbS</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005974</col>
+    <col dtp="182">REhR5jE,lLusQXvf54SwYySgsSSVFhu</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006059</col>
+    <col dtp="182">4m0cv8MwJ9yX2vlwI Z</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006065</col>
+    <col dtp="182">UiI2Cy3W4Tu5sLk LuvXLRy6KihlGv</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006093</col>
+    <col dtp="182">KJNUg1odUT2wtCS2s6PrH3D6fd</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006099</col>
+    <col dtp="182">aZilwQKYDTVPoK</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006109</col>
+    <col dtp="182">rY5gbfh3dKHnylcQUTPGCwnbe</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006217</col>
+    <col dtp="182">RVN23SYT9jenUeaWGXUd</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006297</col>
+    <col dtp="182">73VRDOO56GUCyvc40oYJ</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006435</col>
+    <col dtp="182">xIgE69XszYbnO4Eon7cHHO8y</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006463</col>
+    <col dtp="182">7 wkdj2EO49iotley2kmIM ADpLSszGV3RNWj</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006478</col>
+    <col dtp="182">bQYPnj9lpmW3U</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006521</col>
+    <col dtp="182">b9 2zjHzxR</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006642</col>
+    <col dtp="182">N,CUclSqRLJcS8zQ</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006659</col>
+    <col dtp="182">iTLsnvD8D2GzWNUv kRInwRjk5rDeEmfup1</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006669</col>
+    <col dtp="182">NQ4Yryj624p7K53</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006748</col>
+    <col dtp="182">rC,2rEn8gKDIS5Q0dJEoiF</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006761</col>
+    <col dtp="182">n4jhxGMqB5prD1HhpLvwrWStOLlla</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006808</col>
+    <col dtp="182">HGd2Xo 9nEcHJhZvXjXxWKIpApT</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006858</col>
+    <col dtp="182">fnlINT885vBBhsWwTGiZ0o22thwGY16h GHJj21</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006946</col>
+    <col dtp="182">To6Slo0GJTqcIvD</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006949</col>
+    <col dtp="182">mLxYUJhsGcLtKe ,GFirNu183AvT</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007072</col>
+    <col dtp="182">2tRyX9M1a 4Rcm57s779F1ANG9jlpK</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007098</col>
+    <col dtp="182">G3j8g0KC4OcbAu2OVoPHrXQWMCUdjq8wgCHOExu</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007132</col>
+    <col dtp="182">xonvn0KAQIL3p8kYk HC1FSSDSUSTC</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007135</col>
+    <col dtp="182">ls DoKV7V5ulfQy9V</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007147</col>
+    <col dtp="182">Xzb16kC63wmLVYexUEgB0hXFvHkjT5iPpq</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007160</col>
+    <col dtp="182">TqDGBULB3cTqIT6FKDvm9BS4e4v,zwYiQPb</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007169</col>
+    <col dtp="182">tEc95D2moN9S84nd55O,dlnW</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007278</col>
+    <col dtp="182">I2ae3rS7KVF8GVHtB</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007365</col>
+    <col dtp="182">51xhROLvQMJ05DndtZWt</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007398</col>
+    <col dtp="182">V8eE6oZ00OFNU,</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007402</col>
+    <col dtp="182">4UVv58ery1rjmqSR5</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007448</col>
+    <col dtp="182">yhhpWiJi7EJ6Q5VCaQ</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007458</col>
+    <col dtp="182">BYuucapYkptZl6fnd2QaDyZmI9gR1Ih16e</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007477</col>
+    <col dtp="182">9m9j0wfhWzCvVHxkU,PpAxwSH0h</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007509</col>
+    <col dtp="182">q8,V6LJRoHJjHcOuSG7aLTMg</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007561</col>
+    <col dtp="182">rMcFg2530VC</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007616</col>
+    <col dtp="182">R IovIqzDi3,QHnaqZk1xS4hGAgelhP4yj</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007760</col>
+    <col dtp="182">JsPE18PvcdFTK</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007801</col>
+    <col dtp="182">69fi,U1r6enUb </col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007865</col>
+    <col dtp="182">5cDGCS,T6N</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007885</col>
+    <col dtp="182">u3sicchh5ZpyTUpN1cJKNcAoabIWgY</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007926</col>
+    <col dtp="182">ErzCF80K9Uy</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007998</col>
+    <col dtp="182">LnASFBfYRFOo9d6d,asBvVq9Lo2P</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008090</col>
+    <col dtp="182">eonbJZvoDFYBNUinYfp6yERIg</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008224</col>
+    <col dtp="182">TWxt9f,LVER</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008231</col>
+    <col dtp="182">IK7eGw Yj90sTdpsP,vcqWxLB</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008243</col>
+    <col dtp="182">2AyePMkDqmzVzjGTizXthFLo8h EiudCMxOmIIG</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008323</col>
+    <col dtp="182">75I18sZmASwm POeheRMdj9tmpyeQ,BfCXN5BIAb</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008366</col>
+    <col dtp="182">h778cEj14BuW9OEKlvPTWq4iwASR6EBBXN7zeS8</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008532</col>
+    <col dtp="182">Uc29q4,5xVdDOF87UZrxhr4xWS0ihEUXuh</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008595</col>
+    <col dtp="182">MH0iB73GQ3z UW3O DbCbqmc</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008610</col>
+    <col dtp="182">SgVgP90vP452sUNTgzL9zKwXHXAzV6tV</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008683</col>
+    <col dtp="182">gLuGcugfpJSeGQARnaHNCaWnGaqsNnjyl20</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008705</col>
+    <col dtp="182">aE,trRNdPx,4yinTD9O3DebDIp</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008742</col>
+    <col dtp="182">HmPlQEzKCPEcTUL14,kKq</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008841</col>
+    <col dtp="182">I 85Lu1sekbg2xrSIzm0</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008872</col>
+    <col dtp="182">8D 45GgxJO2OwwYP9S4AaXJKvDwPfLM</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008879</col>
+    <col dtp="182">rDSA,D9oPM,65NMWEFrmGKAu</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008967</col>
+    <col dtp="182">2kwEHyMG 7FwozNImAUE6mH0hYtqYculJM</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008972</col>
+    <col dtp="182">w2vF6 D5YZO3visPXsqVfLADTK</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009032</col>
+    <col dtp="182">qK,trB6Sdy4Dz1BRUFNy</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009043</col>
+    <col dtp="182">57OPvKH4qyXIZ7IzYeCaw11a5N1Ki9f1WWmVQ,</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009278</col>
+    <col dtp="182">RqYTzgxj93CLX 0mcYfCENOefD</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009326</col>
+    <col dtp="182">XmiC,uy36B9,fb0zhcjaagiXQutg</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009430</col>
+    <col dtp="182">igRqmneFt </col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009549</col>
+    <col dtp="182">h3RVchUf8MzY46IzbZ0ng09</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009601</col>
+    <col dtp="182">51m637bO,Rw5DnHWFUvLacRx9</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009709</col>
+    <col dtp="182">rRnCbHYgDgl9PZYnyWKVYSUW0vKg</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009753</col>
+    <col dtp="182">wLhVEcRmd7PkJF4FBnGK7Z</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009799</col>
+    <col dtp="182"> 4wNjXGa4OKWl</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009811</col>
+    <col dtp="182">E3iuyq7UnZxU7oPZIe2Gu6</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009812</col>
+    <col dtp="182">APFRMy3lCbgFga53n5t9DxzFPQPgnjrGt32</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009846</col>
+    <col dtp="182">57sNwJJ3PtBDu,hMPP5QvpcOcSNRXn3PypJJrh</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009899</col>
+    <col dtp="182">7XdpAHrzr1t,UQFZE</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009974</col>
+    <col dtp="182">7wJ,J5DKcxSU4Kp1cQLpbcAvB5AsvKT</col>
+</row>
+    </result>
+</test>

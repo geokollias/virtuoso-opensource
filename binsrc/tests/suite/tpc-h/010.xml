@@ -1,0 +1,430 @@
+<test>
+    <comment>#line 4 tpc-h/10.sql
+select top 20
+	c_custkey,
+	c_name,
+	sum(l_extendedprice * (1 - l_discount)) as revenue,
+	c_acctbal,
+	n_name,
+	c_address,
+	c_phone,
+	c_comment
+from
+	customer,
+	orders,
+	lineitem,
+	nation
+where
+	c_custkey = o_custkey
+	and l_orderkey = o_orderkey
+	and o_orderdate &gt;= cast (1993-10-01 as date)
+	and o_orderdate &lt; dateadd (month, 3, cast (1993-10-01 as date))
+	and l_returnflag = R
+	and c_nationkey = n_nationkey
+group by
+	c_custkey,
+	c_name,
+	c_acctbal,
+	c_phone,
+	n_name,
+	c_address,
+	c_comment
+order by
+	revenue desc
+</comment>
+    <query><![CDATA[#line 4 "tpc-h/10.sql"
+select top 20
+	c_custkey,
+	c_name,
+	sum(l_extendedprice * (1 - l_discount)) as revenue,
+	c_acctbal,
+	n_name,
+	c_address,
+	c_phone,
+	c_comment
+from
+	customer,
+	orders,
+	lineitem,
+	nation
+where
+	c_custkey = o_custkey
+	and l_orderkey = o_orderkey
+	and o_orderdate >= cast ('1993-10-01' as date)
+	and o_orderdate < dateadd ('month', 3, cast ('1993-10-01' as date))
+	and l_returnflag = 'R'
+	and c_nationkey = n_nationkey
+group by
+	c_custkey,
+	c_name,
+	c_acctbal,
+	c_phone,
+	n_name,
+	c_address,
+	c_comment
+order by
+	revenue desc
+    ]]></query>
+    <plans>
+	<plan>
+	    <verify result-order="1" col-names="1" plan-xpath="/report[hf[ts[following::setp]][following::fref[fref[ts[following::ts[following::ts[following::hs[following::stn[following::setp]]]]]][following::setp]][following::ts[following::sel]]]]">
+		<da-below rnd="0" seq="0" same-seg="" />
+	    </verify>
+<text><![CDATA[{ 
+{ hash filler
+NATION        25 rows(.N_NATIONKEY, .N_NAME)
+ 
+Sort hf 36      8e+02 rows(.N_NATIONKEY) -> (.N_NAME)
+ 
+}
+{ fork
+{ fork
+ORDERS   5.7e+04 rows(.O_ORDERKEY, .O_CUSTKEY)
+ O_ORDERDATE >= <tag 211 c 1993-10-01> < <tag 211 c 1994-01-01>
+LINEITEM       1.1 rows(.L_EXTENDEDPRICE, .L_DISCOUNT)
+ inlined  L_ORDERKEY = .O_ORDERKEY L_RETURNFLAG = <c R>
+ 
+Precode:
+      0: temp := artm  1  - .L_DISCOUNT
+      4: temp := artm .L_EXTENDEDPRICE * temp
+      8: BReturn 0
+CUSTOMER unq         1 rows (.C_NATIONKEY, .C_CUSTKEY)
+ inlined  C_CUSTKEY = k_.O_CUSTKEY
+hash partition+bloom by 40 (tmp)hash join merged always card         1 -> (.N_NAME)
+Hash source 36 merged into ts          1 rows(.C_NATIONKEY) -> (.N_NAME)
+Stage 2
+Sort (q_.C_CUSTKEY, .N_NAME) -> (temp)
+ 
+}
+group by read node  
+(.C_CUSTKEY, .N_NAME, REVENUE)in each partition slice
+Sort (REVENUE) -> (.N_NAME, .C_CUSTKEY)
+ 
+}
+top order by read (REVENUE, .N_NAME, .C_CUSTKEY)
+CUSTOMER unq         1 rows (.C_PHONE, .C_NAME, .C_ACCTBAL, .C_ADDRESS, .C_COMMENT)
+ inlined  C_CUSTKEY = .C_CUSTKEY
+Select (.C_CUSTKEY, .C_NAME, REVENUE, .C_ACCTBAL, .N_NAME, .C_ADDRESS, .C_PHONE, .C_COMMENT)
+}
+]]></text>
+	    <xmlplan>
+<report>
+<sctr sctr_ose='0'/>
+<hf sets='165'><ts key='NATION' table='DB.DBA.NATION'>
+<ks_out_slots>
+<ssl index='30' name='.N_NATIONKEY' />
+<ssl index='29' name='.N_NAME' />
+</ks_out_slots>
+</ts>
+<setp ha_op='build' hf='36' sets='160'><key><ssl index='30' name='.N_NATIONKEY' />
+</key><dep><ssl index='29' name='.N_NAME' />
+</dep></setp>
+</hf>
+<fref sets='239'><fref sets='225'><ts key='ORDERS' table='DB.DBA.ORDERS'>
+<ks_row_spec>
+<sp col='O_ORDERDATE'>
+<op code='&gt;=' >
+<ssl constant='1993-10-01' />
+</op>
+<op code='&lt;' >
+<ssl constant='1994-01-01' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='44' name='.O_ORDERKEY' />
+<ssl index='43' name='.O_CUSTKEY' />
+</ks_out_slots>
+</ts>
+<ts key='LINEITEM' table='DB.DBA.LINEITEM'>
+<ks_spec>
+<sp col='L_ORDERKEY'>
+<op code='=' >
+<ssl index='44' name='.O_ORDERKEY' />
+</op>
+</sp></ks_spec><ks_row_spec>
+<sp col='L_RETURNFLAG'>
+<op code='=' >
+<ssl constant='R' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='48' name='.L_EXTENDEDPRICE' />
+<ssl index='47' name='.L_DISCOUNT' />
+</ks_out_slots>
+</ts>
+<ts key='CUSTOMER' table='DB.DBA.CUSTOMER'>
+<pre_code><artm op='-'><res><ssl index='50' name='temp' />
+</res><left><ssl constant='1' />
+</left><right><ssl index='47' name='.L_DISCOUNT' />
+</right></artm><artm op='*'><res><ssl index='52' name='temp' />
+</res><left><ssl index='48' name='.L_EXTENDEDPRICE' />
+</left><right><ssl index='50' name='temp' />
+</right></artm><bret ret='0'/></pre_code><ks_spec>
+<sp col='C_CUSTKEY'>
+<op code='=' >
+<ssl index='188' name='k_.O_CUSTKEY' />
+</op>
+</sp></ks_spec><ks_hash_spec>
+<hrng hs='195' flags='0' /></ks_hash_spec>
+<ks_out_slots>
+<ssl index='56' name='.C_NATIONKEY' />
+<ssl index='55' name='.C_CUSTKEY' />
+</ks_out_slots>
+</ts>
+<hs hf='165'></hs>
+<stn nth='2'/>
+<setp ha_op='group' hf='0' sets='220'><key><ssl index='212' name='q_.C_CUSTKEY' />
+<ssl index='218' name='.N_NAME' />
+</key><dep><ssl index='216' name='temp' />
+</dep></setp>
+</fref>
+<chash />
+<setp ha_op='order' hf='0' sets='234'><key><ssl index='66' name='REVENUE' />
+</key><dep><ssl index='29' name='.N_NAME' />
+<ssl index='55' name='.C_CUSTKEY' />
+</dep></setp>
+</fref>
+<sr />
+<ts key='CUSTOMER' table='DB.DBA.CUSTOMER'>
+<ks_spec>
+<sp col='C_CUSTKEY'>
+<op code='=' >
+<ssl index='55' name='.C_CUSTKEY' />
+</op>
+</sp></ks_spec><ks_out_slots>
+<ssl index='139' name='.C_PHONE' />
+<ssl index='138' name='.C_NAME' />
+<ssl index='137' name='.C_ACCTBAL' />
+<ssl index='136' name='.C_ADDRESS' />
+<ssl index='135' name='.C_COMMENT' />
+</ks_out_slots>
+</ts>
+<sel><ssl index='55' name='.C_CUSTKEY' />
+
+<ssl index='138' name='.C_NAME' />
+<ssl index='66' name='REVENUE' />
+
+<ssl index='137' name='.C_ACCTBAL' />
+<ssl index='29' name='.N_NAME' />
+
+<ssl index='136' name='.C_ADDRESS' />
+<ssl index='139' name='.C_PHONE' />
+<ssl index='135' name='.C_COMMENT' />
+</sel>
+</report>
+	    </xmlplan>
+	</plan>
+    </plans>
+    <columns>
+         <column name="C_CUSTKEY"/>
+         <column name="C_NAME"/>
+         <column name="REVENUE"/>
+         <column name="C_ACCTBAL"/>
+         <column name="N_NAME"/>
+         <column name="C_ADDRESS"/>
+         <column name="C_PHONE"/>
+         <column name="C_COMMENT"/>
+    </columns>
+    <result cnt="20">
+<row>
+    <col dtp="189">57040</col>
+    <col dtp="182">Customer#000057040</col>
+    <col dtp="191">734235.2455000002</col>
+    <col dtp="191">632.87</col>
+    <col dtp="182">JAPAN</col>
+    <col dtp="182">Eioyzjf4pp</col>
+    <col dtp="182">22-895-641-3466</col>
+    <col dtp="182">sits. slyly regular requests sleep alongside of the regular inst</col>
+</row>
+<row>
+    <col dtp="189">143347</col>
+    <col dtp="182">Customer#000143347</col>
+    <col dtp="191">721002.6947999999</col>
+    <col dtp="191">2557.47</col>
+    <col dtp="182">EGYPT</col>
+    <col dtp="182">1aReFYv,Kw4</col>
+    <col dtp="182">14-742-935-3718</col>
+    <col dtp="182">ggle carefully enticing requests. final deposits use bold, bold pinto beans. ironic, idle re</col>
+</row>
+<row>
+    <col dtp="189">60838</col>
+    <col dtp="182">Customer#000060838</col>
+    <col dtp="191">679127.3077000001</col>
+    <col dtp="191">2454.77</col>
+    <col dtp="182">BRAZIL</col>
+    <col dtp="182">64EaJ5vMAHWJlBOxJklpNc2RJiWE</col>
+    <col dtp="182">12-913-494-9813</col>
+    <col dtp="182"> need to boost against the slyly regular account</col>
+</row>
+<row>
+    <col dtp="189">101998</col>
+    <col dtp="182">Customer#000101998</col>
+    <col dtp="191">637029.5667</col>
+    <col dtp="191">3790.89</col>
+    <col dtp="182">UNITED KINGDOM</col>
+    <col dtp="182">01c9CILnNtfOQYmZj</col>
+    <col dtp="182">33-593-865-6378</col>
+    <col dtp="182">ress foxes wake slyly after the bold excuses. ironic platelets are furiously carefully bold theodolites</col>
+</row>
+<row>
+    <col dtp="189">125341</col>
+    <col dtp="182">Customer#000125341</col>
+    <col dtp="191">633508.0859999999</col>
+    <col dtp="191">4983.51</col>
+    <col dtp="182">GERMANY</col>
+    <col dtp="182">S29ODD6bceU8QSuuEJznkNaK</col>
+    <col dtp="182">17-582-695-5962</col>
+    <col dtp="182">arefully even depths. blithely even excuses sleep furiously. foxes use except the dependencies. ca</col>
+</row>
+<row>
+    <col dtp="189">25501</col>
+    <col dtp="182">Customer#000025501</col>
+    <col dtp="191">620269.7849</col>
+    <col dtp="191">7725.04</col>
+    <col dtp="182">ETHIOPIA</col>
+    <col dtp="182">  W556MXuoiaYCCZamJI,Rn0B4ACUGdkQ8DZ</col>
+    <col dtp="182">15-874-808-6793</col>
+    <col dtp="182">he pending instructions wake carefully at the pinto beans. regular, final instructions along the slyly fina</col>
+</row>
+<row>
+    <col dtp="189">115831</col>
+    <col dtp="182">Customer#000115831</col>
+    <col dtp="191">596423.8672</col>
+    <col dtp="191">5098.1</col>
+    <col dtp="182">FRANCE</col>
+    <col dtp="182">rFeBbEEyk dl ne7zV5fDrmiq1oK09wV7pxqCgIc</col>
+    <col dtp="182">16-715-386-3788</col>
+    <col dtp="182">l somas sleep. furiously final deposits wake blithely regular pinto b</col>
+</row>
+<row>
+    <col dtp="189">84223</col>
+    <col dtp="182">Customer#000084223</col>
+    <col dtp="191">594998.0238999999</col>
+    <col dtp="191">528.65</col>
+    <col dtp="182">UNITED KINGDOM</col>
+    <col dtp="182">nAVZCs6BaWap rrM27N 2qBnzc5WBauxbA</col>
+    <col dtp="182">33-442-824-8191</col>
+    <col dtp="182"> slyly final deposits haggle regular, pending dependencies. pending escapades wake </col>
+</row>
+<row>
+    <col dtp="189">54289</col>
+    <col dtp="182">Customer#000054289</col>
+    <col dtp="191">585603.3918</col>
+    <col dtp="191">5583.02</col>
+    <col dtp="182">IRAN</col>
+    <col dtp="182">vXCxoCsU0Bad5JQI ,oobkZ</col>
+    <col dtp="182">20-834-292-4707</col>
+    <col dtp="182">ely special foxes are quickly finally ironic p</col>
+</row>
+<row>
+    <col dtp="189">39922</col>
+    <col dtp="182">Customer#000039922</col>
+    <col dtp="191">584878.1134</col>
+    <col dtp="191">7321.11</col>
+    <col dtp="182">GERMANY</col>
+    <col dtp="182">Zgy4s50l2GKN4pLDPBU8m342gIw6R</col>
+    <col dtp="182">17-147-757-8036</col>
+    <col dtp="182">y final requests. furiously final foxes cajole blithely special platelets. f</col>
+</row>
+<row>
+    <col dtp="189">6226</col>
+    <col dtp="182">Customer#000006226</col>
+    <col dtp="191">576783.7605999999</col>
+    <col dtp="191">2230.09</col>
+    <col dtp="182">UNITED KINGDOM</col>
+    <col dtp="182">8gPu8,NPGkfyQQ0hcIYUGPIBWc,ybP5g,</col>
+    <col dtp="182">33-657-701-3391</col>
+    <col dtp="182">ending platelets along the express deposits cajole carefully final </col>
+</row>
+<row>
+    <col dtp="189">922</col>
+    <col dtp="182">Customer#000000922</col>
+    <col dtp="191">576767.5332999999</col>
+    <col dtp="191">3869.25</col>
+    <col dtp="182">GERMANY</col>
+    <col dtp="182">Az9RFaut7NkPnc5zSD2PwHgVwr4jRzq</col>
+    <col dtp="182">17-945-916-9648</col>
+    <col dtp="182">luffily fluffy deposits. packages c</col>
+</row>
+<row>
+    <col dtp="189">147946</col>
+    <col dtp="182">Customer#000147946</col>
+    <col dtp="191">576455.132</col>
+    <col dtp="191">2030.13</col>
+    <col dtp="182">ALGERIA</col>
+    <col dtp="182">iANyZHjqhyy7Ajah0pTrYyhJ</col>
+    <col dtp="182">10-886-956-3143</col>
+    <col dtp="182">ithely ironic deposits haggle blithely ironic requests. quickly regu</col>
+</row>
+<row>
+    <col dtp="189">115640</col>
+    <col dtp="182">Customer#000115640</col>
+    <col dtp="191">569341.1932999999</col>
+    <col dtp="191">6436.1</col>
+    <col dtp="182">ARGENTINA</col>
+    <col dtp="182">Vtgfia9qI 7EpHgecU1X</col>
+    <col dtp="182">11-411-543-4901</col>
+    <col dtp="182">ost slyly along the patterns; pinto be</col>
+</row>
+<row>
+    <col dtp="189">73606</col>
+    <col dtp="182">Customer#000073606</col>
+    <col dtp="191">568656.8578</col>
+    <col dtp="191">1785.67</col>
+    <col dtp="182">JAPAN</col>
+    <col dtp="182">xuR0Tro5yChDfOCrjkd2ol</col>
+    <col dtp="182">22-437-653-6966</col>
+    <col dtp="182">he furiously regular ideas. slowly</col>
+</row>
+<row>
+    <col dtp="189">110246</col>
+    <col dtp="182">Customer#000110246</col>
+    <col dtp="191">566842.9815</col>
+    <col dtp="191">7763.35</col>
+    <col dtp="182">VIETNAM</col>
+    <col dtp="182">7KzflgX MDOq7sOkI</col>
+    <col dtp="182">31-943-426-9837</col>
+    <col dtp="182">egular deposits serve blithely above the fl</col>
+</row>
+<row>
+    <col dtp="189">142549</col>
+    <col dtp="182">Customer#000142549</col>
+    <col dtp="191">563537.2368000001</col>
+    <col dtp="191">5085.99</col>
+    <col dtp="182">INDONESIA</col>
+    <col dtp="182">ChqEoK43OysjdHbtKCp6dKqjNyvvi9</col>
+    <col dtp="182">19-955-562-2398</col>
+    <col dtp="182">sleep pending courts. ironic deposits against the carefully unusual platelets cajole carefully express accounts.</col>
+</row>
+<row>
+    <col dtp="189">146149</col>
+    <col dtp="182">Customer#000146149</col>
+    <col dtp="191">557254.9864999999</col>
+    <col dtp="191">1791.55</col>
+    <col dtp="182">ROMANIA</col>
+    <col dtp="182">s87fvzFQpU</col>
+    <col dtp="182">29-744-164-6487</col>
+    <col dtp="182"> of the slyly silent accounts. quickly final accounts across the </col>
+</row>
+<row>
+    <col dtp="189">52528</col>
+    <col dtp="182">Customer#000052528</col>
+    <col dtp="191">556397.3509</col>
+    <col dtp="191">551.79</col>
+    <col dtp="182">ARGENTINA</col>
+    <col dtp="182">NFztyTOR10UOJ</col>
+    <col dtp="182">11-208-192-3205</col>
+    <col dtp="182"> deposits hinder. blithely pending asymptotes breach slyly regular re</col>
+</row>
+<row>
+    <col dtp="189">23431</col>
+    <col dtp="182">Customer#000023431</col>
+    <col dtp="191">554269.536</col>
+    <col dtp="191">3381.86</col>
+    <col dtp="182">ROMANIA</col>
+    <col dtp="182">HgiV0phqhaIa9aydNoIlb</col>
+    <col dtp="182">29-915-458-2654</col>
+    <col dtp="182">nusual, even instructions: furiously stealthy n</col>
+</row>
+    </result>
+</test>

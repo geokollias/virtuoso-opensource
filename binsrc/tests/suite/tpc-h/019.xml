@@ -1,0 +1,353 @@
+<test>
+    <comment>#line 4 tpc-h/19.sql
+select
+	sum(l_extendedprice* (1 - l_discount)) as revenue
+from
+	lineitem,
+	part
+where
+	(
+		p_partkey = l_partkey
+		and p_brand = Brand#12
+		and p_container in (SM CASE, SM BOX, SM PACK, SM PKG)
+		and l_quantity &gt;= 1 and l_quantity &lt;= 1 + 10
+		and p_size between 1 and 5
+		and l_shipmode in (AIR, AIR REG)
+		and l_shipinstruct = DELIVER IN PERSON
+	)
+	or
+	(
+		p_partkey = l_partkey
+		and p_brand = Brand#23
+		and p_container in (MED BAG, MED BOX, MED PKG, MED PACK)
+		and l_quantity &gt;= 10 and l_quantity &lt;= 10 + 10
+		and p_size between 1 and 10
+		and l_shipmode in (AIR, AIR REG)
+		and l_shipinstruct = DELIVER IN PERSON
+	)
+	or
+	(
+		p_partkey = l_partkey
+		and p_brand = Brand#34
+		and p_container in (LG CASE, LG BOX, LG PACK, LG PKG)
+		and l_quantity &gt;= 20 and l_quantity &lt;= 20 + 10
+		and p_size between 1 and 15
+		and l_shipmode in (AIR, AIR REG)
+		and l_shipinstruct = DELIVER IN PERSON
+	)
+</comment>
+    <query><![CDATA[#line 4 "tpc-h/19.sql"
+select
+	sum(l_extendedprice* (1 - l_discount)) as revenue
+from
+	lineitem,
+	part
+where
+	(
+		p_partkey = l_partkey
+		and p_brand = 'Brand#12'
+		and p_container in ('SM CASE', 'SM BOX', 'SM PACK', 'SM PKG')
+		and l_quantity >= 1 and l_quantity <= 1 + 10
+		and p_size between 1 and 5
+		and l_shipmode in ('AIR', 'AIR REG')
+		and l_shipinstruct = 'DELIVER IN PERSON'
+	)
+	or
+	(
+		p_partkey = l_partkey
+		and p_brand = 'Brand#23'
+		and p_container in ('MED BAG', 'MED BOX', 'MED PKG', 'MED PACK')
+		and l_quantity >= 10 and l_quantity <= 10 + 10
+		and p_size between 1 and 10
+		and l_shipmode in ('AIR', 'AIR REG')
+		and l_shipinstruct = 'DELIVER IN PERSON'
+	)
+	or
+	(
+		p_partkey = l_partkey
+		and p_brand = 'Brand#34'
+		and p_container in ('LG CASE', 'LG BOX', 'LG PACK', 'LG PKG')
+		and l_quantity >= 20 and l_quantity <= 20 + 10
+		and p_size between 1 and 15
+		and l_shipmode in ('AIR', 'AIR REG')
+		and l_shipinstruct = 'DELIVER IN PERSON'
+	)
+    ]]></query>
+    <plans>
+	<plan>
+	    <verify result-order="0" col-names="1" plan-xpath="/report[hf[ts[following::setp]][following::fref[ts[following::hs]][following::sel]]]">
+		<da-below rnd="0" seq="0" same-seg="" />
+	    </verify>
+<text><![CDATA[{ 
+ 
+Precode:
+      0: CHASH_IN_INIT := Call CHASH_IN_INIT ( 182 , $30 "chash_in_tree",  0 ,  0 , <c AIR>, <c AIR REG>)
+      5: temp := artm  1  +  10 
+      9: temp := artm  10  +  10 
+      13: temp := artm  20  +  10 
+      17: BReturn 0
+{ hash filler
+PART   7.2e+02 rows(.P_BRAND, .P_CONTAINER, .P_SIZE, .P_PARTKEY)
+ P_SIZE >=  1 
+END Node
+After test:
+      0: if (.P_BRAND = <c Brand#12>) then 4 else 17 unkn 17
+      4: if (.P_SIZE <=  5 ) then 8 else 17 unkn 17
+      8: ONE_OF_THESE := Call ONE_OF_THESE (.P_CONTAINER, <c SM CASE>, <c SM BOX>, <c SM PACK>, <c SM PKG>)
+      13: if ( 0  < ONE_OF_THESE) then 51 else 17 unkn 17
+      17: if (.P_BRAND = <c Brand#23>) then 21 else 34 unkn 34
+      21: if (.P_SIZE <=  10 ) then 25 else 34 unkn 34
+      25: ONE_OF_THESE := Call ONE_OF_THESE (.P_CONTAINER, <c MED BAG>, <c MED BOX>, <c MED PKG>, <c MED PACK>)
+      30: if ( 0  < ONE_OF_THESE) then 51 else 34 unkn 34
+      34: if (.P_BRAND = <c Brand#34>) then 38 else 52 unkn 52
+      38: if (.P_SIZE <=  15 ) then 42 else 52 unkn 52
+      42: ONE_OF_THESE := Call ONE_OF_THESE (.P_CONTAINER, <c LG CASE>, <c LG BOX>, <c LG PACK>, <c LG PKG>)
+      47: if ( 0  < ONE_OF_THESE) then 51 else 52 unkn 52
+      51: BReturn 1
+      52: BReturn 0
+Sort hf 53      8e+02 rows(.P_PARTKEY) -> (.P_SIZE, .P_CONTAINER, .P_BRAND)
+ 
+}
+{ fork
+LINEITEM   1.1e+05 rows(.L_QUANTITY, .L_PARTKEY, .L_EXTENDEDPRICE, .L_DISCOUNT, .L_SHIPMODE)
+ L_SHIPINSTRUCT = <c DELIVER IN PERSON>
+hash partition+bloom by 0 ()
+hash partition+bloom by 57 (tmp)hash join merged always card   0.00032 -> (.P_SIZE, .P_CONTAINER, .P_BRAND)
+END Node
+After test:
+      0: if (.L_QUANTITY <= temp) then 4 else 8 unkn 8
+      4: if (.L_QUANTITY >=  1 ) then 24 else 8 unkn 8
+      8: if (.L_QUANTITY <= temp) then 12 else 16 unkn 16
+      12: if ( 10  <= .L_QUANTITY) then 24 else 16 unkn 16
+      16: if (temp >= .L_QUANTITY) then 20 else 25 unkn 25
+      20: if (.L_QUANTITY >=  20 ) then 24 else 25 unkn 25
+      24: BReturn 1
+      25: BReturn 0
+ 
+Precode:
+      0: temp := artm  1  - .L_DISCOUNT
+      4: temp := artm .L_EXTENDEDPRICE * temp
+      8: BReturn 0
+Hash source 53 merged into ts    0.00032 rows(k_.L_PARTKEY) -> (.P_SIZE, .P_CONTAINER, .P_BRAND)
+END Node
+After test:
+      0: if (.P_BRAND = <c Brand#12>) then 4 else 25 unkn 25
+      4: if (.L_QUANTITY >=  1 ) then 8 else 25 unkn 25
+      8: if (.L_QUANTITY <= temp) then 12 else 25 unkn 25
+      12: if (.P_SIZE <=  5 ) then 16 else 25 unkn 25
+      16: ONE_OF_THESE := Call ONE_OF_THESE (.P_CONTAINER, <c SM CASE>, <c SM BOX>, <c SM PACK>, <c SM PKG>)
+      21: if ( 0  < ONE_OF_THESE) then 75 else 25 unkn 25
+      25: if (.P_BRAND = <c Brand#23>) then 29 else 50 unkn 50
+      29: if ( 10  <= .L_QUANTITY) then 33 else 50 unkn 50
+      33: if (.L_QUANTITY <= temp) then 37 else 50 unkn 50
+      37: if (.P_SIZE <=  10 ) then 41 else 50 unkn 50
+      41: ONE_OF_THESE := Call ONE_OF_THESE (.P_CONTAINER, <c MED BAG>, <c MED BOX>, <c MED PKG>, <c MED PACK>)
+      46: if ( 0  < ONE_OF_THESE) then 75 else 50 unkn 50
+      50: if (.P_BRAND = <c Brand#34>) then 54 else 76 unkn 76
+      54: if (.L_QUANTITY >=  20 ) then 58 else 76 unkn 76
+      58: if (temp >= .L_QUANTITY) then 62 else 76 unkn 76
+      62: if (.P_SIZE <=  15 ) then 66 else 76 unkn 76
+      66: ONE_OF_THESE := Call ONE_OF_THESE (.P_CONTAINER, <c LG CASE>, <c LG BOX>, <c LG PACK>, <c LG PKG>)
+      71: if ( 0  < ONE_OF_THESE) then 75 else 76 unkn 76
+      75: BReturn 1
+      76: BReturn 0
+ 
+After code:
+      0:  sum REVENUEtemp
+      5: BReturn 0
+}
+Select (REVENUE)
+}
+]]></text>
+	    <xmlplan>
+<report>
+<sctr sctr_ose='0'/>
+<hf sets='128'><ts key='PART' table='DB.DBA.PART'>
+<ks_row_spec>
+<sp col='P_SIZE'>
+<op code='&gt;=' >
+<ssl constant='1' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='41' name='.P_BRAND' />
+<ssl index='40' name='.P_CONTAINER' />
+<ssl index='39' name='.P_SIZE' />
+<ssl index='38' name='.P_PARTKEY' />
+</ks_out_slots>
+</ts>
+<after_test><if op='=' succ='4' else='17' unkn='17' merge='0'><left><ssl index='41' name='.P_BRAND' />
+</left><right><ssl constant='Brand#12' />
+</right></if><if op='&lt;=' succ='8' else='17' unkn='17' merge='0'><left><ssl index='39' name='.P_SIZE' />
+</left><right><ssl constant='5' />
+</right></if><call name='ONE_OF_THESE'><params><ssl index='40' name='.P_CONTAINER' />
+<ssl constant='SM CASE' />
+<ssl constant='SM BOX' />
+<ssl constant='SM PACK' />
+<ssl constant='SM PKG' />
+</params><ret><ssl index='43' name='ONE_OF_THESE' />
+</ret></call><if op='&lt;' succ='51' else='17' unkn='17' merge='0'><left><ssl constant='0' />
+</left><right><ssl index='43' name='ONE_OF_THESE' />
+</right></if><if op='=' succ='21' else='34' unkn='34' merge='0'><left><ssl index='41' name='.P_BRAND' />
+</left><right><ssl constant='Brand#23' />
+</right></if><if op='&lt;=' succ='25' else='34' unkn='34' merge='0'><left><ssl index='39' name='.P_SIZE' />
+</left><right><ssl constant='10' />
+</right></if><call name='ONE_OF_THESE'><params><ssl index='40' name='.P_CONTAINER' />
+<ssl constant='MED BAG' />
+<ssl constant='MED BOX' />
+<ssl constant='MED PKG' />
+<ssl constant='MED PACK' />
+</params><ret><ssl index='45' name='ONE_OF_THESE' />
+</ret></call><if op='&lt;' succ='51' else='34' unkn='34' merge='0'><left><ssl constant='0' />
+</left><right><ssl index='45' name='ONE_OF_THESE' />
+</right></if><if op='=' succ='38' else='52' unkn='52' merge='0'><left><ssl index='41' name='.P_BRAND' />
+</left><right><ssl constant='Brand#34' />
+</right></if><if op='&lt;=' succ='42' else='52' unkn='52' merge='0'><left><ssl index='39' name='.P_SIZE' />
+</left><right><ssl constant='15' />
+</right></if><call name='ONE_OF_THESE'><params><ssl index='40' name='.P_CONTAINER' />
+<ssl constant='LG CASE' />
+<ssl constant='LG BOX' />
+<ssl constant='LG PACK' />
+<ssl constant='LG PKG' />
+</params><ret><ssl index='47' name='ONE_OF_THESE' />
+</ret></call><if op='&lt;' succ='51' else='52' unkn='52' merge='0'><left><ssl constant='0' />
+</left><right><ssl index='47' name='ONE_OF_THESE' />
+</right></if><bret ret='1'/><bret ret='0'/></after_test><end />
+<setp ha_op='build' hf='53' sets='123'><key><ssl index='38' name='.P_PARTKEY' />
+
+</key><dep><ssl index='39' name='.P_SIZE' />
+
+<ssl index='40' name='.P_CONTAINER' />
+
+<ssl index='41' name='.P_BRAND' />
+
+</dep></setp>
+</hf>
+<fref sets='190'><ts key='LINEITEM' table='DB.DBA.LINEITEM'>
+<ks_row_spec>
+<sp col='L_SHIPINSTRUCT'>
+<op code='=' >
+<ssl constant='DELIVER IN PERSON' />
+</op>
+</sp></ks_row_spec>
+<ks_hash_spec>
+<hrng hs='0' flags='8' /><hrng hs='152' flags='0' /></ks_hash_spec>
+<ks_out_slots>
+<ssl index='64' name='.L_QUANTITY' />
+<ssl index='63' name='.L_PARTKEY' />
+<ssl index='62' name='.L_EXTENDEDPRICE' />
+<ssl index='61' name='.L_DISCOUNT' />
+<ssl index='60' name='.L_SHIPMODE' />
+</ks_out_slots>
+</ts>
+<after_test><if op='&lt;=' succ='4' else='8' unkn='8' merge='0'><left><ssl index='64' name='.L_QUANTITY' />
+</left><right><ssl index='31' name='temp' />
+
+</right></if><if op='&gt;=' succ='24' else='8' unkn='8' merge='0'><left><ssl index='64' name='.L_QUANTITY' />
+</left><right><ssl constant='1' />
+</right></if><if op='&lt;=' succ='12' else='16' unkn='16' merge='0'><left><ssl index='64' name='.L_QUANTITY' />
+</left><right><ssl index='33' name='temp' />
+
+</right></if><if op='&lt;=' succ='24' else='16' unkn='16' merge='0'><left><ssl constant='10' />
+</left><right><ssl index='64' name='.L_QUANTITY' />
+</right></if><if op='&gt;=' succ='20' else='25' unkn='25' merge='0'><left><ssl index='35' name='temp' />
+
+</left><right><ssl index='64' name='.L_QUANTITY' />
+</right></if><if op='&gt;=' succ='24' else='25' unkn='25' merge='0'><left><ssl index='64' name='.L_QUANTITY' />
+</left><right><ssl constant='20' />
+</right></if><bret ret='1'/><bret ret='0'/></after_test><end />
+<hs hf='128'><pre_code><artm op='-'><res><ssl index='68' name='temp' />
+</res><left><ssl constant='1' />
+</left><right><ssl index='61' name='.L_DISCOUNT' />
+
+</right></artm><artm op='*'><res><ssl index='70' name='temp' />
+</res><left><ssl index='62' name='.L_EXTENDEDPRICE' />
+
+</left><right><ssl index='68' name='temp' />
+</right></artm><bret ret='0'/></pre_code></hs>
+<after_test><if op='=' succ='4' else='25' unkn='25' merge='0'><left><ssl index='41' name='.P_BRAND' />
+
+</left><right><ssl constant='Brand#12' />
+</right></if><if op='&gt;=' succ='8' else='25' unkn='25' merge='0'><left><ssl index='64' name='.L_QUANTITY' />
+
+</left><right><ssl constant='1' />
+</right></if><if op='&lt;=' succ='12' else='25' unkn='25' merge='0'><left><ssl index='64' name='.L_QUANTITY' />
+
+</left><right><ssl index='31' name='temp' />
+
+</right></if><if op='&lt;=' succ='16' else='25' unkn='25' merge='0'><left><ssl index='39' name='.P_SIZE' />
+
+</left><right><ssl constant='5' />
+</right></if><call name='ONE_OF_THESE'><params><ssl index='40' name='.P_CONTAINER' />
+
+<ssl constant='SM CASE' />
+<ssl constant='SM BOX' />
+<ssl constant='SM PACK' />
+<ssl constant='SM PKG' />
+</params><ret><ssl index='76' name='ONE_OF_THESE' />
+</ret></call><if op='&lt;' succ='75' else='25' unkn='25' merge='0'><left><ssl constant='0' />
+</left><right><ssl index='76' name='ONE_OF_THESE' />
+</right></if><if op='=' succ='29' else='50' unkn='50' merge='0'><left><ssl index='41' name='.P_BRAND' />
+
+</left><right><ssl constant='Brand#23' />
+</right></if><if op='&lt;=' succ='33' else='50' unkn='50' merge='0'><left><ssl constant='10' />
+</left><right><ssl index='64' name='.L_QUANTITY' />
+
+</right></if><if op='&lt;=' succ='37' else='50' unkn='50' merge='0'><left><ssl index='64' name='.L_QUANTITY' />
+
+</left><right><ssl index='33' name='temp' />
+
+</right></if><if op='&lt;=' succ='41' else='50' unkn='50' merge='0'><left><ssl index='39' name='.P_SIZE' />
+
+</left><right><ssl constant='10' />
+</right></if><call name='ONE_OF_THESE'><params><ssl index='40' name='.P_CONTAINER' />
+
+<ssl constant='MED BAG' />
+<ssl constant='MED BOX' />
+<ssl constant='MED PKG' />
+<ssl constant='MED PACK' />
+</params><ret><ssl index='78' name='ONE_OF_THESE' />
+</ret></call><if op='&lt;' succ='75' else='50' unkn='50' merge='0'><left><ssl constant='0' />
+</left><right><ssl index='78' name='ONE_OF_THESE' />
+</right></if><if op='=' succ='54' else='76' unkn='76' merge='0'><left><ssl index='41' name='.P_BRAND' />
+
+</left><right><ssl constant='Brand#34' />
+</right></if><if op='&gt;=' succ='58' else='76' unkn='76' merge='0'><left><ssl index='64' name='.L_QUANTITY' />
+
+</left><right><ssl constant='20' />
+</right></if><if op='&gt;=' succ='62' else='76' unkn='76' merge='0'><left><ssl index='35' name='temp' />
+
+</left><right><ssl index='64' name='.L_QUANTITY' />
+
+</right></if><if op='&lt;=' succ='66' else='76' unkn='76' merge='0'><left><ssl index='39' name='.P_SIZE' />
+
+</left><right><ssl constant='15' />
+</right></if><call name='ONE_OF_THESE'><params><ssl index='40' name='.P_CONTAINER' />
+
+<ssl constant='LG CASE' />
+<ssl constant='LG BOX' />
+<ssl constant='LG PACK' />
+<ssl constant='LG PKG' />
+</params><ret><ssl index='80' name='ONE_OF_THESE' />
+</ret></call><if op='&lt;' succ='75' else='76' unkn='76' merge='0'><left><ssl constant='0' />
+</left><right><ssl index='80' name='ONE_OF_THESE' />
+</right></if><bret ret='1'/><bret ret='0'/></after_test><after_code><agg op='sum'><res><ssl index='85' name='REVENUE' />
+</res><arg><ssl index='70' name='temp' />
+
+</arg></agg><bret ret='0'/></after_code><end />
+</fref>
+<sel><ssl index='85' name='REVENUE' />
+</sel>
+</report>
+	    </xmlplan>
+	</plan>
+    </plans>
+    <columns>
+         <column name="REVENUE"/>
+    </columns>
+    <result cnt="1">
+<row>
+    <col dtp="191">3083843.057800001</col>
+</row>
+    </result>
+</test>

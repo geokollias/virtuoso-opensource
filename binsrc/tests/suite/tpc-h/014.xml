@@ -1,0 +1,137 @@
+<test>
+    <comment>#line 4 tpc-h/14.sql
+select
+	100.00 * sum(case
+		when p_type like PROMO%
+			then l_extendedprice * (1 - l_discount)
+		else 0
+	end) / sum(l_extendedprice * (1 - l_discount)) as promo_revenue
+from
+	lineitem,
+	part
+where
+	l_partkey = p_partkey
+	and l_shipdate &gt;= cast (1995-09-01 as date)
+	and l_shipdate &lt; dateadd (month, 1, cast (1995-09-01 as date))
+</comment>
+    <query><![CDATA[#line 4 "tpc-h/14.sql"
+select
+	100.00 * sum(case
+		when p_type like 'PROMO%'
+			then l_extendedprice * (1 - l_discount)
+		else 0
+	end) / sum(l_extendedprice * (1 - l_discount)) as promo_revenue
+from
+	lineitem,
+	part
+where
+	l_partkey = p_partkey
+	and l_shipdate >= cast ('1995-09-01' as date)
+	and l_shipdate < dateadd ('month', 1, cast ('1995-09-01' as date))
+    ]]></query>
+    <plans>
+	<plan>
+	    <verify result-order="0" col-names="1" plan-xpath="/report[fref[ts[following::ts]][following::sel]]">
+		<da-below rnd="0" seq="0" same-seg="" />
+	    </verify>
+<text><![CDATA[{ 
+{ fork
+LINEITEM   7.6e+04 rows(.L_PARTKEY, .L_EXTENDEDPRICE, .L_DISCOUNT)
+ L_SHIPDATE >= <tag 211 c 1995-09-01> < <tag 211 c 1995-10-01>
+ 
+Precode:
+      0: temp := artm  1  - .L_DISCOUNT
+      4: temp := artm .L_EXTENDEDPRICE * temp
+      8: BReturn 0
+PART unq         1 rows (.P_TYPE)
+ inlined  P_PARTKEY = .L_PARTKEY
+ 
+After code:
+      0: if (.P_TYPE  LIKE  <c PROMO%>) then 4 else 17 unkn 17
+      4: temp := artm  1  - .L_DISCOUNT
+      8: temp := artm .L_EXTENDEDPRICE * temp
+      12: callretSearchedCASE :=  := artm temp
+      16: Jump 21 (level=0)
+      17: callretSearchedCASE :=  := artm  0 
+      21:  sum sumcallretSearchedCASE
+      26:  sum sumtemp
+      31: BReturn 0
+}
+ 
+After code:
+      0: temp := artm  100  * sum
+      4: PROMO_REVENUE := artm temp / sum
+      8: BReturn 0
+Select (PROMO_REVENUE)
+}
+]]></text>
+	    <xmlplan>
+<report>
+<sctr sctr_ose='0'/>
+<fref sets='90'><ts key='LINEITEM' table='DB.DBA.LINEITEM'>
+<ks_row_spec>
+<sp col='L_SHIPDATE'>
+<op code='&gt;=' >
+<ssl constant='1995-09-01' />
+</op>
+<op code='&lt;' >
+<ssl constant='1995-10-01' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='31' name='.L_PARTKEY' />
+<ssl index='30' name='.L_EXTENDEDPRICE' />
+<ssl index='29' name='.L_DISCOUNT' />
+</ks_out_slots>
+</ts>
+<ts key='PART' table='DB.DBA.PART'>
+<pre_code><artm op='-'><res><ssl index='33' name='temp' />
+</res><left><ssl constant='1' />
+</left><right><ssl index='29' name='.L_DISCOUNT' />
+</right></artm><artm op='*'><res><ssl index='35' name='temp' />
+</res><left><ssl index='30' name='.L_EXTENDEDPRICE' />
+</left><right><ssl index='33' name='temp' />
+</right></artm><bret ret='0'/></pre_code><after_code><if op='unknown' succ='4' else='17' unkn='17' merge='0'><left><ssl index='38' name='.P_TYPE' />
+</left><right><ssl constant='PROMO%' />
+</right></if><artm op='-'><res><ssl index='42' name='temp' />
+</res><left><ssl constant='1' />
+</left><right><ssl index='29' name='.L_DISCOUNT' />
+
+</right></artm><artm op='*'><res><ssl index='44' name='temp' />
+</res><left><ssl index='30' name='.L_EXTENDEDPRICE' />
+
+</left><right><ssl index='42' name='temp' />
+</right></artm><artm op=':='><res><ssl index='40' name='callretSearchedCASE' />
+</res><left><ssl index='44' name='temp' />
+</left></artm><jmp label='21' lev='0'/><artm op=':='><res><ssl index='40' name='callretSearchedCASE' />
+</res><left><ssl constant='0' />
+</left></artm><agg op='sum'><res><ssl index='49' name='sum' />
+</res><arg><ssl index='40' name='callretSearchedCASE' />
+</arg></agg><agg op='sum'><res><ssl index='50' name='sum' />
+</res><arg><ssl index='35' name='temp' />
+
+</arg></agg><bret ret='0'/></after_code><ks_spec>
+<sp col='P_PARTKEY'>
+<op code='=' >
+<ssl index='31' name='.L_PARTKEY' />
+</op>
+</sp></ks_spec><ks_out_slots>
+<ssl index='38' name='.P_TYPE' />
+</ks_out_slots>
+</ts>
+</fref>
+<sel><ssl index='59' name='PROMO_REVENUE' />
+</sel>
+</report>
+	    </xmlplan>
+	</plan>
+    </plans>
+    <columns>
+         <column name="PROMO_REVENUE"/>
+    </columns>
+    <result cnt="1">
+<row>
+    <col dtp="219">16.380778626395558</col>
+</row>
+    </result>
+</test>

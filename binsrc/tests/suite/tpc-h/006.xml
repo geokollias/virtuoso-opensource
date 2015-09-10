@@ -1,0 +1,96 @@
+<test>
+    <comment>#line 4 tpc-h/6.sql
+select
+	sum(l_extendedprice * l_discount) as revenue
+from
+	lineitem
+where
+	l_shipdate &gt;= cast (1994-01-01 as date)
+	and l_shipdate &lt; dateadd (year, 1, cast (1994-01-01 as date))
+	and l_discount between .06 - 0.01 and .06 + 0.01
+	and l_quantity &lt; 24
+</comment>
+    <query><![CDATA[#line 4 "tpc-h/6.sql"
+select
+	sum(l_extendedprice * l_discount) as revenue
+from
+	lineitem
+where
+	l_shipdate >= cast ('1994-01-01' as date)
+	and l_shipdate < dateadd ('year', 1, cast ('1994-01-01' as date))
+	and l_discount between .06 - 0.01 and .06 + 0.01
+	and l_quantity < 24
+    ]]></query>
+    <plans>
+	<plan>
+	    <verify result-order="0" col-names="1" plan-xpath="/report[fref[ts][following::sel]]">
+		<da-below rnd="0" seq="0" same-seg="" />
+	    </verify>
+<text><![CDATA[{ 
+ 
+Precode:
+      0: temp := artm  0.06  -  0.01 
+      4: temp := artm  0.06  +  0.01 
+      8: BReturn 0
+{ fork
+LINEITEM   3.7e+04 rows(.L_EXTENDEDPRICE, .L_DISCOUNT)
+ L_QUANTITY <  24  ,  L_DISCOUNT >= cast <= cast ,  L_SHIPDATE >= <tag 211 c 1994-01-01> < <tag 211 c 1995-01-01>
+ 
+After code:
+      0: temp := artm .L_EXTENDEDPRICE * .L_DISCOUNT
+      4:  sum REVENUEtemp
+      9: BReturn 0
+}
+Select (REVENUE)
+}
+]]></text>
+	    <xmlplan>
+<report>
+<sctr sctr_ose='0'/>
+<fref sets='71'><ts key='LINEITEM' table='DB.DBA.LINEITEM'>
+<after_code><artm op='*'><res><ssl index='36' name='temp' />
+</res><left><ssl index='34' name='.L_EXTENDEDPRICE' />
+</left><right><ssl index='33' name='.L_DISCOUNT' />
+</right></artm><agg op='sum'><res><ssl index='41' name='REVENUE' />
+</res><arg><ssl index='36' name='temp' />
+</arg></agg><bret ret='0'/></after_code><ks_row_spec>
+<sp col='L_QUANTITY'>
+<op code='&lt;' >
+<ssl constant='24' />
+</op>
+</sp><sp col='L_DISCOUNT'>
+<op code='&gt;=' >
+<ssl index='61' name='cast' />
+</op>
+<op code='&lt;=' >
+<ssl index='65' name='cast' />
+</op>
+</sp><sp col='L_SHIPDATE'>
+<op code='&gt;=' >
+<ssl constant='1994-01-01' />
+</op>
+<op code='&lt;' >
+<ssl constant='1995-01-01' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='34' name='.L_EXTENDEDPRICE' />
+<ssl index='33' name='.L_DISCOUNT' />
+</ks_out_slots>
+</ts>
+</fref>
+<sel><ssl index='41' name='REVENUE' />
+</sel>
+</report>
+	    </xmlplan>
+	</plan>
+    </plans>
+    <columns>
+         <column name="REVENUE"/>
+    </columns>
+    <result cnt="1">
+<row>
+    <col dtp="191">123141078.2283</col>
+</row>
+    </result>
+</test>

@@ -1,4 +1,3 @@
-#!/bin/sh
 #  
 #  $Id$
 #
@@ -22,15 +21,10 @@
 #  
 # 
 
-# Note: datasets for TPC-H and its RDF variant (RDFH) are generated 
-# and then cached in directories 
-#   $VIRTUOSO_TEST/tpch/dataset.sql 
-# and 
-#   $VIRTUOSO_TEST/tpch/dataset.rdf
-# These datasets are not regenerated each time the tests are run.
+# Note: dataset for TPC-H is generated and then cached in $VIRTUOSO_TEST/tpc-h/
+# This dataset is not regenerated each time the tests are run.
 # If you have some problems with these data or need to change TPC-H scale,
-# you need to erase one# or both of those subdirectories manually 
-# for the datasets to be regenerated.
+# you need to do "make cleann" in this directory for the datasets to be regenerated.
 
 DSN=$PORT
 . $VIRTUOSO_TEST/testlib.sh
@@ -43,35 +37,8 @@ tpch_scale=1
 rdfhgraph="urn:example.com:tpcd"
 nrdfloaders=6
 nsqlloaders=6
-dbgendir=$VIRTUOSO_TEST/../tpc-h/dbgen206
-dbgen=$dbgendir/dbgen
-bibm=$VIRTUOSO_TEST/../bibm
-
-LOCAL=$PORT
-#GENERATE_PORTS 1
-#REMOTE=$GENERATED_PORT
-if [ $REMOTE -eq $LOCAL ]
-then
-    REMOTE=`expr $LOCAL + 1`
-fi
-
-
-# SQL command 
-DoCommand()
-{
-  _dsn=$1
-  command=$2
-  shift 
-  shift
-  echo "+ " $ISQL $_dsn dba dba ERRORS=STDOUT VERBOSE=OFF PROMPT=OFF "EXEC=$command" $*	>> $LOGFILE	
-  $ISQL $_dsn dba dba ERRORS=STDOUT VERBOSE=OFF PROMPT=OFF "EXEC=$command" $* >> $LOGFILE
-  if test $? -ne 0 
-  then
-    LOG "***FAILED: $command"
-  else
-    LOG "PASSED: $command"
-  fi
-}
+tpchdir=$VIRTUOSO_TEST/../tpc-h
+dbgendir=$tpchdir/dbgen
 
 BANNER "STARTED TPC-H/RDF-H functional tests"
 NOLITE
@@ -80,7 +47,7 @@ then
    exit
 fi 
 
-STOP_SERVER $LOCAL
+STOP_SERVER $PORT
 mem=`sysctl hw.memsize | cut -f 2 -d ' '`
 if [ -f /proc/meminfo ]
 then
@@ -94,108 +61,44 @@ NumberOfBuffers=`sysctl hw.memsize | awk '{ MLIM = 524288; m = int($2 / 4 / 8 / 
 sed -e "s/NumberOfBuffers.*=.*2000/NumberOfBuffers         = $NumberOfBuffers/g" virtuoso-tmp.ini > virtuoso-1111.ini 
 fi
 MAKECFG_FILE $TESTCFGFILE $PORT $CFGFILE
+ln -sf $VIRTUOSO_TEST/tpc-h .
 cd $testdir
 
-if [ ! -d $VIRTUOSO_TEST/tpch ]
-then
-    mkdir $VIRTUOSO_TEST/tpch
-fi
-
-# generate TPC-H dataset
-if [ ! -d $VIRTUOSO_TEST/tpch/dataset.sql ]
-then
-    mkdir $VIRTUOSO_TEST/tpch/dataset.sql 
-fi
-if [ -d $VIRTUOSO_TEST/tpch/dataset.sql ]
-then
-    LOG "TPC-H data generation scale=$scale started at `date`" 
-    cd $VIRTUOSO_TEST/tpch/dataset.sql
-    ln -s $dbgendir/dists.dss .
-
-    RUN $dbgen -fFv -s $tpch_scale
-    if [ $STATUS -ne 0 ]
-    then
-	LOG "***ABORTED: dbgen -- TPC-H data generation."
-	exit 1
-    fi
-
-    RUN chmod u=rw,g=rw,o=r $VIRTUOSO_TEST/tpch/dataset.sql/*
-    if [ $STATUS -ne 0 ]
-    then
-        LOG "***ABORTED: can't give permissions on DBGEN-generated files."
+# generate TPC-H
+if [ ! -f $VIRTUOSO_TEST/tpc-h/lineitem.tbl ]; then
+    RUN make -C $VIRTUOSO_TEST/tpc-h data
+    if [ $STATUS -ne 0 ]; then
+        LOG "***ABORTED: Generating TPC-H data"
         exit 1
     fi
-    
-    LOG "TPC-H data generation finished at `date`"  
-    cd $testdir
-    ln -s $VIRTUOSO_TEST/tpch/dataset.sql .
-    ln -s $VIRTUOSO_TEST/tpch/dataset.sql src
+    LOG "SQL data for TPC-H generated"
 fi
 
 START_SERVER $PORT 1000
 cd $testdir
 
-# load TPC-H tables
-LOG "Loading SQL data for TPC-H ..."
-RUN $ISQL $DSN dba dba ERRORS=STDOUT VERBOSE=OFF PROMPT=OFF $bibm/tpch/virtuoso/schema.sql 
-if [ $STATUS -ne 0 ]
-then
-    LOG "***ABORTED: schema.sql -- Loading SQL schema for TPCH."
+# load TPC-H data
+ln -sf $VIRTUOSO_TEST/tpc-h dbgen
+for i in cl*; do
+	[ -d $i ] && ln -sf $VIRTUOSO_TEST/tpc-h $i/dbgen
+done
+RUN 
+RUN $tpchdir/load.sh $tpch_scale
+if [ $STATUS -ne 0 ]; then
+    LOG "***ABORTED: Loading TPC-H data"
     exit 1
 fi
-RUN $ISQL $DSN dba dba ERRORS=STDOUT VERBOSE=OFF PROMPT=OFF $bibm/tpch/virtuoso/ldschema.sql 
-if [ $STATUS -ne 0 ]
-then
-    LOG "***ABORTED: ldschema.sql -- Loading SQL schema for TPCH."
-    exit 1
-fi
-
-LOG "TPC-H data loading started at `date`" 
-RUN $ISQL $DSN dba dba ERRORS=STDOUT VERBOSE=OFF PROMPT=OFF $bibm/tpch/virtuoso/ldfile.sql
-if [ $STATUS -ne 0 ]
-then
-    LOG "***ABORTED: ldfile.sql -- Loading SQL schema for TPCH."
-    exit 1
-fi
-
-$ISQL $DSN dba dba ERRORS=STDOUT VERBOSE=OFF PROMPT=OFF < $bibm/tpch/virtuoso/ld.sql >> $LOGFILE
-if [ $STATUS -ne 0 ]
-then
-    LOG "***ABORTED: ld.sql -- Loading SQL schema for TPCH."
-    exit 1
-fi
-
-LOG "TPC-H data loading finished at `date`" 
-
-CHECKPOINT_SERVER
-LOG "Checking data after loading" 
-RUN $ISQL $DSN dba dba ERRORS=STDOUT VERBOSE=OFF PROMPT=OFF $VIRTUOSO_TEST/ttpch-load-check.sql -u TPCH_SCALE=$tpch_scale
-if [ $STATUS -ne 0 ]
-then
-    LOG "***ABORTED: ttpch-load-check.sql -- Checking data for TPCH."
-    exit 1
-fi
-
 LOG "SQL data for TPC-H loaded."
 
-# run TPC-H test (qualification)
-LOG "running TPC-H qualification over JDBC ..."
-RUN $bibm/tpchdriver -sql -err-log err.log -dbdriver virtuoso.jdbc4.Driver jdbc:virtuoso://localhost:$PORT/UID=dba/PWD=dba -t 300000 -scale $tpch_scale -uc tpch/sql -defaultparams -q -printres -mt 1 
-if [ $STATUS -ne 0 ]
-then
-    LOG "***ABORTED: TPC-h qual"
+# run TPC-H qualification
+ln -sf $VIRTUOSO_TEST/tpc-h .
+RUN $ISQL $DSN PROMPT=OFF VERBOSE=OFF ERRORS=STDOUT <tpc-h/tpch_run.sql
+if [ $STATUS -ne 0 ]; then
+    LOG "***ABORTED: tpc-h/tpch_run.sql"
     exit 1
 fi
-LOG "TPC-H qualification complete."
-mv run.log tpch.log
-mv run.qual tpch.qual
 
-SHUTDOWN_SERVER $LOCAL
-
-LOG ""
-LOG "Validating TPCH results agains qualification data."
-RUN $bibm/compareresults.sh $bibm/tpch/valid.qual tpch.qual 
+SHUTDOWN_SERVER $PORT
 
 CHECK_LOG
 BANNER "COMPLETED SERIES OF TPC-H/RDF-H TESTS"
-

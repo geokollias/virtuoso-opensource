@@ -1,0 +1,170 @@
+<test>
+    <comment>#line 4 tpc-h/4.sql
+select
+	o_orderpriority,
+	count(*) as order_count
+from
+	orders
+where
+	o_orderdate &gt;= cast (1993-07-01 as date)
+	and o_orderdate &lt; dateadd (month, 3, cast (1993-07-01 as date))
+	and exists (
+		select
+			*
+		from
+			lineitem
+		where
+			l_orderkey = o_orderkey
+			and l_commitdate &lt; l_receiptdate
+	)
+group by
+	o_orderpriority
+order by
+	o_orderpriority
+</comment>
+    <query><![CDATA[#line 4 "tpc-h/4.sql"
+select
+	o_orderpriority,
+	count(*) as order_count
+from
+	orders
+where
+	o_orderdate >= cast ('1993-07-01' as date)
+	and o_orderdate < dateadd ('month', 3, cast ('1993-07-01' as date))
+	and exists (
+		select
+			*
+		from
+			lineitem
+		where
+			l_orderkey = o_orderkey
+			and l_commitdate < l_receiptdate
+	)
+group by
+	o_orderpriority
+order by
+	o_orderpriority
+    ]]></query>
+    <plans>
+	<plan>
+	    <verify result-order="1" col-names="1" plan-xpath="/report[fref[fref[ts[following::setp]][following::setp]][following::ts[following::sel]]]">
+		<da-below rnd="0" seq="0" same-seg="" />
+	    </verify>
+<text><![CDATA[{ 
+{ fork
+{ fork
+ORDERS   5.1e+02 rows(.O_ORDERKEY, .O_ORDERPRIORITY)
+ O_ORDERDATE >= <tag 211 c 1993-07-01> < <tag 211 c 1993-10-01>
+END Node
+After test:
+      0: if ({ 
+LINEITEM     0.018 rows(.L_COMMITDATE, .L_RECEIPTDATE)
+ inlined  L_ORDERKEY = k_.O_ORDERKEY
+END Node
+After test:
+      0: if (.L_COMMITDATE < .L_RECEIPTDATE) then 4 else 5 unkn 5
+      4: BReturn 1
+      5: BReturn 0
+Subquery Select( <none> )
+}
+) then 4 else 5 unkn 5
+      4: BReturn 1
+      5: BReturn 0
+Sort (.O_ORDERPRIORITY) -> (inc)
+ 
+}
+group by read node  
+(.O_ORDERPRIORITY, ORDER_COUNT)
+Sort (.O_ORDERPRIORITY) -> (ORDER_COUNT)
+ 
+}
+Key from temp (.O_ORDERPRIORITY, ORDER_COUNT)
+ 
+Select (.O_ORDERPRIORITY, ORDER_COUNT)
+}
+]]></text>
+	    <xmlplan>
+<report>
+<sctr sctr_ose='0'/>
+<fref sets='157'><fref sets='143'><ts key='ORDERS' table='DB.DBA.ORDERS'>
+<ks_row_spec>
+<sp col='O_ORDERDATE'>
+<op code='&gt;=' >
+<ssl constant='1993-07-01' />
+</op>
+<op code='&lt;' >
+<ssl constant='1993-10-01' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='30' name='.O_ORDERKEY' />
+<ssl index='29' name='.O_ORDERPRIORITY' />
+</ks_out_slots>
+</ts>
+<after_test><if><subq><params></params><sctr sctr_ose='0'/>
+<ts key='LINEITEM' table='DB.DBA.LINEITEM'>
+<ks_spec>
+<sp col='L_ORDERKEY'>
+<op code='=' >
+<ssl index='118' name='k_.O_ORDERKEY' />
+</op>
+</sp></ks_spec><ks_out_slots>
+<ssl index='34' name='.L_COMMITDATE' />
+<ssl index='33' name='.L_RECEIPTDATE' />
+</ks_out_slots>
+</ts>
+<after_test><if op='&lt;' succ='4' else='5' unkn='5' merge='0'><left><ssl index='34' name='.L_COMMITDATE' />
+</left><right><ssl index='33' name='.L_RECEIPTDATE' />
+</right></if><bret ret='1'/><bret ret='0'/></after_test><end />
+<sel><out><ssl /></out></sel>
+</subq></if><bret ret='1'/><bret ret='0'/></after_test><end />
+<setp ha_op='group' hf='0' sets='137'><key><ssl index='29' name='.O_ORDERPRIORITY' />
+
+</key><dep><ssl index='54' name='inc' />
+</dep></setp>
+</fref>
+<chash />
+<setp ha_op='order' hf='0' sets='152'><key><ssl index='29' name='.O_ORDERPRIORITY' />
+</key><dep><ssl index='52' name='ORDER_COUNT' />
+</dep></setp>
+</fref>
+<ts key='temp'>
+<ks_out_slots>
+<ssl index='29' name='.O_ORDERPRIORITY' />
+<ssl index='52' name='ORDER_COUNT' />
+</ks_out_slots>
+</ts>
+<sel><ssl index='29' name='.O_ORDERPRIORITY' />
+<ssl index='52' name='ORDER_COUNT' />
+</sel>
+</report>
+	    </xmlplan>
+	</plan>
+    </plans>
+    <columns>
+         <column name="O_ORDERPRIORITY"/>
+         <column name="ORDER_COUNT"/>
+    </columns>
+    <result cnt="5">
+<row>
+    <col dtp="182">1-URGENT</col>
+    <col dtp="189">10594</col>
+</row>
+<row>
+    <col dtp="182">2-HIGH</col>
+    <col dtp="189">10476</col>
+</row>
+<row>
+    <col dtp="182">3-MEDIUM</col>
+    <col dtp="189">10410</col>
+</row>
+<row>
+    <col dtp="182">4-NOT SPECIFIED</col>
+    <col dtp="189">10556</col>
+</row>
+<row>
+    <col dtp="182">5-LOW</col>
+    <col dtp="189">10487</col>
+</row>
+    </result>
+</test>

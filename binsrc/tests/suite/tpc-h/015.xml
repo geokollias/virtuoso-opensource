@@ -1,0 +1,223 @@
+<test>
+    <comment>#line 17 tpc-h/15.sql
+select
+	s_suppkey,
+	s_name,
+	s_address,
+	s_phone,
+	total_revenue
+from
+	supplier,
+	revenue0
+where
+	s_suppkey = supplier_no
+	and total_revenue = (
+		select
+			max(total_revenue)
+		from
+			revenue0
+	)
+order by
+	s_suppkey
+</comment>
+    <query><![CDATA[#line 17 "tpc-h/15.sql"
+select
+	s_suppkey,
+	s_name,
+	s_address,
+	s_phone,
+	total_revenue
+from
+	supplier,
+	revenue0
+where
+	s_suppkey = supplier_no
+	and total_revenue = (
+		select
+			max(total_revenue)
+		from
+			revenue0
+	)
+order by
+	s_suppkey
+    ]]></query>
+    <plans>
+	<plan>
+	    <verify result-order="1" col-names="1" plan-xpath="/report[fref[subq[fref[ts[following::setp]][following::sel]][following::ts[following::setp]]][following::ts[following::sel]]]">
+		<da-below rnd="0" seq="0" same-seg="" />
+	    </verify>
+<text><![CDATA[{ 
+ 
+Precode:
+      0: { 
+{ fork
+Subquery 28 
+{ 
+{ fork
+LINEITEM   2.3e+05 rows(t6.L_SUPPKEY, t6.L_EXTENDEDPRICE, t6.L_DISCOUNT)
+ L_SHIPDATE >= <tag 211 c 1996-01-01> < <tag 211 c 1996-04-01>
+ 
+Precode:
+      0: temp := artm  1  - t6.L_DISCOUNT
+      4: temp := artm t6.L_EXTENDEDPRICE * temp
+      8: BReturn 0
+Sort (t6.L_SUPPKEY) -> (temp)
+ 
+}
+group by read node  
+(t6.L_SUPPKEY, aggregate)
+ 
+After code:
+      0: SUPPLIER_NO :=  := artm t6.L_SUPPKEY
+      4: TOTAL_REVENUE :=  := artm aggregate
+      8: BReturn 0
+Subquery Select(SUPPLIER_NO, TOTAL_REVENUE)
+}
+ 
+After code:
+      0:  max bestTOTAL_REVENUE
+      5: BReturn 0
+}
+ 
+After code:
+      0: aggregate :=  := artm best
+      4: BReturn 0
+Subquery Select(aggregate)
+}
+ 
+      8: BReturn 0
+{ fork
+Subquery 85 
+{ 
+{ fork
+LINEITEM   2.3e+05 rows(t1.L_SUPPKEY, t1.L_EXTENDEDPRICE, t1.L_DISCOUNT)
+ L_SHIPDATE >= <tag 211 c 1996-01-01> < <tag 211 c 1996-04-01>
+ 
+Precode:
+      0: temp := artm  1  - t1.L_DISCOUNT
+      4: temp := artm t1.L_EXTENDEDPRICE * temp
+      8: BReturn 0
+Sort (t1.L_SUPPKEY) -> (temp, scalar)
+ 
+}
+group by read node  
+(t1.L_SUPPKEY, aggregate, scalar)
+END Node
+After test:
+      0: if (aggregate = scalar) then 4 else 5 unkn 5
+      4: BReturn 1
+      5: BReturn 0
+ 
+After code:
+      0: SUPPLIER_NO :=  := artm t1.L_SUPPKEY
+      4: TOTAL_REVENUE :=  := artm aggregate
+      8: BReturn 0
+Subquery Select(SUPPLIER_NO, TOTAL_REVENUE)
+}
+SUPPLIER unq         1 rows (.S_SUPPKEY, .S_NAME, .S_ADDRESS, .S_PHONE)
+ inlined  S_SUPPKEY = SUPPLIER_NO
+Sort (.S_SUPPKEY) -> (.S_NAME, .S_ADDRESS, .S_PHONE, TOTAL_REVENUE)
+ 
+}
+Key from temp (.S_SUPPKEY, .S_NAME, .S_ADDRESS, .S_PHONE, TOTAL_REVENUE)
+ 
+Select (.S_SUPPKEY, .S_NAME, .S_ADDRESS, .S_PHONE, TOTAL_REVENUE)
+}
+]]></text>
+	    <xmlplan>
+<report>
+<sctr sctr_ose='0'/>
+<fref sets='261'><subq>
+<fref sets='229'><ts key='LINEITEM' table='DB.DBA.LINEITEM'>
+<ks_row_spec>
+<sp col='L_SHIPDATE'>
+<op code='&gt;=' >
+<ssl constant='1996-01-01' />
+</op>
+<op code='&lt;' >
+<ssl constant='1996-04-01' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='92' name='t1.L_SUPPKEY' />
+<ssl index='91' name='t1.L_EXTENDEDPRICE' />
+<ssl index='90' name='t1.L_DISCOUNT' />
+</ks_out_slots>
+</ts>
+<setp ha_op='group' hf='0' sets='224'><key><ssl index='92' name='t1.L_SUPPKEY' />
+</key><dep><ssl index='96' name='temp' />
+<ssl index='81' name='scalar' />
+
+</dep></setp>
+</fref>
+<chash />
+<after_test><if op='=' succ='4' else='5' unkn='5' merge='0'><left><ssl index='100' name='aggregate' />
+</left><right><ssl index='81' name='scalar' />
+</right></if><bret ret='1'/><bret ret='0'/></after_test><after_code><artm op=':='><res><ssl index='86' name='SUPPLIER_NO' />
+</res><left><ssl index='92' name='t1.L_SUPPKEY' />
+
+</left></artm><artm op=':='><res><ssl index='87' name='TOTAL_REVENUE' />
+</res><left><ssl index='100' name='aggregate' />
+
+</left></artm><bret ret='0'/></after_code><end />
+<sel><out><ssl index='86' name='SUPPLIER_NO' />
+<ssl index='87' name='TOTAL_REVENUE' />
+</out></sel>
+</subq>
+<ts key='SUPPLIER' table='DB.DBA.SUPPLIER'>
+<ks_spec>
+<sp col='S_SUPPKEY'>
+<op code='=' >
+<ssl index='86' name='SUPPLIER_NO' />
+</op>
+</sp></ks_spec><ks_out_slots>
+<ssl index='132' name='.S_SUPPKEY' />
+<ssl index='131' name='.S_NAME' />
+<ssl index='130' name='.S_ADDRESS' />
+<ssl index='129' name='.S_PHONE' />
+</ks_out_slots>
+</ts>
+<setp ha_op='order' hf='0' sets='256'><key><ssl index='132' name='.S_SUPPKEY' />
+</key><dep><ssl index='131' name='.S_NAME' />
+<ssl index='130' name='.S_ADDRESS' />
+<ssl index='129' name='.S_PHONE' />
+<ssl index='87' name='TOTAL_REVENUE' />
+
+</dep></setp>
+</fref>
+<ts key='temp'>
+<ks_out_slots>
+<ssl index='132' name='.S_SUPPKEY' />
+<ssl index='131' name='.S_NAME' />
+<ssl index='130' name='.S_ADDRESS' />
+<ssl index='129' name='.S_PHONE' />
+<ssl index='87' name='TOTAL_REVENUE' />
+</ks_out_slots>
+</ts>
+<sel><ssl index='132' name='.S_SUPPKEY' />
+<ssl index='131' name='.S_NAME' />
+<ssl index='130' name='.S_ADDRESS' />
+<ssl index='129' name='.S_PHONE' />
+<ssl index='87' name='TOTAL_REVENUE' />
+</sel>
+</report>
+	    </xmlplan>
+	</plan>
+    </plans>
+    <columns>
+         <column name="S_SUPPKEY"/>
+         <column name="S_NAME"/>
+         <column name="S_ADDRESS"/>
+         <column name="S_PHONE"/>
+         <column name="TOTAL_REVENUE"/>
+    </columns>
+    <result cnt="1">
+<row>
+    <col dtp="189">8449</col>
+    <col dtp="182">Supplier#000008449</col>
+    <col dtp="182">Wp34zim9qYFbVctdW</col>
+    <col dtp="182">20-469-856-8873</col>
+    <col dtp="191">1772627.2087</col>
+</row>
+    </result>
+</test>

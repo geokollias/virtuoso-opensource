@@ -1,0 +1,681 @@
+<test>
+    <comment>#line 4 tpc-h/18.sql
+select  top 100
+	c_name,
+	c_custkey,
+	o_orderkey,
+	o_orderdate,
+	o_totalprice,
+	sum(l_quantity)
+from
+	customer,
+	orders,
+	lineitem
+where
+	o_orderkey in (
+		select
+			l_orderkey
+		from
+			lineitem
+		group by
+			l_orderkey having
+				sum(l_quantity) &gt; 300
+	)
+	and c_custkey = o_custkey
+	and o_orderkey = l_orderkey
+group by
+	c_name,
+	c_custkey,
+	o_orderkey,
+	o_orderdate,
+	o_totalprice
+order by
+	o_totalprice desc,
+	o_orderdate 
+</comment>
+    <query><![CDATA[#line 4 "tpc-h/18.sql"
+select  top 100
+	c_name,
+	c_custkey,
+	o_orderkey,
+	o_orderdate,
+	o_totalprice,
+	sum(l_quantity)
+from
+	customer,
+	orders,
+	lineitem
+where
+	o_orderkey in (
+		select
+			l_orderkey
+		from
+			lineitem
+		group by
+			l_orderkey having
+				sum(l_quantity) > 300
+	)
+	and c_custkey = o_custkey
+	and o_orderkey = l_orderkey
+group by
+	c_name,
+	c_custkey,
+	o_orderkey,
+	o_orderdate,
+	o_totalprice
+order by
+	o_totalprice desc,
+	o_orderdate 
+    ]]></query>
+    <plans>
+	<plan>
+	    <verify result-order="1" col-names="1" plan-xpath="/report[fref[ts[following::ts[following::ts[following::setp[following::setp]]]]][following::ts[following::sel]]]">
+		<da-below rnd="0" seq="0" same-seg="" />
+	    </verify>
+<text><![CDATA[{ 
+{ fork
+ORDERS   4.2e+04 rows(.O_TOTALPRICE, .O_ORDERKEY, .O_CUSTKEY, .O_ORDERDATE)
+ 
+top k on O_TOTALPRICE
+END Node
+After test:
+      0: if ({ 
+LINEITEM       4.5 rows(.L_ORDERKEY, .L_QUANTITY)
+ inlined  L_ORDERKEY = k_.O_ORDERKEY
+Sort streaming with duplicates (set_ctr, .L_ORDERKEY) -> (.L_QUANTITY)
+ 
+group by read node  
+(gb_set_no, .L_ORDERKEY, aggregate)
+END Node
+After test:
+      0: if (aggregate >  300 ) then 4 else 5 unkn 5
+      4: BReturn 1
+      5: BReturn 0
+Subquery Select( <none> )
+}
+) then 4 else 5 unkn 5
+      4: BReturn 1
+      5: BReturn 0
+CUSTOMER unq         1 rows (.C_CUSTKEY)
+ inlined  C_CUSTKEY = k_.O_CUSTKEY
+LINEITEM       4.5 rows(.L_QUANTITY)
+ inlined  L_ORDERKEY = k_.O_ORDERKEY
+Sort streaming with duplicates (.C_CUSTKEY, .O_ORDERKEY) -> (.L_QUANTITY, .O_TOTALPRICE, .O_ORDERDATE)
+ 
+group by read node  
+(.C_CUSTKEY, .O_ORDERKEY, aggregate, .O_TOTALPRICE, .O_ORDERDATE)
+Sort (.O_TOTALPRICE, .O_ORDERDATE) -> (.O_ORDERKEY, aggregate, .C_CUSTKEY)
+ 
+}
+top order by read (.O_ORDERKEY, .O_ORDERDATE, .O_TOTALPRICE, aggregate, .C_CUSTKEY)
+CUSTOMER unq         1 rows (.C_NAME)
+ inlined  C_CUSTKEY = .C_CUSTKEY
+Select (.C_NAME, .C_CUSTKEY, .O_ORDERKEY, .O_ORDERDATE, .O_TOTALPRICE, aggregate)
+}
+]]></text>
+	    <xmlplan>
+<report>
+<sctr sctr_ose='0'/>
+<fref sets='235'><ts key='ORDERS' table='DB.DBA.ORDERS'>
+<ks_out_slots>
+<ssl index='32' name='.O_TOTALPRICE' />
+<ssl index='31' name='.O_ORDERKEY' />
+<ssl index='30' name='.O_CUSTKEY' />
+<ssl index='29' name='.O_ORDERDATE' />
+</ks_out_slots>
+</ts>
+<after_test><if><subq><params></params><sctr sctr_ose='0'/>
+<ts key='LINEITEM' table='DB.DBA.LINEITEM'>
+<ks_spec>
+<sp col='L_ORDERKEY'>
+<op code='=' >
+<ssl index='163' name='k_.O_ORDERKEY' />
+</op>
+</sp></ks_spec><ks_out_slots>
+<ssl index='36' name='.L_ORDERKEY' />
+<ssl index='35' name='.L_QUANTITY' />
+</ks_out_slots>
+</ts>
+<setp ha_op='group' hf='0' sets='170'><key><ssl index='38' name='set_ctr' />
+
+<ssl index='36' name='.L_ORDERKEY' />
+</key><dep><ssl index='35' name='.L_QUANTITY' />
+</dep></setp>
+<chash />
+<after_test><if op='&gt;' succ='4' else='5' unkn='5' merge='0'><left><ssl index='42' name='aggregate' />
+</left><right><ssl constant='300' />
+</right></if><bret ret='1'/><bret ret='0'/></after_test><end />
+<sel><out><ssl /></out></sel>
+</subq></if><bret ret='1'/><bret ret='0'/></after_test><end />
+<ts key='CUSTOMER' table='DB.DBA.CUSTOMER'>
+<ks_spec>
+<sp col='C_CUSTKEY'>
+<op code='=' >
+<ssl index='200' name='k_.O_CUSTKEY' />
+</op>
+</sp></ks_spec><ks_out_slots>
+<ssl index='74' name='.C_CUSTKEY' />
+</ks_out_slots>
+</ts>
+<ts key='LINEITEM' table='DB.DBA.LINEITEM'>
+<ks_spec>
+<sp col='L_ORDERKEY'>
+<op code='=' >
+<ssl index='210' name='k_.O_ORDERKEY' />
+</op>
+</sp></ks_spec><ks_out_slots>
+<ssl index='77' name='.L_QUANTITY' />
+</ks_out_slots>
+</ts>
+<setp ha_op='group' hf='0' sets='216'><key><ssl index='74' name='.C_CUSTKEY' />
+
+<ssl index='31' name='.O_ORDERKEY' />
+
+</key><dep><ssl index='77' name='.L_QUANTITY' />
+<ssl index='32' name='.O_TOTALPRICE' />
+
+<ssl index='29' name='.O_ORDERDATE' />
+
+</dep></setp>
+<chash />
+<setp ha_op='order' hf='0' sets='230'><key><ssl index='32' name='.O_TOTALPRICE' />
+<ssl index='29' name='.O_ORDERDATE' />
+</key><dep><ssl index='31' name='.O_ORDERKEY' />
+<ssl index='83' name='aggregate' />
+<ssl index='74' name='.C_CUSTKEY' />
+</dep></setp>
+</fref>
+<sr />
+<ts key='CUSTOMER' table='DB.DBA.CUSTOMER'>
+<ks_spec>
+<sp col='C_CUSTKEY'>
+<op code='=' >
+<ssl index='74' name='.C_CUSTKEY' />
+</op>
+</sp></ks_spec><ks_out_slots>
+<ssl index='129' name='.C_NAME' />
+</ks_out_slots>
+</ts>
+<sel><ssl index='129' name='.C_NAME' />
+<ssl index='74' name='.C_CUSTKEY' />
+
+<ssl index='31' name='.O_ORDERKEY' />
+
+<ssl index='29' name='.O_ORDERDATE' />
+
+<ssl index='32' name='.O_TOTALPRICE' />
+
+<ssl index='83' name='aggregate' />
+
+</sel>
+</report>
+	    </xmlplan>
+	</plan>
+    </plans>
+    <columns>
+         <column name="C_NAME"/>
+         <column name="C_CUSTKEY"/>
+         <column name="O_ORDERKEY"/>
+         <column name="O_ORDERDATE"/>
+         <column name="O_TOTALPRICE"/>
+         <column name="aggregate"/>
+    </columns>
+    <result cnt="57">
+<row>
+    <col dtp="182">Customer#000128120</col>
+    <col dtp="189">128120</col>
+    <col dtp="189">4722021</col>
+    <col dtp="211">1994-04-07</col>
+    <col dtp="191">544089.09</col>
+    <col dtp="191">323</col>
+</row>
+<row>
+    <col dtp="182">Customer#000144617</col>
+    <col dtp="189">144617</col>
+    <col dtp="189">3043270</col>
+    <col dtp="211">1997-02-12</col>
+    <col dtp="191">530604.4399999999</col>
+    <col dtp="191">317</col>
+</row>
+<row>
+    <col dtp="182">Customer#000013940</col>
+    <col dtp="189">13940</col>
+    <col dtp="189">2232932</col>
+    <col dtp="211">1997-04-13</col>
+    <col dtp="191">522720.61</col>
+    <col dtp="191">304</col>
+</row>
+<row>
+    <col dtp="182">Customer#000066790</col>
+    <col dtp="189">66790</col>
+    <col dtp="189">2199712</col>
+    <col dtp="211">1996-09-30</col>
+    <col dtp="191">515531.82</col>
+    <col dtp="191">327</col>
+</row>
+<row>
+    <col dtp="182">Customer#000046435</col>
+    <col dtp="189">46435</col>
+    <col dtp="189">4745607</col>
+    <col dtp="211">1997-07-03</col>
+    <col dtp="191">508047.99</col>
+    <col dtp="191">309</col>
+</row>
+<row>
+    <col dtp="182">Customer#000015272</col>
+    <col dtp="189">15272</col>
+    <col dtp="189">3883783</col>
+    <col dtp="211">1993-07-28</col>
+    <col dtp="191">500241.33</col>
+    <col dtp="191">302</col>
+</row>
+<row>
+    <col dtp="182">Customer#000146608</col>
+    <col dtp="189">146608</col>
+    <col dtp="189">3342468</col>
+    <col dtp="211">1994-06-12</col>
+    <col dtp="191">499794.58</col>
+    <col dtp="191">303</col>
+</row>
+<row>
+    <col dtp="182">Customer#000096103</col>
+    <col dtp="189">96103</col>
+    <col dtp="189">5984582</col>
+    <col dtp="211">1992-03-16</col>
+    <col dtp="191">494398.79</col>
+    <col dtp="191">312</col>
+</row>
+<row>
+    <col dtp="182">Customer#000024341</col>
+    <col dtp="189">24341</col>
+    <col dtp="189">1474818</col>
+    <col dtp="211">1992-11-15</col>
+    <col dtp="191">491348.26</col>
+    <col dtp="191">302</col>
+</row>
+<row>
+    <col dtp="182">Customer#000137446</col>
+    <col dtp="189">137446</col>
+    <col dtp="189">5489475</col>
+    <col dtp="211">1997-05-23</col>
+    <col dtp="191">487763.25</col>
+    <col dtp="191">311</col>
+</row>
+<row>
+    <col dtp="182">Customer#000107590</col>
+    <col dtp="189">107590</col>
+    <col dtp="189">4267751</col>
+    <col dtp="211">1994-11-04</col>
+    <col dtp="191">485141.38</col>
+    <col dtp="191">301</col>
+</row>
+<row>
+    <col dtp="182">Customer#000050008</col>
+    <col dtp="189">50008</col>
+    <col dtp="189">2366755</col>
+    <col dtp="211">1996-12-09</col>
+    <col dtp="191">483891.26</col>
+    <col dtp="191">302</col>
+</row>
+<row>
+    <col dtp="182">Customer#000015619</col>
+    <col dtp="189">15619</col>
+    <col dtp="189">3767271</col>
+    <col dtp="211">1996-08-07</col>
+    <col dtp="191">480083.96</col>
+    <col dtp="191">318</col>
+</row>
+<row>
+    <col dtp="182">Customer#000077260</col>
+    <col dtp="189">77260</col>
+    <col dtp="189">1436544</col>
+    <col dtp="211">1992-09-12</col>
+    <col dtp="191">479499.43</col>
+    <col dtp="191">307</col>
+</row>
+<row>
+    <col dtp="182">Customer#000109379</col>
+    <col dtp="189">109379</col>
+    <col dtp="189">5746311</col>
+    <col dtp="211">1996-10-10</col>
+    <col dtp="191">478064.11</col>
+    <col dtp="191">302</col>
+</row>
+<row>
+    <col dtp="182">Customer#000054602</col>
+    <col dtp="189">54602</col>
+    <col dtp="189">5832321</col>
+    <col dtp="211">1997-02-09</col>
+    <col dtp="191">471220.08</col>
+    <col dtp="191">307</col>
+</row>
+<row>
+    <col dtp="182">Customer#000105995</col>
+    <col dtp="189">105995</col>
+    <col dtp="189">2096705</col>
+    <col dtp="211">1994-07-03</col>
+    <col dtp="191">469692.58</col>
+    <col dtp="191">307</col>
+</row>
+<row>
+    <col dtp="182">Customer#000148885</col>
+    <col dtp="189">148885</col>
+    <col dtp="189">2942469</col>
+    <col dtp="211">1992-05-31</col>
+    <col dtp="191">469630.44</col>
+    <col dtp="191">313</col>
+</row>
+<row>
+    <col dtp="182">Customer#000114586</col>
+    <col dtp="189">114586</col>
+    <col dtp="189">551136</col>
+    <col dtp="211">1993-05-19</col>
+    <col dtp="191">469605.59</col>
+    <col dtp="191">308</col>
+</row>
+<row>
+    <col dtp="182">Customer#000105260</col>
+    <col dtp="189">105260</col>
+    <col dtp="189">5296167</col>
+    <col dtp="211">1996-09-06</col>
+    <col dtp="191">469360.57</col>
+    <col dtp="191">303</col>
+</row>
+<row>
+    <col dtp="182">Customer#000147197</col>
+    <col dtp="189">147197</col>
+    <col dtp="189">1263015</col>
+    <col dtp="211">1997-02-02</col>
+    <col dtp="191">467149.67</col>
+    <col dtp="191">320</col>
+</row>
+<row>
+    <col dtp="182">Customer#000064483</col>
+    <col dtp="189">64483</col>
+    <col dtp="189">2745894</col>
+    <col dtp="211">1996-07-04</col>
+    <col dtp="191">466991.35</col>
+    <col dtp="191">304</col>
+</row>
+<row>
+    <col dtp="182">Customer#000136573</col>
+    <col dtp="189">136573</col>
+    <col dtp="189">2761378</col>
+    <col dtp="211">1996-05-31</col>
+    <col dtp="191">461282.73</col>
+    <col dtp="191">301</col>
+</row>
+<row>
+    <col dtp="182">Customer#000016384</col>
+    <col dtp="189">16384</col>
+    <col dtp="189">502886</col>
+    <col dtp="211">1994-04-12</col>
+    <col dtp="191">458378.92</col>
+    <col dtp="191">312</col>
+</row>
+<row>
+    <col dtp="182">Customer#000117919</col>
+    <col dtp="189">117919</col>
+    <col dtp="189">2869152</col>
+    <col dtp="211">1996-06-20</col>
+    <col dtp="191">456815.92</col>
+    <col dtp="191">317</col>
+</row>
+<row>
+    <col dtp="182">Customer#000012251</col>
+    <col dtp="189">12251</col>
+    <col dtp="189">735366</col>
+    <col dtp="211">1993-11-24</col>
+    <col dtp="191">455107.26</col>
+    <col dtp="191">309</col>
+</row>
+<row>
+    <col dtp="182">Customer#000120098</col>
+    <col dtp="189">120098</col>
+    <col dtp="189">1971680</col>
+    <col dtp="211">1995-06-14</col>
+    <col dtp="191">453451.23</col>
+    <col dtp="191">308</col>
+</row>
+<row>
+    <col dtp="182">Customer#000066098</col>
+    <col dtp="189">66098</col>
+    <col dtp="189">5007490</col>
+    <col dtp="211">1992-08-07</col>
+    <col dtp="191">453436.16</col>
+    <col dtp="191">304</col>
+</row>
+<row>
+    <col dtp="182">Customer#000117076</col>
+    <col dtp="189">117076</col>
+    <col dtp="189">4290656</col>
+    <col dtp="211">1997-02-05</col>
+    <col dtp="191">449545.85</col>
+    <col dtp="191">301</col>
+</row>
+<row>
+    <col dtp="182">Customer#000129379</col>
+    <col dtp="189">129379</col>
+    <col dtp="189">4720454</col>
+    <col dtp="211">1997-06-07</col>
+    <col dtp="191">448665.79</col>
+    <col dtp="191">303</col>
+</row>
+<row>
+    <col dtp="182">Customer#000126865</col>
+    <col dtp="189">126865</col>
+    <col dtp="189">4702759</col>
+    <col dtp="211">1994-11-07</col>
+    <col dtp="191">447606.65</col>
+    <col dtp="191">320</col>
+</row>
+<row>
+    <col dtp="182">Customer#000088876</col>
+    <col dtp="189">88876</col>
+    <col dtp="189">983201</col>
+    <col dtp="211">1993-12-30</col>
+    <col dtp="191">446717.46</col>
+    <col dtp="191">304</col>
+</row>
+<row>
+    <col dtp="182">Customer#000036619</col>
+    <col dtp="189">36619</col>
+    <col dtp="189">4806726</col>
+    <col dtp="211">1995-01-17</col>
+    <col dtp="191">446704.09</col>
+    <col dtp="191">328</col>
+</row>
+<row>
+    <col dtp="182">Customer#000141823</col>
+    <col dtp="189">141823</col>
+    <col dtp="189">2806245</col>
+    <col dtp="211">1996-12-29</col>
+    <col dtp="191">446269.12</col>
+    <col dtp="191">310</col>
+</row>
+<row>
+    <col dtp="182">Customer#000053029</col>
+    <col dtp="189">53029</col>
+    <col dtp="189">2662214</col>
+    <col dtp="211">1993-08-13</col>
+    <col dtp="191">446144.49</col>
+    <col dtp="191">302</col>
+</row>
+<row>
+    <col dtp="182">Customer#000018188</col>
+    <col dtp="189">18188</col>
+    <col dtp="189">3037414</col>
+    <col dtp="211">1995-01-25</col>
+    <col dtp="191">443807.22</col>
+    <col dtp="191">308</col>
+</row>
+<row>
+    <col dtp="182">Customer#000066533</col>
+    <col dtp="189">66533</col>
+    <col dtp="189">29158</col>
+    <col dtp="211">1995-10-21</col>
+    <col dtp="191">443576.5</col>
+    <col dtp="191">305</col>
+</row>
+<row>
+    <col dtp="182">Customer#000037729</col>
+    <col dtp="189">37729</col>
+    <col dtp="189">4134341</col>
+    <col dtp="211">1995-06-29</col>
+    <col dtp="191">441082.97</col>
+    <col dtp="191">309</col>
+</row>
+<row>
+    <col dtp="182">Customer#000003566</col>
+    <col dtp="189">3566</col>
+    <col dtp="189">2329187</col>
+    <col dtp="211">1998-01-04</col>
+    <col dtp="191">439803.36</col>
+    <col dtp="191">304</col>
+</row>
+<row>
+    <col dtp="182">Customer#000045538</col>
+    <col dtp="189">45538</col>
+    <col dtp="189">4527553</col>
+    <col dtp="211">1994-05-22</col>
+    <col dtp="191">436275.31</col>
+    <col dtp="191">305</col>
+</row>
+<row>
+    <col dtp="182">Customer#000081581</col>
+    <col dtp="189">81581</col>
+    <col dtp="189">4739650</col>
+    <col dtp="211">1995-11-04</col>
+    <col dtp="191">435405.9</col>
+    <col dtp="191">305</col>
+</row>
+<row>
+    <col dtp="182">Customer#000119989</col>
+    <col dtp="189">119989</col>
+    <col dtp="189">1544643</col>
+    <col dtp="211">1997-09-20</col>
+    <col dtp="191">434568.25</col>
+    <col dtp="191">320</col>
+</row>
+<row>
+    <col dtp="182">Customer#000003680</col>
+    <col dtp="189">3680</col>
+    <col dtp="189">3861123</col>
+    <col dtp="211">1998-07-03</col>
+    <col dtp="191">433525.97</col>
+    <col dtp="191">301</col>
+</row>
+<row>
+    <col dtp="182">Customer#000113131</col>
+    <col dtp="189">113131</col>
+    <col dtp="189">967334</col>
+    <col dtp="211">1995-12-15</col>
+    <col dtp="191">432957.75</col>
+    <col dtp="191">301</col>
+</row>
+<row>
+    <col dtp="182">Customer#000141098</col>
+    <col dtp="189">141098</col>
+    <col dtp="189">565574</col>
+    <col dtp="211">1995-09-24</col>
+    <col dtp="191">430986.69</col>
+    <col dtp="191">301</col>
+</row>
+<row>
+    <col dtp="182">Customer#000093392</col>
+    <col dtp="189">93392</col>
+    <col dtp="189">5200102</col>
+    <col dtp="211">1997-01-22</col>
+    <col dtp="191">425487.51</col>
+    <col dtp="191">304</col>
+</row>
+<row>
+    <col dtp="182">Customer#000015631</col>
+    <col dtp="189">15631</col>
+    <col dtp="189">1845057</col>
+    <col dtp="211">1994-05-12</col>
+    <col dtp="191">419879.59</col>
+    <col dtp="191">302</col>
+</row>
+<row>
+    <col dtp="182">Customer#000112987</col>
+    <col dtp="189">112987</col>
+    <col dtp="189">4439686</col>
+    <col dtp="211">1996-09-17</col>
+    <col dtp="191">418161.49</col>
+    <col dtp="191">305</col>
+</row>
+<row>
+    <col dtp="182">Customer#000012599</col>
+    <col dtp="189">12599</col>
+    <col dtp="189">4259524</col>
+    <col dtp="211">1998-02-12</col>
+    <col dtp="191">415200.61</col>
+    <col dtp="191">304</col>
+</row>
+<row>
+    <col dtp="182">Customer#000105410</col>
+    <col dtp="189">105410</col>
+    <col dtp="189">4478371</col>
+    <col dtp="211">1996-03-05</col>
+    <col dtp="191">412754.51</col>
+    <col dtp="191">302</col>
+</row>
+<row>
+    <col dtp="182">Customer#000149842</col>
+    <col dtp="189">149842</col>
+    <col dtp="189">5156581</col>
+    <col dtp="211">1994-05-30</col>
+    <col dtp="191">411329.35</col>
+    <col dtp="191">302</col>
+</row>
+<row>
+    <col dtp="182">Customer#000010129</col>
+    <col dtp="189">10129</col>
+    <col dtp="189">5849444</col>
+    <col dtp="211">1994-03-21</col>
+    <col dtp="191">409129.85</col>
+    <col dtp="191">309</col>
+</row>
+<row>
+    <col dtp="182">Customer#000069904</col>
+    <col dtp="189">69904</col>
+    <col dtp="189">1742403</col>
+    <col dtp="211">1996-10-19</col>
+    <col dtp="191">408513</col>
+    <col dtp="191">305</col>
+</row>
+<row>
+    <col dtp="182">Customer#000017746</col>
+    <col dtp="189">17746</col>
+    <col dtp="189">6882</col>
+    <col dtp="211">1997-04-09</col>
+    <col dtp="191">408446.93</col>
+    <col dtp="191">303</col>
+</row>
+<row>
+    <col dtp="182">Customer#000013072</col>
+    <col dtp="189">13072</col>
+    <col dtp="189">1481925</col>
+    <col dtp="211">1998-03-15</col>
+    <col dtp="191">399195.47</col>
+    <col dtp="191">301</col>
+</row>
+<row>
+    <col dtp="182">Customer#000082441</col>
+    <col dtp="189">82441</col>
+    <col dtp="189">857959</col>
+    <col dtp="211">1994-02-07</col>
+    <col dtp="191">382579.74</col>
+    <col dtp="191">305</col>
+</row>
+<row>
+    <col dtp="182">Customer#000088703</col>
+    <col dtp="189">88703</col>
+    <col dtp="189">2995076</col>
+    <col dtp="211">1994-01-30</col>
+    <col dtp="191">363812.12</col>
+    <col dtp="191">302</col>
+</row>
+    </result>
+</test>

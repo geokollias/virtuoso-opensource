@@ -1,0 +1,241 @@
+<test>
+    <comment>#line 4 tpc-h/22.sql
+select
+	cntrycode,
+	count(*) as numcust,
+	sum(c_acctbal) as totacctbal
+from
+	(
+		select
+			substring(c_phone, 1, 2) as cntrycode,
+			c_acctbal
+		from
+			customer
+		where
+			substring(c_phone, 1, 2) in
+				(13, 31, 23, 29, 30, 18, 17)
+			and c_acctbal &gt; (
+				select
+					avg(c_acctbal)
+				from
+					customer
+				where
+					c_acctbal &gt; 0.00
+					and substring(c_phone, 1, 2) in
+						(13, 31, 23, 29, 30, 18, 17)
+			)
+			and not exists (
+				select
+					*
+				from
+					orders
+				where
+					o_custkey = c_custkey
+			)
+	) as custsale
+group by
+	cntrycode
+order by
+	cntrycode
+</comment>
+    <query><![CDATA[#line 4 "tpc-h/22.sql"
+select
+	cntrycode,
+	count(*) as numcust,
+	sum(c_acctbal) as totacctbal
+from
+	(
+		select
+			substring(c_phone, 1, 2) as cntrycode,
+			c_acctbal
+		from
+			customer
+		where
+			substring(c_phone, 1, 2) in
+				('13', '31', '23', '29', '30', '18', '17')
+			and c_acctbal > (
+				select
+					avg(c_acctbal)
+				from
+					customer
+				where
+					c_acctbal > 0.00
+					and substring(c_phone, 1, 2) in
+						('13', '31', '23', '29', '30', '18', '17')
+			)
+			and not exists (
+				select
+					*
+				from
+					orders
+				where
+					o_custkey = c_custkey
+			)
+	) as custsale
+group by
+	cntrycode
+order by
+	cntrycode
+    ]]></query>
+    <plans>
+	<plan>
+	    <verify result-order="1" col-names="1" plan-xpath="/report[fref[fref[ts[following::stn[following::setp]]][following::setp]][following::ts[following::sel]]]">
+		<da-below rnd="0" seq="0" same-seg="" />
+	    </verify>
+<text><![CDATA[{ 
+ 
+Precode:
+      0: $28 "CHASH_IN_INIT" := Call CHASH_IN_INIT ( 182 , $30 "chash_in_tree",  0 ,  0 , <c 13>, <c 31>, <c 23>, <c 29>, <c 30>, <c 18>, <c 17>)
+      5: { 
+{ fork
+CUSTOMER   1.4e+05 rows(t4.C_ACCTBAL)
+ C_ACCTBAL >  0 
+hash partition+bloom by 0 ()
+ 
+After code:
+      0:  sum sumt4.C_ACCTBAL
+      5:  sum count 1 
+      10: BReturn 0
+}
+ 
+After code:
+      0: temp := artm sum / count
+      4: aggregate :=  := artm temp
+      8: BReturn 0
+Subquery Select(aggregate)
+}
+ 
+      13: BReturn 0
+{ fork
+{ fork
+CUSTOMER   5.6e+03 rows(t2.C_CUSTKEY, t2.C_PHONE, t2.C_ACCTBAL)
+ C_ACCTBAL > k_scalar
+hash partition+bloom by 0 ()
+END Node
+After test:
+      0: if ({ 
+O_CK       4.4 rows()
+ inlined  O_CUSTKEY = k_t2.C_CUSTKEY
+Subquery Select( <none> )
+}
+) then 5 else 4 unkn 5
+      4: BReturn 1
+      5: BReturn 0
+ 
+Precode:
+      0: CNTRYCODE := Call SUBSTRING (t2.C_PHONE,  1 ,  2 )
+      5: BReturn 0
+Stage 2
+Sort (q_CNTRYCODE) -> (inc, t2.C_ACCTBAL)
+ 
+}
+group by read node  
+(CNTRYCODE, NUMCUST, TOTACCTBAL)in each partition slice
+Sort (CNTRYCODE) -> (NUMCUST, TOTACCTBAL)
+ 
+}
+Key from temp (CNTRYCODE, NUMCUST, TOTACCTBAL)
+ 
+Select (CNTRYCODE, NUMCUST, TOTACCTBAL)
+}
+]]></text>
+	    <xmlplan>
+<report>
+<sctr sctr_ose='0'/>
+<fref sets='247'><fref sets='232'><ts key='CUSTOMER' table='DB.DBA.CUSTOMER'>
+<ks_row_spec>
+<sp col='C_ACCTBAL'>
+<op code='&gt;' >
+<ssl index='186' name='k_scalar' />
+</op>
+</sp></ks_row_spec>
+<ks_hash_spec>
+<hrng hs='0' flags='8' /></ks_hash_spec>
+<ks_out_slots>
+<ssl index='60' name='t2.C_CUSTKEY' />
+<ssl index='59' name='t2.C_PHONE' />
+<ssl index='58' name='t2.C_ACCTBAL' />
+</ks_out_slots>
+</ts>
+<after_test><if><subq><params></params><sctr sctr_ose='0'/>
+<ts key='O_CK' table='DB.DBA.ORDERS'>
+<ks_spec>
+<sp col='O_CUSTKEY'>
+<op code='=' >
+<ssl index='205' name='k_t2.C_CUSTKEY' />
+</op>
+</sp></ks_spec><ks_out_slots>
+</ks_out_slots>
+</ts>
+<sel><out><ssl /></out></sel>
+</subq></if><bret ret='1'/><bret ret='0'/></after_test><end />
+<stn nth='2'/>
+<setp ha_op='group' hf='0' sets='226'><key><ssl index='220' name='q_CNTRYCODE' />
+</key><dep><ssl index='86' name='inc' />
+<ssl index='224' name='t2.C_ACCTBAL' />
+</dep></setp>
+</fref>
+<chash />
+<setp ha_op='order' hf='0' sets='242'><key><ssl index='78' name='CNTRYCODE' />
+</key><dep><ssl index='84' name='NUMCUST' />
+<ssl index='87' name='TOTACCTBAL' />
+</dep></setp>
+</fref>
+<ts key='temp'>
+<ks_out_slots>
+<ssl index='78' name='CNTRYCODE' />
+<ssl index='84' name='NUMCUST' />
+<ssl index='87' name='TOTACCTBAL' />
+</ks_out_slots>
+</ts>
+<sel><ssl index='78' name='CNTRYCODE' />
+<ssl index='84' name='NUMCUST' />
+<ssl index='87' name='TOTACCTBAL' />
+</sel>
+</report>
+	    </xmlplan>
+	</plan>
+    </plans>
+    <columns>
+         <column name="CNTRYCODE"/>
+         <column name="NUMCUST"/>
+         <column name="TOTACCTBAL"/>
+    </columns>
+    <result cnt="7">
+<row>
+    <col dtp="182">13</col>
+    <col dtp="189">888</col>
+    <col dtp="191">6737713.989999999</col>
+</row>
+<row>
+    <col dtp="182">17</col>
+    <col dtp="189">861</col>
+    <col dtp="191">6460573.72</col>
+</row>
+<row>
+    <col dtp="182">18</col>
+    <col dtp="189">964</col>
+    <col dtp="191">7236687.400000014</col>
+</row>
+<row>
+    <col dtp="182">23</col>
+    <col dtp="189">892</col>
+    <col dtp="191">6701457.950000009</col>
+</row>
+<row>
+    <col dtp="182">29</col>
+    <col dtp="189">948</col>
+    <col dtp="191">7158866.629999997</col>
+</row>
+<row>
+    <col dtp="182">30</col>
+    <col dtp="189">909</col>
+    <col dtp="191">6808436.130000002</col>
+</row>
+<row>
+    <col dtp="182">31</col>
+    <col dtp="189">922</col>
+    <col dtp="191">6806670.179999986</col>
+</row>
+    </result>
+</test>

@@ -1,0 +1,335 @@
+<test>
+    <comment>#line 4 tpc-h/7.sql
+select
+	supp_nation,
+	cust_nation,
+	l_year,
+	sum(volume) as revenue
+from
+	(
+		select
+			n1.n_name as supp_nation,
+			n2.n_name as cust_nation,
+			extract(year from l_shipdate) as l_year,
+			l_extendedprice * (1 - l_discount) as volume
+		from
+			supplier,
+			lineitem,
+			orders,
+			customer,
+			nation n1,
+			nation n2
+		where
+			s_suppkey = l_suppkey
+			and o_orderkey = l_orderkey
+			and c_custkey = o_custkey
+			and s_nationkey = n1.n_nationkey
+			and c_nationkey = n2.n_nationkey
+			and (
+				(n1.n_name = FRANCE and n2.n_name = GERMANY)
+				or (n1.n_name = GERMANY and n2.n_name = FRANCE)
+			)
+			and l_shipdate between cast (1995-01-01 as date) and cast (1996-12-31 as date)
+	) as shipping
+group by
+	supp_nation,
+	cust_nation,
+	l_year
+order by
+	supp_nation,
+	cust_nation,
+	l_year
+</comment>
+    <query><![CDATA[#line 4 "tpc-h/7.sql"
+select
+	supp_nation,
+	cust_nation,
+	l_year,
+	sum(volume) as revenue
+from
+	(
+		select
+			n1.n_name as supp_nation,
+			n2.n_name as cust_nation,
+			extract(year from l_shipdate) as l_year,
+			l_extendedprice * (1 - l_discount) as volume
+		from
+			supplier,
+			lineitem,
+			orders,
+			customer,
+			nation n1,
+			nation n2
+		where
+			s_suppkey = l_suppkey
+			and o_orderkey = l_orderkey
+			and c_custkey = o_custkey
+			and s_nationkey = n1.n_nationkey
+			and c_nationkey = n2.n_nationkey
+			and (
+				(n1.n_name = 'FRANCE' and n2.n_name = 'GERMANY')
+				or (n1.n_name = 'GERMANY' and n2.n_name = 'FRANCE')
+			)
+			and l_shipdate between cast ('1995-01-01' as date) and cast ('1996-12-31' as date)
+	) as shipping
+group by
+	supp_nation,
+	cust_nation,
+	l_year
+order by
+	supp_nation,
+	cust_nation,
+	l_year
+    ]]></query>
+    <plans>
+	<plan>
+	    <verify result-order="1" col-names="1" plan-xpath="/report[hf[subq[ts[following::ts[following::setp]]]][following::fref[fref[ts[following::ts[following::ts[following::ts[following::hs[following::setp]]]]]][following::setp]][following::ts[following::sel]]]]">
+		<da-below rnd="0" seq="0" same-seg="" />
+	    </verify>
+<text><![CDATA[{ 
+{ hash filler
+Subquery 28 
+{ 
+NATION         2 rows(t13.N_NAME, t13.N_NATIONKEY)
+ 
+END Node
+After test:
+      0: if (t13.N_NAME = <c FRANCE>) then 8 else 4 unkn 4
+      4: if (t13.N_NAME = <c GERMANY>) then 8 else 9 unkn 9
+      8: BReturn 1
+      9: BReturn 0
+SUPPLIER     4e+02 rows(t9.S_SUPPKEY)
+ S_NATIONKEY = k_t13.N_NATIONKEY
+ 
+After code:
+      0: t9.S_SUPPKEY :=  := artm t9.S_SUPPKEY
+      4: t13.N_NAME :=  := artm t13.N_NAME
+      8: BReturn 0
+Sort hf 49      8e+02 rows(t9.S_SUPPKEY) -> (t13.N_NAME)
+ 
+}
+}
+{ fork
+{ fork
+NATION         2 rows(CUST_NATION, t7.N_NATIONKEY)
+ 
+END Node
+After test:
+      0: if (CUST_NATION = <c GERMANY>) then 8 else 4 unkn 4
+      4: if (CUST_NATION = <c FRANCE>) then 8 else 9 unkn 9
+      8: BReturn 1
+      9: BReturn 0
+CUSTOMER     6e+03 rows(t5.C_CUSTKEY)
+ C_NATIONKEY = k_t7.N_NATIONKEY
+O_CK        12 rows(t4.O_ORDERKEY)
+ inlined  O_CUSTKEY = t5.C_CUSTKEY
+LINEITEM       1.4 rows(t3.L_SUPPKEY, t3.L_SHIPDATE, t3.L_EXTENDEDPRICE, t3.L_DISCOUNT)
+ inlined  L_ORDERKEY = t4.O_ORDERKEY L_SHIPDATE >= <tag 211 c 1995-01-01> <= <tag 211 c 1996-12-31>
+hash partition+bloom by 59 (tmp)hash join merged always card   0.00025 -> (SUPP_NATION)
+ 
+Precode:
+      0: temp := artm  1  - t3.L_DISCOUNT
+      4: temp := artm t3.L_EXTENDEDPRICE * temp
+      8: BReturn 0
+Hash source 49 merged into ts    0.00025 rows(t3.L_SUPPKEY) -> (SUPP_NATION)
+END Node
+After test:
+      0: if (SUPP_NATION = <c FRANCE>) then 4 else 8 unkn 8
+      4: if (CUST_NATION = <c GERMANY>) then 16 else 8 unkn 8
+      8: if (SUPP_NATION = <c GERMANY>) then 12 else 17 unkn 17
+      12: if (CUST_NATION = <c FRANCE>) then 16 else 17 unkn 17
+      16: BReturn 1
+      17: BReturn 0
+ 
+Precode:
+      0: L_YEAR := Call YEAR (t3.L_SHIPDATE)
+      5: BReturn 0
+Sort (SUPP_NATION, CUST_NATION, L_YEAR) -> (temp)
+ 
+}
+group by read node  
+(SUPP_NATION, CUST_NATION, L_YEAR, REVENUE)
+Sort (SUPP_NATION, CUST_NATION, L_YEAR) -> (REVENUE)
+ 
+}
+Key from temp (SUPP_NATION, CUST_NATION, L_YEAR, REVENUE)
+ 
+Select (SUPP_NATION, CUST_NATION, L_YEAR, REVENUE)
+}
+]]></text>
+	    <xmlplan>
+<report>
+<sctr sctr_ose='0'/>
+<hf sets='181'><subq>
+<ts key='NATION' table='DB.DBA.NATION'>
+<ks_out_slots>
+<ssl index='34' name='t13.N_NAME' />
+<ssl index='33' name='t13.N_NATIONKEY' />
+</ks_out_slots>
+</ts>
+<after_test><if op='=' succ='8' else='4' unkn='4' merge='0'><left><ssl index='34' name='t13.N_NAME' />
+</left><right><ssl constant='FRANCE' />
+</right></if><if op='=' succ='8' else='9' unkn='9' merge='0'><left><ssl index='34' name='t13.N_NAME' />
+</left><right><ssl constant='GERMANY' />
+</right></if><bret ret='1'/><bret ret='0'/></after_test><end />
+<ts key='SUPPLIER' table='DB.DBA.SUPPLIER'>
+<after_code><artm op=':='><res><ssl index='29' name='t9.S_SUPPKEY' />
+</res><left><ssl index='37' name='t9.S_SUPPKEY' />
+</left></artm><artm op=':='><res><ssl index='30' name='t13.N_NAME' />
+</res><left><ssl index='34' name='t13.N_NAME' />
+
+</left></artm><bret ret='0'/></after_code><ks_row_spec>
+<sp col='S_NATIONKEY'>
+<op code='=' >
+<ssl index='168' name='k_t13.N_NATIONKEY' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='37' name='t9.S_SUPPKEY' />
+</ks_out_slots>
+</ts>
+<setp ha_op='build' hf='49' sets='176'><key><ssl index='29' name='t9.S_SUPPKEY' />
+</key><dep><ssl index='30' name='t13.N_NAME' />
+</dep></setp>
+</subq>
+</hf>
+<fref sets='266'><fref sets='252'><ts key='NATION' table='DB.DBA.NATION'>
+<ks_out_slots>
+<ssl index='63' name='CUST_NATION' />
+<ssl index='62' name='t7.N_NATIONKEY' />
+</ks_out_slots>
+</ts>
+<after_test><if op='=' succ='8' else='4' unkn='4' merge='0'><left><ssl index='63' name='CUST_NATION' />
+</left><right><ssl constant='GERMANY' />
+</right></if><if op='=' succ='8' else='9' unkn='9' merge='0'><left><ssl index='63' name='CUST_NATION' />
+</left><right><ssl constant='FRANCE' />
+</right></if><bret ret='1'/><bret ret='0'/></after_test><end />
+<ts key='CUSTOMER' table='DB.DBA.CUSTOMER'>
+<ks_row_spec>
+<sp col='C_NATIONKEY'>
+<op code='=' >
+<ssl index='203' name='k_t7.N_NATIONKEY' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='66' name='t5.C_CUSTKEY' />
+</ks_out_slots>
+</ts>
+<ts key='O_CK' table='DB.DBA.ORDERS'>
+<ks_spec>
+<sp col='O_CUSTKEY'>
+<op code='=' >
+<ssl index='66' name='t5.C_CUSTKEY' />
+</op>
+</sp></ks_spec><ks_out_slots>
+<ssl index='69' name='t4.O_ORDERKEY' />
+</ks_out_slots>
+</ts>
+<ts key='LINEITEM' table='DB.DBA.LINEITEM'>
+<ks_spec>
+<sp col='L_ORDERKEY'>
+<op code='=' >
+<ssl index='69' name='t4.O_ORDERKEY' />
+</op>
+</sp></ks_spec><ks_row_spec>
+<sp col='L_SHIPDATE'>
+<op code='&gt;=' >
+<ssl constant='1995-01-01' />
+</op>
+<op code='&lt;=' >
+<ssl constant='1996-12-31' />
+</op>
+</sp></ks_row_spec>
+<ks_hash_spec>
+<hrng hs='224' flags='0' /></ks_hash_spec>
+<ks_out_slots>
+<ssl index='75' name='t3.L_SUPPKEY' />
+<ssl index='74' name='t3.L_SHIPDATE' />
+<ssl index='73' name='t3.L_EXTENDEDPRICE' />
+<ssl index='72' name='t3.L_DISCOUNT' />
+</ks_out_slots>
+</ts>
+<hs hf='181'><pre_code><artm op='-'><res><ssl index='77' name='temp' />
+</res><left><ssl constant='1' />
+</left><right><ssl index='72' name='t3.L_DISCOUNT' />
+</right></artm><artm op='*'><res><ssl index='79' name='temp' />
+</res><left><ssl index='73' name='t3.L_EXTENDEDPRICE' />
+</left><right><ssl index='77' name='temp' />
+</right></artm><bret ret='0'/></pre_code></hs>
+<after_test><if op='=' succ='4' else='8' unkn='8' merge='0'><left><ssl index='85' name='SUPP_NATION' />
+</left><right><ssl constant='FRANCE' />
+</right></if><if op='=' succ='16' else='8' unkn='8' merge='0'><left><ssl index='63' name='CUST_NATION' />
+
+</left><right><ssl constant='GERMANY' />
+</right></if><if op='=' succ='12' else='17' unkn='17' merge='0'><left><ssl index='85' name='SUPP_NATION' />
+</left><right><ssl constant='GERMANY' />
+</right></if><if op='=' succ='16' else='17' unkn='17' merge='0'><left><ssl index='63' name='CUST_NATION' />
+
+</left><right><ssl constant='FRANCE' />
+</right></if><bret ret='1'/><bret ret='0'/></after_test><end />
+<setp ha_op='group' hf='0' sets='247'><key><ssl index='85' name='SUPP_NATION' />
+
+<ssl index='63' name='CUST_NATION' />
+
+<ssl index='86' name='L_YEAR' />
+</key><dep><ssl index='79' name='temp' />
+
+</dep></setp>
+</fref>
+<chash />
+<setp ha_op='order' hf='0' sets='261'><key><ssl index='85' name='SUPP_NATION' />
+<ssl index='63' name='CUST_NATION' />
+<ssl index='86' name='L_YEAR' />
+</key><dep><ssl index='92' name='REVENUE' />
+</dep></setp>
+</fref>
+<ts key='temp'>
+<ks_out_slots>
+<ssl index='85' name='SUPP_NATION' />
+<ssl index='63' name='CUST_NATION' />
+<ssl index='86' name='L_YEAR' />
+<ssl index='92' name='REVENUE' />
+</ks_out_slots>
+</ts>
+<sel><ssl index='85' name='SUPP_NATION' />
+<ssl index='63' name='CUST_NATION' />
+<ssl index='86' name='L_YEAR' />
+<ssl index='92' name='REVENUE' />
+</sel>
+</report>
+	    </xmlplan>
+	</plan>
+    </plans>
+    <columns>
+         <column name="SUPP_NATION"/>
+         <column name="CUST_NATION"/>
+         <column name="L_YEAR"/>
+         <column name="REVENUE"/>
+    </columns>
+    <result cnt="4">
+<row>
+    <col dtp="182">FRANCE</col>
+    <col dtp="182">GERMANY</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">54639732.73360002</col>
+</row>
+<row>
+    <col dtp="182">FRANCE</col>
+    <col dtp="182">GERMANY</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">54633083.30760001</col>
+</row>
+<row>
+    <col dtp="182">GERMANY</col>
+    <col dtp="182">FRANCE</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">52531746.66969997</col>
+</row>
+<row>
+    <col dtp="182">GERMANY</col>
+    <col dtp="182">FRANCE</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">52520549.02240001</col>
+</row>
+    </result>
+</test>

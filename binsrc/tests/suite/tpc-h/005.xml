@@ -1,0 +1,306 @@
+<test>
+    <comment>#line 4 tpc-h/5.sql
+select
+	n_name,
+	sum(l_extendedprice * (1 - l_discount)) as revenue
+from
+	customer,
+	orders,
+	lineitem,
+	supplier,
+	nation,
+	region
+where
+	c_custkey = o_custkey
+	and l_orderkey = o_orderkey
+	and l_suppkey = s_suppkey
+	and c_nationkey = s_nationkey
+	and s_nationkey = n_nationkey
+	and n_regionkey = r_regionkey
+	and r_name = ASIA
+	and o_orderdate &gt;= cast (1994-01-01 as date)
+	and o_orderdate &lt; dateadd(year, 1, cast (1994-01-01 as date))
+group by
+	n_name
+order by
+	revenue desc
+</comment>
+    <query><![CDATA[#line 4 "tpc-h/5.sql"
+select
+	n_name,
+	sum(l_extendedprice * (1 - l_discount)) as revenue
+from
+	customer,
+	orders,
+	lineitem,
+	supplier,
+	nation,
+	region
+where
+	c_custkey = o_custkey
+	and l_orderkey = o_orderkey
+	and l_suppkey = s_suppkey
+	and c_nationkey = s_nationkey
+	and s_nationkey = n_nationkey
+	and n_regionkey = r_regionkey
+	and r_name = 'ASIA'
+	and o_orderdate >= cast ('1994-01-01' as date)
+	and o_orderdate < dateadd('year', 1, cast ('1994-01-01' as date))
+group by
+	n_name
+order by
+	revenue desc
+    ]]></query>
+    <plans>
+	<plan>
+	    <verify result-order="1" col-names="1" plan-xpath="/report[hf[subq[ts[following::ts[following::ts[following::setp]]]]][following::hf[subq[ts[following::ts[following::ts[following::setp]]]]][following::fref[fref[ts[following::ts[following::hs[following::hs[following::setp]]]]][following::setp]][following::ts[following::sel]]]]]">
+		<da-below rnd="0" seq="0" same-seg="" />
+	    </verify>
+<text><![CDATA[{ 
+{ hash filler
+Subquery 28 
+{ 
+REGION         1 rows(t6.R_REGIONKEY)
+ R_NAME = <c ASIA>
+NATION         5 rows(t5.N_NATIONKEY, t5.N_NAME)
+ N_REGIONKEY = t6.R_REGIONKEY
+CUSTOMER     6e+03 rows(t1.C_CUSTKEY, t1.C_NATIONKEY)
+ C_NATIONKEY = t5.N_NATIONKEY
+ 
+After code:
+      0: t1.C_CUSTKEY :=  := artm t1.C_CUSTKEY
+      4: t1.C_NATIONKEY :=  := artm t1.C_NATIONKEY
+      8: t5.N_NAME :=  := artm t5.N_NAME
+      12: BReturn 0
+Sort hf 54      3e+04 rows(t1.C_CUSTKEY, t1.C_NATIONKEY) -> (t5.N_NAME)
+ 
+}
+}
+{ hash filler
+Subquery 69 
+{ 
+REGION         1 rows(t6.R_REGIONKEY)
+ R_NAME = <c ASIA>
+NATION         5 rows(t5.N_NATIONKEY)
+ N_REGIONKEY = t6.R_REGIONKEY
+SUPPLIER     4e+02 rows(t4.S_SUPPKEY, t4.S_NATIONKEY)
+ S_NATIONKEY = t5.N_NATIONKEY
+ 
+After code:
+      0: t4.S_SUPPKEY :=  := artm t4.S_SUPPKEY
+      4: t4.S_NATIONKEY :=  := artm t4.S_NATIONKEY
+      8: BReturn 0
+Sort hf 93      2e+03 rows(t4.S_SUPPKEY) -> (t4.S_NATIONKEY)
+ 
+}
+}
+{ fork
+{ fork
+ORDERS   2.3e+05 rows(.O_ORDERKEY, .O_CUSTKEY)
+ O_ORDERDATE >= <tag 211 c 1994-01-01> < <tag 211 c 1995-01-01>
+LINEITEM       4.5 rows(.L_SUPPKEY, .L_EXTENDEDPRICE, .L_DISCOUNT)
+ inlined  L_ORDERKEY = .O_ORDERKEY
+hash partition+bloom by 106 (tmp)hash join merged always card       0.2 -> (.S_NATIONKEY)
+ 
+Precode:
+      0: temp := artm  1  - .L_DISCOUNT
+      4: temp := artm .L_EXTENDEDPRICE * temp
+      8: BReturn 0
+Hash source 93 merged into ts        0.2 rows(.L_SUPPKEY) -> (.S_NATIONKEY)
+Hash source 54      0.0083 rows(k_.O_CUSTKEY, .S_NATIONKEY) -> (.N_NAME)
+Sort (.N_NAME) -> (temp)
+ 
+}
+group by read node  
+(.N_NAME, REVENUE)
+Sort (REVENUE) -> (.N_NAME)
+ 
+}
+Key from temp (.N_NAME, REVENUE)
+ 
+Select (.N_NAME, REVENUE)
+}
+]]></text>
+	    <xmlplan>
+<report>
+<sctr sctr_ose='0'/>
+<hf sets='216'><subq>
+<ts key='REGION' table='DB.DBA.REGION'>
+<ks_row_spec>
+<sp col='R_NAME'>
+<op code='=' >
+<ssl constant='ASIA' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='34' name='t6.R_REGIONKEY' />
+</ks_out_slots>
+</ts>
+<ts key='NATION' table='DB.DBA.NATION'>
+<ks_row_spec>
+<sp col='N_REGIONKEY'>
+<op code='=' >
+<ssl index='34' name='t6.R_REGIONKEY' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='38' name='t5.N_NATIONKEY' />
+<ssl index='37' name='t5.N_NAME' />
+</ks_out_slots>
+</ts>
+<ts key='CUSTOMER' table='DB.DBA.CUSTOMER'>
+<after_code><artm op=':='><res><ssl index='29' name='t1.C_CUSTKEY' />
+</res><left><ssl index='42' name='t1.C_CUSTKEY' />
+</left></artm><artm op=':='><res><ssl index='30' name='t1.C_NATIONKEY' />
+</res><left><ssl index='41' name='t1.C_NATIONKEY' />
+</left></artm><artm op=':='><res><ssl index='31' name='t5.N_NAME' />
+</res><left><ssl index='37' name='t5.N_NAME' />
+
+</left></artm><bret ret='0'/></after_code><ks_row_spec>
+<sp col='C_NATIONKEY'>
+<op code='=' >
+<ssl index='38' name='t5.N_NATIONKEY' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='42' name='t1.C_CUSTKEY' />
+<ssl index='41' name='t1.C_NATIONKEY' />
+</ks_out_slots>
+</ts>
+<setp ha_op='build' hf='54' sets='211'><key><ssl index='29' name='t1.C_CUSTKEY' />
+<ssl index='30' name='t1.C_NATIONKEY' />
+</key><dep><ssl index='31' name='t5.N_NAME' />
+</dep></setp>
+</subq>
+</hf>
+<hf sets='250'><subq>
+<ts key='REGION' table='DB.DBA.REGION'>
+<ks_row_spec>
+<sp col='R_NAME'>
+<op code='=' >
+<ssl constant='ASIA' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='74' name='t6.R_REGIONKEY' />
+</ks_out_slots>
+</ts>
+<ts key='NATION' table='DB.DBA.NATION'>
+<ks_row_spec>
+<sp col='N_REGIONKEY'>
+<op code='=' >
+<ssl index='74' name='t6.R_REGIONKEY' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='77' name='t5.N_NATIONKEY' />
+</ks_out_slots>
+</ts>
+<ts key='SUPPLIER' table='DB.DBA.SUPPLIER'>
+<after_code><artm op=':='><res><ssl index='70' name='t4.S_SUPPKEY' />
+</res><left><ssl index='81' name='t4.S_SUPPKEY' />
+</left></artm><artm op=':='><res><ssl index='71' name='t4.S_NATIONKEY' />
+</res><left><ssl index='80' name='t4.S_NATIONKEY' />
+</left></artm><bret ret='0'/></after_code><ks_row_spec>
+<sp col='S_NATIONKEY'>
+<op code='=' >
+<ssl index='77' name='t5.N_NATIONKEY' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='81' name='t4.S_SUPPKEY' />
+<ssl index='80' name='t4.S_NATIONKEY' />
+</ks_out_slots>
+</ts>
+<setp ha_op='build' hf='93' sets='245'><key><ssl index='70' name='t4.S_SUPPKEY' />
+</key><dep><ssl index='71' name='t4.S_NATIONKEY' />
+</dep></setp>
+</subq>
+</hf>
+<fref sets='319'><fref sets='305'><ts key='ORDERS' table='DB.DBA.ORDERS'>
+<ks_row_spec>
+<sp col='O_ORDERDATE'>
+<op code='&gt;=' >
+<ssl constant='1994-01-01' />
+</op>
+<op code='&lt;' >
+<ssl constant='1995-01-01' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='110' name='.O_ORDERKEY' />
+<ssl index='109' name='.O_CUSTKEY' />
+</ks_out_slots>
+</ts>
+<ts key='LINEITEM' table='DB.DBA.LINEITEM'>
+<ks_spec>
+<sp col='L_ORDERKEY'>
+<op code='=' >
+<ssl index='110' name='.O_ORDERKEY' />
+</op>
+</sp></ks_spec><ks_hash_spec>
+<hrng hs='270' flags='0' /></ks_hash_spec>
+<ks_out_slots>
+<ssl index='115' name='.L_SUPPKEY' />
+<ssl index='114' name='.L_EXTENDEDPRICE' />
+<ssl index='113' name='.L_DISCOUNT' />
+</ks_out_slots>
+</ts>
+<hs hf='250'><pre_code><artm op='-'><res><ssl index='117' name='temp' />
+</res><left><ssl constant='1' />
+</left><right><ssl index='113' name='.L_DISCOUNT' />
+</right></artm><artm op='*'><res><ssl index='119' name='temp' />
+</res><left><ssl index='114' name='.L_EXTENDEDPRICE' />
+</left><right><ssl index='117' name='temp' />
+</right></artm><bret ret='0'/></pre_code></hs>
+<hs hf='216'></hs>
+<setp ha_op='group' hf='0' sets='300'><key><ssl index='130' name='.N_NAME' />
+</key><dep><ssl index='119' name='temp' />
+
+</dep></setp>
+</fref>
+<chash />
+<setp ha_op='order' hf='0' sets='314'><key><ssl index='135' name='REVENUE' />
+</key><dep><ssl index='130' name='.N_NAME' />
+</dep></setp>
+</fref>
+<ts key='temp'>
+<ks_out_slots>
+<ssl index='130' name='.N_NAME' />
+<ssl index='135' name='REVENUE' />
+</ks_out_slots>
+</ts>
+<sel><ssl index='130' name='.N_NAME' />
+<ssl index='135' name='REVENUE' />
+</sel>
+</report>
+	    </xmlplan>
+	</plan>
+    </plans>
+    <columns>
+         <column name="N_NAME"/>
+         <column name="REVENUE"/>
+    </columns>
+    <result cnt="5">
+<row>
+    <col dtp="182">INDONESIA</col>
+    <col dtp="191">55502041.1697</col>
+</row>
+<row>
+    <col dtp="182">VIETNAM</col>
+    <col dtp="191">55295086.99670001</col>
+</row>
+<row>
+    <col dtp="182">CHINA</col>
+    <col dtp="191">53724494.25659999</col>
+</row>
+<row>
+    <col dtp="182">INDIA</col>
+    <col dtp="191">52035512.0002</col>
+</row>
+<row>
+    <col dtp="182">JAPAN</col>
+    <col dtp="191">45410175.6954</col>
+</row>
+    </result>
+</test>

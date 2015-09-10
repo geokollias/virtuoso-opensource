@@ -1,0 +1,318 @@
+<test>
+    <comment>#line 4 tpc-h/8.sql
+select
+	o_year,
+	sum(case
+		when nation = BRAZIL then volume
+		else 0
+	end) / sum(volume) as mkt_share
+from
+	(
+		select
+			extract(year from o_orderdate) as o_year,
+			l_extendedprice * (1 - l_discount) as volume,
+			n2.n_name as nation
+		from
+			part,
+			supplier,
+			lineitem,
+			orders,
+			customer,
+			nation n1,
+			nation n2,
+			region
+		where
+			p_partkey = l_partkey
+			and s_suppkey = l_suppkey
+			and l_orderkey = o_orderkey
+			and o_custkey = c_custkey
+			and c_nationkey = n1.n_nationkey
+			and n1.n_regionkey = r_regionkey
+			and r_name = AMERICA
+			and s_nationkey = n2.n_nationkey
+			and o_orderdate between cast (1995-01-01 as date) and cast (1996-12-31 as date)
+			and p_type = ECONOMY ANODIZED STEEL
+	) as all_nations
+group by
+	o_year
+order by
+	o_year
+</comment>
+    <query><![CDATA[#line 4 "tpc-h/8.sql"
+select
+	o_year,
+	sum(case
+		when nation = 'BRAZIL' then volume
+		else 0
+	end) / sum(volume) as mkt_share
+from
+	(
+		select
+			extract(year from o_orderdate) as o_year,
+			l_extendedprice * (1 - l_discount) as volume,
+			n2.n_name as nation
+		from
+			part,
+			supplier,
+			lineitem,
+			orders,
+			customer,
+			nation n1,
+			nation n2,
+			region
+		where
+			p_partkey = l_partkey
+			and s_suppkey = l_suppkey
+			and l_orderkey = o_orderkey
+			and o_custkey = c_custkey
+			and c_nationkey = n1.n_nationkey
+			and n1.n_regionkey = r_regionkey
+			and r_name = 'AMERICA'
+			and s_nationkey = n2.n_nationkey
+			and o_orderdate between cast ('1995-01-01' as date) and cast ('1996-12-31' as date)
+			and p_type = 'ECONOMY ANODIZED STEEL'
+	) as all_nations
+group by
+	o_year
+order by
+	o_year
+    ]]></query>
+    <plans>
+	<plan>
+	    <verify result-order="1" col-names="1" plan-xpath="/report[hf[ts[following::setp]][following::hf[ts[following::setp]][following::hf[subq[ts[following::ts[following::ts[following::setp]]]]][following::fref[fref[ts[following::hs[following::ts[following::hs[following::ts[following::hs[following::setp]]]]]]][following::setp]][following::ts[following::sel]]]]]]">
+		<da-below rnd="0" seq="0" same-seg="" />
+	    </verify>
+<text><![CDATA[{ 
+{ hash filler
+NATION        25 rows(t8.N_NATIONKEY, t8.N_NAME)
+ 
+Sort hf 36      8e+02 rows(t8.N_NATIONKEY) -> (t8.N_NAME)
+ 
+}
+{ hash filler
+PART   1.5e+03 rows(t2.P_PARTKEY)
+ P_TYPE = <c ECONOMY ANODIZED STEEL>
+Sort hf 49    1.5e+03 rows(t2.P_PARTKEY)
+}
+{ hash filler
+Subquery 55 
+{ 
+REGION         1 rows(t18.R_REGIONKEY)
+ R_NAME = <c AMERICA>
+NATION         5 rows(t16.N_NATIONKEY)
+ N_REGIONKEY = t18.R_REGIONKEY
+CUSTOMER     6e+03 rows(t15.C_CUSTKEY)
+ C_NATIONKEY = t16.N_NATIONKEY
+ 
+After code:
+      0: t15.C_CUSTKEY :=  := artm t15.C_CUSTKEY
+      4: BReturn 0
+Sort hf 77      3e+04 rows(t15.C_CUSTKEY)
+}
+}
+{ fork
+{ fork
+ORDERS   4.6e+05 rows(t5.O_CUSTKEY, t5.O_ORDERKEY, t5.O_ORDERDATE)
+ O_ORDERDATE >= <tag 211 c 1995-01-01> <= <tag 211 c 1996-12-31>
+hash partition+bloom by 90 (tmp)hash join merged always card       0.2 -> ()
+Hash source 77 merged into ts        0.2 rows(t5.O_CUSTKEY) -> ()
+LINEITEM       4.5 rows(t4.L_PARTKEY, t4.L_SUPPKEY, t4.L_EXTENDEDPRICE, t4.L_DISCOUNT)
+ inlined  L_ORDERKEY = t5.O_ORDERKEY
+hash partition+bloom by 53 (tmp)hash join merged always card    0.0073 -> ()
+ 
+Precode:
+      0: temp := artm  1  - t4.L_DISCOUNT
+      4: temp := artm t4.L_EXTENDEDPRICE * temp
+      8: BReturn 0
+Hash source 49 merged into ts     0.0073 rows(t4.L_PARTKEY) -> ()
+SUPPLIER unq         1 rows (t3.S_NATIONKEY)
+ inlined  S_SUPPKEY = t4.L_SUPPKEY
+hash partition+bloom by 40 (tmp)hash join merged always card         1 -> (t8.N_NAME)
+Hash source 36 merged into ts          1 rows(t3.S_NATIONKEY) -> (t8.N_NAME)
+ 
+Precode:
+      0: O_YEAR := Call YEAR (t5.O_ORDERDATE)
+      5: if (t8.N_NAME = <c BRAZIL>) then 9 else 22 unkn 22
+      9: temp := artm  1  - t4.L_DISCOUNT
+      13: temp := artm t4.L_EXTENDEDPRICE * temp
+      17: callretSearchedCASE :=  := artm temp
+      21: Jump 26 (level=0)
+      22: callretSearchedCASE :=  := artm  0 
+      26: BReturn 0
+Sort (O_YEAR) -> (callretSearchedCASE, temp)
+ 
+}
+group by read node  
+(O_YEAR, aggregate, aggregate)
+ 
+Precode:
+      0: MKT_SHARE := artm aggregate / aggregate
+      4: BReturn 0
+Sort (O_YEAR) -> (MKT_SHARE)
+ 
+}
+Key from temp (O_YEAR, MKT_SHARE)
+ 
+Select (O_YEAR, MKT_SHARE)
+}
+]]></text>
+	    <xmlplan>
+<report>
+<sctr sctr_ose='0'/>
+<hf sets='202'><ts key='NATION' table='DB.DBA.NATION'>
+<ks_out_slots>
+<ssl index='30' name='t8.N_NATIONKEY' />
+<ssl index='29' name='t8.N_NAME' />
+</ks_out_slots>
+</ts>
+<setp ha_op='build' hf='36' sets='197'><key><ssl index='30' name='t8.N_NATIONKEY' />
+</key><dep><ssl index='29' name='t8.N_NAME' />
+</dep></setp>
+</hf>
+<hf sets='217'><ts key='PART' table='DB.DBA.PART'>
+<ks_row_spec>
+<sp col='P_TYPE'>
+<op code='=' >
+<ssl constant='ECONOMY ANODIZED STEEL' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='43' name='t2.P_PARTKEY' />
+</ks_out_slots>
+</ts>
+<setp ha_op='build' hf='49' sets='212'><key><ssl index='43' name='t2.P_PARTKEY' />
+</key><dep></dep></setp>
+</hf>
+<hf sets='249'><subq>
+<ts key='REGION' table='DB.DBA.REGION'>
+<ks_row_spec>
+<sp col='R_NAME'>
+<op code='=' >
+<ssl constant='AMERICA' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='59' name='t18.R_REGIONKEY' />
+</ks_out_slots>
+</ts>
+<ts key='NATION' table='DB.DBA.NATION'>
+<ks_row_spec>
+<sp col='N_REGIONKEY'>
+<op code='=' >
+<ssl index='59' name='t18.R_REGIONKEY' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='62' name='t16.N_NATIONKEY' />
+</ks_out_slots>
+</ts>
+<ts key='CUSTOMER' table='DB.DBA.CUSTOMER'>
+<after_code><artm op=':='><res><ssl index='56' name='t15.C_CUSTKEY' />
+</res><left><ssl index='65' name='t15.C_CUSTKEY' />
+</left></artm><bret ret='0'/></after_code><ks_row_spec>
+<sp col='C_NATIONKEY'>
+<op code='=' >
+<ssl index='62' name='t16.N_NATIONKEY' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='65' name='t15.C_CUSTKEY' />
+</ks_out_slots>
+</ts>
+<setp ha_op='build' hf='77' sets='244'><key><ssl index='56' name='t15.C_CUSTKEY' />
+</key><dep></dep></setp>
+</subq>
+</hf>
+<fref sets='340'><fref sets='325'><ts key='ORDERS' table='DB.DBA.ORDERS'>
+<ks_row_spec>
+<sp col='O_ORDERDATE'>
+<op code='&gt;=' >
+<ssl constant='1995-01-01' />
+</op>
+<op code='&lt;=' >
+<ssl constant='1996-12-31' />
+</op>
+</sp></ks_row_spec>
+<ks_hash_spec>
+<hrng hs='262' flags='0' /></ks_hash_spec>
+<ks_out_slots>
+<ssl index='95' name='t5.O_CUSTKEY' />
+<ssl index='94' name='t5.O_ORDERKEY' />
+<ssl index='93' name='t5.O_ORDERDATE' />
+</ks_out_slots>
+</ts>
+<hs hf='249'></hs>
+<ts key='LINEITEM' table='DB.DBA.LINEITEM'>
+<ks_spec>
+<sp col='L_ORDERKEY'>
+<op code='=' >
+<ssl index='94' name='t5.O_ORDERKEY' />
+</op>
+</sp></ks_spec><ks_hash_spec>
+<hrng hs='285' flags='0' /></ks_hash_spec>
+<ks_out_slots>
+<ssl index='105' name='t4.L_PARTKEY' />
+<ssl index='104' name='t4.L_SUPPKEY' />
+<ssl index='103' name='t4.L_EXTENDEDPRICE' />
+<ssl index='102' name='t4.L_DISCOUNT' />
+</ks_out_slots>
+</ts>
+<hs hf='217'><pre_code><artm op='-'><res><ssl index='107' name='temp' />
+</res><left><ssl constant='1' />
+</left><right><ssl index='102' name='t4.L_DISCOUNT' />
+</right></artm><artm op='*'><res><ssl index='109' name='temp' />
+</res><left><ssl index='103' name='t4.L_EXTENDEDPRICE' />
+</left><right><ssl index='107' name='temp' />
+</right></artm><bret ret='0'/></pre_code></hs>
+<ts key='SUPPLIER' table='DB.DBA.SUPPLIER'>
+<ks_spec>
+<sp col='S_SUPPKEY'>
+<op code='=' >
+<ssl index='104' name='t4.L_SUPPKEY' />
+</op>
+</sp></ks_spec><ks_hash_spec>
+<hrng hs='305' flags='0' /></ks_hash_spec>
+<ks_out_slots>
+<ssl index='116' name='t3.S_NATIONKEY' />
+</ks_out_slots>
+</ts>
+<hs hf='202'></hs>
+<setp ha_op='group' hf='0' sets='320'><key><ssl index='122' name='O_YEAR' />
+</key><dep><ssl index='124' name='callretSearchedCASE' />
+<ssl index='109' name='temp' />
+
+</dep></setp>
+</fref>
+<chash />
+<setp ha_op='order' hf='0' sets='335'><key><ssl index='122' name='O_YEAR' />
+</key><dep><ssl index='163' name='MKT_SHARE' />
+</dep></setp>
+</fref>
+<ts key='temp'>
+<ks_out_slots>
+<ssl index='122' name='O_YEAR' />
+<ssl index='163' name='MKT_SHARE' />
+</ks_out_slots>
+</ts>
+<sel><ssl index='122' name='O_YEAR' />
+<ssl index='163' name='MKT_SHARE' />
+</sel>
+</report>
+	    </xmlplan>
+	</plan>
+    </plans>
+    <columns>
+         <column name="O_YEAR"/>
+         <column name="MKT_SHARE"/>
+    </columns>
+    <result cnt="2">
+<row>
+    <col dtp="189">1995</col>
+    <col dtp="191">0.03443589040665479</col>
+</row>
+<row>
+    <col dtp="189">1996</col>
+    <col dtp="191">0.04148552129353032</col>
+</row>
+    </result>
+</test>

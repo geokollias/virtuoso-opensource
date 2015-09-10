@@ -1,0 +1,193 @@
+<test>
+    <comment>#line 4 tpc-h/12.sql
+select
+	l_shipmode,
+	sum(case
+		when o_orderpriority = 1-URGENT
+			or o_orderpriority = 2-HIGH
+			then 1
+		else 0
+	end) as high_line_count,
+	sum(case
+		when o_orderpriority &lt;&gt; 1-URGENT
+			and o_orderpriority &lt;&gt; 2-HIGH
+			then 1
+		else 0
+	end) as low_line_count
+from
+	orders,
+	lineitem
+where
+	o_orderkey = l_orderkey
+	and l_shipmode in (MAIL, SHIP)
+	and l_commitdate &lt; l_receiptdate
+	and l_shipdate &lt; l_commitdate
+	and l_receiptdate &gt;= cast (1994-01-01 as date)
+	and l_receiptdate &lt; dateadd (year, 1, cast (1994-01-01 as date))
+group by
+	l_shipmode
+order by
+	l_shipmode
+</comment>
+    <query><![CDATA[#line 4 "tpc-h/12.sql"
+select
+	l_shipmode,
+	sum(case
+		when o_orderpriority = '1-URGENT'
+			or o_orderpriority = '2-HIGH'
+			then 1
+		else 0
+	end) as high_line_count,
+	sum(case
+		when o_orderpriority <> '1-URGENT'
+			and o_orderpriority <> '2-HIGH'
+			then 1
+		else 0
+	end) as low_line_count
+from
+	orders,
+	lineitem
+where
+	o_orderkey = l_orderkey
+	and l_shipmode in ('MAIL', 'SHIP')
+	and l_commitdate < l_receiptdate
+	and l_shipdate < l_commitdate
+	and l_receiptdate >= cast ('1994-01-01' as date)
+	and l_receiptdate < dateadd ('year', 1, cast ('1994-01-01' as date))
+group by
+	l_shipmode
+order by
+	l_shipmode
+    ]]></query>
+    <plans>
+	<plan>
+	    <verify result-order="1" col-names="1" plan-xpath="/report[fref[fref[ts[following::ts[following::setp]]][following::setp]][following::ts[following::sel]]]">
+		<da-below rnd="0" seq="0" same-seg="" />
+	    </verify>
+<text><![CDATA[{ 
+ 
+Precode:
+      0: CHASH_IN_INIT := Call CHASH_IN_INIT ( 182 , $30 "chash_in_tree",  0 ,  0 , <c MAIL>, <c SHIP>)
+      5: BReturn 0
+{ fork
+{ fork
+LINEITEM   2.3e+04 rows(.L_COMMITDATE, .L_RECEIPTDATE, .L_SHIPDATE, .L_ORDERKEY, .L_SHIPMODE)
+ L_RECEIPTDATE >= <tag 211 c 1994-01-01> < <tag 211 c 1995-01-01>
+hash partition+bloom by 0 ()
+END Node
+After test:
+      0: if (.L_COMMITDATE < .L_RECEIPTDATE) then 4 else 9 unkn 9
+      4: if (.L_SHIPDATE < .L_COMMITDATE) then 8 else 9 unkn 9
+      8: BReturn 1
+      9: BReturn 0
+ORDERS unq         1 rows (.O_ORDERPRIORITY)
+ inlined  O_ORDERKEY = k_.L_ORDERKEY
+ 
+Precode:
+      0: if (.O_ORDERPRIORITY = <c 1-URGENT>) then 8 else 4 unkn 4
+      4: if (.O_ORDERPRIORITY = <c 2-HIGH>) then 8 else 13 unkn 13
+      8: callretSearchedCASE :=  := artm  1 
+      12: Jump 17 (level=0)
+      13: callretSearchedCASE :=  := artm  0 
+      17: if (.O_ORDERPRIORITY = <c 1-URGENT>) then 30 else 21 unkn 30
+      21: if (.O_ORDERPRIORITY = <c 2-HIGH>) then 30 else 25 unkn 30
+      25: callretSearchedCASE :=  := artm  1 
+      29: Jump 34 (level=0)
+      30: callretSearchedCASE :=  := artm  0 
+      34: BReturn 0
+Sort (.L_SHIPMODE) -> (callretSearchedCASE, callretSearchedCASE)
+ 
+}
+group by read node  
+(.L_SHIPMODE, HIGH_LINE_COUNT, LOW_LINE_COUNT)
+Sort (.L_SHIPMODE) -> (HIGH_LINE_COUNT, LOW_LINE_COUNT)
+ 
+}
+Key from temp (.L_SHIPMODE, HIGH_LINE_COUNT, LOW_LINE_COUNT)
+ 
+Select (.L_SHIPMODE, HIGH_LINE_COUNT, LOW_LINE_COUNT)
+}
+]]></text>
+	    <xmlplan>
+<report>
+<sctr sctr_ose='0'/>
+<fref sets='153'><fref sets='138'><ts key='LINEITEM' table='DB.DBA.LINEITEM'>
+<ks_row_spec>
+<sp col='L_RECEIPTDATE'>
+<op code='&gt;=' >
+<ssl constant='1994-01-01' />
+</op>
+<op code='&lt;' >
+<ssl constant='1995-01-01' />
+</op>
+</sp></ks_row_spec>
+<ks_hash_spec>
+<hrng hs='0' flags='8' /></ks_hash_spec>
+<ks_out_slots>
+<ssl index='36' name='.L_COMMITDATE' />
+<ssl index='35' name='.L_RECEIPTDATE' />
+<ssl index='34' name='.L_SHIPDATE' />
+<ssl index='33' name='.L_ORDERKEY' />
+<ssl index='32' name='.L_SHIPMODE' />
+</ks_out_slots>
+</ts>
+<after_test><if op='&lt;' succ='4' else='9' unkn='9' merge='0'><left><ssl index='36' name='.L_COMMITDATE' />
+</left><right><ssl index='35' name='.L_RECEIPTDATE' />
+</right></if><if op='&lt;' succ='8' else='9' unkn='9' merge='0'><left><ssl index='34' name='.L_SHIPDATE' />
+</left><right><ssl index='36' name='.L_COMMITDATE' />
+</right></if><bret ret='1'/><bret ret='0'/></after_test><end />
+<ts key='ORDERS' table='DB.DBA.ORDERS'>
+<ks_spec>
+<sp col='O_ORDERKEY'>
+<op code='=' >
+<ssl index='123' name='k_.L_ORDERKEY' />
+</op>
+</sp></ks_spec><ks_out_slots>
+<ssl index='41' name='.O_ORDERPRIORITY' />
+</ks_out_slots>
+</ts>
+<setp ha_op='group' hf='0' sets='133'><key><ssl index='32' name='.L_SHIPMODE' />
+
+</key><dep><ssl index='43' name='callretSearchedCASE' />
+<ssl index='45' name='callretSearchedCASE' />
+</dep></setp>
+</fref>
+<chash />
+<setp ha_op='order' hf='0' sets='148'><key><ssl index='32' name='.L_SHIPMODE' />
+</key><dep><ssl index='51' name='HIGH_LINE_COUNT' />
+<ssl index='53' name='LOW_LINE_COUNT' />
+</dep></setp>
+</fref>
+<ts key='temp'>
+<ks_out_slots>
+<ssl index='32' name='.L_SHIPMODE' />
+<ssl index='51' name='HIGH_LINE_COUNT' />
+<ssl index='53' name='LOW_LINE_COUNT' />
+</ks_out_slots>
+</ts>
+<sel><ssl index='32' name='.L_SHIPMODE' />
+<ssl index='51' name='HIGH_LINE_COUNT' />
+<ssl index='53' name='LOW_LINE_COUNT' />
+</sel>
+</report>
+	    </xmlplan>
+	</plan>
+    </plans>
+    <columns>
+         <column name="L_SHIPMODE"/>
+         <column name="HIGH_LINE_COUNT"/>
+         <column name="LOW_LINE_COUNT"/>
+    </columns>
+    <result cnt="2">
+<row>
+    <col dtp="182">MAIL</col>
+    <col dtp="189">6202</col>
+    <col dtp="189">9324</col>
+</row>
+<row>
+    <col dtp="182">SHIP</col>
+    <col dtp="189">6200</col>
+    <col dtp="189">9262</col>
+</row>
+    </result>
+</test>

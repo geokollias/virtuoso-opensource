@@ -1,0 +1,1182 @@
+<test>
+    <comment>#line 4 tpc-h/9.sql
+select
+	nation,
+	o_year,
+	sum(amount) as sum_profit
+from
+	(
+		select
+			n_name as nation,
+			extract(year from o_orderdate) as o_year,
+			l_extendedprice * (1 - l_discount) - ps_supplycost * l_quantity as amount
+		from
+			part,
+			supplier,
+			lineitem,
+			partsupp,
+			orders,
+			nation
+		where
+			s_suppkey = l_suppkey
+			and ps_suppkey = l_suppkey
+			and ps_partkey = l_partkey
+			and p_partkey = l_partkey
+			and o_orderkey = l_orderkey
+			and s_nationkey = n_nationkey
+			and p_name like %green%
+	) as profit
+group by
+	nation,
+	o_year
+order by
+	nation,
+	o_year desc
+</comment>
+    <query><![CDATA[#line 4 "tpc-h/9.sql"
+select
+	nation,
+	o_year,
+	sum(amount) as sum_profit
+from
+	(
+		select
+			n_name as nation,
+			extract(year from o_orderdate) as o_year,
+			l_extendedprice * (1 - l_discount) - ps_supplycost * l_quantity as amount
+		from
+			part,
+			supplier,
+			lineitem,
+			partsupp,
+			orders,
+			nation
+		where
+			s_suppkey = l_suppkey
+			and ps_suppkey = l_suppkey
+			and ps_partkey = l_partkey
+			and p_partkey = l_partkey
+			and o_orderkey = l_orderkey
+			and s_nationkey = n_nationkey
+			and p_name like '%green%'
+	) as profit
+group by
+	nation,
+	o_year
+order by
+	nation,
+	o_year desc
+    ]]></query>
+    <plans>
+	<plan>
+	    <verify result-order="1" col-names="1" plan-xpath="/report[hf[ts[following::setp]][following::hf[ts[following::setp]][following::hf[subq[ts[following::ts[following::setp]]]][following::hf[ts[following::setp]][following::fref[fref[ts[following::hs[following::hs[following::hs[following::ts[following::hs[following::setp]]]]]]][following::setp]][following::ts[following::sel]]]]]]]">
+		<da-below rnd="0" seq="0" same-seg="" />
+	    </verify>
+<text><![CDATA[{ 
+{ hash filler
+NATION        25 rows(t7.N_NATIONKEY, NATION)
+ 
+Sort hf 36      8e+02 rows(t7.N_NATIONKEY) -> (NATION)
+ 
+}
+{ hash filler
+SUPPLIER     1e+04 rows(t3.S_SUPPKEY, t3.S_NATIONKEY)
+ 
+Sort hf 50      1e+04 rows(t3.S_SUPPKEY) -> (t3.S_NATIONKEY)
+ 
+}
+{ hash filler
+Subquery 56 
+{ 
+PART   1.1e+04 rows(t9.P_PARTKEY)
+ P_NAME LIKE <c %green%> LIKE <c >
+PARTSUPP       5.6 rows(t12.PS_SUPPKEY, t12.PS_PARTKEY, t12.PS_SUPPLYCOST)
+ inlined  PS_PARTKEY = t9.P_PARTKEY
+ 
+After code:
+      0: t12.PS_SUPPKEY :=  := artm t12.PS_SUPPKEY
+      4: t12.PS_PARTKEY :=  := artm t12.PS_PARTKEY
+      8: t9.P_PARTKEY :=  := artm t9.P_PARTKEY
+      12: t12.PS_SUPPLYCOST :=  := artm t12.PS_SUPPLYCOST
+      16: BReturn 0
+Sort hf 80      6e+04 rows(t12.PS_SUPPKEY, t12.PS_PARTKEY) -> (t9.P_PARTKEY, t12.PS_SUPPLYCOST)
+ 
+}
+}
+{ hash filler
+PART   1.1e+04 rows(t2.P_PARTKEY)
+ P_NAME LIKE <c %green%> LIKE <c >
+Sort hf 99    1.1e+04 rows(t2.P_PARTKEY)
+}
+{ fork
+{ fork
+LINEITEM     6e+06 rows(t4.L_PARTKEY, t4.L_ORDERKEY, t4.L_SUPPKEY, t4.L_EXTENDEDPRICE, t4.L_DISCOUNT, t4.L_QUANTITY)
+ 
+hash partition+bloom by 103 (tmp)hash join merged always card     0.053 -> ()
+hash partition+bloom by 54 (tmp)hash join merged always card         1 -> (t3.S_NATIONKEY)
+ 
+Precode:
+      0: temp := artm  1  - t4.L_DISCOUNT
+      4: temp := artm t4.L_EXTENDEDPRICE * temp
+      8: BReturn 0
+Hash source 99 merged into ts      0.053 rows(t4.L_PARTKEY) -> ()
+Hash source 80       0.075 rows(t4.L_SUPPKEY, t4.L_PARTKEY) -> ( <none> , t5.PS_SUPPLYCOST)
+ 
+Precode:
+      0: temp := artm t5.PS_SUPPLYCOST * t4.L_QUANTITY
+      4: temp := artm temp - temp
+      8: BReturn 0
+Hash source 50 merged into ts          1 rows(k_t4.L_SUPPKEY) -> (t3.S_NATIONKEY)
+ORDERS unq         1 rows (t6.O_ORDERDATE)
+ inlined  O_ORDERKEY = k_t4.L_ORDERKEY
+Hash source 36           1 rows(k_t3.S_NATIONKEY) -> (NATION)
+ 
+Precode:
+      0: O_YEAR := Call YEAR (t6.O_ORDERDATE)
+      5: BReturn 0
+Sort (NATION, O_YEAR) -> (temp)
+ 
+}
+group by read node  
+(NATION, O_YEAR, SUM_PROFIT)
+Sort (NATION, O_YEAR) -> (SUM_PROFIT)
+ 
+}
+Key from temp (NATION, O_YEAR, SUM_PROFIT)
+ 
+Select (NATION, O_YEAR, SUM_PROFIT)
+}
+]]></text>
+	    <xmlplan>
+<report>
+<sctr sctr_ose='0'/>
+<hf sets='208'><ts key='NATION' table='DB.DBA.NATION'>
+<ks_out_slots>
+<ssl index='30' name='t7.N_NATIONKEY' />
+<ssl index='29' name='NATION' />
+</ks_out_slots>
+</ts>
+<setp ha_op='build' hf='36' sets='203'><key><ssl index='30' name='t7.N_NATIONKEY' />
+</key><dep><ssl index='29' name='NATION' />
+</dep></setp>
+</hf>
+<hf sets='224'><ts key='SUPPLIER' table='DB.DBA.SUPPLIER'>
+<ks_out_slots>
+<ssl index='44' name='t3.S_SUPPKEY' />
+<ssl index='43' name='t3.S_NATIONKEY' />
+</ks_out_slots>
+</ts>
+<setp ha_op='build' hf='50' sets='219'><key><ssl index='44' name='t3.S_SUPPKEY' />
+</key><dep><ssl index='43' name='t3.S_NATIONKEY' />
+</dep></setp>
+</hf>
+<hf sets='255'><subq>
+<ts key='PART' table='DB.DBA.PART'>
+<ks_row_spec>
+<sp col='P_NAME'>
+<op code='LIKE' >
+<ssl constant='%green%' />
+</op>
+<op code='LIKE' >
+<ssl constant='' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='63' name='t9.P_PARTKEY' />
+</ks_out_slots>
+</ts>
+<ts key='PARTSUPP' table='DB.DBA.PARTSUPP'>
+<after_code><artm op=':='><res><ssl index='57' name='t12.PS_SUPPKEY' />
+</res><left><ssl index='68' name='t12.PS_SUPPKEY' />
+</left></artm><artm op=':='><res><ssl index='58' name='t12.PS_PARTKEY' />
+</res><left><ssl index='67' name='t12.PS_PARTKEY' />
+</left></artm><artm op=':='><res><ssl index='59' name='t9.P_PARTKEY' />
+</res><left><ssl index='63' name='t9.P_PARTKEY' />
+
+</left></artm><artm op=':='><res><ssl index='60' name='t12.PS_SUPPLYCOST' />
+</res><left><ssl index='66' name='t12.PS_SUPPLYCOST' />
+</left></artm><bret ret='0'/></after_code><ks_spec>
+<sp col='PS_PARTKEY'>
+<op code='=' >
+<ssl index='63' name='t9.P_PARTKEY' />
+</op>
+</sp></ks_spec><ks_out_slots>
+<ssl index='68' name='t12.PS_SUPPKEY' />
+<ssl index='67' name='t12.PS_PARTKEY' />
+<ssl index='66' name='t12.PS_SUPPLYCOST' />
+</ks_out_slots>
+</ts>
+<setp ha_op='build' hf='80' sets='250'><key><ssl index='57' name='t12.PS_SUPPKEY' />
+<ssl index='58' name='t12.PS_PARTKEY' />
+</key><dep><ssl index='59' name='t9.P_PARTKEY' />
+<ssl index='60' name='t12.PS_SUPPLYCOST' />
+</dep></setp>
+</subq>
+</hf>
+<hf sets='270'><ts key='PART' table='DB.DBA.PART'>
+<ks_row_spec>
+<sp col='P_NAME'>
+<op code='LIKE' >
+<ssl constant='%green%' />
+</op>
+<op code='LIKE' >
+<ssl constant='' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='93' name='t2.P_PARTKEY' />
+</ks_out_slots>
+</ts>
+<setp ha_op='build' hf='99' sets='265'><key><ssl index='93' name='t2.P_PARTKEY' />
+</key><dep></dep></setp>
+</hf>
+<fref sets='372'><fref sets='358'><ts key='LINEITEM' table='DB.DBA.LINEITEM'>
+<ks_hash_spec>
+<hrng hs='286' flags='0' /><hrng hs='311' flags='0' /></ks_hash_spec>
+<ks_out_slots>
+<ssl index='111' name='t4.L_PARTKEY' />
+<ssl index='110' name='t4.L_ORDERKEY' />
+<ssl index='109' name='t4.L_SUPPKEY' />
+<ssl index='108' name='t4.L_EXTENDEDPRICE' />
+<ssl index='107' name='t4.L_DISCOUNT' />
+<ssl index='106' name='t4.L_QUANTITY' />
+</ks_out_slots>
+</ts>
+<hs hf='270'><pre_code><artm op='-'><res><ssl index='113' name='temp' />
+</res><left><ssl constant='1' />
+</left><right><ssl index='107' name='t4.L_DISCOUNT' />
+</right></artm><artm op='*'><res><ssl index='115' name='temp' />
+</res><left><ssl index='108' name='t4.L_EXTENDEDPRICE' />
+</left><right><ssl index='113' name='temp' />
+</right></artm><bret ret='0'/></pre_code></hs>
+<hs hf='255'></hs>
+<hs hf='224'><pre_code><artm op='*'><res><ssl index='126' name='temp' />
+</res><left><ssl index='125' name='t5.PS_SUPPLYCOST' />
+</left><right><ssl index='106' name='t4.L_QUANTITY' />
+
+</right></artm><artm op='-'><res><ssl index='128' name='temp' />
+</res><left><ssl index='115' name='temp' />
+
+</left><right><ssl index='126' name='temp' />
+</right></artm><bret ret='0'/></pre_code></hs>
+<ts key='ORDERS' table='DB.DBA.ORDERS'>
+<ks_spec>
+<sp col='O_ORDERKEY'>
+<op code='=' >
+<ssl index='333' name='k_t4.L_ORDERKEY' />
+</op>
+</sp></ks_spec><ks_out_slots>
+<ssl index='135' name='t6.O_ORDERDATE' />
+</ks_out_slots>
+</ts>
+<hs hf='208'></hs>
+<setp ha_op='group' hf='0' sets='353'><key><ssl index='29' name='NATION' />
+<ssl index='141' name='O_YEAR' />
+</key><dep><ssl index='128' name='temp' />
+
+</dep></setp>
+</fref>
+<chash />
+<setp ha_op='order' hf='0' sets='367'><key><ssl index='29' name='NATION' />
+<ssl index='141' name='O_YEAR' />
+</key><dep><ssl index='147' name='SUM_PROFIT' />
+</dep></setp>
+</fref>
+<ts key='temp'>
+<ks_out_slots>
+<ssl index='29' name='NATION' />
+<ssl index='141' name='O_YEAR' />
+<ssl index='147' name='SUM_PROFIT' />
+</ks_out_slots>
+</ts>
+<sel><ssl index='29' name='NATION' />
+<ssl index='141' name='O_YEAR' />
+<ssl index='147' name='SUM_PROFIT' />
+</sel>
+</report>
+	    </xmlplan>
+	</plan>
+    </plans>
+    <columns>
+         <column name="NATION"/>
+         <column name="O_YEAR"/>
+         <column name="SUM_PROFIT"/>
+    </columns>
+    <result cnt="175">
+<row>
+    <col dtp="182">ALGERIA</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">27136900.1803</col>
+</row>
+<row>
+    <col dtp="182">ALGERIA</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">48611833.4962</col>
+</row>
+<row>
+    <col dtp="182">ALGERIA</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">48285482.67819998</col>
+</row>
+<row>
+    <col dtp="182">ALGERIA</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">44402273.59989999</col>
+</row>
+<row>
+    <col dtp="182">ALGERIA</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">48694008.06679999</col>
+</row>
+<row>
+    <col dtp="182">ALGERIA</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">46044207.7838</col>
+</row>
+<row>
+    <col dtp="182">ALGERIA</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">45636849.48810001</col>
+</row>
+<row>
+    <col dtp="182">ARGENTINA</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">28341663.7848</col>
+</row>
+<row>
+    <col dtp="182">ARGENTINA</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">47143964.11759999</col>
+</row>
+<row>
+    <col dtp="182">ARGENTINA</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">45255278.60210001</col>
+</row>
+<row>
+    <col dtp="182">ARGENTINA</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">45631769.2054</col>
+</row>
+<row>
+    <col dtp="182">ARGENTINA</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">48268856.35469999</col>
+</row>
+<row>
+    <col dtp="182">ARGENTINA</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">48605593.6162</col>
+</row>
+<row>
+    <col dtp="182">ARGENTINA</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">46654240.74869999</col>
+</row>
+<row>
+    <col dtp="182">BRAZIL</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">26527736.39600001</col>
+</row>
+<row>
+    <col dtp="182">BRAZIL</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">45640660.76769999</col>
+</row>
+<row>
+    <col dtp="182">BRAZIL</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">45090647.163</col>
+</row>
+<row>
+    <col dtp="182">BRAZIL</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">44015888.51320001</col>
+</row>
+<row>
+    <col dtp="182">BRAZIL</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">44854218.8932</col>
+</row>
+<row>
+    <col dtp="182">BRAZIL</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">45766603.7379</col>
+</row>
+<row>
+    <col dtp="182">BRAZIL</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">45280216.80269999</col>
+</row>
+<row>
+    <col dtp="182">CANADA</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">26828985.3944</col>
+</row>
+<row>
+    <col dtp="182">CANADA</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">44849954.31860001</col>
+</row>
+<row>
+    <col dtp="182">CANADA</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">46307936.11080001</col>
+</row>
+<row>
+    <col dtp="182">CANADA</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">47311993.0441</col>
+</row>
+<row>
+    <col dtp="182">CANADA</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">46691491.95959999</col>
+</row>
+<row>
+    <col dtp="182">CANADA</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">46634791.1121</col>
+</row>
+<row>
+    <col dtp="182">CANADA</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">45873849.68820001</col>
+</row>
+<row>
+    <col dtp="182">CHINA</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">27510180.1657</col>
+</row>
+<row>
+    <col dtp="182">CHINA</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">46123865.4097</col>
+</row>
+<row>
+    <col dtp="182">CHINA</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">49532807.0601</col>
+</row>
+<row>
+    <col dtp="182">CHINA</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">46734651.4838</col>
+</row>
+<row>
+    <col dtp="182">CHINA</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">46397896.60970001</col>
+</row>
+<row>
+    <col dtp="182">CHINA</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">49634673.9463</col>
+</row>
+<row>
+    <col dtp="182">CHINA</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">46949457.64259999</col>
+</row>
+<row>
+    <col dtp="182">EGYPT</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">28401491.7968</col>
+</row>
+<row>
+    <col dtp="182">EGYPT</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">47674857.67829999</col>
+</row>
+<row>
+    <col dtp="182">EGYPT</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">47745727.54499999</col>
+</row>
+<row>
+    <col dtp="182">EGYPT</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">45897160.67830001</col>
+</row>
+<row>
+    <col dtp="182">EGYPT</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">47194895.228</col>
+</row>
+<row>
+    <col dtp="182">EGYPT</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">49133627.64709999</col>
+</row>
+<row>
+    <col dtp="182">EGYPT</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">47000574.50270001</col>
+</row>
+<row>
+    <col dtp="182">ETHIOPIA</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">25135046.1377</col>
+</row>
+<row>
+    <col dtp="182">ETHIOPIA</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">43010596.0838</col>
+</row>
+<row>
+    <col dtp="182">ETHIOPIA</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">43636287.19220001</col>
+</row>
+<row>
+    <col dtp="182">ETHIOPIA</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">43575757.33429999</col>
+</row>
+<row>
+    <col dtp="182">ETHIOPIA</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">41597208.52829999</col>
+</row>
+<row>
+    <col dtp="182">ETHIOPIA</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">42622804.1616</col>
+</row>
+<row>
+    <col dtp="182">ETHIOPIA</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">44385735.6813</col>
+</row>
+<row>
+    <col dtp="182">FRANCE</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">26210392.2804</col>
+</row>
+<row>
+    <col dtp="182">FRANCE</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">42392969.4731</col>
+</row>
+<row>
+    <col dtp="182">FRANCE</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">43306317.97489999</col>
+</row>
+<row>
+    <col dtp="182">FRANCE</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">46377408.43279999</col>
+</row>
+<row>
+    <col dtp="182">FRANCE</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">43447352.99219999</col>
+</row>
+<row>
+    <col dtp="182">FRANCE</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">43729961.0639</col>
+</row>
+<row>
+    <col dtp="182">FRANCE</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">44052308.42900001</col>
+</row>
+<row>
+    <col dtp="182">GERMANY</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">25991257.1071</col>
+</row>
+<row>
+    <col dtp="182">GERMANY</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">43968355.80789999</col>
+</row>
+<row>
+    <col dtp="182">GERMANY</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">45882074.80490001</col>
+</row>
+<row>
+    <col dtp="182">GERMANY</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">43314338.30769999</col>
+</row>
+<row>
+    <col dtp="182">GERMANY</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">44616995.43689999</col>
+</row>
+<row>
+    <col dtp="182">GERMANY</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">45126645.91129999</col>
+</row>
+<row>
+    <col dtp="182">GERMANY</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">44361141.21070001</col>
+</row>
+<row>
+    <col dtp="182">INDIA</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">29626417.2379</col>
+</row>
+<row>
+    <col dtp="182">INDIA</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">51386111.34479999</col>
+</row>
+<row>
+    <col dtp="182">INDIA</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">47571018.5122</col>
+</row>
+<row>
+    <col dtp="182">INDIA</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">49344062.28290001</col>
+</row>
+<row>
+    <col dtp="182">INDIA</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">50106952.42610001</col>
+</row>
+<row>
+    <col dtp="182">INDIA</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">48112766.6987</col>
+</row>
+<row>
+    <col dtp="182">INDIA</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">47914303.1234</col>
+</row>
+<row>
+    <col dtp="182">INDONESIA</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">27734909.6763</col>
+</row>
+<row>
+    <col dtp="182">INDONESIA</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">44593812.98629999</col>
+</row>
+<row>
+    <col dtp="182">INDONESIA</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">44746729.8078</col>
+</row>
+<row>
+    <col dtp="182">INDONESIA</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">45593622.6993</col>
+</row>
+<row>
+    <col dtp="182">INDONESIA</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">45988483.87719999</col>
+</row>
+<row>
+    <col dtp="182">INDONESIA</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">46147963.78949999</col>
+</row>
+<row>
+    <col dtp="182">INDONESIA</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">45185777.0688</col>
+</row>
+<row>
+    <col dtp="182">IRAN</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">26661608.9301</col>
+</row>
+<row>
+    <col dtp="182">IRAN</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">45019114.1696</col>
+</row>
+<row>
+    <col dtp="182">IRAN</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">45891397.09920001</col>
+</row>
+<row>
+    <col dtp="182">IRAN</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">44414285.2348</col>
+</row>
+<row>
+    <col dtp="182">IRAN</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">43696360.4795</col>
+</row>
+<row>
+    <col dtp="182">IRAN</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">45362775.8094</col>
+</row>
+<row>
+    <col dtp="182">IRAN</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">43052338.4143</col>
+</row>
+<row>
+    <col dtp="182">IRAQ</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">31188498.1914</col>
+</row>
+<row>
+    <col dtp="182">IRAQ</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">48585307.5222</col>
+</row>
+<row>
+    <col dtp="182">IRAQ</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">50036593.8404</col>
+</row>
+<row>
+    <col dtp="182">IRAQ</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">48774801.72750001</col>
+</row>
+<row>
+    <col dtp="182">IRAQ</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">48795847.23100001</col>
+</row>
+<row>
+    <col dtp="182">IRAQ</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">47435691.5082</col>
+</row>
+<row>
+    <col dtp="182">IRAQ</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">47562355.6571</col>
+</row>
+<row>
+    <col dtp="182">JAPAN</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">24694102.172</col>
+</row>
+<row>
+    <col dtp="182">JAPAN</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">42377052.3454</col>
+</row>
+<row>
+    <col dtp="182">JAPAN</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">40267778.90939999</col>
+</row>
+<row>
+    <col dtp="182">JAPAN</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">40925317.465</col>
+</row>
+<row>
+    <col dtp="182">JAPAN</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">41159518.3058</col>
+</row>
+<row>
+    <col dtp="182">JAPAN</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">39589074.27709999</col>
+</row>
+<row>
+    <col dtp="182">JAPAN</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">39113493.9052</col>
+</row>
+<row>
+    <col dtp="182">JORDAN</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">23489867.78929999</col>
+</row>
+<row>
+    <col dtp="182">JORDAN</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">41615962.66189999</col>
+</row>
+<row>
+    <col dtp="182">JORDAN</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">41860855.4684</col>
+</row>
+<row>
+    <col dtp="182">JORDAN</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">39931672.0908</col>
+</row>
+<row>
+    <col dtp="182">JORDAN</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">40707555.4638</col>
+</row>
+<row>
+    <col dtp="182">JORDAN</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">39060405.46579999</col>
+</row>
+<row>
+    <col dtp="182">JORDAN</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">41657604.26839999</col>
+</row>
+<row>
+    <col dtp="182">KENYA</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">25566337.4303</col>
+</row>
+<row>
+    <col dtp="182">KENYA</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">43108847.9024</col>
+</row>
+<row>
+    <col dtp="182">KENYA</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">43482953.543</col>
+</row>
+<row>
+    <col dtp="182">KENYA</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">42517988.9814</col>
+</row>
+<row>
+    <col dtp="182">KENYA</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">43612479.4523</col>
+</row>
+<row>
+    <col dtp="182">KENYA</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">42724038.7571</col>
+</row>
+<row>
+    <col dtp="182">KENYA</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">43217106.2068</col>
+</row>
+<row>
+    <col dtp="182">MOROCCO</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">24915496.8756</col>
+</row>
+<row>
+    <col dtp="182">MOROCCO</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">42698382.855</col>
+</row>
+<row>
+    <col dtp="182">MOROCCO</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">42986113.5049</col>
+</row>
+<row>
+    <col dtp="182">MOROCCO</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">42316089.15929999</col>
+</row>
+<row>
+    <col dtp="182">MOROCCO</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">43458604.6029</col>
+</row>
+<row>
+    <col dtp="182">MOROCCO</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">42672288.0699</col>
+</row>
+<row>
+    <col dtp="182">MOROCCO</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">42800781.6415</col>
+</row>
+<row>
+    <col dtp="182">MOZAMBIQUE</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">28279876.03010001</col>
+</row>
+<row>
+    <col dtp="182">MOZAMBIQUE</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">51159216.2298</col>
+</row>
+<row>
+    <col dtp="182">MOZAMBIQUE</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">48072525.0645</col>
+</row>
+<row>
+    <col dtp="182">MOZAMBIQUE</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">48905200.6007</col>
+</row>
+<row>
+    <col dtp="182">MOZAMBIQUE</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">46092076.2805</col>
+</row>
+<row>
+    <col dtp="182">MOZAMBIQUE</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">48555926.2669</col>
+</row>
+<row>
+    <col dtp="182">MOZAMBIQUE</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">47809075.1192</col>
+</row>
+<row>
+    <col dtp="182">PERU</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">26713966.26779999</col>
+</row>
+<row>
+    <col dtp="182">PERU</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">48324008.60109999</col>
+</row>
+<row>
+    <col dtp="182">PERU</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">50310008.86290001</col>
+</row>
+<row>
+    <col dtp="182">PERU</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">49647080.96289999</col>
+</row>
+<row>
+    <col dtp="182">PERU</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">46420910.27730001</col>
+</row>
+<row>
+    <col dtp="182">PERU</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">51536906.2487</col>
+</row>
+<row>
+    <col dtp="182">PERU</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">47711665.3137</col>
+</row>
+<row>
+    <col dtp="182">ROMANIA</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">27271993.101</col>
+</row>
+<row>
+    <col dtp="182">ROMANIA</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">45063059.19529999</col>
+</row>
+<row>
+    <col dtp="182">ROMANIA</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">47492335.0323</col>
+</row>
+<row>
+    <col dtp="182">ROMANIA</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">45710636.29090001</col>
+</row>
+<row>
+    <col dtp="182">ROMANIA</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">46088041.1066</col>
+</row>
+<row>
+    <col dtp="182">ROMANIA</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">47515092.56130001</col>
+</row>
+<row>
+    <col dtp="182">ROMANIA</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">44111439.8044</col>
+</row>
+<row>
+    <col dtp="182">RUSSIA</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">27935323.7271</col>
+</row>
+<row>
+    <col dtp="182">RUSSIA</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">48222347.2924</col>
+</row>
+<row>
+    <col dtp="182">RUSSIA</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">47553559.4932</col>
+</row>
+<row>
+    <col dtp="182">RUSSIA</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">46755990.0976</col>
+</row>
+<row>
+    <col dtp="182">RUSSIA</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">48000515.6191</col>
+</row>
+<row>
+    <col dtp="182">RUSSIA</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">48569624.5082</col>
+</row>
+<row>
+    <col dtp="182">RUSSIA</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">47672831.5329</col>
+</row>
+<row>
+    <col dtp="182">SAUDI ARABIA</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">27113516.8424</col>
+</row>
+<row>
+    <col dtp="182">SAUDI ARABIA</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">46690468.9649</col>
+</row>
+<row>
+    <col dtp="182">SAUDI ARABIA</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">47775782.667</col>
+</row>
+<row>
+    <col dtp="182">SAUDI ARABIA</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">46657107.8287</col>
+</row>
+<row>
+    <col dtp="182">SAUDI ARABIA</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">48181672.80999999</col>
+</row>
+<row>
+    <col dtp="182">SAUDI ARABIA</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">45692556.4438</col>
+</row>
+<row>
+    <col dtp="182">SAUDI ARABIA</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">48924913.27169999</col>
+</row>
+<row>
+    <col dtp="182">UNITED KINGDOM</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">26366682.8786</col>
+</row>
+<row>
+    <col dtp="182">UNITED KINGDOM</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">44518130.18510001</col>
+</row>
+<row>
+    <col dtp="182">UNITED KINGDOM</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">45539729.61660001</col>
+</row>
+<row>
+    <col dtp="182">UNITED KINGDOM</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">46845879.33899999</col>
+</row>
+<row>
+    <col dtp="182">UNITED KINGDOM</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">43081609.5737</col>
+</row>
+<row>
+    <col dtp="182">UNITED KINGDOM</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">44770146.7555</col>
+</row>
+<row>
+    <col dtp="182">UNITED KINGDOM</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">44123402.54839999</col>
+</row>
+<row>
+    <col dtp="182">UNITED STATES</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">27826593.6825</col>
+</row>
+<row>
+    <col dtp="182">UNITED STATES</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">46638572.3648</col>
+</row>
+<row>
+    <col dtp="182">UNITED STATES</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">46688280.54740001</col>
+</row>
+<row>
+    <col dtp="182">UNITED STATES</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">48951591.61560001</col>
+</row>
+<row>
+    <col dtp="182">UNITED STATES</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">45099092.05979999</col>
+</row>
+<row>
+    <col dtp="182">UNITED STATES</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">46181600.5278</col>
+</row>
+<row>
+    <col dtp="182">UNITED STATES</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">46168214.09010001</col>
+</row>
+<row>
+    <col dtp="182">VIETNAM</col>
+    <col dtp="189">1998</col>
+    <col dtp="191">27281931.0011</col>
+</row>
+<row>
+    <col dtp="182">VIETNAM</col>
+    <col dtp="189">1997</col>
+    <col dtp="191">48735914.17959999</col>
+</row>
+<row>
+    <col dtp="182">VIETNAM</col>
+    <col dtp="189">1996</col>
+    <col dtp="191">47824595.90399999</col>
+</row>
+<row>
+    <col dtp="182">VIETNAM</col>
+    <col dtp="189">1995</col>
+    <col dtp="191">48235135.80159998</col>
+</row>
+<row>
+    <col dtp="182">VIETNAM</col>
+    <col dtp="189">1994</col>
+    <col dtp="191">47729256.3324</col>
+</row>
+<row>
+    <col dtp="182">VIETNAM</col>
+    <col dtp="189">1993</col>
+    <col dtp="191">45352676.86719999</col>
+</row>
+<row>
+    <col dtp="182">VIETNAM</col>
+    <col dtp="189">1992</col>
+    <col dtp="191">47846355.6485</col>
+</row>
+    </result>
+</test>

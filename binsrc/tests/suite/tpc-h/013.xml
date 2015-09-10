@@ -1,0 +1,353 @@
+<test>
+    <comment>#line 4 tpc-h/13.sql
+select
+          c_count,
+          count(*) as custdist
+  from (
+          select
+                  c_custkey,
+                  count(o_orderkey) as c_count
+          from
+                  (select * from customer
+                  left outer join orders on
+                    c_custkey = o_custkey and
+                    o_comment not like %special%requests%) c_customer
+          group by
+                  c_custkey
+          ) c_orders
+  group by
+          c_count
+  order by
+          custdist desc,
+          c_count desc
+</comment>
+    <query><![CDATA[#line 4 "tpc-h/13.sql"
+select
+          c_count,
+          count(*) as custdist
+  from (
+          select
+                  c_custkey,
+                  count(o_orderkey) as c_count
+          from
+                  (select * from customer
+                  left outer join orders on
+                    c_custkey = o_custkey and
+                    o_comment not like '%special%requests%') c_customer
+          group by
+                  c_custkey
+          ) c_orders
+  group by
+          c_count
+  order by
+          custdist desc,
+          c_count desc
+    ]]></query>
+    <plans>
+	<plan>
+	    <verify result-order="1" col-names="1" plan-xpath="/report[hf[ts[following::stn[following::setp]]][following::fref[fref[fref[ts[following::stn[following::hs[following::setp]]]][following::sel[following::setp]]][following::setp]][following::ts[following::sel]]]]">
+		<da-below rnd="0" seq="0" same-seg="" />
+	    </verify>
+<text><![CDATA[{ 
+{ hash filler
+CUSTOMER   1.5e+05 rows(t3.C_CUSTKEY)
+ 
+Stage 2
+Sort hf 35    1.5e+05 rows(q_t3.C_CUSTKEY)
+}
+{ fork
+{ fork
+{ fork
+END Node
+outer {
+ORDERS   1.5e+06 rows(t4.O_CUSTKEY, t4.O_ORDERKEY)
+ O_COMMENT LIKE <c %special%requests%> LIKE <c >
+hash partition by 66 ()
+Stage 2
+Hash source 35  not partitionable         1 rows(q_t4.O_CUSTKEY) -> ()
+ right oj, key out ssls: (t3.C_CUSTKEY)
+ 
+After code:
+      0: t3.C_CUSTKEY :=  := artm t4.O_CUSTKEY
+      4: BReturn 0
+ end of outer}
+set_ctr
+ out: (t4.O_CUSTKEY, t4.O_ORDERKEY)
+ shadow: (t4.O_CUSTKEY, t4.O_ORDERKEY)
+ 
+Precode:
+      0: ISNOTNULL := Call ISNOTNULL (t4.O_ORDERKEY)
+      5: BReturn 0
+Sort (t3.C_CUSTKEY) -> (ISNOTNULL)
+ 
+}
+group by read node  
+(t3.C_CUSTKEY, aggregate)in each partition slice
+ 
+After code:
+      0: C_CUSTKEY :=  := artm t3.C_CUSTKEY
+      4: C_COUNT :=  := artm aggregate
+      8: BReturn 0
+Subquery Select(C_CUSTKEY, C_COUNT)
+Sort (C_COUNT) -> (inc)
+ 
+}
+group by read node  
+(C_COUNT, CUSTDIST)
+Sort (CUSTDIST, C_COUNT)
+}
+Key from temp (C_COUNT, CUSTDIST)
+ 
+Select (C_COUNT, CUSTDIST)
+}
+]]></text>
+	    <xmlplan>
+<report>
+<sctr sctr_ose='0'/>
+<hf sets='222'><ts key='CUSTOMER' table='DB.DBA.CUSTOMER'>
+<ks_out_slots>
+<ssl index='29' name='t3.C_CUSTKEY' />
+</ks_out_slots>
+</ts>
+<stn nth='2'/>
+<setp ha_op='build' hf='35' sets='217'><key><ssl index='211' name='q_t3.C_CUSTKEY' />
+</key><dep></dep></setp>
+</hf>
+<sctr sctr_ose='0'/>
+<fref sets='318'><fref sets='304'><fref sets='284'><end />
+<sctr sctr_ose='271'/>
+<ts key='ORDERS' table='DB.DBA.ORDERS'>
+<ks_row_spec>
+<sp col='O_COMMENT'>
+<op code='LIKE' >
+<ssl constant='%special%requests%' />
+</op>
+<op code='LIKE' >
+<ssl constant='' />
+</op>
+</sp></ks_row_spec>
+<ks_hash_spec>
+<hrng hs='0' flags='4' /></ks_hash_spec>
+<ks_out_slots>
+<ssl index='74' name='t4.O_CUSTKEY' />
+<ssl index='73' name='t4.O_ORDERKEY' />
+</ks_out_slots>
+</ts>
+<stn nth='2'/>
+<hs hf='222'><after_code><artm op=':='><res><ssl index='29' name='t3.C_CUSTKEY' />
+</res><left><ssl index='74' name='t4.O_CUSTKEY' />
+
+</left></artm><bret ret='0'/></after_code></hs>
+<ose sets='271'><out><ssl index='73' name='t4.O_ORDERKEY' />
+
+<ssl index='74' name='t4.O_CUSTKEY' />
+
+</out><shadow><ssl index='275' name='t4.O_ORDERKEY' />
+<ssl index='277' name='t4.O_CUSTKEY' />
+</shadow></ose>
+<setp ha_op='group' hf='0' sets='279'><key><ssl index='29' name='t3.C_CUSTKEY' />
+
+</key><dep><ssl index='96' name='ISNOTNULL' />
+</dep></setp>
+</fref>
+<chash />
+<sel><out><ssl index='69' name='C_CUSTKEY' />
+<ssl index='70' name='C_COUNT' />
+</out></sel>
+<setp ha_op='group' hf='0' sets='298'><key><ssl index='70' name='C_COUNT' />
+</key><dep><ssl index='159' name='inc' />
+</dep></setp>
+</fref>
+<chash />
+<setp ha_op='order' hf='0' sets='313'><key><ssl index='157' name='CUSTDIST' />
+<ssl index='70' name='C_COUNT' />
+</key><dep></dep></setp>
+</fref>
+<ts key='temp'>
+<ks_out_slots>
+<ssl index='70' name='C_COUNT' />
+<ssl index='157' name='CUSTDIST' />
+</ks_out_slots>
+</ts>
+<sel><ssl index='70' name='C_COUNT' />
+<ssl index='157' name='CUSTDIST' />
+</sel>
+</report>
+	    </xmlplan>
+	</plan>
+    </plans>
+    <columns>
+         <column name="C_COUNT"/>
+         <column name="CUSTDIST"/>
+    </columns>
+    <result cnt="42">
+<row>
+    <col dtp="189">0</col>
+    <col dtp="189">50005</col>
+</row>
+<row>
+    <col dtp="189">9</col>
+    <col dtp="189">6641</col>
+</row>
+<row>
+    <col dtp="189">10</col>
+    <col dtp="189">6532</col>
+</row>
+<row>
+    <col dtp="189">11</col>
+    <col dtp="189">6014</col>
+</row>
+<row>
+    <col dtp="189">8</col>
+    <col dtp="189">5937</col>
+</row>
+<row>
+    <col dtp="189">12</col>
+    <col dtp="189">5639</col>
+</row>
+<row>
+    <col dtp="189">13</col>
+    <col dtp="189">5024</col>
+</row>
+<row>
+    <col dtp="189">19</col>
+    <col dtp="189">4793</col>
+</row>
+<row>
+    <col dtp="189">7</col>
+    <col dtp="189">4687</col>
+</row>
+<row>
+    <col dtp="189">17</col>
+    <col dtp="189">4587</col>
+</row>
+<row>
+    <col dtp="189">18</col>
+    <col dtp="189">4529</col>
+</row>
+<row>
+    <col dtp="189">20</col>
+    <col dtp="189">4516</col>
+</row>
+<row>
+    <col dtp="189">15</col>
+    <col dtp="189">4505</col>
+</row>
+<row>
+    <col dtp="189">14</col>
+    <col dtp="189">4446</col>
+</row>
+<row>
+    <col dtp="189">16</col>
+    <col dtp="189">4273</col>
+</row>
+<row>
+    <col dtp="189">21</col>
+    <col dtp="189">4190</col>
+</row>
+<row>
+    <col dtp="189">22</col>
+    <col dtp="189">3623</col>
+</row>
+<row>
+    <col dtp="189">6</col>
+    <col dtp="189">3265</col>
+</row>
+<row>
+    <col dtp="189">23</col>
+    <col dtp="189">3225</col>
+</row>
+<row>
+    <col dtp="189">24</col>
+    <col dtp="189">2742</col>
+</row>
+<row>
+    <col dtp="189">25</col>
+    <col dtp="189">2086</col>
+</row>
+<row>
+    <col dtp="189">5</col>
+    <col dtp="189">1948</col>
+</row>
+<row>
+    <col dtp="189">26</col>
+    <col dtp="189">1612</col>
+</row>
+<row>
+    <col dtp="189">27</col>
+    <col dtp="189">1179</col>
+</row>
+<row>
+    <col dtp="189">4</col>
+    <col dtp="189">1007</col>
+</row>
+<row>
+    <col dtp="189">28</col>
+    <col dtp="189">893</col>
+</row>
+<row>
+    <col dtp="189">29</col>
+    <col dtp="189">593</col>
+</row>
+<row>
+    <col dtp="189">3</col>
+    <col dtp="189">415</col>
+</row>
+<row>
+    <col dtp="189">30</col>
+    <col dtp="189">376</col>
+</row>
+<row>
+    <col dtp="189">31</col>
+    <col dtp="189">226</col>
+</row>
+<row>
+    <col dtp="189">32</col>
+    <col dtp="189">148</col>
+</row>
+<row>
+    <col dtp="189">2</col>
+    <col dtp="189">134</col>
+</row>
+<row>
+    <col dtp="189">33</col>
+    <col dtp="189">75</col>
+</row>
+<row>
+    <col dtp="189">34</col>
+    <col dtp="189">50</col>
+</row>
+<row>
+    <col dtp="189">35</col>
+    <col dtp="189">37</col>
+</row>
+<row>
+    <col dtp="189">1</col>
+    <col dtp="189">17</col>
+</row>
+<row>
+    <col dtp="189">36</col>
+    <col dtp="189">14</col>
+</row>
+<row>
+    <col dtp="189">38</col>
+    <col dtp="189">5</col>
+</row>
+<row>
+    <col dtp="189">37</col>
+    <col dtp="189">5</col>
+</row>
+<row>
+    <col dtp="189">40</col>
+    <col dtp="189">4</col>
+</row>
+<row>
+    <col dtp="189">41</col>
+    <col dtp="189">2</col>
+</row>
+<row>
+    <col dtp="189">39</col>
+    <col dtp="189">1</col>
+</row>
+    </result>
+</test>

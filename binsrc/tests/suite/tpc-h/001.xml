@@ -1,0 +1,217 @@
+<test>
+    <comment>#line 4 tpc-h/1.sql
+select
+	l_returnflag,
+	l_linestatus,
+	sum(l_quantity) as sum_qty,
+	sum(l_extendedprice) as sum_base_price,
+	sum(l_extendedprice * (1 - l_discount)) as sum_disc_price,
+	sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge,
+	avg(l_quantity) as avg_qty,
+	avg(l_extendedprice) as avg_price,
+	avg(l_discount) as avg_disc,
+	count(*) as count_order
+from
+	lineitem
+where
+	l_shipdate &lt;= dateadd(DAY, -90, cast (1998-12-01 as date))
+group by
+	l_returnflag,
+	l_linestatus
+order by
+	l_returnflag,
+	l_linestatus
+</comment>
+    <query><![CDATA[#line 4 "tpc-h/1.sql"
+select
+	l_returnflag,
+	l_linestatus,
+	sum(l_quantity) as sum_qty,
+	sum(l_extendedprice) as sum_base_price,
+	sum(l_extendedprice * (1 - l_discount)) as sum_disc_price,
+	sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge,
+	avg(l_quantity) as avg_qty,
+	avg(l_extendedprice) as avg_price,
+	avg(l_discount) as avg_disc,
+	count(*) as count_order
+from
+	lineitem
+where
+	l_shipdate <= dateadd('DAY', -90, cast ('1998-12-01' as date))
+group by
+	l_returnflag,
+	l_linestatus
+order by
+	l_returnflag,
+	l_linestatus
+    ]]></query>
+    <plans>
+	<plan>
+	    <verify result-order="1" col-names="1" plan-xpath="/report[fref[fref[ts[following::setp]][following::setp]][following::ts[following::sel]]]">
+		<da-below rnd="0" seq="0" same-seg="" />
+	    </verify>
+<text><![CDATA[{ 
+{ fork
+{ fork
+LINEITEM   5.9e+06 rows(.L_RETURNFLAG, .L_LINESTATUS, .L_QUANTITY, .L_EXTENDEDPRICE, .L_DISCOUNT, .L_TAX)
+ L_SHIPDATE <= <tag 211 c 1998-09-02>
+ 
+Precode:
+      0: temp := artm  1  - .L_DISCOUNT
+      4: temp := artm .L_EXTENDEDPRICE * temp
+      8: temp := artm  1  + .L_TAX
+      12: temp := artm temp * temp
+      16: BReturn 0
+Sort (.L_RETURNFLAG, .L_LINESTATUS) -> (.L_QUANTITY, .L_EXTENDEDPRICE, temp, temp, inc, .L_DISCOUNT)
+ 
+}
+group by read node  
+(.L_RETURNFLAG, .L_LINESTATUS, SUM_QTY, SUM_BASE_PRICE, SUM_DISC_PRICE, SUM_CHARGE, COUNT_ORDER, aggregate)
+ 
+Precode:
+      0: AVG_QTY := artm SUM_QTY / COUNT_ORDER
+      4: AVG_PRICE := artm SUM_BASE_PRICE / COUNT_ORDER
+      8: AVG_DISC := artm aggregate / COUNT_ORDER
+      12: BReturn 0
+Sort (.L_RETURNFLAG, .L_LINESTATUS) -> (SUM_QTY, SUM_BASE_PRICE, SUM_DISC_PRICE, SUM_CHARGE, AVG_QTY, AVG_PRICE, AVG_DISC, COUNT_ORDER)
+ 
+}
+Key from temp (.L_RETURNFLAG, .L_LINESTATUS, SUM_QTY, SUM_BASE_PRICE, SUM_DISC_PRICE, SUM_CHARGE, AVG_QTY, AVG_PRICE, AVG_DISC, COUNT_ORDER)
+ 
+Select (.L_RETURNFLAG, .L_LINESTATUS, SUM_QTY, SUM_BASE_PRICE, SUM_DISC_PRICE, SUM_CHARGE, AVG_QTY, AVG_PRICE, AVG_DISC, COUNT_ORDER)
+}
+]]></text>
+	    <xmlplan>
+<report>
+<sctr sctr_ose='0'/>
+<fref sets='148'><fref sets='129'><ts key='LINEITEM' table='DB.DBA.LINEITEM'>
+<ks_row_spec>
+<sp col='L_SHIPDATE'>
+<op code='&lt;=' >
+<ssl constant='1998-09-02' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='34' name='.L_RETURNFLAG' />
+<ssl index='33' name='.L_LINESTATUS' />
+<ssl index='32' name='.L_QUANTITY' />
+<ssl index='31' name='.L_EXTENDEDPRICE' />
+<ssl index='30' name='.L_DISCOUNT' />
+<ssl index='29' name='.L_TAX' />
+</ks_out_slots>
+</ts>
+<setp ha_op='group' hf='0' sets='123'><key><ssl index='34' name='.L_RETURNFLAG' />
+<ssl index='33' name='.L_LINESTATUS' />
+</key><dep><ssl index='32' name='.L_QUANTITY' />
+<ssl index='31' name='.L_EXTENDEDPRICE' />
+<ssl index='38' name='temp' />
+<ssl index='42' name='temp' />
+<ssl index='58' name='inc' />
+<ssl index='30' name='.L_DISCOUNT' />
+</dep></setp>
+</fref>
+<chash />
+<setp ha_op='order' hf='0' sets='143'><key><ssl index='34' name='.L_RETURNFLAG' />
+<ssl index='33' name='.L_LINESTATUS' />
+</key><dep><ssl index='48' name='SUM_QTY' />
+<ssl index='50' name='SUM_BASE_PRICE' />
+<ssl index='52' name='SUM_DISC_PRICE' />
+<ssl index='54' name='SUM_CHARGE' />
+<ssl index='80' name='AVG_QTY' />
+<ssl index='82' name='AVG_PRICE' />
+<ssl index='84' name='AVG_DISC' />
+<ssl index='56' name='COUNT_ORDER' />
+</dep></setp>
+</fref>
+<ts key='temp'>
+<ks_out_slots>
+<ssl index='34' name='.L_RETURNFLAG' />
+<ssl index='33' name='.L_LINESTATUS' />
+<ssl index='48' name='SUM_QTY' />
+<ssl index='50' name='SUM_BASE_PRICE' />
+<ssl index='52' name='SUM_DISC_PRICE' />
+<ssl index='54' name='SUM_CHARGE' />
+<ssl index='80' name='AVG_QTY' />
+<ssl index='82' name='AVG_PRICE' />
+<ssl index='84' name='AVG_DISC' />
+<ssl index='56' name='COUNT_ORDER' />
+</ks_out_slots>
+</ts>
+<sel><ssl index='34' name='.L_RETURNFLAG' />
+<ssl index='33' name='.L_LINESTATUS' />
+<ssl index='48' name='SUM_QTY' />
+<ssl index='50' name='SUM_BASE_PRICE' />
+<ssl index='52' name='SUM_DISC_PRICE' />
+<ssl index='54' name='SUM_CHARGE' />
+<ssl index='80' name='AVG_QTY' />
+<ssl index='82' name='AVG_PRICE' />
+<ssl index='84' name='AVG_DISC' />
+<ssl index='56' name='COUNT_ORDER' />
+</sel>
+</report>
+	    </xmlplan>
+	</plan>
+    </plans>
+    <columns>
+         <column name="L_RETURNFLAG"/>
+         <column name="L_LINESTATUS"/>
+         <column name="SUM_QTY"/>
+         <column name="SUM_BASE_PRICE"/>
+         <column name="SUM_DISC_PRICE"/>
+         <column name="SUM_CHARGE"/>
+         <column name="AVG_QTY"/>
+         <column name="AVG_PRICE"/>
+         <column name="AVG_DISC"/>
+         <column name="COUNT_ORDER"/>
+    </columns>
+    <result cnt="4">
+<row>
+    <col dtp="182">A</col>
+    <col dtp="182">F</col>
+    <col dtp="191">37734107</col>
+    <col dtp="191">56586554400.72999</col>
+    <col dtp="191">53758257134.87012</col>
+    <col dtp="191">55909065222.82762</col>
+    <col dtp="191">25.52200585325734</col>
+    <col dtp="191">38273.12973462167</col>
+    <col dtp="191">0.04998529583847383</col>
+    <col dtp="189">1478493</col>
+</row>
+<row>
+    <col dtp="182">N</col>
+    <col dtp="182">F</col>
+    <col dtp="191">991417</col>
+    <col dtp="191">1487504710.38</col>
+    <col dtp="191">1413082168.054099</col>
+    <col dtp="191">1469649223.194374</col>
+    <col dtp="191">25.51647192052299</col>
+    <col dtp="191">38284.46776084831</col>
+    <col dtp="191">0.05009342667421528</col>
+    <col dtp="189">38854</col>
+</row>
+<row>
+    <col dtp="182">N</col>
+    <col dtp="182">O</col>
+    <col dtp="191">74476040</col>
+    <col dtp="191">111701729697.7395</col>
+    <col dtp="191">106118230307.6053</col>
+    <col dtp="191">110367043872.4965</col>
+    <col dtp="191">25.50222676958499</col>
+    <col dtp="191">38249.1179889081</col>
+    <col dtp="191">0.04999658605371912</col>
+    <col dtp="189">2920374</col>
+</row>
+<row>
+    <col dtp="182">R</col>
+    <col dtp="182">F</col>
+    <col dtp="191">37719753</col>
+    <col dtp="191">56568041380.89947</col>
+    <col dtp="191">53741292684.60387</col>
+    <col dtp="191">55889619119.83256</col>
+    <col dtp="191">25.50579361269077</col>
+    <col dtp="191">38250.8546260993</col>
+    <col dtp="191">0.0500094058302035</col>
+    <col dtp="189">1478870</col>
+</row>
+    </result>
+</test>

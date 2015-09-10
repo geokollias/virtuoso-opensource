@@ -1,0 +1,222 @@
+<test>
+    <comment>#line 4 tpc-h/17.sql
+select
+	sum(l_extendedprice) / 7.0 as avg_yearly
+from
+	lineitem,
+	part
+where
+	p_partkey = l_partkey
+	and p_brand = Brand#23
+	and p_container = MED BOX
+	and l_quantity &lt; (
+		select
+			0.2 * avg(l_quantity)
+		from
+			lineitem
+		where
+			l_partkey = p_partkey
+	)
+</comment>
+    <query><![CDATA[#line 4 "tpc-h/17.sql"
+select
+	sum(l_extendedprice) / 7.0 as avg_yearly
+from
+	lineitem,
+	part
+where
+	p_partkey = l_partkey
+	and p_brand = 'Brand#23'
+	and p_container = 'MED BOX'
+	and l_quantity < (
+		select
+			0.2 * avg(l_quantity)
+		from
+			lineitem
+		where
+			l_partkey = p_partkey
+	)
+    ]]></query>
+    <plans>
+	<plan>
+	    <verify result-order="0" col-names="1" plan-xpath="/report[hf[ts[following::setp]][following::hf[subq[ts[following::hs[following::setp]]]][following::hf[ts[following::setp]][following::fref[ts[following::hs]][following::sel]]]]]">
+		<da-below rnd="0" seq="0" same-seg="" />
+	    </verify>
+<text><![CDATA[{ 
+{ hash filler
+PART     3e+02 rows(t2.P_PARTKEY)
+ P_CONTAINER = <c MED BOX> ,  P_BRAND = <c Brand#23>
+Sort hf 35      8e+02 rows(t2.P_PARTKEY)
+}
+{ hash filler
+Subquery 41 
+{ 
+LINEITEM     6e+06 rows(t4.L_PARTKEY, t4.L_QUANTITY)
+ 
+hash partition+bloom by 39 (tmp)hash join merged always card    0.0018 -> ()
+Hash source 35 merged into ts not partitionable    0.0018 rows(t4.L_PARTKEY) -> ()
+ 
+After code:
+      0: t4.L_PARTKEY :=  := artm t4.L_PARTKEY
+      4: t4.L_QUANTITY :=  := artm t4.L_QUANTITY
+      8: BReturn 0
+Sort hf 63    1.1e+04 rows(t4.L_PARTKEY) -> (t4.L_QUANTITY)
+ 
+}
+}
+{ hash filler
+LINEITEM     6e+06 rows(.L_PARTKEY, .L_QUANTITY, .L_EXTENDEDPRICE)
+ 
+Sort hf 81      6e+06 rows(.L_PARTKEY) -> (.L_EXTENDEDPRICE, .L_QUANTITY)
+ 
+}
+{ fork
+PART     3e+02 rows(.P_PARTKEY)
+ P_CONTAINER = <c MED BOX> ,  P_BRAND = <c Brand#23>
+hash partition by 88 ()
+hash partition by 70 ()
+ 
+Precode:
+      0: { 
+{ fork
+Hash source 63       0.076 rows(k_.P_PARTKEY) -> (.L_QUANTITY)
+ 
+After code:
+      0:  sum sum.L_QUANTITYset no set_ctr
+      5:  sum count 1 set no set_ctr
+      10: BReturn 0
+}
+ 
+After code:
+      0: temp := artm sum / count
+      4: temp := artm  0.2  * temp
+      8: aggregate :=  := artm temp
+      12: BReturn 0
+Subquery Select(aggregate)
+}
+ 
+      8: BReturn 0
+Hash source 81         3.8 rows(.P_PARTKEY) -> (.L_EXTENDEDPRICE, .L_QUANTITY)
+END Node
+After test:
+      0: if (.L_QUANTITY < scalar) then 4 else 5 unkn 5
+      4: BReturn 1
+      5: BReturn 0
+ 
+After code:
+      0:  sum sum.L_EXTENDEDPRICE
+      5: BReturn 0
+}
+ 
+After code:
+      0: AVG_YEARLY := artm sum /  7 
+      4: BReturn 0
+Select (AVG_YEARLY)
+}
+]]></text>
+	    <xmlplan>
+<report>
+<sctr sctr_ose='0'/>
+<hf sets='155'><ts key='PART' table='DB.DBA.PART'>
+<ks_row_spec>
+<sp col='P_CONTAINER'>
+<op code='=' >
+<ssl constant='MED BOX' />
+</op>
+</sp><sp col='P_BRAND'>
+<op code='=' >
+<ssl constant='Brand#23' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='29' name='t2.P_PARTKEY' />
+</ks_out_slots>
+</ts>
+<setp ha_op='build' hf='35' sets='150'><key><ssl index='29' name='t2.P_PARTKEY' />
+</key><dep></dep></setp>
+</hf>
+<hf sets='191'><subq>
+<ts key='LINEITEM' table='DB.DBA.LINEITEM'>
+<ks_hash_spec>
+<hrng hs='170' flags='0' /></ks_hash_spec>
+<ks_out_slots>
+<ssl index='47' name='t4.L_PARTKEY' />
+<ssl index='46' name='t4.L_QUANTITY' />
+</ks_out_slots>
+</ts>
+<hs hf='155'><after_code><artm op=':='><res><ssl index='42' name='t4.L_PARTKEY' />
+</res><left><ssl index='47' name='t4.L_PARTKEY' />
+</left></artm><artm op=':='><res><ssl index='43' name='t4.L_QUANTITY' />
+</res><left><ssl index='46' name='t4.L_QUANTITY' />
+</left></artm><bret ret='0'/></after_code></hs>
+<setp ha_op='build' hf='63' sets='186'><key><ssl index='42' name='t4.L_PARTKEY' />
+</key><dep><ssl index='43' name='t4.L_QUANTITY' />
+</dep></setp>
+</subq>
+</hf>
+<hf sets='208'><ts key='LINEITEM' table='DB.DBA.LINEITEM'>
+<ks_out_slots>
+<ssl index='75' name='.L_PARTKEY' />
+<ssl index='74' name='.L_QUANTITY' />
+<ssl index='73' name='.L_EXTENDEDPRICE' />
+</ks_out_slots>
+</ts>
+<setp ha_op='build' hf='81' sets='203'><key><ssl index='75' name='.L_PARTKEY' />
+</key><dep><ssl index='73' name='.L_EXTENDEDPRICE' />
+<ssl index='74' name='.L_QUANTITY' />
+</dep></setp>
+</hf>
+<fref sets='269'><ts key='PART' table='DB.DBA.PART'>
+<ks_row_spec>
+<sp col='P_CONTAINER'>
+<op code='=' >
+<ssl constant='MED BOX' />
+</op>
+</sp><sp col='P_BRAND'>
+<op code='=' >
+<ssl constant='Brand#23' />
+</op>
+</sp></ks_row_spec>
+<ks_hash_spec>
+<hrng hs='0' flags='4' /><hrng hs='0' flags='4' /></ks_hash_spec>
+<ks_out_slots>
+<ssl index='91' name='.P_PARTKEY' />
+</ks_out_slots>
+</ts>
+<hs hf='208'><pre_code><subq><params></params><sctr sctr_ose='0'/>
+<fref sets='244'><hs hf='191'><after_code><agg op='sum'><res><ssl index='101' name='sum' />
+</res><arg><ssl index='97' name='.L_QUANTITY' />
+</arg><setno><ssl index='98' name='set_ctr' />
+
+</setno></agg><agg op='sum'><res><ssl index='102' name='count' />
+</res><arg><ssl constant='1' />
+</arg><setno><ssl index='98' name='set_ctr' />
+
+</setno></agg><bret ret='0'/></after_code></hs>
+</fref>
+<sel><out><ssl index='113' name='aggregate' />
+</out></sel>
+</subq><bret ret='0'/></pre_code></hs>
+<after_test><if op='&lt;' succ='4' else='5' unkn='5' merge='0'><left><ssl index='74' name='.L_QUANTITY' />
+</left><right><ssl index='115' name='scalar' />
+
+</right></if><bret ret='1'/><bret ret='0'/></after_test><after_code><agg op='sum'><res><ssl index='126' name='sum' />
+</res><arg><ssl index='73' name='.L_EXTENDEDPRICE' />
+
+</arg></agg><bret ret='0'/></after_code><end />
+</fref>
+<sel><ssl index='130' name='AVG_YEARLY' />
+</sel>
+</report>
+	    </xmlplan>
+	</plan>
+    </plans>
+    <columns>
+         <column name="AVG_YEARLY"/>
+    </columns>
+    <result cnt="1">
+<row>
+    <col dtp="219">348406.054285713857143</col>
+</row>
+    </result>
+</test>

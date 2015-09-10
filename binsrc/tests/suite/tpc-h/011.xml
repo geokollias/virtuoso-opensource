@@ -1,0 +1,4447 @@
+<test>
+    <comment>#line 4 tpc-h/11.sql
+select
+	ps_partkey,
+	sum(ps_supplycost * ps_availqty) as value
+from
+	partsupp,
+	supplier,
+	nation
+where
+	ps_suppkey = s_suppkey
+	and s_nationkey = n_nationkey
+	and n_name = GERMANY
+group by
+	ps_partkey having
+		sum(ps_supplycost * ps_availqty) &gt; (
+			select
+				sum(ps_supplycost * ps_availqty) * 0.0001000000
+			from
+				partsupp,
+				supplier,
+				nation
+			where
+				ps_suppkey = s_suppkey
+				and s_nationkey = n_nationkey
+				and n_name = GERMANY
+		)
+order by
+	value desc
+</comment>
+    <query><![CDATA[#line 4 "tpc-h/11.sql"
+select
+	ps_partkey,
+	sum(ps_supplycost * ps_availqty) as value
+from
+	partsupp,
+	supplier,
+	nation
+where
+	ps_suppkey = s_suppkey
+	and s_nationkey = n_nationkey
+	and n_name = 'GERMANY'
+group by
+	ps_partkey having
+		sum(ps_supplycost * ps_availqty) > (
+			select
+				sum(ps_supplycost * ps_availqty) * 0.0001000000
+			from
+				partsupp,
+				supplier,
+				nation
+			where
+				ps_suppkey = s_suppkey
+				and s_nationkey = n_nationkey
+				and n_name = 'GERMANY'
+		)
+order by
+	value desc
+    ]]></query>
+    <plans>
+	<plan>
+	    <verify result-order="1" col-names="1" plan-xpath="/report[hf[subq[ts[following::ts[following::setp]]]][following::hf[subq[ts[following::ts[following::setp]]]][following::fref[ts[following::hs[following::setp[following::setp]]]][following::ts[following::sel]]]]]">
+		<da-below rnd="0" seq="0" same-seg="" />
+	    </verify>
+<text><![CDATA[{ 
+{ hash filler
+Subquery 28 
+{ 
+NATION         1 rows(t7.N_NATIONKEY)
+ N_NAME = <c GERMANY>
+SUPPLIER     4e+02 rows(t6.S_SUPPKEY)
+ S_NATIONKEY = t7.N_NATIONKEY
+ 
+After code:
+      0: t6.S_SUPPKEY :=  := artm t6.S_SUPPKEY
+      4: BReturn 0
+Sort hf 47      8e+02 rows(t6.S_SUPPKEY)
+}
+}
+{ hash filler
+Subquery 59 
+{ 
+NATION         1 rows(t3.N_NATIONKEY)
+ N_NAME = <c GERMANY>
+SUPPLIER     4e+02 rows(t2.S_SUPPKEY)
+ S_NATIONKEY = t3.N_NATIONKEY
+ 
+After code:
+      0: t2.S_SUPPKEY :=  := artm t2.S_SUPPKEY
+      4: BReturn 0
+Sort hf 78      8e+02 rows(t2.S_SUPPKEY)
+}
+}
+ 
+Precode:
+      0: { 
+{ fork
+PARTSUPP     8e+05 rows(.PS_SUPPKEY, .PS_SUPPLYCOST, .PS_AVAILQTY)
+ 
+hash partition+bloom by 57 (tmp)hash join merged always card      0.04 -> ()
+ 
+Precode:
+      0: temp := artm .PS_SUPPLYCOST * .PS_AVAILQTY
+      4: BReturn 0
+Hash source 47 merged into ts not partitionable      0.04 rows(.PS_SUPPKEY) -> ()
+ 
+After code:
+      0:  sum sumtemp
+      5: BReturn 0
+}
+ 
+After code:
+      0: temp := artm sum *  0.0001 
+      4: aggregate :=  := artm temp
+      8: BReturn 0
+Subquery Select(aggregate)
+}
+ 
+      8: BReturn 0
+{ fork
+PARTSUPP     8e+05 rows(.PS_SUPPKEY, .PS_PARTKEY, .PS_SUPPLYCOST, .PS_AVAILQTY)
+ 
+hash partition+bloom by 88 (tmp)hash join merged always card      0.04 -> ()
+ 
+Precode:
+      0: temp := artm .PS_SUPPLYCOST * .PS_AVAILQTY
+      4: BReturn 0
+Hash source 78 merged into ts       0.04 rows(.PS_SUPPKEY) -> ()
+Sort streaming with duplicates (.PS_PARTKEY) -> (temp, scalar)
+ 
+group by read node  
+(.PS_PARTKEY, VALUE, scalar)
+END Node
+After test:
+      0: if (VALUE > scalar) then 4 else 5 unkn 5
+      4: BReturn 1
+      5: BReturn 0
+Sort (VALUE) -> (.PS_PARTKEY)
+ 
+}
+Key from temp (.PS_PARTKEY, VALUE)
+ 
+Select (.PS_PARTKEY, VALUE)
+}
+]]></text>
+	    <xmlplan>
+<report>
+<sctr sctr_ose='0'/>
+<hf sets='206'><subq>
+<ts key='NATION' table='DB.DBA.NATION'>
+<ks_row_spec>
+<sp col='N_NAME'>
+<op code='=' >
+<ssl constant='GERMANY' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='32' name='t7.N_NATIONKEY' />
+</ks_out_slots>
+</ts>
+<ts key='SUPPLIER' table='DB.DBA.SUPPLIER'>
+<after_code><artm op=':='><res><ssl index='29' name='t6.S_SUPPKEY' />
+</res><left><ssl index='35' name='t6.S_SUPPKEY' />
+</left></artm><bret ret='0'/></after_code><ks_row_spec>
+<sp col='S_NATIONKEY'>
+<op code='=' >
+<ssl index='32' name='t7.N_NATIONKEY' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='35' name='t6.S_SUPPKEY' />
+</ks_out_slots>
+</ts>
+<setp ha_op='build' hf='47' sets='201'><key><ssl index='29' name='t6.S_SUPPKEY' />
+</key><dep></dep></setp>
+</subq>
+</hf>
+<hf sets='232'><subq>
+<ts key='NATION' table='DB.DBA.NATION'>
+<ks_row_spec>
+<sp col='N_NAME'>
+<op code='=' >
+<ssl constant='GERMANY' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='63' name='t3.N_NATIONKEY' />
+</ks_out_slots>
+</ts>
+<ts key='SUPPLIER' table='DB.DBA.SUPPLIER'>
+<after_code><artm op=':='><res><ssl index='60' name='t2.S_SUPPKEY' />
+</res><left><ssl index='66' name='t2.S_SUPPKEY' />
+</left></artm><bret ret='0'/></after_code><ks_row_spec>
+<sp col='S_NATIONKEY'>
+<op code='=' >
+<ssl index='63' name='t3.N_NATIONKEY' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='66' name='t2.S_SUPPKEY' />
+</ks_out_slots>
+</ts>
+<setp ha_op='build' hf='78' sets='227'><key><ssl index='60' name='t2.S_SUPPKEY' />
+</key><dep></dep></setp>
+</subq>
+</hf>
+<fref sets='319'><ts key='PARTSUPP' table='DB.DBA.PARTSUPP'>
+<ks_hash_spec>
+<hrng hs='282' flags='0' /></ks_hash_spec>
+<ks_out_slots>
+<ssl index='125' name='.PS_SUPPKEY' />
+<ssl index='124' name='.PS_PARTKEY' />
+<ssl index='123' name='.PS_SUPPLYCOST' />
+<ssl index='122' name='.PS_AVAILQTY' />
+</ks_out_slots>
+</ts>
+<hs hf='232'><pre_code><artm op='*'><res><ssl index='127' name='temp' />
+</res><left><ssl index='123' name='.PS_SUPPLYCOST' />
+</left><right><ssl index='122' name='.PS_AVAILQTY' />
+</right></artm><bret ret='0'/></pre_code></hs>
+<setp ha_op='group' hf='0' sets='296'><key><ssl index='124' name='.PS_PARTKEY' />
+</key><dep><ssl index='127' name='temp' />
+<ssl index='117' name='scalar' />
+
+</dep></setp>
+<chash />
+<after_test><if op='&gt;' succ='4' else='5' unkn='5' merge='0'><left><ssl index='137' name='VALUE' />
+</left><right><ssl index='117' name='scalar' />
+</right></if><bret ret='1'/><bret ret='0'/></after_test><end />
+<setp ha_op='order' hf='0' sets='314'><key><ssl index='137' name='VALUE' />
+
+</key><dep><ssl index='124' name='.PS_PARTKEY' />
+
+</dep></setp>
+</fref>
+<ts key='temp'>
+<ks_out_slots>
+<ssl index='124' name='.PS_PARTKEY' />
+<ssl index='137' name='VALUE' />
+</ks_out_slots>
+</ts>
+<sel><ssl index='124' name='.PS_PARTKEY' />
+<ssl index='137' name='VALUE' />
+</sel>
+</report>
+	    </xmlplan>
+	</plan>
+    </plans>
+    <columns>
+         <column name="PS_PARTKEY"/>
+         <column name="VALUE"/>
+    </columns>
+    <result cnt="1048">
+<row>
+    <col dtp="189">129760</col>
+    <col dtp="191">17538456.86</col>
+</row>
+<row>
+    <col dtp="189">166726</col>
+    <col dtp="191">16503353.92</col>
+</row>
+<row>
+    <col dtp="189">191287</col>
+    <col dtp="191">16474801.97</col>
+</row>
+<row>
+    <col dtp="189">161758</col>
+    <col dtp="191">16101755.54</col>
+</row>
+<row>
+    <col dtp="189">34452</col>
+    <col dtp="191">15983844.72</col>
+</row>
+<row>
+    <col dtp="189">139035</col>
+    <col dtp="191">15907078.34</col>
+</row>
+<row>
+    <col dtp="189">9403</col>
+    <col dtp="191">15451755.62</col>
+</row>
+<row>
+    <col dtp="189">154358</col>
+    <col dtp="191">15212937.88</col>
+</row>
+<row>
+    <col dtp="189">38823</col>
+    <col dtp="191">15064802.86</col>
+</row>
+<row>
+    <col dtp="189">85606</col>
+    <col dtp="191">15053957.15</col>
+</row>
+<row>
+    <col dtp="189">33354</col>
+    <col dtp="191">14408297.4</col>
+</row>
+<row>
+    <col dtp="189">154747</col>
+    <col dtp="191">14407580.68</col>
+</row>
+<row>
+    <col dtp="189">82865</col>
+    <col dtp="191">14235489.78</col>
+</row>
+<row>
+    <col dtp="189">76094</col>
+    <col dtp="191">14094247.04</col>
+</row>
+<row>
+    <col dtp="189">222</col>
+    <col dtp="191">13937777.74</col>
+</row>
+<row>
+    <col dtp="189">121271</col>
+    <col dtp="191">13908336</col>
+</row>
+<row>
+    <col dtp="189">55221</col>
+    <col dtp="191">13716120.47</col>
+</row>
+<row>
+    <col dtp="189">22819</col>
+    <col dtp="191">13666434.28</col>
+</row>
+<row>
+    <col dtp="189">76281</col>
+    <col dtp="191">13646853.68</col>
+</row>
+<row>
+    <col dtp="189">85298</col>
+    <col dtp="191">13581154.93</col>
+</row>
+<row>
+    <col dtp="189">85158</col>
+    <col dtp="191">13554904</col>
+</row>
+<row>
+    <col dtp="189">139684</col>
+    <col dtp="191">13535538.72</col>
+</row>
+<row>
+    <col dtp="189">31034</col>
+    <col dtp="191">13498025.25</col>
+</row>
+<row>
+    <col dtp="189">87305</col>
+    <col dtp="191">13482847.04</col>
+</row>
+<row>
+    <col dtp="189">10181</col>
+    <col dtp="191">13445148.75</col>
+</row>
+<row>
+    <col dtp="189">62323</col>
+    <col dtp="191">13411824.3</col>
+</row>
+<row>
+    <col dtp="189">26489</col>
+    <col dtp="191">13377256.38</col>
+</row>
+<row>
+    <col dtp="189">96493</col>
+    <col dtp="191">13339057.83</col>
+</row>
+<row>
+    <col dtp="189">56548</col>
+    <col dtp="191">13329014.97</col>
+</row>
+<row>
+    <col dtp="189">55576</col>
+    <col dtp="191">13306843.35</col>
+</row>
+<row>
+    <col dtp="189">159751</col>
+    <col dtp="191">13306614.48</col>
+</row>
+<row>
+    <col dtp="189">92406</col>
+    <col dtp="191">13287414.5</col>
+</row>
+<row>
+    <col dtp="189">182636</col>
+    <col dtp="191">13223726.74</col>
+</row>
+<row>
+    <col dtp="189">199969</col>
+    <col dtp="191">13135288.21</col>
+</row>
+<row>
+    <col dtp="189">62865</col>
+    <col dtp="191">13001926.94</col>
+</row>
+<row>
+    <col dtp="189">7284</col>
+    <col dtp="191">12945298.19</col>
+</row>
+<row>
+    <col dtp="189">197867</col>
+    <col dtp="191">12944510.52</col>
+</row>
+<row>
+    <col dtp="189">11562</col>
+    <col dtp="191">12931575.51</col>
+</row>
+<row>
+    <col dtp="189">75165</col>
+    <col dtp="191">12916918.12</col>
+</row>
+<row>
+    <col dtp="189">97175</col>
+    <col dtp="191">12911283.5</col>
+</row>
+<row>
+    <col dtp="189">140840</col>
+    <col dtp="191">12896562.23</col>
+</row>
+<row>
+    <col dtp="189">65241</col>
+    <col dtp="191">12890600.46</col>
+</row>
+<row>
+    <col dtp="189">166120</col>
+    <col dtp="191">12876927.22</col>
+</row>
+<row>
+    <col dtp="189">9035</col>
+    <col dtp="191">12863828.7</col>
+</row>
+<row>
+    <col dtp="189">144616</col>
+    <col dtp="191">12853549.3</col>
+</row>
+<row>
+    <col dtp="189">176723</col>
+    <col dtp="191">12832309.74</col>
+</row>
+<row>
+    <col dtp="189">170884</col>
+    <col dtp="191">12792136.58</col>
+</row>
+<row>
+    <col dtp="189">29790</col>
+    <col dtp="191">12723300.33</col>
+</row>
+<row>
+    <col dtp="189">95213</col>
+    <col dtp="191">12555483.73</col>
+</row>
+<row>
+    <col dtp="189">183873</col>
+    <col dtp="191">12550533.05</col>
+</row>
+<row>
+    <col dtp="189">171235</col>
+    <col dtp="191">12476538.3</col>
+</row>
+<row>
+    <col dtp="189">21533</col>
+    <col dtp="191">12437821.32</col>
+</row>
+<row>
+    <col dtp="189">17290</col>
+    <col dtp="191">12432159.5</col>
+</row>
+<row>
+    <col dtp="189">156397</col>
+    <col dtp="191">12260623.5</col>
+</row>
+<row>
+    <col dtp="189">122611</col>
+    <col dtp="191">12222812.98</col>
+</row>
+<row>
+    <col dtp="189">139155</col>
+    <col dtp="191">12220319.25</col>
+</row>
+<row>
+    <col dtp="189">146316</col>
+    <col dtp="191">12215800.61</col>
+</row>
+<row>
+    <col dtp="189">171381</col>
+    <col dtp="191">12199734.52</col>
+</row>
+<row>
+    <col dtp="189">198633</col>
+    <col dtp="191">12078226.95</col>
+</row>
+<row>
+    <col dtp="189">167417</col>
+    <col dtp="191">12046637.62</col>
+</row>
+<row>
+    <col dtp="189">59512</col>
+    <col dtp="191">12043468.76</col>
+</row>
+<row>
+    <col dtp="189">31688</col>
+    <col dtp="191">12034893.64</col>
+</row>
+<row>
+    <col dtp="189">159586</col>
+    <col dtp="191">12001505.84</col>
+</row>
+<row>
+    <col dtp="189">8993</col>
+    <col dtp="191">11963814.3</col>
+</row>
+<row>
+    <col dtp="189">120302</col>
+    <col dtp="191">11857707.55</col>
+</row>
+<row>
+    <col dtp="189">43536</col>
+    <col dtp="191">11779340.52</col>
+</row>
+<row>
+    <col dtp="189">9552</col>
+    <col dtp="191">11776909.16</col>
+</row>
+<row>
+    <col dtp="189">86223</col>
+    <col dtp="191">11772205.08</col>
+</row>
+<row>
+    <col dtp="189">53776</col>
+    <col dtp="191">11758669.65</col>
+</row>
+<row>
+    <col dtp="189">131285</col>
+    <col dtp="191">11616953.74</col>
+</row>
+<row>
+    <col dtp="189">91628</col>
+    <col dtp="191">11611114.83</col>
+</row>
+<row>
+    <col dtp="189">169644</col>
+    <col dtp="191">11567959.72</col>
+</row>
+<row>
+    <col dtp="189">182299</col>
+    <col dtp="191">11567462.05</col>
+</row>
+<row>
+    <col dtp="189">33107</col>
+    <col dtp="191">11453818.76</col>
+</row>
+<row>
+    <col dtp="189">104184</col>
+    <col dtp="191">11436657.44</col>
+</row>
+<row>
+    <col dtp="189">67027</col>
+    <col dtp="191">11419127.14</col>
+</row>
+<row>
+    <col dtp="189">176869</col>
+    <col dtp="191">11371451.71</col>
+</row>
+<row>
+    <col dtp="189">30885</col>
+    <col dtp="191">11369674.79</col>
+</row>
+<row>
+    <col dtp="189">54420</col>
+    <col dtp="191">11345076.88</col>
+</row>
+<row>
+    <col dtp="189">72240</col>
+    <col dtp="191">11313951.05</col>
+</row>
+<row>
+    <col dtp="189">178708</col>
+    <col dtp="191">11294635.17</col>
+</row>
+<row>
+    <col dtp="189">81298</col>
+    <col dtp="191">11273686.13</col>
+</row>
+<row>
+    <col dtp="189">158324</col>
+    <col dtp="191">11243442.72</col>
+</row>
+<row>
+    <col dtp="189">117095</col>
+    <col dtp="191">11242535.24</col>
+</row>
+<row>
+    <col dtp="189">176793</col>
+    <col dtp="191">11237733.38</col>
+</row>
+<row>
+    <col dtp="189">86091</col>
+    <col dtp="191">11177793.79</col>
+</row>
+<row>
+    <col dtp="189">116033</col>
+    <col dtp="191">11145434.36</col>
+</row>
+<row>
+    <col dtp="189">129058</col>
+    <col dtp="191">11119112.2</col>
+</row>
+<row>
+    <col dtp="189">193714</col>
+    <col dtp="191">11104706.39</col>
+</row>
+<row>
+    <col dtp="189">117195</col>
+    <col dtp="191">11077217.96</col>
+</row>
+<row>
+    <col dtp="189">49851</col>
+    <col dtp="191">11043701.78</col>
+</row>
+<row>
+    <col dtp="189">19791</col>
+    <col dtp="191">11030662.62</col>
+</row>
+<row>
+    <col dtp="189">75800</col>
+    <col dtp="191">11012401.62</col>
+</row>
+<row>
+    <col dtp="189">161562</col>
+    <col dtp="191">10996371.69</col>
+</row>
+<row>
+    <col dtp="189">10119</col>
+    <col dtp="191">10980015.75</col>
+</row>
+<row>
+    <col dtp="189">39185</col>
+    <col dtp="191">10970042.56</col>
+</row>
+<row>
+    <col dtp="189">47223</col>
+    <col dtp="191">10950022.13</col>
+</row>
+<row>
+    <col dtp="189">175594</col>
+    <col dtp="191">10942923.05</col>
+</row>
+<row>
+    <col dtp="189">111295</col>
+    <col dtp="191">10893675.61</col>
+</row>
+<row>
+    <col dtp="189">155446</col>
+    <col dtp="191">10852764.57</col>
+</row>
+<row>
+    <col dtp="189">156391</col>
+    <col dtp="191">10839810.38</col>
+</row>
+<row>
+    <col dtp="189">40884</col>
+    <col dtp="191">10837234.19</col>
+</row>
+<row>
+    <col dtp="189">141288</col>
+    <col dtp="191">10837130.21</col>
+</row>
+<row>
+    <col dtp="189">152388</col>
+    <col dtp="191">10830977.82</col>
+</row>
+<row>
+    <col dtp="189">33449</col>
+    <col dtp="191">10830858.72</col>
+</row>
+<row>
+    <col dtp="189">149035</col>
+    <col dtp="191">10826130.02</col>
+</row>
+<row>
+    <col dtp="189">162620</col>
+    <col dtp="191">10814275.68</col>
+</row>
+<row>
+    <col dtp="189">118324</col>
+    <col dtp="191">10791788.1</col>
+</row>
+<row>
+    <col dtp="189">38932</col>
+    <col dtp="191">10777541.75</col>
+</row>
+<row>
+    <col dtp="189">121294</col>
+    <col dtp="191">10764225.22</col>
+</row>
+<row>
+    <col dtp="189">48721</col>
+    <col dtp="191">10762582.49</col>
+</row>
+<row>
+    <col dtp="189">63342</col>
+    <col dtp="191">10740132.6</col>
+</row>
+<row>
+    <col dtp="189">5614</col>
+    <col dtp="191">10724668.8</col>
+</row>
+<row>
+    <col dtp="189">62266</col>
+    <col dtp="191">10711143.1</col>
+</row>
+<row>
+    <col dtp="189">100202</col>
+    <col dtp="191">10696675.55</col>
+</row>
+<row>
+    <col dtp="189">197741</col>
+    <col dtp="191">10688560.72</col>
+</row>
+<row>
+    <col dtp="189">169178</col>
+    <col dtp="191">10648522.8</col>
+</row>
+<row>
+    <col dtp="189">5271</col>
+    <col dtp="191">10639392.65</col>
+</row>
+<row>
+    <col dtp="189">34499</col>
+    <col dtp="191">10584177.1</col>
+</row>
+<row>
+    <col dtp="189">71108</col>
+    <col dtp="191">10569117.56</col>
+</row>
+<row>
+    <col dtp="189">137132</col>
+    <col dtp="191">10539880.47</col>
+</row>
+<row>
+    <col dtp="189">78451</col>
+    <col dtp="191">10524873.24</col>
+</row>
+<row>
+    <col dtp="189">150827</col>
+    <col dtp="191">10503810.48</col>
+</row>
+<row>
+    <col dtp="189">107237</col>
+    <col dtp="191">10488030.84</col>
+</row>
+<row>
+    <col dtp="189">101727</col>
+    <col dtp="191">10473558.1</col>
+</row>
+<row>
+    <col dtp="189">58708</col>
+    <col dtp="191">10466280.44</col>
+</row>
+<row>
+    <col dtp="189">89768</col>
+    <col dtp="191">10465477.22</col>
+</row>
+<row>
+    <col dtp="189">146493</col>
+    <col dtp="191">10444291.58</col>
+</row>
+<row>
+    <col dtp="189">55424</col>
+    <col dtp="191">10444006.48</col>
+</row>
+<row>
+    <col dtp="189">16560</col>
+    <col dtp="191">10425574.74</col>
+</row>
+<row>
+    <col dtp="189">133114</col>
+    <col dtp="191">10415097.9</col>
+</row>
+<row>
+    <col dtp="189">195810</col>
+    <col dtp="191">10413625.2</col>
+</row>
+<row>
+    <col dtp="189">76673</col>
+    <col dtp="191">10391977.18</col>
+</row>
+<row>
+    <col dtp="189">97305</col>
+    <col dtp="191">10390890.57</col>
+</row>
+<row>
+    <col dtp="189">134210</col>
+    <col dtp="191">10387210.02</col>
+</row>
+<row>
+    <col dtp="189">188536</col>
+    <col dtp="191">10386529.92</col>
+</row>
+<row>
+    <col dtp="189">122255</col>
+    <col dtp="191">10335760.32</col>
+</row>
+<row>
+    <col dtp="189">2682</col>
+    <col dtp="191">10312966.1</col>
+</row>
+<row>
+    <col dtp="189">43814</col>
+    <col dtp="191">10303086.61</col>
+</row>
+<row>
+    <col dtp="189">34767</col>
+    <col dtp="191">10290405.18</col>
+</row>
+<row>
+    <col dtp="189">165584</col>
+    <col dtp="191">10273705.89</col>
+</row>
+<row>
+    <col dtp="189">2231</col>
+    <col dtp="191">10270415.55</col>
+</row>
+<row>
+    <col dtp="189">111259</col>
+    <col dtp="191">10263256.56</col>
+</row>
+<row>
+    <col dtp="189">195578</col>
+    <col dtp="191">10239795.82</col>
+</row>
+<row>
+    <col dtp="189">21093</col>
+    <col dtp="191">10217531.3</col>
+</row>
+<row>
+    <col dtp="189">29856</col>
+    <col dtp="191">10216932.54</col>
+</row>
+<row>
+    <col dtp="189">133686</col>
+    <col dtp="191">10213345.76</col>
+</row>
+<row>
+    <col dtp="189">87745</col>
+    <col dtp="191">10185509.4</col>
+</row>
+<row>
+    <col dtp="189">135153</col>
+    <col dtp="191">10179379.7</col>
+</row>
+<row>
+    <col dtp="189">11773</col>
+    <col dtp="191">10167410.84</col>
+</row>
+<row>
+    <col dtp="189">76316</col>
+    <col dtp="191">10165151.7</col>
+</row>
+<row>
+    <col dtp="189">123076</col>
+    <col dtp="191">10161225.78</col>
+</row>
+<row>
+    <col dtp="189">91894</col>
+    <col dtp="191">10130462.19</col>
+</row>
+<row>
+    <col dtp="189">39741</col>
+    <col dtp="191">10128387.52</col>
+</row>
+<row>
+    <col dtp="189">111753</col>
+    <col dtp="191">10119780.98</col>
+</row>
+<row>
+    <col dtp="189">142729</col>
+    <col dtp="191">10104748.89</col>
+</row>
+<row>
+    <col dtp="189">116775</col>
+    <col dtp="191">10097750.42</col>
+</row>
+<row>
+    <col dtp="189">102589</col>
+    <col dtp="191">10034784.36</col>
+</row>
+<row>
+    <col dtp="189">186268</col>
+    <col dtp="191">10012181.57</col>
+</row>
+<row>
+    <col dtp="189">44545</col>
+    <col dtp="191">10000286.48</col>
+</row>
+<row>
+    <col dtp="189">23307</col>
+    <col dtp="191">9966577.5</col>
+</row>
+<row>
+    <col dtp="189">124281</col>
+    <col dtp="191">9930018.9</col>
+</row>
+<row>
+    <col dtp="189">69604</col>
+    <col dtp="191">9925730.640000001</col>
+</row>
+<row>
+    <col dtp="189">21971</col>
+    <col dtp="191">9908982.030000001</col>
+</row>
+<row>
+    <col dtp="189">58148</col>
+    <col dtp="191">9895894.4</col>
+</row>
+<row>
+    <col dtp="189">16532</col>
+    <col dtp="191">9886529.9</col>
+</row>
+<row>
+    <col dtp="189">159180</col>
+    <col dtp="191">9883744.43</col>
+</row>
+<row>
+    <col dtp="189">74733</col>
+    <col dtp="191">9877582.879999999</col>
+</row>
+<row>
+    <col dtp="189">35173</col>
+    <col dtp="191">9858275.92</col>
+</row>
+<row>
+    <col dtp="189">7116</col>
+    <col dtp="191">9856881.020000001</col>
+</row>
+<row>
+    <col dtp="189">124620</col>
+    <col dtp="191">9838589.140000001</col>
+</row>
+<row>
+    <col dtp="189">122108</col>
+    <col dtp="191">9829949.350000001</col>
+</row>
+<row>
+    <col dtp="189">67200</col>
+    <col dtp="191">9828690.689999999</col>
+</row>
+<row>
+    <col dtp="189">164775</col>
+    <col dtp="191">9821424.439999999</col>
+</row>
+<row>
+    <col dtp="189">9039</col>
+    <col dtp="191">9816447.720000001</col>
+</row>
+<row>
+    <col dtp="189">14912</col>
+    <col dtp="191">9803102.199999999</col>
+</row>
+<row>
+    <col dtp="189">190906</col>
+    <col dtp="191">9791315.699999999</col>
+</row>
+<row>
+    <col dtp="189">130398</col>
+    <col dtp="191">9781674.27</col>
+</row>
+<row>
+    <col dtp="189">119310</col>
+    <col dtp="191">9776927.209999999</col>
+</row>
+<row>
+    <col dtp="189">10132</col>
+    <col dtp="191">9770930.780000001</col>
+</row>
+<row>
+    <col dtp="189">107211</col>
+    <col dtp="191">9757586.25</col>
+</row>
+<row>
+    <col dtp="189">113958</col>
+    <col dtp="191">9757065.5</col>
+</row>
+<row>
+    <col dtp="189">37009</col>
+    <col dtp="191">9748362.689999999</col>
+</row>
+<row>
+    <col dtp="189">66746</col>
+    <col dtp="191">9743528.76</col>
+</row>
+<row>
+    <col dtp="189">134486</col>
+    <col dtp="191">9731922</col>
+</row>
+<row>
+    <col dtp="189">15945</col>
+    <col dtp="191">9731096.449999999</col>
+</row>
+<row>
+    <col dtp="189">55307</col>
+    <col dtp="191">9717745.800000001</col>
+</row>
+<row>
+    <col dtp="189">56362</col>
+    <col dtp="191">9714922.83</col>
+</row>
+<row>
+    <col dtp="189">57726</col>
+    <col dtp="191">9711792.100000001</col>
+</row>
+<row>
+    <col dtp="189">57256</col>
+    <col dtp="191">9708621</col>
+</row>
+<row>
+    <col dtp="189">112292</col>
+    <col dtp="191">9701653.08</col>
+</row>
+<row>
+    <col dtp="189">87514</col>
+    <col dtp="191">9699492.529999999</col>
+</row>
+<row>
+    <col dtp="189">174206</col>
+    <col dtp="191">9680562.02</col>
+</row>
+<row>
+    <col dtp="189">72865</col>
+    <col dtp="191">9679043.34</col>
+</row>
+<row>
+    <col dtp="189">114357</col>
+    <col dtp="191">9671017.439999999</col>
+</row>
+<row>
+    <col dtp="189">112807</col>
+    <col dtp="191">9665019.210000001</col>
+</row>
+<row>
+    <col dtp="189">115203</col>
+    <col dtp="191">9661018.73</col>
+</row>
+<row>
+    <col dtp="189">177454</col>
+    <col dtp="191">9658906.35</col>
+</row>
+<row>
+    <col dtp="189">161275</col>
+    <col dtp="191">9634313.710000001</col>
+</row>
+<row>
+    <col dtp="189">61893</col>
+    <col dtp="191">9617095.440000001</col>
+</row>
+<row>
+    <col dtp="189">122219</col>
+    <col dtp="191">9604888.200000001</col>
+</row>
+<row>
+    <col dtp="189">183427</col>
+    <col dtp="191">9601362.58</col>
+</row>
+<row>
+    <col dtp="189">59158</col>
+    <col dtp="191">9599705.960000001</col>
+</row>
+<row>
+    <col dtp="189">61931</col>
+    <col dtp="191">9584918.98</col>
+</row>
+<row>
+    <col dtp="189">5532</col>
+    <col dtp="191">9579964.140000001</col>
+</row>
+<row>
+    <col dtp="189">20158</col>
+    <col dtp="191">9576714.380000001</col>
+</row>
+<row>
+    <col dtp="189">167199</col>
+    <col dtp="191">9557413.08</col>
+</row>
+<row>
+    <col dtp="189">38869</col>
+    <col dtp="191">9550279.529999999</col>
+</row>
+<row>
+    <col dtp="189">86949</col>
+    <col dtp="191">9541943.700000001</col>
+</row>
+<row>
+    <col dtp="189">198544</col>
+    <col dtp="191">9538613.92</col>
+</row>
+<row>
+    <col dtp="189">193762</col>
+    <col dtp="191">9538238.939999999</col>
+</row>
+<row>
+    <col dtp="189">108807</col>
+    <col dtp="191">9536247.16</col>
+</row>
+<row>
+    <col dtp="189">168324</col>
+    <col dtp="191">9535647.99</col>
+</row>
+<row>
+    <col dtp="189">115588</col>
+    <col dtp="191">9532195.039999999</col>
+</row>
+<row>
+    <col dtp="189">141372</col>
+    <col dtp="191">9529702.140000001</col>
+</row>
+<row>
+    <col dtp="189">175120</col>
+    <col dtp="191">9526068.66</col>
+</row>
+<row>
+    <col dtp="189">163851</col>
+    <col dtp="191">9522808.83</col>
+</row>
+<row>
+    <col dtp="189">160954</col>
+    <col dtp="191">9520359.449999999</col>
+</row>
+<row>
+    <col dtp="189">117757</col>
+    <col dtp="191">9517882.800000001</col>
+</row>
+<row>
+    <col dtp="189">52594</col>
+    <col dtp="191">9508325.76</col>
+</row>
+<row>
+    <col dtp="189">60960</col>
+    <col dtp="191">9498843.060000001</col>
+</row>
+<row>
+    <col dtp="189">70272</col>
+    <col dtp="191">9495775.620000001</col>
+</row>
+<row>
+    <col dtp="189">44050</col>
+    <col dtp="191">9495515.359999999</col>
+</row>
+<row>
+    <col dtp="189">152213</col>
+    <col dtp="191">9494756.960000001</col>
+</row>
+<row>
+    <col dtp="189">121203</col>
+    <col dtp="191">9492601.300000001</col>
+</row>
+<row>
+    <col dtp="189">70114</col>
+    <col dtp="191">9491012.300000001</col>
+</row>
+<row>
+    <col dtp="189">167588</col>
+    <col dtp="191">9484741.109999999</col>
+</row>
+<row>
+    <col dtp="189">136455</col>
+    <col dtp="191">9476241.779999999</col>
+</row>
+<row>
+    <col dtp="189">4357</col>
+    <col dtp="191">9464355.640000001</col>
+</row>
+<row>
+    <col dtp="189">6786</col>
+    <col dtp="191">9463632.57</col>
+</row>
+<row>
+    <col dtp="189">61345</col>
+    <col dtp="191">9455336.700000001</col>
+</row>
+<row>
+    <col dtp="189">160826</col>
+    <col dtp="191">9446754.84</col>
+</row>
+<row>
+    <col dtp="189">71275</col>
+    <col dtp="191">9440138.4</col>
+</row>
+<row>
+    <col dtp="189">77746</col>
+    <col dtp="191">9439118.35</col>
+</row>
+<row>
+    <col dtp="189">91289</col>
+    <col dtp="191">9437472</col>
+</row>
+<row>
+    <col dtp="189">56723</col>
+    <col dtp="191">9435102.16</col>
+</row>
+<row>
+    <col dtp="189">86647</col>
+    <col dtp="191">9434604.18</col>
+</row>
+<row>
+    <col dtp="189">131234</col>
+    <col dtp="191">9432120</col>
+</row>
+<row>
+    <col dtp="189">198129</col>
+    <col dtp="191">9427651.359999999</col>
+</row>
+<row>
+    <col dtp="189">165530</col>
+    <col dtp="191">9426193.68</col>
+</row>
+<row>
+    <col dtp="189">69233</col>
+    <col dtp="191">9425053.92</col>
+</row>
+<row>
+    <col dtp="189">6243</col>
+    <col dtp="191">9423304.66</col>
+</row>
+<row>
+    <col dtp="189">90110</col>
+    <col dtp="191">9420422.699999999</col>
+</row>
+<row>
+    <col dtp="189">191980</col>
+    <col dtp="191">9419368.360000001</col>
+</row>
+<row>
+    <col dtp="189">38461</col>
+    <col dtp="191">9419316.07</col>
+</row>
+<row>
+    <col dtp="189">167873</col>
+    <col dtp="191">9419024.489999998</col>
+</row>
+<row>
+    <col dtp="189">159373</col>
+    <col dtp="191">9416950.149999999</col>
+</row>
+<row>
+    <col dtp="189">128707</col>
+    <col dtp="191">9413428.5</col>
+</row>
+<row>
+    <col dtp="189">45267</col>
+    <col dtp="191">9410863.779999999</col>
+</row>
+<row>
+    <col dtp="189">48460</col>
+    <col dtp="191">9409793.93</col>
+</row>
+<row>
+    <col dtp="189">197672</col>
+    <col dtp="191">9406887.68</col>
+</row>
+<row>
+    <col dtp="189">60884</col>
+    <col dtp="191">9403442.4</col>
+</row>
+<row>
+    <col dtp="189">15209</col>
+    <col dtp="191">9403245.310000001</col>
+</row>
+<row>
+    <col dtp="189">138049</col>
+    <col dtp="191">9401262.1</col>
+</row>
+<row>
+    <col dtp="189">199286</col>
+    <col dtp="191">9391770.699999999</col>
+</row>
+<row>
+    <col dtp="189">19629</col>
+    <col dtp="191">9391236.4</col>
+</row>
+<row>
+    <col dtp="189">134019</col>
+    <col dtp="191">9390615.15</col>
+</row>
+<row>
+    <col dtp="189">169475</col>
+    <col dtp="191">9387639.58</col>
+</row>
+<row>
+    <col dtp="189">165918</col>
+    <col dtp="191">9379510.439999999</col>
+</row>
+<row>
+    <col dtp="189">135602</col>
+    <col dtp="191">9374251.540000001</col>
+</row>
+<row>
+    <col dtp="189">162323</col>
+    <col dtp="191">9367566.51</col>
+</row>
+<row>
+    <col dtp="189">96277</col>
+    <col dtp="191">9360850.68</col>
+</row>
+<row>
+    <col dtp="189">98336</col>
+    <col dtp="191">9359671.290000001</col>
+</row>
+<row>
+    <col dtp="189">119781</col>
+    <col dtp="191">9356395.73</col>
+</row>
+<row>
+    <col dtp="189">34440</col>
+    <col dtp="191">9355365</col>
+</row>
+<row>
+    <col dtp="189">57362</col>
+    <col dtp="191">9355180.1</col>
+</row>
+<row>
+    <col dtp="189">167236</col>
+    <col dtp="191">9352973.84</col>
+</row>
+<row>
+    <col dtp="189">38463</col>
+    <col dtp="191">9347530.940000001</col>
+</row>
+<row>
+    <col dtp="189">86749</col>
+    <col dtp="191">9346826.439999999</col>
+</row>
+<row>
+    <col dtp="189">170007</col>
+    <col dtp="191">9345699.9</col>
+</row>
+<row>
+    <col dtp="189">193087</col>
+    <col dtp="191">9343744</col>
+</row>
+<row>
+    <col dtp="189">150383</col>
+    <col dtp="191">9332576.75</col>
+</row>
+<row>
+    <col dtp="189">60932</col>
+    <col dtp="191">9329582.02</col>
+</row>
+<row>
+    <col dtp="189">128420</col>
+    <col dtp="191">9328206.35</col>
+</row>
+<row>
+    <col dtp="189">162145</col>
+    <col dtp="191">9327722.880000001</col>
+</row>
+<row>
+    <col dtp="189">55686</col>
+    <col dtp="191">9320304.4</col>
+</row>
+<row>
+    <col dtp="189">163080</col>
+    <col dtp="191">9304916.960000001</col>
+</row>
+<row>
+    <col dtp="189">160583</col>
+    <col dtp="191">9303515.92</col>
+</row>
+<row>
+    <col dtp="189">118153</col>
+    <col dtp="191">9298606.560000001</col>
+</row>
+<row>
+    <col dtp="189">152634</col>
+    <col dtp="191">9282184.57</col>
+</row>
+<row>
+    <col dtp="189">84731</col>
+    <col dtp="191">9276586.919999998</col>
+</row>
+<row>
+    <col dtp="189">119989</col>
+    <col dtp="191">9273814.199999999</col>
+</row>
+<row>
+    <col dtp="189">114584</col>
+    <col dtp="191">9269698.65</col>
+</row>
+<row>
+    <col dtp="189">131817</col>
+    <col dtp="191">9268570.08</col>
+</row>
+<row>
+    <col dtp="189">29068</col>
+    <col dtp="191">9256583.880000001</col>
+</row>
+<row>
+    <col dtp="189">44116</col>
+    <col dtp="191">9255922</col>
+</row>
+<row>
+    <col dtp="189">115818</col>
+    <col dtp="191">9253311.91</col>
+</row>
+<row>
+    <col dtp="189">103388</col>
+    <col dtp="191">9239218.08</col>
+</row>
+<row>
+    <col dtp="189">186118</col>
+    <col dtp="191">9236209.119999999</col>
+</row>
+<row>
+    <col dtp="189">155809</col>
+    <col dtp="191">9235410.84</col>
+</row>
+<row>
+    <col dtp="189">147003</col>
+    <col dtp="191">9234847.99</col>
+</row>
+<row>
+    <col dtp="189">27769</col>
+    <col dtp="191">9232511.640000001</col>
+</row>
+<row>
+    <col dtp="189">112779</col>
+    <col dtp="191">9231927.360000001</col>
+</row>
+<row>
+    <col dtp="189">124851</col>
+    <col dtp="191">9228982.68</col>
+</row>
+<row>
+    <col dtp="189">158488</col>
+    <col dtp="191">9227216.4</col>
+</row>
+<row>
+    <col dtp="189">83328</col>
+    <col dtp="191">9224792.199999999</col>
+</row>
+<row>
+    <col dtp="189">136797</col>
+    <col dtp="191">9222927.09</col>
+</row>
+<row>
+    <col dtp="189">141730</col>
+    <col dtp="191">9216370.68</col>
+</row>
+<row>
+    <col dtp="189">87304</col>
+    <col dtp="191">9215695.5</col>
+</row>
+<row>
+    <col dtp="189">156004</col>
+    <col dtp="191">9215557.9</col>
+</row>
+<row>
+    <col dtp="189">140740</col>
+    <col dtp="191">9215329.200000001</col>
+</row>
+<row>
+    <col dtp="189">100648</col>
+    <col dtp="191">9212185.08</col>
+</row>
+<row>
+    <col dtp="189">174774</col>
+    <col dtp="191">9211718</col>
+</row>
+<row>
+    <col dtp="189">37644</col>
+    <col dtp="191">9211578.6</col>
+</row>
+<row>
+    <col dtp="189">48807</col>
+    <col dtp="191">9209496.24</col>
+</row>
+<row>
+    <col dtp="189">95940</col>
+    <col dtp="191">9207948.4</col>
+</row>
+<row>
+    <col dtp="189">141586</col>
+    <col dtp="191">9206699.220000001</col>
+</row>
+<row>
+    <col dtp="189">147248</col>
+    <col dtp="191">9205654.949999999</col>
+</row>
+<row>
+    <col dtp="189">61372</col>
+    <col dtp="191">9205228.76</col>
+</row>
+<row>
+    <col dtp="189">52970</col>
+    <col dtp="191">9204415.950000001</col>
+</row>
+<row>
+    <col dtp="189">26430</col>
+    <col dtp="191">9203710.51</col>
+</row>
+<row>
+    <col dtp="189">28504</col>
+    <col dtp="191">9201669.199999999</col>
+</row>
+<row>
+    <col dtp="189">25810</col>
+    <col dtp="191">9198878.5</col>
+</row>
+<row>
+    <col dtp="189">125329</col>
+    <col dtp="191">9198688.5</col>
+</row>
+<row>
+    <col dtp="189">167867</col>
+    <col dtp="191">9194022.719999999</col>
+</row>
+<row>
+    <col dtp="189">134767</col>
+    <col dtp="191">9191444.720000001</col>
+</row>
+<row>
+    <col dtp="189">127745</col>
+    <col dtp="191">9191271.559999999</col>
+</row>
+<row>
+    <col dtp="189">69208</col>
+    <col dtp="191">9187110</col>
+</row>
+<row>
+    <col dtp="189">155222</col>
+    <col dtp="191">9186469.16</col>
+</row>
+<row>
+    <col dtp="189">196916</col>
+    <col dtp="191">9182995.82</col>
+</row>
+<row>
+    <col dtp="189">195590</col>
+    <col dtp="191">9176353.119999999</col>
+</row>
+<row>
+    <col dtp="189">169155</col>
+    <col dtp="191">9175176.09</col>
+</row>
+<row>
+    <col dtp="189">81558</col>
+    <col dtp="191">9171946.5</col>
+</row>
+<row>
+    <col dtp="189">185136</col>
+    <col dtp="191">9171293.039999999</col>
+</row>
+<row>
+    <col dtp="189">114790</col>
+    <col dtp="191">9168509.1</col>
+</row>
+<row>
+    <col dtp="189">194142</col>
+    <col dtp="191">9165836.609999999</col>
+</row>
+<row>
+    <col dtp="189">167639</col>
+    <col dtp="191">9161165</col>
+</row>
+<row>
+    <col dtp="189">11241</col>
+    <col dtp="191">9160789.460000001</col>
+</row>
+<row>
+    <col dtp="189">82628</col>
+    <col dtp="191">9160155.539999999</col>
+</row>
+<row>
+    <col dtp="189">41399</col>
+    <col dtp="191">9148338</col>
+</row>
+<row>
+    <col dtp="189">30755</col>
+    <col dtp="191">9146196.84</col>
+</row>
+<row>
+    <col dtp="189">6944</col>
+    <col dtp="191">9143574.58</col>
+</row>
+<row>
+    <col dtp="189">6326</col>
+    <col dtp="191">9138803.16</col>
+</row>
+<row>
+    <col dtp="189">101296</col>
+    <col dtp="191">9135657.620000001</col>
+</row>
+<row>
+    <col dtp="189">181479</col>
+    <col dtp="191">9121093.299999999</col>
+</row>
+<row>
+    <col dtp="189">76898</col>
+    <col dtp="191">9120983.1</col>
+</row>
+<row>
+    <col dtp="189">64274</col>
+    <col dtp="191">9118745.25</col>
+</row>
+<row>
+    <col dtp="189">175826</col>
+    <col dtp="191">9117387.99</col>
+</row>
+<row>
+    <col dtp="189">142215</col>
+    <col dtp="191">9116876.880000001</col>
+</row>
+<row>
+    <col dtp="189">103415</col>
+    <col dtp="191">9113128.620000001</col>
+</row>
+<row>
+    <col dtp="189">119765</col>
+    <col dtp="191">9110768.789999999</col>
+</row>
+<row>
+    <col dtp="189">107624</col>
+    <col dtp="191">9108837.449999999</col>
+</row>
+<row>
+    <col dtp="189">84215</col>
+    <col dtp="191">9105257.359999999</col>
+</row>
+<row>
+    <col dtp="189">73774</col>
+    <col dtp="191">9102651.92</col>
+</row>
+<row>
+    <col dtp="189">173972</col>
+    <col dtp="191">9102069</col>
+</row>
+<row>
+    <col dtp="189">69817</col>
+    <col dtp="191">9095513.879999999</col>
+</row>
+<row>
+    <col dtp="189">86943</col>
+    <col dtp="191">9092253</col>
+</row>
+<row>
+    <col dtp="189">138859</col>
+    <col dtp="191">9087719.300000001</col>
+</row>
+<row>
+    <col dtp="189">162273</col>
+    <col dtp="191">9085296.48</col>
+</row>
+<row>
+    <col dtp="189">175945</col>
+    <col dtp="191">9080401.210000001</col>
+</row>
+<row>
+    <col dtp="189">16836</col>
+    <col dtp="191">9075715.439999999</col>
+</row>
+<row>
+    <col dtp="189">70224</col>
+    <col dtp="191">9075265.950000001</col>
+</row>
+<row>
+    <col dtp="189">139765</col>
+    <col dtp="191">9074755.890000001</col>
+</row>
+<row>
+    <col dtp="189">30319</col>
+    <col dtp="191">9073233.1</col>
+</row>
+<row>
+    <col dtp="189">3851</col>
+    <col dtp="191">9072657.24</col>
+</row>
+<row>
+    <col dtp="189">181271</col>
+    <col dtp="191">9070631.52</col>
+</row>
+<row>
+    <col dtp="189">162184</col>
+    <col dtp="191">9068835.780000001</col>
+</row>
+<row>
+    <col dtp="189">81683</col>
+    <col dtp="191">9067258.470000001</col>
+</row>
+<row>
+    <col dtp="189">153028</col>
+    <col dtp="191">9067010.51</col>
+</row>
+<row>
+    <col dtp="189">123324</col>
+    <col dtp="191">9061870.949999999</col>
+</row>
+<row>
+    <col dtp="189">186481</col>
+    <col dtp="191">9058608.299999999</col>
+</row>
+<row>
+    <col dtp="189">167680</col>
+    <col dtp="191">9052908.76</col>
+</row>
+<row>
+    <col dtp="189">165293</col>
+    <col dtp="191">9050545.700000001</col>
+</row>
+<row>
+    <col dtp="189">122148</col>
+    <col dtp="191">9046298.17</col>
+</row>
+<row>
+    <col dtp="189">138604</col>
+    <col dtp="191">9045840.799999999</col>
+</row>
+<row>
+    <col dtp="189">78851</col>
+    <col dtp="191">9044822.600000001</col>
+</row>
+<row>
+    <col dtp="189">137280</col>
+    <col dtp="191">9042355.34</col>
+</row>
+<row>
+    <col dtp="189">8823</col>
+    <col dtp="191">9040855.1</col>
+</row>
+<row>
+    <col dtp="189">163900</col>
+    <col dtp="191">9040848.48</col>
+</row>
+<row>
+    <col dtp="189">75600</col>
+    <col dtp="191">9035392.449999999</col>
+</row>
+<row>
+    <col dtp="189">81676</col>
+    <col dtp="191">9031999.4</col>
+</row>
+<row>
+    <col dtp="189">46033</col>
+    <col dtp="191">9031460.58</col>
+</row>
+<row>
+    <col dtp="189">194917</col>
+    <col dtp="191">9028500</col>
+</row>
+<row>
+    <col dtp="189">133936</col>
+    <col dtp="191">9026949.020000001</col>
+</row>
+<row>
+    <col dtp="189">33182</col>
+    <col dtp="191">9024971.1</col>
+</row>
+<row>
+    <col dtp="189">34220</col>
+    <col dtp="191">9021485.390000001</col>
+</row>
+<row>
+    <col dtp="189">20118</col>
+    <col dtp="191">9019942.6</col>
+</row>
+<row>
+    <col dtp="189">178258</col>
+    <col dtp="191">9019881.66</col>
+</row>
+<row>
+    <col dtp="189">15560</col>
+    <col dtp="191">9017687.279999999</col>
+</row>
+<row>
+    <col dtp="189">111425</col>
+    <col dtp="191">9016198.560000001</col>
+</row>
+<row>
+    <col dtp="189">95942</col>
+    <col dtp="191">9015585.120000001</col>
+</row>
+<row>
+    <col dtp="189">132709</col>
+    <col dtp="191">9015240.15</col>
+</row>
+<row>
+    <col dtp="189">39731</col>
+    <col dtp="191">9014746.949999999</col>
+</row>
+<row>
+    <col dtp="189">154307</col>
+    <col dtp="191">9012571.199999999</col>
+</row>
+<row>
+    <col dtp="189">23769</col>
+    <col dtp="191">9008157.6</col>
+</row>
+<row>
+    <col dtp="189">93328</col>
+    <col dtp="191">9007211.199999999</col>
+</row>
+<row>
+    <col dtp="189">142826</col>
+    <col dtp="191">8998297.440000001</col>
+</row>
+<row>
+    <col dtp="189">188792</col>
+    <col dtp="191">8996014</col>
+</row>
+<row>
+    <col dtp="189">68703</col>
+    <col dtp="191">8994982.220000001</col>
+</row>
+<row>
+    <col dtp="189">145280</col>
+    <col dtp="191">8990941.050000001</col>
+</row>
+<row>
+    <col dtp="189">150725</col>
+    <col dtp="191">8985686.16</col>
+</row>
+<row>
+    <col dtp="189">172046</col>
+    <col dtp="191">8982469.52</col>
+</row>
+<row>
+    <col dtp="189">70476</col>
+    <col dtp="191">8967629.5</col>
+</row>
+<row>
+    <col dtp="189">124988</col>
+    <col dtp="191">8966805.220000001</col>
+</row>
+<row>
+    <col dtp="189">17937</col>
+    <col dtp="191">8963319.76</col>
+</row>
+<row>
+    <col dtp="189">177372</col>
+    <col dtp="191">8954873.640000001</col>
+</row>
+<row>
+    <col dtp="189">137994</col>
+    <col dtp="191">8950916.789999999</col>
+</row>
+<row>
+    <col dtp="189">84019</col>
+    <col dtp="191">8950039.98</col>
+</row>
+<row>
+    <col dtp="189">40389</col>
+    <col dtp="191">8946158.199999999</col>
+</row>
+<row>
+    <col dtp="189">69187</col>
+    <col dtp="191">8941054.140000001</col>
+</row>
+<row>
+    <col dtp="189">4863</col>
+    <col dtp="191">8939044.92</col>
+</row>
+<row>
+    <col dtp="189">50465</col>
+    <col dtp="191">8930503.140000001</col>
+</row>
+<row>
+    <col dtp="189">43686</col>
+    <col dtp="191">8915543.84</col>
+</row>
+<row>
+    <col dtp="189">131352</col>
+    <col dtp="191">8909053.59</col>
+</row>
+<row>
+    <col dtp="189">198916</col>
+    <col dtp="191">8906940.029999999</col>
+</row>
+<row>
+    <col dtp="189">135932</col>
+    <col dtp="191">8905282.949999999</col>
+</row>
+<row>
+    <col dtp="189">104673</col>
+    <col dtp="191">8903682</col>
+</row>
+<row>
+    <col dtp="189">152308</col>
+    <col dtp="191">8903244.08</col>
+</row>
+<row>
+    <col dtp="189">135298</col>
+    <col dtp="191">8900323.199999999</col>
+</row>
+<row>
+    <col dtp="189">156873</col>
+    <col dtp="191">8899429.1</col>
+</row>
+<row>
+    <col dtp="189">157454</col>
+    <col dtp="191">8897339.199999999</col>
+</row>
+<row>
+    <col dtp="189">75415</col>
+    <col dtp="191">8897068.09</col>
+</row>
+<row>
+    <col dtp="189">46325</col>
+    <col dtp="191">8895569.09</col>
+</row>
+<row>
+    <col dtp="189">1966</col>
+    <col dtp="191">8895117.060000001</col>
+</row>
+<row>
+    <col dtp="189">24576</col>
+    <col dtp="191">8895034.75</col>
+</row>
+<row>
+    <col dtp="189">19425</col>
+    <col dtp="191">8890156.6</col>
+</row>
+<row>
+    <col dtp="189">169735</col>
+    <col dtp="191">8890085.560000001</col>
+</row>
+<row>
+    <col dtp="189">32225</col>
+    <col dtp="191">8889829.280000001</col>
+</row>
+<row>
+    <col dtp="189">124537</col>
+    <col dtp="191">8889770.710000001</col>
+</row>
+<row>
+    <col dtp="189">146327</col>
+    <col dtp="191">8887836.23</col>
+</row>
+<row>
+    <col dtp="189">121562</col>
+    <col dtp="191">8887740.4</col>
+</row>
+<row>
+    <col dtp="189">44731</col>
+    <col dtp="191">8882444.949999999</col>
+</row>
+<row>
+    <col dtp="189">93141</col>
+    <col dtp="191">8881850.879999999</col>
+</row>
+<row>
+    <col dtp="189">187871</col>
+    <col dtp="191">8873506.18</col>
+</row>
+<row>
+    <col dtp="189">71709</col>
+    <col dtp="191">8873057.279999999</col>
+</row>
+<row>
+    <col dtp="189">151913</col>
+    <col dtp="191">8869321.17</col>
+</row>
+<row>
+    <col dtp="189">33786</col>
+    <col dtp="191">8868955.389999999</col>
+</row>
+<row>
+    <col dtp="189">35902</col>
+    <col dtp="191">8868126.060000001</col>
+</row>
+<row>
+    <col dtp="189">23588</col>
+    <col dtp="191">8867769.9</col>
+</row>
+<row>
+    <col dtp="189">24508</col>
+    <col dtp="191">8867616</col>
+</row>
+<row>
+    <col dtp="189">161282</col>
+    <col dtp="191">8866661.43</col>
+</row>
+<row>
+    <col dtp="189">188061</col>
+    <col dtp="191">8862304</col>
+</row>
+<row>
+    <col dtp="189">132847</col>
+    <col dtp="191">8862082</col>
+</row>
+<row>
+    <col dtp="189">166843</col>
+    <col dtp="191">8861200.800000001</col>
+</row>
+<row>
+    <col dtp="189">30609</col>
+    <col dtp="191">8860214.73</col>
+</row>
+<row>
+    <col dtp="189">56191</col>
+    <col dtp="191">8856546.959999999</col>
+</row>
+<row>
+    <col dtp="189">160740</col>
+    <col dtp="191">8852685.43</col>
+</row>
+<row>
+    <col dtp="189">71229</col>
+    <col dtp="191">8846106.99</col>
+</row>
+<row>
+    <col dtp="189">91208</col>
+    <col dtp="191">8845541.279999999</col>
+</row>
+<row>
+    <col dtp="189">10995</col>
+    <col dtp="191">8845306.560000001</col>
+</row>
+<row>
+    <col dtp="189">78094</col>
+    <col dtp="191">8839938.290000001</col>
+</row>
+<row>
+    <col dtp="189">36489</col>
+    <col dtp="191">8838538.1</col>
+</row>
+<row>
+    <col dtp="189">198437</col>
+    <col dtp="191">8836494.84</col>
+</row>
+<row>
+    <col dtp="189">151693</col>
+    <col dtp="191">8833807.640000001</col>
+</row>
+<row>
+    <col dtp="189">185367</col>
+    <col dtp="191">8829791.370000001</col>
+</row>
+<row>
+    <col dtp="189">65682</col>
+    <col dtp="191">8820622.889999999</col>
+</row>
+<row>
+    <col dtp="189">65421</col>
+    <col dtp="191">8819329.239999998</col>
+</row>
+<row>
+    <col dtp="189">122225</col>
+    <col dtp="191">8816821.859999999</col>
+</row>
+<row>
+    <col dtp="189">85330</col>
+    <col dtp="191">8811013.16</col>
+</row>
+<row>
+    <col dtp="189">64555</col>
+    <col dtp="191">8810643.120000001</col>
+</row>
+<row>
+    <col dtp="189">104188</col>
+    <col dtp="191">8808211.02</col>
+</row>
+<row>
+    <col dtp="189">54411</col>
+    <col dtp="191">8805703.4</col>
+</row>
+<row>
+    <col dtp="189">39438</col>
+    <col dtp="191">8805282.560000001</col>
+</row>
+<row>
+    <col dtp="189">70795</col>
+    <col dtp="191">8800060.92</col>
+</row>
+<row>
+    <col dtp="189">20383</col>
+    <col dtp="191">8799073.279999999</col>
+</row>
+<row>
+    <col dtp="189">21952</col>
+    <col dtp="191">8798624.189999999</col>
+</row>
+<row>
+    <col dtp="189">63584</col>
+    <col dtp="191">8796590</col>
+</row>
+<row>
+    <col dtp="189">158768</col>
+    <col dtp="191">8796422.949999999</col>
+</row>
+<row>
+    <col dtp="189">166588</col>
+    <col dtp="191">8796214.379999999</col>
+</row>
+<row>
+    <col dtp="189">120600</col>
+    <col dtp="191">8793558.060000001</col>
+</row>
+<row>
+    <col dtp="189">157202</col>
+    <col dtp="191">8788287.879999999</col>
+</row>
+<row>
+    <col dtp="189">55358</col>
+    <col dtp="191">8786820.75</col>
+</row>
+<row>
+    <col dtp="189">168322</col>
+    <col dtp="191">8786670.73</col>
+</row>
+<row>
+    <col dtp="189">25143</col>
+    <col dtp="191">8786324.800000001</col>
+</row>
+<row>
+    <col dtp="189">5368</col>
+    <col dtp="191">8786274.140000001</col>
+</row>
+<row>
+    <col dtp="189">114025</col>
+    <col dtp="191">8786201.119999999</col>
+</row>
+<row>
+    <col dtp="189">97744</col>
+    <col dtp="191">8785315.940000001</col>
+</row>
+<row>
+    <col dtp="189">164327</col>
+    <col dtp="191">8784503.860000001</col>
+</row>
+<row>
+    <col dtp="189">76542</col>
+    <col dtp="191">8782613.279999999</col>
+</row>
+<row>
+    <col dtp="189">4731</col>
+    <col dtp="191">8772846.699999999</col>
+</row>
+<row>
+    <col dtp="189">157590</col>
+    <col dtp="191">8772006.449999999</col>
+</row>
+<row>
+    <col dtp="189">154276</col>
+    <col dtp="191">8771733.91</col>
+</row>
+<row>
+    <col dtp="189">28705</col>
+    <col dtp="191">8771576.640000001</col>
+</row>
+<row>
+    <col dtp="189">100226</col>
+    <col dtp="191">8769455</col>
+</row>
+<row>
+    <col dtp="189">179195</col>
+    <col dtp="191">8769185.16</col>
+</row>
+<row>
+    <col dtp="189">184355</col>
+    <col dtp="191">8768118.050000001</col>
+</row>
+<row>
+    <col dtp="189">120408</col>
+    <col dtp="191">8768011.120000001</col>
+</row>
+<row>
+    <col dtp="189">63145</col>
+    <col dtp="191">8761991.959999999</col>
+</row>
+<row>
+    <col dtp="189">53135</col>
+    <col dtp="191">8753491.799999999</col>
+</row>
+<row>
+    <col dtp="189">173071</col>
+    <col dtp="191">8750508.800000001</col>
+</row>
+<row>
+    <col dtp="189">41087</col>
+    <col dtp="191">8749436.789999999</col>
+</row>
+<row>
+    <col dtp="189">194830</col>
+    <col dtp="191">8747438.4</col>
+</row>
+<row>
+    <col dtp="189">43496</col>
+    <col dtp="191">8743359.299999999</col>
+</row>
+<row>
+    <col dtp="189">30235</col>
+    <col dtp="191">8741611</col>
+</row>
+<row>
+    <col dtp="189">26391</col>
+    <col dtp="191">8741399.640000001</col>
+</row>
+<row>
+    <col dtp="189">191816</col>
+    <col dtp="191">8740258.719999999</col>
+</row>
+<row>
+    <col dtp="189">47616</col>
+    <col dtp="191">8737229.68</col>
+</row>
+<row>
+    <col dtp="189">152101</col>
+    <col dtp="191">8734432.76</col>
+</row>
+<row>
+    <col dtp="189">163784</col>
+    <col dtp="191">8730514.34</col>
+</row>
+<row>
+    <col dtp="189">5134</col>
+    <col dtp="191">8728424.639999999</col>
+</row>
+<row>
+    <col dtp="189">155241</col>
+    <col dtp="191">8725429.859999999</col>
+</row>
+<row>
+    <col dtp="189">188814</col>
+    <col dtp="191">8724182.4</col>
+</row>
+<row>
+    <col dtp="189">140782</col>
+    <col dtp="191">8720378.75</col>
+</row>
+<row>
+    <col dtp="189">153141</col>
+    <col dtp="191">8719407.51</col>
+</row>
+<row>
+    <col dtp="189">169373</col>
+    <col dtp="191">8718609.060000001</col>
+</row>
+<row>
+    <col dtp="189">41335</col>
+    <col dtp="191">8714773.800000001</col>
+</row>
+<row>
+    <col dtp="189">197450</col>
+    <col dtp="191">8714617.32</col>
+</row>
+<row>
+    <col dtp="189">87004</col>
+    <col dtp="191">8714017.789999999</col>
+</row>
+<row>
+    <col dtp="189">181804</col>
+    <col dtp="191">8712257.76</col>
+</row>
+<row>
+    <col dtp="189">122814</col>
+    <col dtp="191">8711119.140000001</col>
+</row>
+<row>
+    <col dtp="189">109939</col>
+    <col dtp="191">8709193.16</col>
+</row>
+<row>
+    <col dtp="189">98094</col>
+    <col dtp="191">8708780.039999999</col>
+</row>
+<row>
+    <col dtp="189">74630</col>
+    <col dtp="191">8708040.75</col>
+</row>
+<row>
+    <col dtp="189">197291</col>
+    <col dtp="191">8706519.09</col>
+</row>
+<row>
+    <col dtp="189">184173</col>
+    <col dtp="191">8705467.450000001</col>
+</row>
+<row>
+    <col dtp="189">192175</col>
+    <col dtp="191">8705411.119999999</col>
+</row>
+<row>
+    <col dtp="189">19471</col>
+    <col dtp="191">8702536.119999999</col>
+</row>
+<row>
+    <col dtp="189">18052</col>
+    <col dtp="191">8702155.700000001</col>
+</row>
+<row>
+    <col dtp="189">135560</col>
+    <col dtp="191">8698137.720000001</col>
+</row>
+<row>
+    <col dtp="189">152791</col>
+    <col dtp="191">8697325.800000001</col>
+</row>
+<row>
+    <col dtp="189">170953</col>
+    <col dtp="191">8696909.189999999</col>
+</row>
+<row>
+    <col dtp="189">116137</col>
+    <col dtp="191">8696687.17</col>
+</row>
+<row>
+    <col dtp="189">7722</col>
+    <col dtp="191">8696589.4</col>
+</row>
+<row>
+    <col dtp="189">49788</col>
+    <col dtp="191">8694846.710000001</col>
+</row>
+<row>
+    <col dtp="189">13252</col>
+    <col dtp="191">8694822.42</col>
+</row>
+<row>
+    <col dtp="189">12633</col>
+    <col dtp="191">8694559.359999999</col>
+</row>
+<row>
+    <col dtp="189">193438</col>
+    <col dtp="191">8690426.720000001</col>
+</row>
+<row>
+    <col dtp="189">17326</col>
+    <col dtp="191">8689329.16</col>
+</row>
+<row>
+    <col dtp="189">96124</col>
+    <col dtp="191">8679794.58</col>
+</row>
+<row>
+    <col dtp="189">143802</col>
+    <col dtp="191">8676626.48</col>
+</row>
+<row>
+    <col dtp="189">30389</col>
+    <col dtp="191">8675826.6</col>
+</row>
+<row>
+    <col dtp="189">75250</col>
+    <col dtp="191">8675257.140000001</col>
+</row>
+<row>
+    <col dtp="189">72613</col>
+    <col dtp="191">8673524.939999999</col>
+</row>
+<row>
+    <col dtp="189">123520</col>
+    <col dtp="191">8672456.25</col>
+</row>
+<row>
+    <col dtp="189">325</col>
+    <col dtp="191">8667741.280000001</col>
+</row>
+<row>
+    <col dtp="189">167291</col>
+    <col dtp="191">8667556.18</col>
+</row>
+<row>
+    <col dtp="189">150119</col>
+    <col dtp="191">8663403.539999999</col>
+</row>
+<row>
+    <col dtp="189">88420</col>
+    <col dtp="191">8663355.4</col>
+</row>
+<row>
+    <col dtp="189">179784</col>
+    <col dtp="191">8653021.34</col>
+</row>
+<row>
+    <col dtp="189">130884</col>
+    <col dtp="191">8651970</col>
+</row>
+<row>
+    <col dtp="189">172611</col>
+    <col dtp="191">8648217</col>
+</row>
+<row>
+    <col dtp="189">85373</col>
+    <col dtp="191">8647796.220000001</col>
+</row>
+<row>
+    <col dtp="189">122717</col>
+    <col dtp="191">8646758.540000001</col>
+</row>
+<row>
+    <col dtp="189">113431</col>
+    <col dtp="191">8646348.34</col>
+</row>
+<row>
+    <col dtp="189">66015</col>
+    <col dtp="191">8643349.4</col>
+</row>
+<row>
+    <col dtp="189">33141</col>
+    <col dtp="191">8643243.18</col>
+</row>
+<row>
+    <col dtp="189">69786</col>
+    <col dtp="191">8637396.92</col>
+</row>
+<row>
+    <col dtp="189">181857</col>
+    <col dtp="191">8637393.279999999</col>
+</row>
+<row>
+    <col dtp="189">122939</col>
+    <col dtp="191">8636378</col>
+</row>
+<row>
+    <col dtp="189">196223</col>
+    <col dtp="191">8635391.02</col>
+</row>
+<row>
+    <col dtp="189">50532</col>
+    <col dtp="191">8632648.24</col>
+</row>
+<row>
+    <col dtp="189">58102</col>
+    <col dtp="191">8632614.539999999</col>
+</row>
+<row>
+    <col dtp="189">93581</col>
+    <col dtp="191">8632372.359999999</col>
+</row>
+<row>
+    <col dtp="189">52804</col>
+    <col dtp="191">8632109.25</col>
+</row>
+<row>
+    <col dtp="189">755</col>
+    <col dtp="191">8627091.68</col>
+</row>
+<row>
+    <col dtp="189">16597</col>
+    <col dtp="191">8623357.050000001</col>
+</row>
+<row>
+    <col dtp="189">119041</col>
+    <col dtp="191">8622397</col>
+</row>
+<row>
+    <col dtp="189">89050</col>
+    <col dtp="191">8621185.98</col>
+</row>
+<row>
+    <col dtp="189">98696</col>
+    <col dtp="191">8620784.82</col>
+</row>
+<row>
+    <col dtp="189">94399</col>
+    <col dtp="191">8620524</col>
+</row>
+<row>
+    <col dtp="189">151295</col>
+    <col dtp="191">8616671.02</col>
+</row>
+<row>
+    <col dtp="189">56417</col>
+    <col dtp="191">8613450.35</col>
+</row>
+<row>
+    <col dtp="189">121322</col>
+    <col dtp="191">8612948.23</col>
+</row>
+<row>
+    <col dtp="189">126883</col>
+    <col dtp="191">8611373.42</col>
+</row>
+<row>
+    <col dtp="189">29155</col>
+    <col dtp="191">8610163.639999999</col>
+</row>
+<row>
+    <col dtp="189">114530</col>
+    <col dtp="191">8608471.74</col>
+</row>
+<row>
+    <col dtp="189">131007</col>
+    <col dtp="191">8607394.82</col>
+</row>
+<row>
+    <col dtp="189">128715</col>
+    <col dtp="191">8606833.620000001</col>
+</row>
+<row>
+    <col dtp="189">72522</col>
+    <col dtp="191">8601479.98</col>
+</row>
+<row>
+    <col dtp="189">144061</col>
+    <col dtp="191">8595718.74</col>
+</row>
+<row>
+    <col dtp="189">83503</col>
+    <col dtp="191">8595034.199999999</col>
+</row>
+<row>
+    <col dtp="189">112199</col>
+    <col dtp="191">8590717.439999999</col>
+</row>
+<row>
+    <col dtp="189">9227</col>
+    <col dtp="191">8587350.42</col>
+</row>
+<row>
+    <col dtp="189">116318</col>
+    <col dtp="191">8585910.66</col>
+</row>
+<row>
+    <col dtp="189">41248</col>
+    <col dtp="191">8585559.639999999</col>
+</row>
+<row>
+    <col dtp="189">159398</col>
+    <col dtp="191">8584821</col>
+</row>
+<row>
+    <col dtp="189">105966</col>
+    <col dtp="191">8582308.790000001</col>
+</row>
+<row>
+    <col dtp="189">137876</col>
+    <col dtp="191">8580641.300000001</col>
+</row>
+<row>
+    <col dtp="189">122272</col>
+    <col dtp="191">8580400.77</col>
+</row>
+<row>
+    <col dtp="189">195717</col>
+    <col dtp="191">8577278.1</col>
+</row>
+<row>
+    <col dtp="189">165295</col>
+    <col dtp="191">8571121.92</col>
+</row>
+<row>
+    <col dtp="189">5840</col>
+    <col dtp="191">8570728.74</col>
+</row>
+<row>
+    <col dtp="189">120860</col>
+    <col dtp="191">8570610.440000001</col>
+</row>
+<row>
+    <col dtp="189">66692</col>
+    <col dtp="191">8567540.52</col>
+</row>
+<row>
+    <col dtp="189">135596</col>
+    <col dtp="191">8563276.309999999</col>
+</row>
+<row>
+    <col dtp="189">150576</col>
+    <col dtp="191">8562794.1</col>
+</row>
+<row>
+    <col dtp="189">7500</col>
+    <col dtp="191">8562393.84</col>
+</row>
+<row>
+    <col dtp="189">107716</col>
+    <col dtp="191">8561541.560000001</col>
+</row>
+<row>
+    <col dtp="189">100611</col>
+    <col dtp="191">8559995.85</col>
+</row>
+<row>
+    <col dtp="189">171192</col>
+    <col dtp="191">8557390.08</col>
+</row>
+<row>
+    <col dtp="189">107660</col>
+    <col dtp="191">8556696.6</col>
+</row>
+<row>
+    <col dtp="189">13461</col>
+    <col dtp="191">8556545.120000001</col>
+</row>
+<row>
+    <col dtp="189">90310</col>
+    <col dtp="191">8555131.51</col>
+</row>
+<row>
+    <col dtp="189">141493</col>
+    <col dtp="191">8553782.93</col>
+</row>
+<row>
+    <col dtp="189">71286</col>
+    <col dtp="191">8552682</col>
+</row>
+<row>
+    <col dtp="189">136423</col>
+    <col dtp="191">8551300.76</col>
+</row>
+<row>
+    <col dtp="189">54241</col>
+    <col dtp="191">8550785.25</col>
+</row>
+<row>
+    <col dtp="189">120325</col>
+    <col dtp="191">8549976.6</col>
+</row>
+<row>
+    <col dtp="189">424</col>
+    <col dtp="191">8547527.1</col>
+</row>
+<row>
+    <col dtp="189">196543</col>
+    <col dtp="191">8545907.09</col>
+</row>
+<row>
+    <col dtp="189">13042</col>
+    <col dtp="191">8542717.18</col>
+</row>
+<row>
+    <col dtp="189">58332</col>
+    <col dtp="191">8536074.689999999</col>
+</row>
+<row>
+    <col dtp="189">9191</col>
+    <col dtp="191">8535663.92</col>
+</row>
+<row>
+    <col dtp="189">134357</col>
+    <col dtp="191">8535429.9</col>
+</row>
+<row>
+    <col dtp="189">96207</col>
+    <col dtp="191">8534900.6</col>
+</row>
+<row>
+    <col dtp="189">92292</col>
+    <col dtp="191">8530618.779999999</col>
+</row>
+<row>
+    <col dtp="189">181093</col>
+    <col dtp="191">8528303.52</col>
+</row>
+<row>
+    <col dtp="189">105064</col>
+    <col dtp="191">8527491.6</col>
+</row>
+<row>
+    <col dtp="189">59635</col>
+    <col dtp="191">8526854.08</col>
+</row>
+<row>
+    <col dtp="189">136974</col>
+    <col dtp="191">8524351.560000001</col>
+</row>
+<row>
+    <col dtp="189">126694</col>
+    <col dtp="191">8522783.369999999</col>
+</row>
+<row>
+    <col dtp="189">6247</col>
+    <col dtp="191">8522606.9</col>
+</row>
+<row>
+    <col dtp="189">139447</col>
+    <col dtp="191">8522521.92</col>
+</row>
+<row>
+    <col dtp="189">96313</col>
+    <col dtp="191">8520949.92</col>
+</row>
+<row>
+    <col dtp="189">108454</col>
+    <col dtp="191">8520916.25</col>
+</row>
+<row>
+    <col dtp="189">181254</col>
+    <col dtp="191">8519496.1</col>
+</row>
+<row>
+    <col dtp="189">71117</col>
+    <col dtp="191">8519223</col>
+</row>
+<row>
+    <col dtp="189">131703</col>
+    <col dtp="191">8517215.280000001</col>
+</row>
+<row>
+    <col dtp="189">59312</col>
+    <col dtp="191">8510568.359999999</col>
+</row>
+<row>
+    <col dtp="189">2903</col>
+    <col dtp="191">8509960.35</col>
+</row>
+<row>
+    <col dtp="189">102838</col>
+    <col dtp="191">8509527.689999999</col>
+</row>
+<row>
+    <col dtp="189">162806</col>
+    <col dtp="191">8508906.050000001</col>
+</row>
+<row>
+    <col dtp="189">41527</col>
+    <col dtp="191">8508222.359999999</col>
+</row>
+<row>
+    <col dtp="189">118416</col>
+    <col dtp="191">8505858.359999999</col>
+</row>
+<row>
+    <col dtp="189">180203</col>
+    <col dtp="191">8505024.16</col>
+</row>
+<row>
+    <col dtp="189">14773</col>
+    <col dtp="191">8500598.279999999</col>
+</row>
+<row>
+    <col dtp="189">140446</col>
+    <col dtp="191">8499514.24</col>
+</row>
+<row>
+    <col dtp="189">199641</col>
+    <col dtp="191">8497362.59</col>
+</row>
+<row>
+    <col dtp="189">109240</col>
+    <col dtp="191">8494617.119999999</col>
+</row>
+<row>
+    <col dtp="189">150268</col>
+    <col dtp="191">8494188.379999999</col>
+</row>
+<row>
+    <col dtp="189">45310</col>
+    <col dtp="191">8492380.65</col>
+</row>
+<row>
+    <col dtp="189">36552</col>
+    <col dtp="191">8490733.6</col>
+</row>
+<row>
+    <col dtp="189">199690</col>
+    <col dtp="191">8490145.800000001</col>
+</row>
+<row>
+    <col dtp="189">185353</col>
+    <col dtp="191">8488726.68</col>
+</row>
+<row>
+    <col dtp="189">163615</col>
+    <col dtp="191">8484985.01</col>
+</row>
+<row>
+    <col dtp="189">196520</col>
+    <col dtp="191">8483545.040000001</col>
+</row>
+<row>
+    <col dtp="189">133438</col>
+    <col dtp="191">8483482.35</col>
+</row>
+<row>
+    <col dtp="189">77285</col>
+    <col dtp="191">8481442.32</col>
+</row>
+<row>
+    <col dtp="189">55824</col>
+    <col dtp="191">8476893.9</col>
+</row>
+<row>
+    <col dtp="189">76753</col>
+    <col dtp="191">8475522.119999999</col>
+</row>
+<row>
+    <col dtp="189">46129</col>
+    <col dtp="191">8472717.959999999</col>
+</row>
+<row>
+    <col dtp="189">28358</col>
+    <col dtp="191">8472515.5</col>
+</row>
+<row>
+    <col dtp="189">9317</col>
+    <col dtp="191">8472145.32</col>
+</row>
+<row>
+    <col dtp="189">33823</col>
+    <col dtp="191">8469721.439999999</col>
+</row>
+<row>
+    <col dtp="189">39055</col>
+    <col dtp="191">8469145.07</col>
+</row>
+<row>
+    <col dtp="189">91471</col>
+    <col dtp="191">8468874.560000001</col>
+</row>
+<row>
+    <col dtp="189">142299</col>
+    <col dtp="191">8466039.549999999</col>
+</row>
+<row>
+    <col dtp="189">97672</col>
+    <col dtp="191">8464119.800000001</col>
+</row>
+<row>
+    <col dtp="189">134712</col>
+    <col dtp="191">8461781.790000001</col>
+</row>
+<row>
+    <col dtp="189">157988</col>
+    <col dtp="191">8460123.200000001</col>
+</row>
+<row>
+    <col dtp="189">102284</col>
+    <col dtp="191">8458652.439999999</col>
+</row>
+<row>
+    <col dtp="189">73533</col>
+    <col dtp="191">8458453.32</col>
+</row>
+<row>
+    <col dtp="189">90599</col>
+    <col dtp="191">8457874.859999999</col>
+</row>
+<row>
+    <col dtp="189">112160</col>
+    <col dtp="191">8457863.360000001</col>
+</row>
+<row>
+    <col dtp="189">124792</col>
+    <col dtp="191">8457633.699999999</col>
+</row>
+<row>
+    <col dtp="189">66097</col>
+    <col dtp="191">8457573.15</col>
+</row>
+<row>
+    <col dtp="189">165271</col>
+    <col dtp="191">8456969.01</col>
+</row>
+<row>
+    <col dtp="189">146925</col>
+    <col dtp="191">8454887.91</col>
+</row>
+<row>
+    <col dtp="189">164277</col>
+    <col dtp="191">8454838.5</col>
+</row>
+<row>
+    <col dtp="189">131290</col>
+    <col dtp="191">8454811.199999999</col>
+</row>
+<row>
+    <col dtp="189">179386</col>
+    <col dtp="191">8450909.899999999</col>
+</row>
+<row>
+    <col dtp="189">90486</col>
+    <col dtp="191">8447873.859999999</col>
+</row>
+<row>
+    <col dtp="189">175924</col>
+    <col dtp="191">8444421.66</col>
+</row>
+<row>
+    <col dtp="189">185922</col>
+    <col dtp="191">8442394.880000001</col>
+</row>
+<row>
+    <col dtp="189">38492</col>
+    <col dtp="191">8436438.32</col>
+</row>
+<row>
+    <col dtp="189">172511</col>
+    <col dtp="191">8436287.34</col>
+</row>
+<row>
+    <col dtp="189">139539</col>
+    <col dtp="191">8434180.289999999</col>
+</row>
+<row>
+    <col dtp="189">11926</col>
+    <col dtp="191">8433199.52</col>
+</row>
+<row>
+    <col dtp="189">55889</col>
+    <col dtp="191">8431449.879999999</col>
+</row>
+<row>
+    <col dtp="189">163068</col>
+    <col dtp="191">8431116.4</col>
+</row>
+<row>
+    <col dtp="189">138772</col>
+    <col dtp="191">8428406.359999999</col>
+</row>
+<row>
+    <col dtp="189">126821</col>
+    <col dtp="191">8425180.68</col>
+</row>
+<row>
+    <col dtp="189">22091</col>
+    <col dtp="191">8420687.880000001</col>
+</row>
+<row>
+    <col dtp="189">55981</col>
+    <col dtp="191">8419434.380000001</col>
+</row>
+<row>
+    <col dtp="189">100960</col>
+    <col dtp="191">8419403.460000001</col>
+</row>
+<row>
+    <col dtp="189">172568</col>
+    <col dtp="191">8417955.210000001</col>
+</row>
+<row>
+    <col dtp="189">63135</col>
+    <col dtp="191">8415945.530000001</col>
+</row>
+<row>
+    <col dtp="189">137651</col>
+    <col dtp="191">8413170.35</col>
+</row>
+<row>
+    <col dtp="189">191353</col>
+    <col dtp="191">8413039.84</col>
+</row>
+<row>
+    <col dtp="189">62988</col>
+    <col dtp="191">8411571.48</col>
+</row>
+<row>
+    <col dtp="189">103417</col>
+    <col dtp="191">8411541.119999999</col>
+</row>
+<row>
+    <col dtp="189">12052</col>
+    <col dtp="191">8411519.279999999</col>
+</row>
+<row>
+    <col dtp="189">104260</col>
+    <col dtp="191">8408516.550000001</col>
+</row>
+<row>
+    <col dtp="189">157129</col>
+    <col dtp="191">8405730.08</col>
+</row>
+<row>
+    <col dtp="189">77254</col>
+    <col dtp="191">8405537.220000001</col>
+</row>
+<row>
+    <col dtp="189">112966</col>
+    <col dtp="191">8403512.890000001</col>
+</row>
+<row>
+    <col dtp="189">168114</col>
+    <col dtp="191">8402764.560000001</col>
+</row>
+<row>
+    <col dtp="189">49940</col>
+    <col dtp="191">8402328.199999999</col>
+</row>
+<row>
+    <col dtp="189">52017</col>
+    <col dtp="191">8398753.6</col>
+</row>
+<row>
+    <col dtp="189">176179</col>
+    <col dtp="191">8398087</col>
+</row>
+<row>
+    <col dtp="189">100215</col>
+    <col dtp="191">8395906.609999999</col>
+</row>
+<row>
+    <col dtp="189">61256</col>
+    <col dtp="191">8392811.200000001</col>
+</row>
+<row>
+    <col dtp="189">15366</col>
+    <col dtp="191">8388907.800000001</col>
+</row>
+<row>
+    <col dtp="189">109479</col>
+    <col dtp="191">8388027.2</col>
+</row>
+<row>
+    <col dtp="189">66202</col>
+    <col dtp="191">8386522.83</col>
+</row>
+<row>
+    <col dtp="189">81707</col>
+    <col dtp="191">8385761.189999999</col>
+</row>
+<row>
+    <col dtp="189">51727</col>
+    <col dtp="191">8385426.4</col>
+</row>
+<row>
+    <col dtp="189">9980</col>
+    <col dtp="191">8382754.62</col>
+</row>
+<row>
+    <col dtp="189">174403</col>
+    <col dtp="191">8378575.73</col>
+</row>
+<row>
+    <col dtp="189">54558</col>
+    <col dtp="191">8378041.92</col>
+</row>
+<row>
+    <col dtp="189">3141</col>
+    <col dtp="191">8377378.22</col>
+</row>
+<row>
+    <col dtp="189">134829</col>
+    <col dtp="191">8377105.52</col>
+</row>
+<row>
+    <col dtp="189">145056</col>
+    <col dtp="191">8376920.760000001</col>
+</row>
+<row>
+    <col dtp="189">194020</col>
+    <col dtp="191">8375157.640000001</col>
+</row>
+<row>
+    <col dtp="189">7117</col>
+    <col dtp="191">8373982.27</col>
+</row>
+<row>
+    <col dtp="189">120146</col>
+    <col dtp="191">8373796.2</col>
+</row>
+<row>
+    <col dtp="189">126843</col>
+    <col dtp="191">8370761.28</col>
+</row>
+<row>
+    <col dtp="189">62117</col>
+    <col dtp="191">8369493.439999999</col>
+</row>
+<row>
+    <col dtp="189">111221</col>
+    <col dtp="191">8367525.81</col>
+</row>
+<row>
+    <col dtp="189">159337</col>
+    <col dtp="191">8366092.260000001</col>
+</row>
+<row>
+    <col dtp="189">173903</col>
+    <col dtp="191">8365428.48</col>
+</row>
+<row>
+    <col dtp="189">136438</col>
+    <col dtp="191">8364065.45</col>
+</row>
+<row>
+    <col dtp="189">56684</col>
+    <col dtp="191">8363198</col>
+</row>
+<row>
+    <col dtp="189">137597</col>
+    <col dtp="191">8363185.94</col>
+</row>
+<row>
+    <col dtp="189">20039</col>
+    <col dtp="191">8361138.24</col>
+</row>
+<row>
+    <col dtp="189">121326</col>
+    <col dtp="191">8359635.52</col>
+</row>
+<row>
+    <col dtp="189">48435</col>
+    <col dtp="191">8352863.1</col>
+</row>
+<row>
+    <col dtp="189">1712</col>
+    <col dtp="191">8349107</col>
+</row>
+<row>
+    <col dtp="189">167190</col>
+    <col dtp="191">8347238.699999999</col>
+</row>
+<row>
+    <col dtp="189">32113</col>
+    <col dtp="191">8346452.04</col>
+</row>
+<row>
+    <col dtp="189">40580</col>
+    <col dtp="191">8342983.32</col>
+</row>
+<row>
+    <col dtp="189">74785</col>
+    <col dtp="191">8342519.13</col>
+</row>
+<row>
+    <col dtp="189">14799</col>
+    <col dtp="191">8342236.75</col>
+</row>
+<row>
+    <col dtp="189">177291</col>
+    <col dtp="191">8341736.83</col>
+</row>
+<row>
+    <col dtp="189">198956</col>
+    <col dtp="191">8340370.649999999</col>
+</row>
+<row>
+    <col dtp="189">69179</col>
+    <col dtp="191">8338465.99</col>
+</row>
+<row>
+    <col dtp="189">118764</col>
+    <col dtp="191">8337616.56</col>
+</row>
+<row>
+    <col dtp="189">128814</col>
+    <col dtp="191">8336435.56</col>
+</row>
+<row>
+    <col dtp="189">82729</col>
+    <col dtp="191">8331766.879999999</col>
+</row>
+<row>
+    <col dtp="189">152048</col>
+    <col dtp="191">8330638.99</col>
+</row>
+<row>
+    <col dtp="189">171085</col>
+    <col dtp="191">8326259.499999999</col>
+</row>
+<row>
+    <col dtp="189">126730</col>
+    <col dtp="191">8325974.399999999</col>
+</row>
+<row>
+    <col dtp="189">77525</col>
+    <col dtp="191">8323282.5</col>
+</row>
+<row>
+    <col dtp="189">170653</col>
+    <col dtp="191">8322840.5</col>
+</row>
+<row>
+    <col dtp="189">5257</col>
+    <col dtp="191">8320350.779999999</col>
+</row>
+<row>
+    <col dtp="189">67350</col>
+    <col dtp="191">8318987.56</col>
+</row>
+<row>
+    <col dtp="189">109008</col>
+    <col dtp="191">8317836.54</col>
+</row>
+<row>
+    <col dtp="189">199043</col>
+    <col dtp="191">8316603.539999999</col>
+</row>
+<row>
+    <col dtp="189">139969</col>
+    <col dtp="191">8316551.54</col>
+</row>
+<row>
+    <col dtp="189">22634</col>
+    <col dtp="191">8316531.24</col>
+</row>
+<row>
+    <col dtp="189">173309</col>
+    <col dtp="191">8315750.25</col>
+</row>
+<row>
+    <col dtp="189">10887</col>
+    <col dtp="191">8315019.36</col>
+</row>
+<row>
+    <col dtp="189">42392</col>
+    <col dtp="191">8312895.96</col>
+</row>
+<row>
+    <col dtp="189">126040</col>
+    <col dtp="191">8312623.2</col>
+</row>
+<row>
+    <col dtp="189">101590</col>
+    <col dtp="191">8304555.420000001</col>
+</row>
+<row>
+    <col dtp="189">46891</col>
+    <col dtp="191">8302192.12</col>
+</row>
+<row>
+    <col dtp="189">138721</col>
+    <col dtp="191">8301745.62</col>
+</row>
+<row>
+    <col dtp="189">113715</col>
+    <col dtp="191">8301533.199999999</col>
+</row>
+<row>
+    <col dtp="189">78778</col>
+    <col dtp="191">8299685.64</col>
+</row>
+<row>
+    <col dtp="189">142908</col>
+    <col dtp="191">8299447.77</col>
+</row>
+<row>
+    <col dtp="189">64419</col>
+    <col dtp="191">8297631.8</col>
+</row>
+<row>
+    <col dtp="189">21396</col>
+    <col dtp="191">8296272.27</col>
+</row>
+<row>
+    <col dtp="189">4180</col>
+    <col dtp="191">8295646.92</col>
+</row>
+<row>
+    <col dtp="189">63534</col>
+    <col dtp="191">8295383.67</col>
+</row>
+<row>
+    <col dtp="189">135957</col>
+    <col dtp="191">8294389.859999999</col>
+</row>
+<row>
+    <col dtp="189">30126</col>
+    <col dtp="191">8291920.32</col>
+</row>
+<row>
+    <col dtp="189">158427</col>
+    <col dtp="191">8288938</col>
+</row>
+<row>
+    <col dtp="189">14545</col>
+    <col dtp="191">8288395.92</col>
+</row>
+<row>
+    <col dtp="189">75548</col>
+    <col dtp="191">8288287.199999999</col>
+</row>
+<row>
+    <col dtp="189">64473</col>
+    <col dtp="191">8286137.439999999</col>
+</row>
+<row>
+    <col dtp="189">149553</col>
+    <col dtp="191">8285714.88</col>
+</row>
+<row>
+    <col dtp="189">151284</col>
+    <col dtp="191">8283526.649999999</col>
+</row>
+<row>
+    <col dtp="189">171091</col>
+    <col dtp="191">8282934.36</col>
+</row>
+<row>
+    <col dtp="189">194256</col>
+    <col dtp="191">8278985.34</col>
+</row>
+<row>
+    <col dtp="189">952</col>
+    <col dtp="191">8276136</col>
+</row>
+<row>
+    <col dtp="189">121541</col>
+    <col dtp="191">8275390.260000001</col>
+</row>
+<row>
+    <col dtp="189">177664</col>
+    <col dtp="191">8275315.200000001</col>
+</row>
+<row>
+    <col dtp="189">51117</col>
+    <col dtp="191">8274504.300000001</col>
+</row>
+<row>
+    <col dtp="189">66770</col>
+    <col dtp="191">8273407.8</col>
+</row>
+<row>
+    <col dtp="189">37238</col>
+    <col dtp="191">8272728.06</col>
+</row>
+<row>
+    <col dtp="189">46679</col>
+    <col dtp="191">8270486.55</col>
+</row>
+<row>
+    <col dtp="189">165852</col>
+    <col dtp="191">8268312.600000001</col>
+</row>
+<row>
+    <col dtp="189">99458</col>
+    <col dtp="191">8266564.47</col>
+</row>
+<row>
+    <col dtp="189">114519</col>
+    <col dtp="191">8265493.54</col>
+</row>
+<row>
+    <col dtp="189">7231</col>
+    <col dtp="191">8264881.5</col>
+</row>
+<row>
+    <col dtp="189">19033</col>
+    <col dtp="191">8264826.56</col>
+</row>
+<row>
+    <col dtp="189">125123</col>
+    <col dtp="191">8262732.65</col>
+</row>
+<row>
+    <col dtp="189">18642</col>
+    <col dtp="191">8261578.99</col>
+</row>
+<row>
+    <col dtp="189">50386</col>
+    <col dtp="191">8261380.05</col>
+</row>
+<row>
+    <col dtp="189">193770</col>
+    <col dtp="191">8259578.819999999</col>
+</row>
+<row>
+    <col dtp="189">7276</col>
+    <col dtp="191">8258101.6</col>
+</row>
+<row>
+    <col dtp="189">178045</col>
+    <col dtp="191">8253904.149999999</col>
+</row>
+<row>
+    <col dtp="189">49033</col>
+    <col dtp="191">8253696.23</col>
+</row>
+<row>
+    <col dtp="189">187195</col>
+    <col dtp="191">8251334.58</col>
+</row>
+<row>
+    <col dtp="189">10590</col>
+    <col dtp="191">8249227.4</col>
+</row>
+<row>
+    <col dtp="189">143779</col>
+    <col dtp="191">8247057.7</col>
+</row>
+<row>
+    <col dtp="189">35205</col>
+    <col dtp="191">8245675.17</col>
+</row>
+<row>
+    <col dtp="189">19729</col>
+    <col dtp="191">8245081.600000001</col>
+</row>
+<row>
+    <col dtp="189">144946</col>
+    <col dtp="191">8240479.8</col>
+</row>
+<row>
+    <col dtp="189">123786</col>
+    <col dtp="191">8239581.239999999</col>
+</row>
+<row>
+    <col dtp="189">70843</col>
+    <col dtp="191">8237973.2</col>
+</row>
+<row>
+    <col dtp="189">112437</col>
+    <col dtp="191">8236907.52</col>
+</row>
+<row>
+    <col dtp="189">5436</col>
+    <col dtp="191">8236039.57</col>
+</row>
+<row>
+    <col dtp="189">163754</col>
+    <col dtp="191">8235471.16</col>
+</row>
+<row>
+    <col dtp="189">115945</col>
+    <col dtp="191">8234811.36</col>
+</row>
+<row>
+    <col dtp="189">27918</col>
+    <col dtp="191">8233957.88</col>
+</row>
+<row>
+    <col dtp="189">105712</col>
+    <col dtp="191">8233571.859999999</col>
+</row>
+<row>
+    <col dtp="189">41007</col>
+    <col dtp="191">8229431.79</col>
+</row>
+<row>
+    <col dtp="189">40476</col>
+    <col dtp="191">8226640.41</col>
+</row>
+<row>
+    <col dtp="189">145620</col>
+    <col dtp="191">8221371.6</col>
+</row>
+<row>
+    <col dtp="189">7771</col>
+    <col dtp="191">8220413.33</col>
+</row>
+<row>
+    <col dtp="189">86424</col>
+    <col dtp="191">8215572.61</col>
+</row>
+<row>
+    <col dtp="189">129137</col>
+    <col dtp="191">8215478.399999999</col>
+</row>
+<row>
+    <col dtp="189">76020</col>
+    <col dtp="191">8210495.359999999</col>
+</row>
+<row>
+    <col dtp="189">140213</col>
+    <col dtp="191">8209831.800000001</col>
+</row>
+<row>
+    <col dtp="189">32379</col>
+    <col dtp="191">8208338.88</col>
+</row>
+<row>
+    <col dtp="189">130616</col>
+    <col dtp="191">8207715.75</col>
+</row>
+<row>
+    <col dtp="189">195469</col>
+    <col dtp="191">8206609.800000001</col>
+</row>
+<row>
+    <col dtp="189">191805</col>
+    <col dtp="191">8205147.75</col>
+</row>
+<row>
+    <col dtp="189">90906</col>
+    <col dtp="191">8200951.199999999</col>
+</row>
+<row>
+    <col dtp="189">170910</col>
+    <col dtp="191">8195558.01</col>
+</row>
+<row>
+    <col dtp="189">105399</col>
+    <col dtp="191">8193122.63</col>
+</row>
+<row>
+    <col dtp="189">123798</col>
+    <col dtp="191">8192385.97</col>
+</row>
+<row>
+    <col dtp="189">90218</col>
+    <col dtp="191">8191689.16</col>
+</row>
+<row>
+    <col dtp="189">114766</col>
+    <col dtp="191">8189339.54</col>
+</row>
+<row>
+    <col dtp="189">11289</col>
+    <col dtp="191">8187354.72</col>
+</row>
+<row>
+    <col dtp="189">178308</col>
+    <col dtp="191">8185750.5</col>
+</row>
+<row>
+    <col dtp="189">71271</col>
+    <col dtp="191">8185519.239999999</col>
+</row>
+<row>
+    <col dtp="189">1115</col>
+    <col dtp="191">8184903.380000001</col>
+</row>
+<row>
+    <col dtp="189">152636</col>
+    <col dtp="191">8184530.720000001</col>
+</row>
+<row>
+    <col dtp="189">151619</col>
+    <col dtp="191">8182909.05</col>
+</row>
+<row>
+    <col dtp="189">116943</col>
+    <col dtp="191">8181072.69</col>
+</row>
+<row>
+    <col dtp="189">28891</col>
+    <col dtp="191">8181051.54</col>
+</row>
+<row>
+    <col dtp="189">47049</col>
+    <col dtp="191">8180955</col>
+</row>
+<row>
+    <col dtp="189">158827</col>
+    <col dtp="191">8180470.899999999</col>
+</row>
+<row>
+    <col dtp="189">92620</col>
+    <col dtp="191">8179671.550000001</col>
+</row>
+<row>
+    <col dtp="189">20814</col>
+    <col dtp="191">8176953.54</col>
+</row>
+<row>
+    <col dtp="189">179323</col>
+    <col dtp="191">8176795.55</col>
+</row>
+<row>
+    <col dtp="189">193453</col>
+    <col dtp="191">8174343.94</col>
+</row>
+<row>
+    <col dtp="189">56888</col>
+    <col dtp="191">8173342</col>
+</row>
+<row>
+    <col dtp="189">28087</col>
+    <col dtp="191">8169876.3</col>
+</row>
+<row>
+    <col dtp="189">164254</col>
+    <col dtp="191">8169632.35</col>
+</row>
+<row>
+    <col dtp="189">57661</col>
+    <col dtp="191">8168848.16</col>
+</row>
+<row>
+    <col dtp="189">7363</col>
+    <col dtp="191">8167538.05</col>
+</row>
+<row>
+    <col dtp="189">164499</col>
+    <col dtp="191">8167512.08</col>
+</row>
+<row>
+    <col dtp="189">197557</col>
+    <col dtp="191">8165940.45</col>
+</row>
+<row>
+    <col dtp="189">5495</col>
+    <col dtp="191">8164805.22</col>
+</row>
+<row>
+    <col dtp="189">966</col>
+    <col dtp="191">8163824.79</col>
+</row>
+<row>
+    <col dtp="189">98435</col>
+    <col dtp="191">8161771.45</col>
+</row>
+<row>
+    <col dtp="189">127227</col>
+    <col dtp="191">8161344.92</col>
+</row>
+<row>
+    <col dtp="189">194100</col>
+    <col dtp="191">8160978.78</col>
+</row>
+<row>
+    <col dtp="189">40134</col>
+    <col dtp="191">8160358.08</col>
+</row>
+<row>
+    <col dtp="189">107341</col>
+    <col dtp="191">8159952.05</col>
+</row>
+<row>
+    <col dtp="189">6790</col>
+    <col dtp="191">8158792.66</col>
+</row>
+<row>
+    <col dtp="189">43851</col>
+    <col dtp="191">8157101.4</col>
+</row>
+<row>
+    <col dtp="189">51295</col>
+    <col dtp="191">8156419.2</col>
+</row>
+<row>
+    <col dtp="189">69512</col>
+    <col dtp="191">8151537</col>
+</row>
+<row>
+    <col dtp="189">164274</col>
+    <col dtp="191">8149869.93</col>
+</row>
+<row>
+    <col dtp="189">130854</col>
+    <col dtp="191">8145338.85</col>
+</row>
+<row>
+    <col dtp="189">186865</col>
+    <col dtp="191">8143586.82</col>
+</row>
+<row>
+    <col dtp="189">176629</col>
+    <col dtp="191">8141411.2</col>
+</row>
+<row>
+    <col dtp="189">193739</col>
+    <col dtp="191">8141377.77</col>
+</row>
+<row>
+    <col dtp="189">6810</col>
+    <col dtp="191">8139822.6</col>
+</row>
+<row>
+    <col dtp="189">27732</col>
+    <col dtp="191">8136724.96</col>
+</row>
+<row>
+    <col dtp="189">50616</col>
+    <col dtp="191">8134089.82</col>
+</row>
+<row>
+    <col dtp="189">123908</col>
+    <col dtp="191">8128920.54</col>
+</row>
+<row>
+    <col dtp="189">140994</col>
+    <col dtp="191">8128470.819999999</col>
+</row>
+<row>
+    <col dtp="189">99039</col>
+    <col dtp="191">8128290.78</col>
+</row>
+<row>
+    <col dtp="189">62735</col>
+    <col dtp="191">8124940.5</col>
+</row>
+<row>
+    <col dtp="189">47829</col>
+    <col dtp="191">8122796.5</col>
+</row>
+<row>
+    <col dtp="189">192635</col>
+    <col dtp="191">8122687.569999999</col>
+</row>
+<row>
+    <col dtp="189">192429</col>
+    <col dtp="191">8119268</col>
+</row>
+<row>
+    <col dtp="189">145812</col>
+    <col dtp="191">8119165.63</col>
+</row>
+<row>
+    <col dtp="189">42896</col>
+    <col dtp="191">8118529.800000001</col>
+</row>
+<row>
+    <col dtp="189">146877</col>
+    <col dtp="191">8118266.16</col>
+</row>
+<row>
+    <col dtp="189">60882</col>
+    <col dtp="191">8116095.04</col>
+</row>
+<row>
+    <col dtp="189">18254</col>
+    <col dtp="191">8114783.039999999</col>
+</row>
+<row>
+    <col dtp="189">165464</col>
+    <col dtp="191">8114571.8</col>
+</row>
+<row>
+    <col dtp="189">57936</col>
+    <col dtp="191">8111927.25</col>
+</row>
+<row>
+    <col dtp="189">52226</col>
+    <col dtp="191">8110723.32</col>
+</row>
+<row>
+    <col dtp="189">128571</col>
+    <col dtp="191">8106788.8</col>
+</row>
+<row>
+    <col dtp="189">100308</col>
+    <col dtp="191">8105837.04</col>
+</row>
+<row>
+    <col dtp="189">8872</col>
+    <col dtp="191">8102395.619999999</col>
+</row>
+<row>
+    <col dtp="189">58867</col>
+    <col dtp="191">8102033.19</col>
+</row>
+<row>
+    <col dtp="189">145153</col>
+    <col dtp="191">8100222.84</col>
+</row>
+<row>
+    <col dtp="189">172088</col>
+    <col dtp="191">8098138.2</col>
+</row>
+<row>
+    <col dtp="189">59398</col>
+    <col dtp="191">8095845.45</col>
+</row>
+<row>
+    <col dtp="189">89395</col>
+    <col dtp="191">8093576.100000001</col>
+</row>
+<row>
+    <col dtp="189">171961</col>
+    <col dtp="191">8093538</col>
+</row>
+<row>
+    <col dtp="189">88736</col>
+    <col dtp="191">8090762.16</col>
+</row>
+<row>
+    <col dtp="189">174053</col>
+    <col dtp="191">8090350.109999999</col>
+</row>
+<row>
+    <col dtp="189">102237</col>
+    <col dtp="191">8089103.22</col>
+</row>
+<row>
+    <col dtp="189">43041</col>
+    <col dtp="191">8086537.899999999</col>
+</row>
+<row>
+    <col dtp="189">110219</col>
+    <col dtp="191">8085296.899999999</col>
+</row>
+<row>
+    <col dtp="189">126738</col>
+    <col dtp="191">8084199.199999999</col>
+</row>
+<row>
+    <col dtp="189">44787</col>
+    <col dtp="191">8083628.4</col>
+</row>
+<row>
+    <col dtp="189">31277</col>
+    <col dtp="191">8083580.760000001</col>
+</row>
+<row>
+    <col dtp="189">93595</col>
+    <col dtp="191">8082188.8</col>
+</row>
+<row>
+    <col dtp="189">189040</col>
+    <col dtp="191">8080257.210000001</col>
+</row>
+<row>
+    <col dtp="189">59851</col>
+    <col dtp="191">8079024.239999999</col>
+</row>
+<row>
+    <col dtp="189">175100</col>
+    <col dtp="191">8077904.01</col>
+</row>
+<row>
+    <col dtp="189">43429</col>
+    <col dtp="191">8076729.96</col>
+</row>
+<row>
+    <col dtp="189">154199</col>
+    <col dtp="191">8074940.76</col>
+</row>
+<row>
+    <col dtp="189">60963</col>
+    <col dtp="191">8073894.4</col>
+</row>
+<row>
+    <col dtp="189">8768</col>
+    <col dtp="191">8072760.96</col>
+</row>
+<row>
+    <col dtp="189">66095</col>
+    <col dtp="191">8071421.7</col>
+</row>
+<row>
+    <col dtp="189">111552</col>
+    <col dtp="191">8068184.48</col>
+</row>
+<row>
+    <col dtp="189">24563</col>
+    <col dtp="191">8067500.399999999</col>
+</row>
+<row>
+    <col dtp="189">16167</col>
+    <col dtp="191">8067495.239999999</col>
+</row>
+<row>
+    <col dtp="189">12662</col>
+    <col dtp="191">8067248.850000001</col>
+</row>
+<row>
+    <col dtp="189">94540</col>
+    <col dtp="191">8063727.16</col>
+</row>
+<row>
+    <col dtp="189">23308</col>
+    <col dtp="191">8063463.180000001</col>
+</row>
+<row>
+    <col dtp="189">27390</col>
+    <col dtp="191">8062823.25</col>
+</row>
+<row>
+    <col dtp="189">130660</col>
+    <col dtp="191">8062787.48</col>
+</row>
+<row>
+    <col dtp="189">8608</col>
+    <col dtp="191">8062411.16</col>
+</row>
+<row>
+    <col dtp="189">181552</col>
+    <col dtp="191">8062008.3</col>
+</row>
+<row>
+    <col dtp="189">199319</col>
+    <col dtp="191">8060248.56</col>
+</row>
+<row>
+    <col dtp="189">55475</col>
+    <col dtp="191">8058850.92</col>
+</row>
+<row>
+    <col dtp="189">142711</col>
+    <col dtp="191">8057926.58</col>
+</row>
+<row>
+    <col dtp="189">103499</col>
+    <col dtp="191">8056978</col>
+</row>
+<row>
+    <col dtp="189">105943</col>
+    <col dtp="191">8056698.75</col>
+</row>
+<row>
+    <col dtp="189">8432</col>
+    <col dtp="191">8053052.16</col>
+</row>
+<row>
+    <col dtp="189">149392</col>
+    <col dtp="191">8049675.689999999</col>
+</row>
+<row>
+    <col dtp="189">101248</col>
+    <col dtp="191">8048855.49</col>
+</row>
+<row>
+    <col dtp="189">140962</col>
+    <col dtp="191">8047260.7</col>
+</row>
+<row>
+    <col dtp="189">87101</col>
+    <col dtp="191">8046651.83</col>
+</row>
+<row>
+    <col dtp="189">133107</col>
+    <col dtp="191">8046476.73</col>
+</row>
+<row>
+    <col dtp="189">45126</col>
+    <col dtp="191">8045924.399999999</col>
+</row>
+<row>
+    <col dtp="189">87508</col>
+    <col dtp="191">8042966.39</col>
+</row>
+<row>
+    <col dtp="189">124711</col>
+    <col dtp="191">8042722.72</col>
+</row>
+<row>
+    <col dtp="189">173169</col>
+    <col dtp="191">8042224.41</col>
+</row>
+<row>
+    <col dtp="189">175161</col>
+    <col dtp="191">8041331.98</col>
+</row>
+<row>
+    <col dtp="189">167787</col>
+    <col dtp="191">8040075.779999999</col>
+</row>
+<row>
+    <col dtp="189">3242</col>
+    <col dtp="191">8038855.53</col>
+</row>
+<row>
+    <col dtp="189">114789</col>
+    <col dtp="191">8038628.35</col>
+</row>
+<row>
+    <col dtp="189">43833</col>
+    <col dtp="191">8038545.83</col>
+</row>
+<row>
+    <col dtp="189">141198</col>
+    <col dtp="191">8035110.72</col>
+</row>
+<row>
+    <col dtp="189">137248</col>
+    <col dtp="191">8034109.35</col>
+</row>
+<row>
+    <col dtp="189">96673</col>
+    <col dtp="191">8033491.2</col>
+</row>
+<row>
+    <col dtp="189">32180</col>
+    <col dtp="191">8032380.720000001</col>
+</row>
+<row>
+    <col dtp="189">166493</col>
+    <col dtp="191">8031902.399999999</col>
+</row>
+<row>
+    <col dtp="189">66959</col>
+    <col dtp="191">8031839.4</col>
+</row>
+<row>
+    <col dtp="189">85628</col>
+    <col dtp="191">8029693.439999999</col>
+</row>
+<row>
+    <col dtp="189">110971</col>
+    <col dtp="191">8029469.7</col>
+</row>
+<row>
+    <col dtp="189">130395</col>
+    <col dtp="191">8027463.920000001</col>
+</row>
+<row>
+    <col dtp="189">7757</col>
+    <col dtp="191">8026840.37</col>
+</row>
+<row>
+    <col dtp="189">178446</col>
+    <col dtp="191">8025379.09</col>
+</row>
+<row>
+    <col dtp="189">41295</col>
+    <col dtp="191">8024785.53</col>
+</row>
+<row>
+    <col dtp="189">100956</col>
+    <col dtp="191">8024179.300000001</col>
+</row>
+<row>
+    <col dtp="189">131917</col>
+    <col dtp="191">8021604.78</col>
+</row>
+<row>
+    <col dtp="189">24224</col>
+    <col dtp="191">8020463.52</col>
+</row>
+<row>
+    <col dtp="189">2073</col>
+    <col dtp="191">8020009.64</col>
+</row>
+<row>
+    <col dtp="189">121622</col>
+    <col dtp="191">8018462.17</col>
+</row>
+<row>
+    <col dtp="189">14357</col>
+    <col dtp="191">8016906.3</col>
+</row>
+<row>
+    <col dtp="189">135601</col>
+    <col dtp="191">8016209.439999999</col>
+</row>
+<row>
+    <col dtp="189">58458</col>
+    <col dtp="191">8016192.52</col>
+</row>
+<row>
+    <col dtp="189">73036</col>
+    <col dtp="191">8015799</col>
+</row>
+<row>
+    <col dtp="189">184722</col>
+    <col dtp="191">8015680.310000001</col>
+</row>
+<row>
+    <col dtp="189">151664</col>
+    <col dtp="191">8014821.96</col>
+</row>
+<row>
+    <col dtp="189">195090</col>
+    <col dtp="191">8012680.199999999</col>
+</row>
+<row>
+    <col dtp="189">162609</col>
+    <col dtp="191">8011241</col>
+</row>
+<row>
+    <col dtp="189">83532</col>
+    <col dtp="191">8009753.850000001</col>
+</row>
+<row>
+    <col dtp="189">50166</col>
+    <col dtp="191">8007137.89</col>
+</row>
+<row>
+    <col dtp="189">181562</col>
+    <col dtp="191">8006805.960000001</col>
+</row>
+<row>
+    <col dtp="189">175165</col>
+    <col dtp="191">8005319.76</col>
+</row>
+<row>
+    <col dtp="189">62500</col>
+    <col dtp="191">8005316.279999999</col>
+</row>
+<row>
+    <col dtp="189">36342</col>
+    <col dtp="191">8004333.4</col>
+</row>
+<row>
+    <col dtp="189">128435</col>
+    <col dtp="191">8004242.88</col>
+</row>
+<row>
+    <col dtp="189">92516</col>
+    <col dtp="191">8003836.800000001</col>
+</row>
+<row>
+    <col dtp="189">30802</col>
+    <col dtp="191">8003710.88</col>
+</row>
+<row>
+    <col dtp="189">107418</col>
+    <col dtp="191">8000430.3</col>
+</row>
+<row>
+    <col dtp="189">46620</col>
+    <col dtp="191">7999778.350000001</col>
+</row>
+<row>
+    <col dtp="189">191803</col>
+    <col dtp="191">7994734.15</col>
+</row>
+<row>
+    <col dtp="189">106343</col>
+    <col dtp="191">7993087.76</col>
+</row>
+<row>
+    <col dtp="189">59362</col>
+    <col dtp="191">7990397.46</col>
+</row>
+<row>
+    <col dtp="189">8329</col>
+    <col dtp="191">7990052.899999999</col>
+</row>
+<row>
+    <col dtp="189">75133</col>
+    <col dtp="191">7988244</col>
+</row>
+<row>
+    <col dtp="189">179023</col>
+    <col dtp="191">7986829.62</col>
+</row>
+<row>
+    <col dtp="189">135899</col>
+    <col dtp="191">7985726.64</col>
+</row>
+<row>
+    <col dtp="189">5824</col>
+    <col dtp="191">7985340.02</col>
+</row>
+<row>
+    <col dtp="189">148579</col>
+    <col dtp="191">7984889.56</col>
+</row>
+<row>
+    <col dtp="189">95888</col>
+    <col dtp="191">7984735.720000001</col>
+</row>
+<row>
+    <col dtp="189">9791</col>
+    <col dtp="191">7982699.790000001</col>
+</row>
+<row>
+    <col dtp="189">170437</col>
+    <col dtp="191">7982370.720000001</col>
+</row>
+<row>
+    <col dtp="189">39782</col>
+    <col dtp="191">7977858.239999999</col>
+</row>
+<row>
+    <col dtp="189">20605</col>
+    <col dtp="191">7977556</col>
+</row>
+<row>
+    <col dtp="189">28682</col>
+    <col dtp="191">7976959.999999999</col>
+</row>
+<row>
+    <col dtp="189">42172</col>
+    <col dtp="191">7973399</col>
+</row>
+<row>
+    <col dtp="189">56137</col>
+    <col dtp="191">7971405.4</col>
+</row>
+<row>
+    <col dtp="189">64729</col>
+    <col dtp="191">7970769.720000001</col>
+</row>
+<row>
+    <col dtp="189">98643</col>
+    <col dtp="191">7968603.73</col>
+</row>
+<row>
+    <col dtp="189">153787</col>
+    <col dtp="191">7967535.58</col>
+</row>
+<row>
+    <col dtp="189">8932</col>
+    <col dtp="191">7967222.189999999</col>
+</row>
+<row>
+    <col dtp="189">20134</col>
+    <col dtp="191">7965713.28</col>
+</row>
+<row>
+    <col dtp="189">197635</col>
+    <col dtp="191">7963507.58</col>
+</row>
+<row>
+    <col dtp="189">80408</col>
+    <col dtp="191">7963312.17</col>
+</row>
+<row>
+    <col dtp="189">37728</col>
+    <col dtp="191">7961875.68</col>
+</row>
+<row>
+    <col dtp="189">26624</col>
+    <col dtp="191">7961772.310000001</col>
+</row>
+<row>
+    <col dtp="189">44736</col>
+    <col dtp="191">7961144.1</col>
+</row>
+<row>
+    <col dtp="189">29763</col>
+    <col dtp="191">7960605.03</col>
+</row>
+<row>
+    <col dtp="189">36147</col>
+    <col dtp="191">7959463.68</col>
+</row>
+<row>
+    <col dtp="189">146040</col>
+    <col dtp="191">7957587.66</col>
+</row>
+<row>
+    <col dtp="189">115469</col>
+    <col dtp="191">7957485.140000001</col>
+</row>
+<row>
+    <col dtp="189">142276</col>
+    <col dtp="191">7956790.63</col>
+</row>
+<row>
+    <col dtp="189">181280</col>
+    <col dtp="191">7954037.35</col>
+</row>
+<row>
+    <col dtp="189">115096</col>
+    <col dtp="191">7953047.55</col>
+</row>
+<row>
+    <col dtp="189">109650</col>
+    <col dtp="191">7952258.73</col>
+</row>
+<row>
+    <col dtp="189">93862</col>
+    <col dtp="191">7951992.24</col>
+</row>
+<row>
+    <col dtp="189">158325</col>
+    <col dtp="191">7950728.3</col>
+</row>
+<row>
+    <col dtp="189">55952</col>
+    <col dtp="191">7950387.060000001</col>
+</row>
+<row>
+    <col dtp="189">122397</col>
+    <col dtp="191">7947106.27</col>
+</row>
+<row>
+    <col dtp="189">28114</col>
+    <col dtp="191">7946945.720000001</col>
+</row>
+<row>
+    <col dtp="189">11966</col>
+    <col dtp="191">7945197.48</col>
+</row>
+<row>
+    <col dtp="189">47814</col>
+    <col dtp="191">7944083</col>
+</row>
+<row>
+    <col dtp="189">85096</col>
+    <col dtp="191">7943691.06</col>
+</row>
+<row>
+    <col dtp="189">51657</col>
+    <col dtp="191">7943593.77</col>
+</row>
+<row>
+    <col dtp="189">196680</col>
+    <col dtp="191">7943578.89</col>
+</row>
+<row>
+    <col dtp="189">13141</col>
+    <col dtp="191">7942730.340000001</col>
+</row>
+<row>
+    <col dtp="189">193327</col>
+    <col dtp="191">7941036.25</col>
+</row>
+<row>
+    <col dtp="189">152612</col>
+    <col dtp="191">7940663.71</col>
+</row>
+<row>
+    <col dtp="189">139680</col>
+    <col dtp="191">7939242.359999999</col>
+</row>
+<row>
+    <col dtp="189">31134</col>
+    <col dtp="191">7938318.3</col>
+</row>
+<row>
+    <col dtp="189">45636</col>
+    <col dtp="191">7937240.85</col>
+</row>
+<row>
+    <col dtp="189">56694</col>
+    <col dtp="191">7936015.949999999</col>
+</row>
+<row>
+    <col dtp="189">8114</col>
+    <col dtp="191">7933921.88</col>
+</row>
+<row>
+    <col dtp="189">71518</col>
+    <col dtp="191">7932261.69</col>
+</row>
+<row>
+    <col dtp="189">72922</col>
+    <col dtp="191">7930400.64</col>
+</row>
+<row>
+    <col dtp="189">146699</col>
+    <col dtp="191">7929167.4</col>
+</row>
+<row>
+    <col dtp="189">92387</col>
+    <col dtp="191">7928972.67</col>
+</row>
+<row>
+    <col dtp="189">186289</col>
+    <col dtp="191">7928786.189999999</col>
+</row>
+<row>
+    <col dtp="189">95952</col>
+    <col dtp="191">7927972.78</col>
+</row>
+<row>
+    <col dtp="189">196514</col>
+    <col dtp="191">7927180.7</col>
+</row>
+<row>
+    <col dtp="189">4403</col>
+    <col dtp="191">7925729.040000001</col>
+</row>
+<row>
+    <col dtp="189">2267</col>
+    <col dtp="191">7925649.37</col>
+</row>
+<row>
+    <col dtp="189">45924</col>
+    <col dtp="191">7925047.68</col>
+</row>
+<row>
+    <col dtp="189">11493</col>
+    <col dtp="191">7916722.23</col>
+</row>
+<row>
+    <col dtp="189">104478</col>
+    <col dtp="191">7916253.600000001</col>
+</row>
+<row>
+    <col dtp="189">166794</col>
+    <col dtp="191">7913842</col>
+</row>
+<row>
+    <col dtp="189">161995</col>
+    <col dtp="191">7910874.27</col>
+</row>
+<row>
+    <col dtp="189">23538</col>
+    <col dtp="191">7909752.060000001</col>
+</row>
+<row>
+    <col dtp="189">41093</col>
+    <col dtp="191">7909579.92</col>
+</row>
+<row>
+    <col dtp="189">112073</col>
+    <col dtp="191">7908617.57</col>
+</row>
+<row>
+    <col dtp="189">92814</col>
+    <col dtp="191">7908262.5</col>
+</row>
+<row>
+    <col dtp="189">88919</col>
+    <col dtp="191">7907992.5</col>
+</row>
+<row>
+    <col dtp="189">79753</col>
+    <col dtp="191">7907933.88</col>
+</row>
+<row>
+    <col dtp="189">108765</col>
+    <col dtp="191">7905338.98</col>
+</row>
+<row>
+    <col dtp="189">146530</col>
+    <col dtp="191">7905336.6</col>
+</row>
+<row>
+    <col dtp="189">71475</col>
+    <col dtp="191">7903367.58</col>
+</row>
+<row>
+    <col dtp="189">36289</col>
+    <col dtp="191">7901946.5</col>
+</row>
+<row>
+    <col dtp="189">61739</col>
+    <col dtp="191">7900794</col>
+</row>
+<row>
+    <col dtp="189">52338</col>
+    <col dtp="191">7898638.08</col>
+</row>
+<row>
+    <col dtp="189">194299</col>
+    <col dtp="191">7898421.24</col>
+</row>
+<row>
+    <col dtp="189">105235</col>
+    <col dtp="191">7897829.939999999</col>
+</row>
+<row>
+    <col dtp="189">77207</col>
+    <col dtp="191">7897752.72</col>
+</row>
+<row>
+    <col dtp="189">96712</col>
+    <col dtp="191">7897575.27</col>
+</row>
+<row>
+    <col dtp="189">10157</col>
+    <col dtp="191">7897046.25</col>
+</row>
+<row>
+    <col dtp="189">171154</col>
+    <col dtp="191">7896814.5</col>
+</row>
+<row>
+    <col dtp="189">79373</col>
+    <col dtp="191">7896186</col>
+</row>
+<row>
+    <col dtp="189">113808</col>
+    <col dtp="191">7893353.88</col>
+</row>
+<row>
+    <col dtp="189">27901</col>
+    <col dtp="191">7892952</col>
+</row>
+<row>
+    <col dtp="189">128820</col>
+    <col dtp="191">7892882.72</col>
+</row>
+<row>
+    <col dtp="189">25891</col>
+    <col dtp="191">7890511.2</col>
+</row>
+<row>
+    <col dtp="189">122819</col>
+    <col dtp="191">7888881.02</col>
+</row>
+<row>
+    <col dtp="189">154731</col>
+    <col dtp="191">7888301.33</col>
+</row>
+<row>
+    <col dtp="189">101674</col>
+    <col dtp="191">7879324.6</col>
+</row>
+<row>
+    <col dtp="189">51968</col>
+    <col dtp="191">7879102.21</col>
+</row>
+<row>
+    <col dtp="189">72073</col>
+    <col dtp="191">7877736.11</col>
+</row>
+<row>
+    <col dtp="189">5182</col>
+    <col dtp="191">7874521.73</col>
+</row>
+    </result>
+</test>

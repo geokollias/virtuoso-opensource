@@ -1,0 +1,679 @@
+<test>
+    <comment>#line 4 tpc-h/21.sql
+select  top 100
+	s_name,
+	count(*) as numwait
+from
+	supplier,
+	lineitem l1,
+	orders,
+	nation
+where
+	s_suppkey = l1.l_suppkey
+	and o_orderkey = l1.l_orderkey
+	and o_orderstatus = F
+	and l1.l_receiptdate &gt; l1.l_commitdate
+	and exists (
+		select
+			*
+		from
+			lineitem l2 
+		where
+			l2.l_orderkey = l1.l_orderkey
+			and l2.l_suppkey &lt;&gt; l1.l_suppkey
+	)
+	and not exists (
+		select
+			*
+		from
+			lineitem l3 
+		where
+			l3.l_orderkey = l1.l_orderkey
+			and l3.l_suppkey &lt;&gt; l1.l_suppkey
+			and l3.l_receiptdate &gt; l3.l_commitdate
+	)
+	and s_nationkey = n_nationkey
+	and n_name = SAUDI ARABIA
+group by
+	s_name
+order by
+	numwait desc,
+	s_name
+</comment>
+    <query><![CDATA[#line 4 "tpc-h/21.sql"
+select  top 100
+	s_name,
+	count(*) as numwait
+from
+	supplier,
+	lineitem l1,
+	orders,
+	nation
+where
+	s_suppkey = l1.l_suppkey
+	and o_orderkey = l1.l_orderkey
+	and o_orderstatus = 'F'
+	and l1.l_receiptdate > l1.l_commitdate
+	and exists (
+		select
+			*
+		from
+			lineitem l2 
+		where
+			l2.l_orderkey = l1.l_orderkey
+			and l2.l_suppkey <> l1.l_suppkey
+	)
+	and not exists (
+		select
+			*
+		from
+			lineitem l3 
+		where
+			l3.l_orderkey = l1.l_orderkey
+			and l3.l_suppkey <> l1.l_suppkey
+			and l3.l_receiptdate > l3.l_commitdate
+	)
+	and s_nationkey = n_nationkey
+	and n_name = 'SAUDI ARABIA'
+group by
+	s_name
+order by
+	numwait desc,
+	s_name
+    ]]></query>
+    <plans>
+	<plan>
+	    <verify result-order="1" col-names="1" plan-xpath="/report[hf[subq[ts[following::ts[following::setp]]]][following::fref[fref[ts[following::ts[following::hs[following::setp]]]][following::setp]][following::sel]]]">
+		<da-below rnd="0" seq="0" same-seg="" />
+	    </verify>
+<text><![CDATA[{ 
+{ hash filler
+Subquery 28 
+{ 
+NATION         1 rows(t4.N_NATIONKEY)
+ N_NAME = <c SAUDI ARABIA>
+SUPPLIER     4e+02 rows(t1.S_SUPPKEY, t1.S_NAME)
+ S_NATIONKEY = t4.N_NATIONKEY
+ 
+After code:
+      0: t1.S_SUPPKEY :=  := artm t1.S_SUPPKEY
+      4: t1.S_NAME :=  := artm t1.S_NAME
+      8: BReturn 0
+Sort hf 49      8e+02 rows(t1.S_SUPPKEY) -> (t1.S_NAME)
+ 
+}
+}
+{ fork
+{ fork
+ORDERS   7.3e+05 rows(.O_ORDERKEY)
+ O_ORDERSTATUS = <c F>
+LINEITEM    0.0038 rows(L1.L_RECEIPTDATE, L1.L_COMMITDATE, L1.L_ORDERKEY, L1.L_SUPPKEY)
+ inlined  L_ORDERKEY = .O_ORDERKEY
+hash partition+bloom by 59 (tmp)hash join merged always card      0.04 -> (.S_NAME)
+END Node
+After test:
+      0: if (L1.L_RECEIPTDATE > L1.L_COMMITDATE) then 4 else 13 unkn 13
+      4: if ({ 
+LINEITEM       2.5 rows(L2.L_SUPPKEY)
+ inlined  L_ORDERKEY = k_L1.L_ORDERKEY
+END Node
+After test:
+      0: if (L2.L_SUPPKEY = L1.L_SUPPKEY) then 5 else 4 unkn 5
+      4: BReturn 1
+      5: BReturn 0
+Subquery Select( <none> )
+}
+) then 8 else 13 unkn 13
+      8: if ({ 
+LINEITEM      0.23 rows(L3.L_SUPPKEY, L3.L_RECEIPTDATE, L3.L_COMMITDATE)
+ inlined  L_ORDERKEY = k_L1.L_ORDERKEY
+END Node
+After test:
+      0: if (L3.L_RECEIPTDATE > L3.L_COMMITDATE) then 4 else 9 unkn 9
+      4: if (L3.L_SUPPKEY = L1.L_SUPPKEY) then 9 else 8 unkn 9
+      8: BReturn 1
+      9: BReturn 0
+Subquery Select( <none> )
+}
+) then 13 else 12 unkn 13
+      12: BReturn 1
+      13: BReturn 0
+Hash source 49 merged into ts       0.04 rows(k_L1.L_SUPPKEY) -> (.S_NAME)
+Sort (.S_NAME) -> (inc)
+ 
+}
+group by read node  
+(.S_NAME, NUMWAIT)
+Sort (NUMWAIT, .S_NAME)
+}
+top order by read (.S_NAME, NUMWAIT)
+Select (.S_NAME, NUMWAIT)
+}
+]]></text>
+	    <xmlplan>
+<report>
+<sctr sctr_ose='0'/>
+<hf sets='191'><subq>
+<ts key='NATION' table='DB.DBA.NATION'>
+<ks_row_spec>
+<sp col='N_NAME'>
+<op code='=' >
+<ssl constant='SAUDI ARABIA' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='33' name='t4.N_NATIONKEY' />
+</ks_out_slots>
+</ts>
+<ts key='SUPPLIER' table='DB.DBA.SUPPLIER'>
+<after_code><artm op=':='><res><ssl index='29' name='t1.S_SUPPKEY' />
+</res><left><ssl index='37' name='t1.S_SUPPKEY' />
+</left></artm><artm op=':='><res><ssl index='30' name='t1.S_NAME' />
+</res><left><ssl index='36' name='t1.S_NAME' />
+</left></artm><bret ret='0'/></after_code><ks_row_spec>
+<sp col='S_NATIONKEY'>
+<op code='=' >
+<ssl index='33' name='t4.N_NATIONKEY' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='37' name='t1.S_SUPPKEY' />
+<ssl index='36' name='t1.S_NAME' />
+</ks_out_slots>
+</ts>
+<setp ha_op='build' hf='49' sets='186'><key><ssl index='29' name='t1.S_SUPPKEY' />
+</key><dep><ssl index='30' name='t1.S_NAME' />
+</dep></setp>
+</subq>
+</hf>
+<fref sets='308'><fref sets='294'><ts key='ORDERS' table='DB.DBA.ORDERS'>
+<ks_row_spec>
+<sp col='O_ORDERSTATUS'>
+<op code='=' >
+<ssl constant='F' />
+</op>
+</sp></ks_row_spec>
+<ks_out_slots>
+<ssl index='62' name='.O_ORDERKEY' />
+</ks_out_slots>
+</ts>
+<ts key='LINEITEM' table='DB.DBA.LINEITEM'>
+<ks_spec>
+<sp col='L_ORDERKEY'>
+<op code='=' >
+<ssl index='62' name='.O_ORDERKEY' />
+</op>
+</sp></ks_spec><ks_hash_spec>
+<hrng hs='269' flags='0' /></ks_hash_spec>
+<ks_out_slots>
+<ssl index='68' name='L1.L_RECEIPTDATE' />
+<ssl index='67' name='L1.L_COMMITDATE' />
+<ssl index='66' name='L1.L_ORDERKEY' />
+<ssl index='65' name='L1.L_SUPPKEY' />
+</ks_out_slots>
+</ts>
+<after_test><if op='&gt;' succ='4' else='13' unkn='13' merge='0'><left><ssl index='68' name='L1.L_RECEIPTDATE' />
+</left><right><ssl index='67' name='L1.L_COMMITDATE' />
+</right></if><if><subq><params></params><sctr sctr_ose='0'/>
+<ts key='LINEITEM' table='DB.DBA.LINEITEM'>
+<ks_spec>
+<sp col='L_ORDERKEY'>
+<op code='=' >
+<ssl index='223' name='k_L1.L_ORDERKEY' />
+</op>
+</sp></ks_spec><ks_out_slots>
+<ssl index='71' name='L2.L_SUPPKEY' />
+</ks_out_slots>
+</ts>
+<after_test><if op='=' succ='5' else='4' unkn='5' merge='0'><left><ssl index='71' name='L2.L_SUPPKEY' />
+</left><right><ssl index='65' name='L1.L_SUPPKEY' />
+
+</right></if><bret ret='1'/><bret ret='0'/></after_test><end />
+<sel><out><ssl /></out></sel>
+</subq></if><if><subq><params></params><sctr sctr_ose='0'/>
+<ts key='LINEITEM' table='DB.DBA.LINEITEM'>
+<ks_spec>
+<sp col='L_ORDERKEY'>
+<op code='=' >
+<ssl index='248' name='k_L1.L_ORDERKEY' />
+</op>
+</sp></ks_spec><ks_out_slots>
+<ssl index='88' name='L3.L_SUPPKEY' />
+<ssl index='87' name='L3.L_RECEIPTDATE' />
+<ssl index='86' name='L3.L_COMMITDATE' />
+</ks_out_slots>
+</ts>
+<after_test><if op='&gt;' succ='4' else='9' unkn='9' merge='0'><left><ssl index='87' name='L3.L_RECEIPTDATE' />
+</left><right><ssl index='86' name='L3.L_COMMITDATE' />
+</right></if><if op='=' succ='9' else='8' unkn='9' merge='0'><left><ssl index='88' name='L3.L_SUPPKEY' />
+</left><right><ssl index='65' name='L1.L_SUPPKEY' />
+
+</right></if><bret ret='1'/><bret ret='0'/></after_test><end />
+<sel><out><ssl /></out></sel>
+</subq></if><bret ret='1'/><bret ret='0'/></after_test><end />
+<hs hf='191'></hs>
+<setp ha_op='group' hf='0' sets='288'><key><ssl index='106' name='.S_NAME' />
+
+</key><dep><ssl index='113' name='inc' />
+</dep></setp>
+</fref>
+<chash />
+<setp ha_op='order' hf='0' sets='303'><key><ssl index='111' name='NUMWAIT' />
+<ssl index='106' name='.S_NAME' />
+</key><dep></dep></setp>
+</fref>
+<sr />
+<sel><ssl index='106' name='.S_NAME' />
+<ssl index='111' name='NUMWAIT' />
+</sel>
+</report>
+	    </xmlplan>
+	</plan>
+    </plans>
+    <columns>
+         <column name="S_NAME"/>
+         <column name="NUMWAIT"/>
+    </columns>
+    <result cnt="100">
+<row>
+    <col dtp="182">Supplier#000002829</col>
+    <col dtp="189">20</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005808</col>
+    <col dtp="189">18</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000262</col>
+    <col dtp="189">17</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000496</col>
+    <col dtp="189">17</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002160</col>
+    <col dtp="189">17</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002301</col>
+    <col dtp="189">17</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002540</col>
+    <col dtp="189">17</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003063</col>
+    <col dtp="189">17</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005178</col>
+    <col dtp="189">17</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008331</col>
+    <col dtp="189">17</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002005</col>
+    <col dtp="189">16</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002095</col>
+    <col dtp="189">16</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005799</col>
+    <col dtp="189">16</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005842</col>
+    <col dtp="189">16</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006450</col>
+    <col dtp="189">16</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006939</col>
+    <col dtp="189">16</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009200</col>
+    <col dtp="189">16</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009727</col>
+    <col dtp="189">16</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000486</col>
+    <col dtp="189">15</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000565</col>
+    <col dtp="189">15</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001046</col>
+    <col dtp="189">15</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001047</col>
+    <col dtp="189">15</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001161</col>
+    <col dtp="189">15</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001336</col>
+    <col dtp="189">15</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001435</col>
+    <col dtp="189">15</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003075</col>
+    <col dtp="189">15</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003335</col>
+    <col dtp="189">15</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005649</col>
+    <col dtp="189">15</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006027</col>
+    <col dtp="189">15</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006795</col>
+    <col dtp="189">15</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006800</col>
+    <col dtp="189">15</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006824</col>
+    <col dtp="189">15</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007131</col>
+    <col dtp="189">15</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007382</col>
+    <col dtp="189">15</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008913</col>
+    <col dtp="189">15</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009787</col>
+    <col dtp="189">15</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000633</col>
+    <col dtp="189">14</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001960</col>
+    <col dtp="189">14</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002323</col>
+    <col dtp="189">14</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002490</col>
+    <col dtp="189">14</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002993</col>
+    <col dtp="189">14</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003101</col>
+    <col dtp="189">14</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000004489</col>
+    <col dtp="189">14</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005435</col>
+    <col dtp="189">14</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005583</col>
+    <col dtp="189">14</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005774</col>
+    <col dtp="189">14</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007579</col>
+    <col dtp="189">14</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008180</col>
+    <col dtp="189">14</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008695</col>
+    <col dtp="189">14</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009224</col>
+    <col dtp="189">14</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000357</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000436</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000610</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000788</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000889</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001062</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001498</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002056</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002312</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002344</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002596</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002615</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002978</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003048</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003234</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003727</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000003806</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000004472</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005236</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000005906</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006241</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006326</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006384</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006394</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006624</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006629</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006682</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006737</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000006825</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007021</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007417</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007497</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000007602</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008134</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000008234</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009435</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009436</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009564</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000009896</col>
+    <col dtp="189">13</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000379</col>
+    <col dtp="189">12</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000673</col>
+    <col dtp="189">12</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000762</col>
+    <col dtp="189">12</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000811</col>
+    <col dtp="189">12</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000000821</col>
+    <col dtp="189">12</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001337</col>
+    <col dtp="189">12</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001916</col>
+    <col dtp="189">12</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000001925</col>
+    <col dtp="189">12</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002039</col>
+    <col dtp="189">12</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002357</col>
+    <col dtp="189">12</col>
+</row>
+<row>
+    <col dtp="182">Supplier#000002483</col>
+    <col dtp="189">12</col>
+</row>
+    </result>
+</test>
