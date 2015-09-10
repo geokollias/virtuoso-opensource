@@ -5,7 +5,7 @@
 #  This file is part of the OpenLink Software Virtuoso Open-Source (VOS)
 #  project.
 #
-#  Copyright (C) 1998-2014 OpenLink Software
+#  Copyright (C) 1998-2015 OpenLink Software
 #
 #  This project is free software; you can redistribute it and/or modify it
 #  under the terms of the GNU General Public License as published by the
@@ -21,12 +21,18 @@
 #  51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
-CLASSPATH=.
-CLASSPATHSSL=.:./security/jdk1.2/jnet.jar:./security/jdk1.2/jsse.jar:./security/jdk1.2/jcert.jar
-JAVA=$JDK2/java
-export JAVA CLASSPATH CLASSPATHSSL
+JAVA_HOME=$JDK2
+CLASSPATH=$JAVA_HOME/lib/jre/rt.jar
+CLASSPATHSSL=$JAVA_HOME/lib/jre/rt.jar:./security/jdk1.2/jnet.jar:./security/jdk1.2/jsse.jar:./security/jdk1.2/jcert.jar
+export JAVA_HOME CLASSPATH CLASSPATHSSL
 
-
+MACOSX=`grep Darwin ../../Makeconfig`
+if [ ! -z "$MACOSX" ]
+then
+    JAVA=$JAVA_HOME/Commands/java
+else
+    JAVA=$JAVA_HOME/bin/java
+fi
 echo "............. Test the JDBC 2.0 driver without SSL"
 $JAVA -classpath $CLASSPATH:virtjdbc2.jar:testsuite2.jar testsuite.TestClean $1
 $JAVA -classpath $CLASSPATH:virtjdbc2.jar:testsuite2.jar testsuite.TestURL $1

@@ -1,10 +1,9 @@
 /*
- *  $Id$
  *
  *  This file is part of the OpenLink Software Virtuoso Open-Source (VOS)
  *  project.
  *
- *  Copyright (C) 1998-2014 OpenLink Software
+ *  Copyright (C) 1998-2015 OpenLink Software
  *
  *  This project is free software; you can redistribute it and/or modify it
  *  under the terms of the GNU General Public License as published by the
@@ -44,11 +43,7 @@ public class VirtuosoXAConnection implements XAConnection {
         resource = new VirtuosoXAResource(pconn, server, port);
 	if (VirtuosoFuture.rpc_log != null)
 	{
-	    synchronized (VirtuosoFuture.rpc_log)
-	    {
 		VirtuosoFuture.rpc_log.println ("new VirtuosoXAConnection (connection=" + connection.hashCode() + ") :" + hashCode() + ")");
-		VirtuosoFuture.rpc_log.flush();
-	    }
 	}
     }
 
@@ -73,11 +68,7 @@ public class VirtuosoXAConnection implements XAConnection {
         throw new VirtuosoException("Connection is closed.",VirtuosoException.DISCONNECTED);
      if (VirtuosoFuture.rpc_log != null)
        {
-	 synchronized (VirtuosoFuture.rpc_log)
-	   {
 	     VirtuosoFuture.rpc_log.println ("VirtuosoXAConnection.getVirtuosoXAResource () ret " + resource.hashCode() + " :" + hashCode());
-	     VirtuosoFuture.rpc_log.flush();
-	   }
        }
       return resource;
     }

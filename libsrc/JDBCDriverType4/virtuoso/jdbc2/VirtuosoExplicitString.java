@@ -1,10 +1,9 @@
 /*
- *  $Id$
  *
  *  This file is part of the OpenLink Software Virtuoso Open-Source (VOS)
  *  project.
  *
- *  Copyright (C) 1998-2014 OpenLink Software
+ *  Copyright (C) 1998-2015 OpenLink Software
  *
  *  This project is free software; you can redistribute it and/or modify it
  *  under the terms of the GNU General Public License as published by the
@@ -36,11 +35,22 @@ public class VirtuosoExplicitString
   private String str;
   private VirtuosoConnection con;
 
+
   protected VirtuosoExplicitString (byte [] bytes, int dtp)
     {
       this.dtp = dtp;
       this.bytes = bytes;
       this.str = null;
+      if (dtp == VirtuosoTypes.DV_STRING || dtp == VirtuosoTypes.DV_SHORT_STRING_SERIAL ||
+            dtp == VirtuosoTypes.DV_STRICT_STRING || dtp == VirtuosoTypes.DV_C_STRING ||
+            dtp == VirtuosoTypes.DV_BLOB || dtp == VirtuosoTypes.DV_ANY)
+        {
+            if (bytes.length < 256)
+                this.dtp = VirtuosoTypes.DV_SHORT_STRING_SERIAL;
+            else
+                this.dtp = VirtuosoTypes.DV_STRING;
+        }
+
     }
 
   protected VirtuosoExplicitString (String str, int dtp, VirtuosoConnection con) throws VirtuosoException
@@ -69,7 +79,7 @@ public class VirtuosoExplicitString
  	      if (con != null && con.charset_utf8)
 	        bytes = str.getBytes ("UTF8");
 	      else if (con != null && con.charset != null)
-		  bytes = con.charsetBytes(str);
+		bytes = con.charsetBytes(str);
 	      else
 		cli_wide_to_narrow (str, con != null ? con.client_charset_hash : null);
 
@@ -138,10 +148,10 @@ public class VirtuosoExplicitString
 
       bytes = new byte[str.length()];
       if (charset_ht == null) 
-	  {
+       {
         for (int i = 0; i < str.length(); i++)
-	    bytes[i] = (byte)str.charAt(i);
-	  }
+	  bytes[i] = (byte)str.charAt(i);
+       } 
       else 
        {
         for (int i = 0; i < str.length(); i++)
@@ -157,7 +167,7 @@ public class VirtuosoExplicitString
 	    else
 	      bytes[i] = (byte) b.intValue();
 	  }
-      }
+       }
       return ret;
     }
 
@@ -225,7 +235,7 @@ public class VirtuosoExplicitString
 	os.write (bytes.length);
       else
 	os.writelongint (bytes.length);
-	os.write (bytes, 0, bytes.length);
+      os.write (bytes, 0, bytes.length);
     }
 
   public String toString ()

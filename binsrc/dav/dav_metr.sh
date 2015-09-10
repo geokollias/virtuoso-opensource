@@ -28,7 +28,6 @@ LANG=C
 LC_ALL=POSIX
 export LANG LC_ALL
 
-
 # WebDAV test parameters
 USR=user_
 PWD=pass_

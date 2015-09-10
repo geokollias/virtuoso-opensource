@@ -205,10 +205,7 @@ create function "S3_DAV_DELETE" (
     if (DAV_HIDE_ERROR (id_acl) is not null)
       DB.DBA.S3__deleteObject (detcol_id, id_acl, 'R');
   }
-  connection_set ('dav_store', 1);
-  if (what = 'R')
-    DB.DBA.DAV_DET_RDF_DELETE (DB.DBA.S3__detName (), detcol_id, id, what);
-
+  DB.DBA.DAV_DET_RDF_DELETE (DB.DBA.S3__detName (), detcol_id, id, what);
   retValue := DAV_DELETE_INT (path, 1, null, null, 0, 0);
 
 _exit:;
@@ -234,7 +231,7 @@ create function "S3_DAV_RES_UPLOAD" (
 {
   -- dbg_obj_princ ('S3_DAV_RES_UPLOAD (', detcol_id, path_parts, ', [content], ', type, permissions, uid, gid, auth_uid, ')');
   declare ouid, ogid integer;
-  declare name, path, oPath, rdf_graph varchar;
+  declare name, path, oPath varchar;
   declare oldID, oldContent any;
   declare retValue, result, save, oEntry any;
   declare exit handler for sqlstate '*'
@@ -270,9 +267,9 @@ create function "S3_DAV_RES_UPLOAD" (
   else
   {
     commit work;
-    rdf_graph := DB.DBA.S3__paramGet (detcol_id, 'C', 'graph', 0);
-    if (not DB.DBA.is_empty_or_null (rdf_graph))
-      DB.DBA.DAV_DET_RDF (DB.DBA.S3__detName (), detcol_id, retValue, 'R');
+
+    -- RDF Data
+    DB.DBA.DAV_DET_RDF (DB.DBA.S3__detName (), detcol_id, retValue, 'R');
 
     DB.DBA.S3__paramSet (retValue, 'R', 'virt:DETCOL_ID', cast (detcol_id as varchar), 0, 0);
     retValue := vector (DB.DBA.S3__detName (), detcol_id, retValue, 'R');
@@ -903,13 +900,8 @@ create function "S3_CONFIGURE" (
   syncEnabled := get_keyword ('syncEnabled', params, 'off');
   DB.DBA.S3__paramSet (id, 'C', 'syncEnabled',    syncEnabled, 0);
 
-  -- Graph
-  DB.DBA.S3__paramSet (id, 'C', 'graph',          get_keyword ('graph', params), 0);
-
-  -- Sponger
-  DB.DBA.S3__paramSet (id, 'C', 'sponger',        get_keyword ('sponger', params), 0);
-  DB.DBA.S3__paramSet (id, 'C', 'cartridges',     get_keyword ('cartridges', params), 0);
-  DB.DBA.S3__paramSet (id, 'C', 'metaCartridges', get_keyword ('metaCartridges', params), 0);
+  -- RDF Graph & Sponger params
+  DB.DBA.DAV_DET_RDF_PARAMS_SET ('S3', id, params);
 
   -- Access params
   DB.DBA.S3__paramSet (id, 'C', 'BucketName',     get_keyword ('BucketName', params), 0);
@@ -1078,8 +1070,7 @@ create function DB.DBA.S3__params (
     'BucketName',     DB.DBA.S3__paramGet (colId, 'C', 'BucketName',  0),
     'AccessKeyID',    DB.DBA.S3__paramGet (colId, 'C', 'AccessKeyID', 0, 1, 0),
     'SecretKey',      DB.DBA.S3__paramGet (colId, 'C', 'SecretKey',   0, 1, 0),
-    'path',           DB.DBA.S3__paramGet (colId, 'C', 'path', 0),
-    'graph',          DB.DBA.S3__paramGet (colId, 'C', 'graph', 0)
+    'path',           DB.DBA.S3__paramGet (colId, 'C', 'path', 0)
   );
   return params;
 }
@@ -1407,8 +1398,7 @@ create function DB.DBA.S3__load (
             }
           }
         }
-        if (davItem[1] = 'R')
-          DB.DBA.DAV_DET_RDF_DELETE (DB.DBA.S3__detName (), detcol_id, davItem[4], davItem[1]);
+        DB.DBA.DAV_DET_RDF_DELETE (DB.DBA.S3__detName (), detcol_id, davItem[4], davItem[1]);
 
         connection_set ('dav_store', 1);
         DAV_DELETE_INT (davItem[0], 1, null, null, 0, 0);
@@ -1519,7 +1509,7 @@ create function DB.DBA.S3__listBuckets (
   declare xt, xtItems, buckets any;
 
   path := '/';
-  dateUTC := date_rfc1123 (now());
+  dateUTC := date_rfc1123 (curdatetime_tz ());
 
   commit work;
   reqHeader := DB.DBA.S3__makeAWSHeader (params, 'GET', null, null, dateUTC, null, null, path);
@@ -1580,7 +1570,7 @@ create function DB.DBA.S3__listBucket (
 
   bucket := '/' || DB.DBA.S3__bucketFromUrl (url) || '/';
   bucketPath := DB.DBA.S3__pathFromUrl (url);
-  dateUTC := date_rfc1123 (now());
+  dateUTC := date_rfc1123 (curdatetime_tz ());
 
   commit work;
   reqHeader := DB.DBA.S3__makeAWSHeader (params, 'GET', null, null, dateUTC, null, null, bucket);
@@ -1675,7 +1665,7 @@ create function DB.DBA.S3__putObject (
   declare id, davEntry any;
 
   params := DB.DBA.S3__params (detcol_id);
-  dateUTC := date_rfc1123 (now());
+  dateUTC := date_rfc1123 (curdatetime_tz ());
   s3Path := DB.DBA.S3__parts2path (get_keyword ('BucketName', params), get_keyword ('path', params), path_parts, what);
 
   workPath := DB.DBA.S3__encode (s3Path);
@@ -1757,7 +1747,7 @@ create function DB.DBA.S3__headObject (
   if (isnull (params))
     params := DB.DBA.S3__params (detcol_id);
 
-  dateUTC := date_rfc1123 (now());
+  dateUTC := date_rfc1123 (curdatetime_tz ());
   s3Path := DB.DBA.S3__parts2path (get_keyword ('BucketName', params), get_keyword ('path', params), path_parts, what);
 
   workPath := DB.DBA.S3__encode (s3Path);
@@ -1895,7 +1885,7 @@ create function DB.DBA.S3__copySingleObject (
   if (isnull (params))
     params := DB.DBA.S3__params (detcol_id);
 
-  dateUTC := date_rfc1123 (now());
+  dateUTC := date_rfc1123 (curdatetime_tz ());
   s3Path := DB.DBA.S3__parts2path (get_keyword ('BucketName', params), get_keyword ('path', params), path_parts, what);
 
   dstPath := DB.DBA.S3__encode (s3Path);
@@ -2017,7 +2007,7 @@ create function DB.DBA.S3__deleteObject (
   declare params any;
 
   params := DB.DBA.S3__params (detcol_id);
-  dateUTC := date_rfc1123 (now());
+  dateUTC := date_rfc1123 (curdatetime_tz ());
   s3Path := DB.DBA.S3__paramGet (id, what, 'path', 0);
 
   N := 0;
@@ -2155,7 +2145,7 @@ create function DB.DBA.S3__downloads_aq (
       goto _continue;
 
     path := DB.DBA.S3__encode (listID);
-    dateUTC := date_rfc1123 (now());
+    dateUTC := date_rfc1123 (curdatetime_tz ());
 
     commit work;
     reqHeader := DB.DBA.S3__makeAWSHeader (params, 'GET', null, null, dateUTC, null, null, path);

@@ -5,7 +5,7 @@
 #  This file is part of the OpenLink Software Virtuoso Open-Source (VOS)
 #  project.
 #
-#  Copyright (C) 1998-2014 OpenLink Software
+#  Copyright (C) 1998-2015 OpenLink Software
 #
 #  This project is free software; you can redistribute it and/or modify it
 #  under the terms of the GNU General Public License as published by the
@@ -21,10 +21,18 @@
 #  51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
-CLASSPATH=.
-CLASSPATHSSL=.
-JAVA=$JDK4/java
-export JAVA CLASSPATH CLASSPATHSSL
+JAVA_HOME=$JDK4
+CLASSPATH=$JAVA_HOME/lib/jre/rt.jar
+CLASSPATHSSL=$JAVA_HOME/lib/jre/rt.jar
+export JAVA_HOME CLASSPATH CLASSPATHSSL
+
+MACOSX=`grep Darwin ../../Makeconfig`
+if [ z != "z$MACOSX" ]
+then
+    JAVA=$JAVA_HOME/Commands/java
+else
+    JAVA=$JAVA_HOME/bin/java
+fi
 
 echo "............. Test the JDBC 4.0 driver without SSL"
 $JAVA -classpath $CLASSPATH:virtjdbc4ssl.jar:testsuite4.jar testsuite.TestClean $1

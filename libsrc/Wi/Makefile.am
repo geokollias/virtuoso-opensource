@@ -639,6 +639,7 @@ SQL_FILES_AUTO		= \
 SQL_FILES_DAV		= \
 	$(top_srcdir)/binsrc/dav/dav.sql \
 	$(top_srcdir)/binsrc/dav/dav_api.sql \
+	$(top_srcdir)/binsrc/dav/dav_det.sql \
 	$(top_srcdir)/binsrc/dav/dav_meta.sql \
 	$(top_srcdir)/binsrc/dav/dav_acct.sql \
 	$(top_srcdir)/binsrc/dav/dav_rdf_quad.sql \
@@ -650,6 +651,7 @@ SQL_FILES_DAV		= \
 	$(top_srcdir)/binsrc/dav/uriqa.sql \
 	$(top_srcdir)/binsrc/dav/DET_CatFilter.sql \
 	$(top_srcdir)/binsrc/dav/DET_HostFs.sql \
+	$(top_srcdir)/binsrc/dav/DET_IMAP.sql \
 	$(top_srcdir)/binsrc/dav/DET_ResFilter.sql \
 	$(top_srcdir)/binsrc/dav/DET_PropFilter.sql \
 	$(top_srcdir)/binsrc/dav/DET_RDFData.sql \

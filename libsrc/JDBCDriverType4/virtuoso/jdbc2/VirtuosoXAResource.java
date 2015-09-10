@@ -1,10 +1,9 @@
 /*
- *  $Id$
  *
  *  This file is part of the OpenLink Software Virtuoso Open-Source (VOS)
  *  project.
  *
- *  Copyright (C) 1998-2014 OpenLink Software
+ *  Copyright (C) 1998-2015 OpenLink Software
  *
  *  This project is free software; you can redistribute it and/or modify it
  *  under the terms of the GNU General Public License as published by the
@@ -59,11 +58,7 @@ public class VirtuosoXAResource implements XAResource
         this.manager = XAResourceManager.getManager(server, port);
      if (VirtuosoFuture.rpc_log != null)
        {
-	 synchronized (VirtuosoFuture.rpc_log)
-	   {
 	     VirtuosoFuture.rpc_log.println ("new VirtuosoXAResource (+ con=" + vConnection.hashCode() + ") :" + hashCode() + ")");
-	     VirtuosoFuture.rpc_log.flush();
-	   }
        }
     }
 
@@ -72,11 +67,7 @@ public class VirtuosoXAResource implements XAResource
     {
      if (VirtuosoFuture.rpc_log != null)
        {
-	 synchronized (VirtuosoFuture.rpc_log)
-	   {
 	     VirtuosoFuture.rpc_log.println ("VirtuosoXAResource.reset_XA () :" + hashCode());
-	     VirtuosoFuture.rpc_log.flush();
-	   }
        }
       if (vConnection == null)
         return;
@@ -86,17 +77,14 @@ public class VirtuosoXAResource implements XAResource
           end(r_currentXid, XAResource.TMFAIL);
         }
         catch (Exception e) {}
+      vConnection  = null;
     }
 
 
     public int getTransactionTimeout() throws XAException {
      if (VirtuosoFuture.rpc_log != null)
        {
-	 synchronized (VirtuosoFuture.rpc_log)
-	   {
 	     VirtuosoFuture.rpc_log.println ("VirtuosoXAResource.getTransactionTimeout () ret " + txn_timeout + " :" + hashCode() + ")");
-	     VirtuosoFuture.rpc_log.flush();
-	   }
        }
         return txn_timeout;
     }
@@ -105,11 +93,7 @@ public class VirtuosoXAResource implements XAResource
     public boolean setTransactionTimeout(int seconds) throws XAException {
      if (VirtuosoFuture.rpc_log != null)
        {
-	 synchronized (VirtuosoFuture.rpc_log)
-	   {
 	     VirtuosoFuture.rpc_log.println ("VirtuosoXAResource.setTransactionTimeout (" + seconds + ") :" + hashCode() + ")");
-	     VirtuosoFuture.rpc_log.flush();
-	   }
        }
         if (seconds < 0) {
             XAException xaex = new XAException("Invalid number of seconds : " + seconds);
@@ -132,11 +116,7 @@ public class VirtuosoXAResource implements XAResource
 	boolean ret;
      if (VirtuosoFuture.rpc_log != null)
        {
-	 synchronized (VirtuosoFuture.rpc_log)
-	   {
 	     VirtuosoFuture.rpc_log.println ("VirtuosoXAResource.isSameRM (res=" + xaResource.hashCode() + ") :" + hashCode() + ")");
-	     VirtuosoFuture.rpc_log.flush();
-	   }
        }
         if (xaResource == null || !(xaResource instanceof VirtuosoXAResource))
             ret = false;
@@ -154,11 +134,7 @@ public class VirtuosoXAResource implements XAResource
     public void start(Xid xid, int param) throws XAException {
      if (VirtuosoFuture.rpc_log != null)
        {
-	 synchronized (VirtuosoFuture.rpc_log)
-	   {
 	     VirtuosoFuture.rpc_log.println ("VirtuosoXAResource.start (xid=" + xid.hashCode() + ", param=" + param + ") :" + hashCode() + ")");
-	     VirtuosoFuture.rpc_log.flush();
-	   }
        }
         if (xid == null) {
             throw new XAException(XAException.XAER_INVAL);
@@ -215,11 +191,7 @@ public class VirtuosoXAResource implements XAResource
      int nstatus = XATransaction.IDLE;
      if (VirtuosoFuture.rpc_log != null)
        {
-	 synchronized (VirtuosoFuture.rpc_log)
-	   {
 	     VirtuosoFuture.rpc_log.println ("VirtuosoXAResource.end (xid=" + xid.hashCode() + ", param=" + param + ") :" + hashCode() + ")");
-	     VirtuosoFuture.rpc_log.flush();
-	   }
        }
         if (xid == null)
             throw new XAException(XAException.XAER_INVAL);
@@ -262,11 +234,7 @@ public class VirtuosoXAResource implements XAResource
     public int prepare(Xid xid) throws XAException {
      if (VirtuosoFuture.rpc_log != null)
        {
-	 synchronized (VirtuosoFuture.rpc_log)
-	   {
 	     VirtuosoFuture.rpc_log.println ("VirtuosoXAResource.prepare (xid=" + xid.hashCode() + ") :" + hashCode() + ")");
-	     VirtuosoFuture.rpc_log.flush();
-	   }
        }
         if (xid == null)
             throw new XAException(XAException.XAER_INVAL);
@@ -290,11 +258,7 @@ public class VirtuosoXAResource implements XAResource
     public void commit(Xid xid, boolean onePhase) throws XAException {
      if (VirtuosoFuture.rpc_log != null)
        {
-	 synchronized (VirtuosoFuture.rpc_log)
-	   {
 	     VirtuosoFuture.rpc_log.println ("VirtuosoXAResource.commit (xid=" + xid.hashCode() + ", onePhase=" + onePhase + ") :" + hashCode() + ")");
-	     VirtuosoFuture.rpc_log.flush();
-	   }
        }
         if (xid == null)
             throw new XAException(XAException.XAER_INVAL);
@@ -311,11 +275,7 @@ public class VirtuosoXAResource implements XAResource
     public void rollback(Xid xid) throws XAException {
      if (VirtuosoFuture.rpc_log != null)
        {
-	 synchronized (VirtuosoFuture.rpc_log)
-	   {
 	     VirtuosoFuture.rpc_log.println ("VirtuosoXAResource.rollback (xid=" + xid.hashCode() + ") :" + hashCode() + ")");
-	     VirtuosoFuture.rpc_log.flush();
-	   }
        }
         if (xid == null)
             throw new XAException(XAException.XAER_INVAL);
@@ -332,11 +292,7 @@ public class VirtuosoXAResource implements XAResource
     public Xid[] recover(int param) throws XAException {
      if (VirtuosoFuture.rpc_log != null)
        {
-	 synchronized (VirtuosoFuture.rpc_log)
-	   {
 	     VirtuosoFuture.rpc_log.println ("VirtuosoXAResource.recover (param=" + param + ") :" + hashCode() + ")");
-	     VirtuosoFuture.rpc_log.flush();
-	   }
        }
         if (param != XAResource.TMSTARTRSCAN)
             return new Xid[0];
@@ -371,11 +327,7 @@ public class VirtuosoXAResource implements XAResource
     public void forget(Xid xid) throws XAException {
      if (VirtuosoFuture.rpc_log != null)
        {
-	 synchronized (VirtuosoFuture.rpc_log)
-	   {
 	     VirtuosoFuture.rpc_log.println ("VirtuosoXAResource.forget (xid=" + xid.hashCode() + ") :" + hashCode() + ")");
-	     VirtuosoFuture.rpc_log.flush();
-	   }
        }
         if (xid == null)
             throw new XAException(XAException.XAER_INVAL);
@@ -386,11 +338,7 @@ public class VirtuosoXAResource implements XAResource
     private void enterGlobalTransaction(VirtuosoConnection connection) {
      if (VirtuosoFuture.rpc_log != null)
        {
-	 synchronized (VirtuosoFuture.rpc_log)
-	   {
 	     VirtuosoFuture.rpc_log.println ("VirtuosoXAResource.enterGlobalTransaction (conn=" + connection.hashCode() + ") :" + hashCode() + ")");
-	     VirtuosoFuture.rpc_log.flush();
-	   }
        }
         if (connection == null)
             return;
@@ -406,11 +354,7 @@ public class VirtuosoXAResource implements XAResource
     private void leaveGlobalTransaction(VirtuosoConnection connection) {
      if (VirtuosoFuture.rpc_log != null)
        {
-	 synchronized (VirtuosoFuture.rpc_log)
-	   {
 	     VirtuosoFuture.rpc_log.println ("VirtuosoXAResource.leaveGlobalTransaction (conn=" + connection.hashCode() + ") :" + hashCode() + ")");
-	     VirtuosoFuture.rpc_log.flush();
-	   }
        }
         if (connection == null)
             return;
@@ -451,7 +395,7 @@ public class VirtuosoXAResource implements XAResource
                         VirtuosoFuture.tp_transaction,
                         args,
                         connection.timeout);
-                openlink.util.Vector res = future.nextResult();
+                openlink.util.Vector res = future.nextResult(false);
                 Object err = (res == null ? null : res.firstElement());
                 if (err instanceof openlink.util.Vector) {
                     throw new XAException();

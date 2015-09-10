@@ -1,10 +1,9 @@
 /*
- *  $Id$
  *
  *  This file is part of the OpenLink Software Virtuoso Open-Source (VOS)
  *  project.
  *
- *  Copyright (C) 1998-2014 OpenLink Software
+ *  Copyright (C) 1998-2015 OpenLink Software
  *
  *  This project is free software; you can redistribute it and/or modify it
  *  under the terms of the GNU General Public License as published by the
@@ -150,7 +149,7 @@ class VirtuosoInputStream extends BufferedInputStream
     * (read incomplete).
     * @exception  virtuoso.jdbc2.VirtuosoException   An internal error occurred.
     */
-   protected Object read_object() throws IOException, EOFException, VirtuosoException
+   protected Object read_object(boolean sparql_executed) throws IOException, EOFException, VirtuosoException
    {
      // Read and treat the tag
      int tag = read();
@@ -176,7 +175,7 @@ class VirtuosoInputStream extends BufferedInputStream
                      int n = readint();
                      Object[] array = new Object[(int)n];
                      for(int i = 0;i < n;i++)
-                       array[i] = read_object();
+                       array[i] = read_object(sparql_executed);
 		     res = new openlink.util.Vector(array);
                      //System.out.print("DV_ARRAY_OF_POINTER: ");
 		     //System.out.println (res.toString());
@@ -284,7 +283,7 @@ class VirtuosoInputStream extends BufferedInputStream
 	     case VirtuosoTypes.DV_BOX_FLAGS:
 		   {
                      int flags = readlongint();
-		     Object str = read_object ();
+		     Object str = read_object (sparql_executed);
                      res = new VirtuosoExtendedString ((String) str, flags);
                      //System.out.print("DV_BOX_FLAGS: ");
 		     //System.out.println (res.toString());
@@ -368,7 +367,7 @@ class VirtuosoInputStream extends BufferedInputStream
              case VirtuosoTypes.DV_DATE:
                    {
                      //System.out.println("DV_DATE");
-                     res = readDate(tag);
+                     res = readDate(tag, sparql_executed);
                      //System.out.print("DV_DATE: ");
 		     //System.out.println (res.toString());
                      return res;
@@ -377,7 +376,7 @@ class VirtuosoInputStream extends BufferedInputStream
              case VirtuosoTypes.DV_BLOB_WIDE_HANDLE:
                    {
                      //System.out.println("DV_BLOB_HANDLE dtp=" + tag);
-                     res = new VirtuosoBlob(connection,readlongint(),readlongint(),readlongint(),readlongint(),readlongint(),readlongint(), readlongint(), read_object(), tag);
+                     res = new VirtuosoBlob(connection,readlongint(),readlongint(),readlongint(),readlongint(),readlongint(),readlongint(), readlongint(), read_object(sparql_executed), tag);
                      //System.out.print("DV_BLOB_HANDLE: ");
 		     //System.out.println (res.toString());
                      return res;
@@ -400,7 +399,7 @@ class VirtuosoInputStream extends BufferedInputStream
 	     case VirtuosoTypes.DV_OBJECT:
 		   {
                      //System.out.println("DV_NUMERIC");
-		     res = readObject();
+		     res = readObject(sparql_executed);
                      //System.out.print("DV_NUMERIC: ");
 		     //System.out.println (res.toString());
 		     return res;
@@ -450,7 +449,7 @@ class VirtuosoInputStream extends BufferedInputStream
                    }
 	     case VirtuosoTypes.DV_RDF:
 		   {
-		     res = readRdfBox ();
+		     res = readRdfBox (sparql_executed);
                      return res;
                    }
              default:
@@ -463,14 +462,10 @@ class VirtuosoInputStream extends BufferedInputStream
        {
          if (VirtuosoFuture.rpc_log != null)
            {
-             synchronized (VirtuosoFuture.rpc_log)
-               {
-                 VirtuosoFuture.rpc_log.println ("(conn " + connection.hashCode() + ") **** runtime " +
+                 VirtuosoFuture.rpc_log.println ("  **(conn " + connection.hashCode() + ") **** runtime " +
                      e.getClass().getName() + " encountered while reading tag " + tag);
                  e.printStackTrace(VirtuosoFuture.rpc_log);
-               }
            }
-//         throw new Error (e.getClass().getName() + ":" + e.getMessage());
            throw new VirtuosoException(e.getClass().getName() + ":" + e.getMessage(),VirtuosoException.IOERROR);
 
        }
@@ -479,6 +474,7 @@ class VirtuosoInputStream extends BufferedInputStream
    private final String convByte2UTF(byte[] data) throws IOException {
         int utflen = data.length;
         char[] c_arr = new char[utflen];
+        char bad_char = '?';
 
         int c, c2, c3;
         int count = 0;
@@ -506,10 +502,14 @@ class VirtuosoInputStream extends BufferedInputStream
                         c_arr[ch_count++]=(char)c;
                     } else {
                         c2 = (int) data[count-1];
+/***
                         if ((c2 & 0xC0) != 0x80)
-                            throw new UTFDataFormatException(
-                                "malformed input around byte " + count);
-                        c_arr[ch_count++]=(char)(((c & 0x1F) << 6) | (c2 & 0x3F));
+                            throw new UTFDataFormatException("malformed input around byte " + count);
+***/
+                        if ((c2 & 0xC0) != 0x80)
+                          c_arr[ch_count++] = bad_char;
+                        else
+                          c_arr[ch_count++] = (char)(((c & 0x1F) << 6) | (c2 & 0x3F));
                     }
                     break;
                 case 14:
@@ -520,17 +520,24 @@ class VirtuosoInputStream extends BufferedInputStream
                     } else {
                         c2 = (int) data[count-2];
                         c3 = (int) data[count-1];
+/***
                         if (((c2 & 0xC0) != 0x80) || ((c3 & 0xC0) != 0x80))
-                            throw new UTFDataFormatException(
-                                "malformed input around byte " + (count-1));
-                        c_arr[ch_count++]=(char)(((c & 0x0F) << 12) |
+                            throw new UTFDataFormatException("malformed input around byte " + (count-1));
+***/
+                        if (((c2 & 0xC0) != 0x80) || ((c3 & 0xC0) != 0x80))
+                          c_arr[ch_count++] = bad_char;
+                        else
+                          c_arr[ch_count++] = (char)(((c & 0x0F) << 12) |
                                                     ((c2 & 0x3F) << 6)  |
                                                     ((c3 & 0x3F) << 0));
                     }
                     break;
                 default:
                     /* 10xx xxxx,  1111 xxxx */
+                    c_arr[ch_count++] = bad_char;
+/**
                     throw new UTFDataFormatException("malformed input around byte " + count);
+**/
             }
         }
         // The number of chars produced may be less than utflen
@@ -710,23 +717,59 @@ class VirtuosoInputStream extends BufferedInputStream
       return bd;
    }
 
-   private VirtuosoRdfBox readRdfBox () throws IOException, VirtuosoException
+   
+   private VirtuosoRdfBox readRdfBox (boolean sparql_executed) throws IOException, VirtuosoException
    {
       int flags = read ();
-      Object box;
-      short type;
-      short lang;
+      Object box = null;
+      short type = VirtuosoRdfBox.RDF_BOX_DEFAULT_TYPE;
+      short lang = VirtuosoRdfBox.RDF_BOX_DEFAULT_LANG;
       boolean is_complete = false;
       long ro_id = 0L;
+      boolean id_only = false;
       VirtuosoRdfBox rb;
 
       //System.out.println ("flags:" + flags);
-      if (0 != (flags & VirtuosoRdfBox.RBS_CHKSUM))
+      if (0 != (flags & VirtuosoRdfBox.RBS_EXT_TYPE)) 
       {
-	throw new VirtuosoException ("Invalid rdf box received", "42000", VirtuosoException.MISCERROR);
-      }
-      if (0 != (flags & VirtuosoRdfBox.RBS_SKIP_DTP))
-      {
+        int ID_ONLY = VirtuosoRdfBox.RBS_HAS_LANG | VirtuosoRdfBox.RBS_HAS_TYPE;
+        if ((flags & ID_ONLY) == ID_ONLY) {
+            id_only = true;
+        } else if ((flags & VirtuosoRdfBox.RBS_HAS_LANG)!=0){
+            lang = readshort();
+        } else {
+            type = readshort();
+        }
+
+        if (0 != (flags & VirtuosoRdfBox.RBS_64))
+            ro_id = readlong();
+        else
+            ro_id = readlongint();
+
+        if (0 != (flags & VirtuosoRdfBox.RBS_COMPLETE)){
+            is_complete = true;
+            box = read_object (sparql_executed);
+            if (type == VirtuosoRdfBox.RDF_BOX_GEO_TYPE) {
+                if (box instanceof String && ((String)box).length()>5  && ((String)box).substring(0,5).equalsIgnoreCase("point")) {
+                    String data = ((String)box).substring(6);
+                    try {
+                        box = new VirtuosoPoint(data.substring(0, data.length()-1));
+                    } catch (Exception e){
+                        throw new VirtuosoException(e, VirtuosoException.IOERROR);
+                    }
+                }
+            }
+        }
+
+      } else {
+
+        if (0 != (flags & VirtuosoRdfBox.RBS_CHKSUM))
+        {
+	  throw new VirtuosoException ("Invalid rdf box received", "42000", VirtuosoException.MISCERROR);
+        }
+
+        if (0 != (flags & VirtuosoRdfBox.RBS_SKIP_DTP))
+        {
 	  int n = readshortint();
 	  byte[] array = new byte[n];
 	  for(int i = read(array,0,(int)n) ; i != n ; i+=read(array,i,(int)n-i));
@@ -735,37 +778,40 @@ class VirtuosoInputStream extends BufferedInputStream
 	  else
 	      box = convByte2Ascii(array);
 
+        }
+        else
+          box = read_object (sparql_executed);
+      
+        if (0 != (flags & VirtuosoRdfBox.RBS_OUTLINED))
+        {
+	  if (0 != (flags & VirtuosoRdfBox.RBS_64))
+	    ro_id = readlong();
+	  else
+	    ro_id = readlongint ();
+        }
+
+        if (0 != (flags & VirtuosoRdfBox.RBS_COMPLETE))
+	  is_complete = true;
+
+        if (0 != (flags & VirtuosoRdfBox.RBS_HAS_TYPE))
+	  type = readshort ();
+        else
+	  type = VirtuosoRdfBox.RDF_BOX_DEFAULT_TYPE;
+
+        if (0 != (flags & VirtuosoRdfBox.RBS_HAS_LANG))
+	  lang = readshort ();
+        else
+	  lang = VirtuosoRdfBox.RDF_BOX_DEFAULT_LANG;
       }
-      else
-      box = read_object ();
-      if (0 != (flags & VirtuosoRdfBox.RBS_OUTLINED))
-      {
-	if (0 != (flags & VirtuosoRdfBox.RBS_64))
-	  ro_id = readlong();
-	else
-	  ro_id = readlongint ();
-      }
 
-      if (0 != (flags & VirtuosoRdfBox.RBS_COMPLETE))
-	is_complete = true;
-
-      if (0 != (flags & VirtuosoRdfBox.RBS_HAS_TYPE))
-	type = readshort ();
-      else
-	type = VirtuosoRdfBox.RDF_BOX_DEFAULT_TYPE;
-
-      if (0 != (flags & VirtuosoRdfBox.RBS_HAS_LANG))
-	lang = readshort ();
-      else
-	lang = VirtuosoRdfBox.RDF_BOX_DEFAULT_LANG;
-      rb = new VirtuosoRdfBox (this.connection, box, is_complete, type, lang, ro_id);
+      rb = new VirtuosoRdfBox(this.connection, box, is_complete, id_only, type, lang, ro_id);
       return rb;
    }
 
-   private Object readObject() throws IOException, VirtuosoException
+   private Object readObject(boolean sparql_executed) throws IOException, VirtuosoException
    {
      int obj_id = readlongint();
-     Object obj = read_object ();
+     Object obj = read_object (sparql_executed);
      if (obj instanceof String)
        {
 	 try
@@ -788,7 +834,7 @@ class VirtuosoInputStream extends BufferedInputStream
     * @return Object   The date or a time.
     * @exception  java.io.IOException  An IO error occurred on the stream.
     */
-   private Object readDate(int tag) throws IOException
+   private Object readDate(int tag, boolean sparql_executed) throws IOException
    {
       java.util.Calendar cal_dat = new java.util.GregorianCalendar ();
       int day = read() << 16 | read() << 8 | read();
@@ -804,9 +850,6 @@ class VirtuosoInputStream extends BufferedInputStream
       int tz = (((int)(tz_bytes[0] & 0x07)) << 8) | tz_bytes[1];
       int type = tz_bytes[0] >> 5;
 
-      //System.err.println ("type =" + type);
-      //System.err.println ("tz_bytes[0] =" + (byte) tz_bytes[0]);
-      //System.err.println ("tz_bytes[1] =" + (byte) tz_bytes[1]);
       if ((tz_bytes[0] & 0x4) != 0)
         {
           tz_interm = tz_bytes[0] & 0x07;
@@ -814,59 +857,75 @@ class VirtuosoInputStream extends BufferedInputStream
         }
       else
         tz_interm = tz_bytes[0] & 0x03;
-      //System.err.println ("tz_interm =" + tz_interm);
-      //System.err.println ("tz_bytes[1] =" + tz_bytes[1]);
-      tz = ((int)(tz_interm << 8)) | tz_bytes[1];
 
-      //System.err.println ("tag=" + tag + " day=" + day + " hour=" + hour + " minute=" + minute +
-      //	  " second=" + second + " fraction=" + fraction + " tz=" + tz);
+      tz = ((int)(tz_interm << 8)) | tz_bytes[1];
 
       if (tz > 32767)
 	tz -= 65536;
 
+       if (sparql_executed)
+       {
+           java.util.Calendar cal_gmt = new java.util.GregorianCalendar(TimeZone.getTimeZone("GMT"));
 
-      if(tz != 0)
-	{
-	  int sec = time_to_sec (0, hour, minute, second);
-	  sec += 60 * tz;
-	  if (sec < 0)
-	    {
-	      day = day - (1 + ((-sec) / SPERDAY));
+           num2date(day, cal_gmt);
+           if (type!=VirtuosoTypes.DT_TYPE_DATE) 
+             {
+               cal_gmt.set (Calendar.HOUR_OF_DAY, hour);
+               cal_gmt.set (Calendar.MINUTE, minute);
+               cal_gmt.set (Calendar.SECOND, second);
+               cal_gmt.set (Calendar.MILLISECOND, fraction/1000);
+             }
+           // Convert to Local GMT
+           cal_dat.setTime(cal_gmt.getTime());
+       }
+       else
+       {
+           if(tz != 0)
+           {
+               int sec = time_to_sec (0, hour, minute, second);
+               sec += 60 * tz;
+               if (sec < 0)
+               {
+                   day = day - (1 + ((-sec) / SPERDAY));
+                   sec = sec % SPERDAY;
 
-	      sec = sec % SPERDAY;
+                   if (sec == 0)
+                       day++;
 
-	      if (sec == 0)
-		day++;
+                   sec = SPERDAY + sec;
+               }
+               else
+               {
+                   day = day + sec / SPERDAY;
+                   sec = sec % SPERDAY;
+               }
+               int dummy_day = sec / SPERDAY;
+               hour = (sec - (dummy_day * SPERDAY)) / (60 * 60);
+               minute = (sec - (dummy_day * SPERDAY) - (hour * 60 * 60)) / 60;
+               second = sec % 60;
+           }
 
-	      sec = SPERDAY + sec;
-	    }
-	  else
-	    {
-	      day = day + sec / SPERDAY;
-	      sec = sec % SPERDAY;
-	    }
-	  int dummy_day = sec / SPERDAY;
-	  hour = (sec - (dummy_day * SPERDAY)) / (60 * 60);
-	  minute = (sec - (dummy_day * SPERDAY) - (hour * 60 * 60)) / 60;
-	  second = sec % 60;
-	}
-      num2date(day, cal_dat);
-      //System.out.println ("Time=" + hour + ":" + minute + "." + second);
-      cal_dat.set (Calendar.HOUR_OF_DAY, hour);
-      cal_dat.set (Calendar.MINUTE, minute);
-      cal_dat.set (Calendar.SECOND, second);
+           num2date(day, cal_dat);
+           if (type!=VirtuosoTypes.DT_TYPE_DATE) 
+             {
+               cal_dat.set (Calendar.HOUR_OF_DAY, hour);
+               cal_dat.set (Calendar.MINUTE, minute);
+               cal_dat.set (Calendar.SECOND, second);
+               cal_dat.set (Calendar.MILLISECOND, fraction/1000);
+             }
+       }
 
       switch(type)
       {
          case VirtuosoTypes.DT_TYPE_DATE:
-            return new java.sql.Date(cal_dat.getTime().getTime());
+            return new VirtuosoDate(cal_dat.getTime().getTime(), tz, sparql_executed);
          case VirtuosoTypes.DT_TYPE_TIME:
-            return new java.sql.Time(cal_dat.getTime().getTime());
+            return new VirtuosoTime(cal_dat.getTime().getTime(), tz, sparql_executed);
          default:
             {
-               Timestamp _return = new java.sql.Timestamp(cal_dat.getTime().getTime());
-               _return.setNanos(fraction * 1000);
-               return _return;
+               Timestamp ts = new VirtuosoTimestamp(cal_dat.getTime().getTime(), tz, sparql_executed);
+               ts.setNanos(fraction * 1000);
+               return ts;
             }
       }
    }
@@ -880,6 +939,13 @@ class VirtuosoInputStream extends BufferedInputStream
    {
       double x;
       int i, year;
+      boolean sign = false;
+
+      if ((julian_days & 0x800000)!=0){
+        sign = true;
+        julian_days = ((~julian_days)+1)& 0xFFFFFF;
+      }
+
       if(julian_days > 577737)
          julian_days += 10;
       x = ((double)julian_days) / 365.25;
@@ -913,6 +979,8 @@ class VirtuosoInputStream extends BufferedInputStream
 	  && (year % 100) == 0
 	  && (i < ((year / 100) - (1582 / 100)) - ((year / 400) - (1582 / 400))))
 	i++;
+      if (sign)
+        date.set(Calendar.ERA, GregorianCalendar.BC);
       date.set (Calendar.YEAR, year);
       //System.out.println ("Year=" + year);
       yearday2date(i,(VirtuosoOutputStream.days_in_february(year) == 29),date);

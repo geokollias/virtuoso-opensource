@@ -29,7 +29,6 @@ LANG=C
 LC_ALL=POSIX
 export LANG LC_ALL
 
-
 USR=dav
 PWD=dav
 URLPUT="../urlsimu -u $USR -p $PWD "

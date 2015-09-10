@@ -1,10 +1,9 @@
 /*
- *  $Id$
  *
  *  This file is part of the OpenLink Software Virtuoso Open-Source (VOS)
  *  project.
  *
- *  Copyright (C) 1998-2014 OpenLink Software
+ *  Copyright (C) 1998-2015 OpenLink Software
  *
  *  This project is free software; you can redistribute it and/or modify it
  *  under the terms of the GNU General Public License as published by the
@@ -37,11 +36,7 @@ public class VirtuosoXADataSource
       dataSourceName = "VirtuosoXADataSource";
       if (VirtuosoFuture.rpc_log != null)
        {
-	 synchronized (VirtuosoFuture.rpc_log)
-	   {
 	     VirtuosoFuture.rpc_log.println ("new VirtuosoXADataSource () :" + hashCode());
-	     VirtuosoFuture.rpc_log.flush();
-	   }
        }
     }
 
@@ -65,11 +60,7 @@ public class VirtuosoXADataSource
     {
       if (VirtuosoFuture.rpc_log != null)
        {
-	 synchronized (VirtuosoFuture.rpc_log)
-	   {
 	     VirtuosoFuture.rpc_log.println ("VirtuosoXADataSource.getXAConnection () :" + hashCode());
-	     VirtuosoFuture.rpc_log.flush();
-	   }
        }
       return getXAConnection(null, null);
     }
@@ -79,11 +70,7 @@ public class VirtuosoXADataSource
     {
       if (VirtuosoFuture.rpc_log != null)
        {
-	 synchronized (VirtuosoFuture.rpc_log)
-	   {
 	     VirtuosoFuture.rpc_log.println ("VirtuosoXADataSource.getXAConnection (user=" + user + ", pass=" + password + ") :" + hashCode());
-	     VirtuosoFuture.rpc_log.flush();
-	   }
        }
       return new VirtuosoXAConnection((VirtuosoPooledConnection)getPooledConnection(user, password), getServerName(), getPortNumber());
     }
