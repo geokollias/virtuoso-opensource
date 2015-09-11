@@ -2754,6 +2754,8 @@ ks_cast_nullable (key_source_t * ks, int n_params, int nth)
   if (!ks->ks_cast_null)
     ks->ks_cast_null = dk_alloc_box_zero (n_params, DV_BIN);
   ks->ks_cast_null[nth] = 1;
+  if (ks->ks_vec_cast && ks->ks_vec_cast[nth])
+    ks->ks_vec_cast[nth]->ssl_sqt.sqt_non_null = 0;
 }
 
 #define QF_CHECK_OUTER \
@@ -2762,6 +2764,52 @@ ks_cast_nullable (key_source_t * ks, int n_params, int nth)
   else if (IS_QN (qn, outer_seq_end_input)) \
     sc->sc_qf_in_outer = 0;
 
+void
+sqlg_check_ks_nulls (sql_comp_t * sc, key_source_t * ks, state_slot_t * ssl)
+{
+  int inx, n_pars = BOX_ELEMENTS_0 (ks->ks_vec_cast);
+  state_slot_t *shadow;
+  if (ssl->ssl_sqt.sqt_non_null)
+    return;
+  shadow = (state_slot_t *) gethash ((void *) (ptrlong) ssl->ssl_index, sc->sc_vec_ssl_shadow);
+  if (!shadow)
+    return;
+  DO_BOX (state_slot_t *, param, inx, ks->ks_vec_cast)
+  {
+    if (param == ssl || param == shadow)
+      ks_cast_nullable (ks, n_pars, inx);
+  }
+  END_DO_BOX;
+}
+
+void
+sqlg_qf_ks_nulls (sql_comp_t * sc, key_source_t * ks)
+{
+  setp_node_t *setp = NULL;
+  data_source_t *qn = sc->sc_vec_first_of_qf;
+  int inx;
+
+  while (NULL != (qn = qn_next (qn)))
+    {
+      if (IS_QN (qn, setp_node_input))
+	{
+	  setp = (setp_node_t *) qn;
+	  break;
+	}
+    }
+  if (!setp || (setp->setp_ha->ha_op != HA_GROUP && setp->setp_ha->ha_op != HA_ORDER))
+    return;
+  DO_BOX (state_slot_t *, ssl, inx, setp->setp_keys_box)
+  {
+    sqlg_check_ks_nulls (sc, ks, ssl);
+  }
+  END_DO_BOX;
+  DO_BOX (state_slot_t *, ssl, inx, setp->setp_dependent_box)
+  {
+    sqlg_check_ks_nulls (sc, ks, ssl);
+  }
+  END_DO_BOX;
+}
 
 void
 sqlg_qf_first_ks (sql_comp_t * sc, query_frag_t * qf)
@@ -2899,6 +2947,8 @@ no_part:
   ks->ks_dc_val_cast = (dc_val_cast_t *) dk_set_to_array (cast_funcs);
   if (ks->ks_cl_local_cast)
     sqlg_ks_subst_local_anyfy (ks);
+  /* look for next group/sorting setp, check if any of ssls are in src or cast and make ks_cast_nulls for it */
+  sqlg_qf_ks_nulls (sc, ks);
   sc->sc_vec_first_of_qf = NULL;
 }
 

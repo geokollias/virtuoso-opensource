@@ -689,6 +689,18 @@ clrg_target_dcs (cl_req_group_t * clrg, cl_op_t * target_clo, int part_cols, sta
       DC_CHECK_LEN (target_dc, target_dc->dc_n_values);
       memcpy (target_dc->dc_values + elt_sz * target_dc->dc_n_values, prev_dc->dc_values + elt_sz * prev_dc->dc_n_values, elt_sz);
       target_dc->dc_n_values++;
+      if (prev_dc->dc_nulls && BIT_IS_SET (prev_dc->dc_nulls, prev_dc->dc_n_values))
+	{
+	  /* clear null flag from prev dc, it may make the next null look like null */
+	  BIT_CLR (prev_dc->dc_nulls, prev_dc->dc_n_values);
+	  dc_set_null (target_dc, target_dc->dc_n_values - 1);
+	}
+      else if (DV_ANY == target_dc->dc_dtp && prev_dc->dc_any_null
+	  && DV_DB_NULL == *((db_buf_t *) target_dc->dc_values)[target_dc->dc_n_values - 1])
+	target_dc->dc_any_null = 1;
+      else if ((DCT_BOXES & target_dc->dc_type) && prev_dc->dc_any_null
+	  && DV_DB_NULL == DV_TYPE_OF (((caddr_t *) target_dc->dc_values)[target_dc->dc_n_values - 1]))
+	target_dc->dc_any_null = 1;
     }
   n_params = BOX_ELEMENTS (target_ssl);
   for (inx = inx; inx < n_params; inx++)

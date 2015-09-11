@@ -749,6 +749,11 @@ jp_add (join_plan_t * jp, df_elt_t * tb_dfe, df_elt_t * pred, int is_join)
 	  for (jinx = 0; jinx < jp->jp_n_joined; jinx++)
 	    if (right_tb == jp->jp_joined[jinx])
 	      goto already_in;
+	  if (!DFE_HAS_OT (right_tb))
+	    {
+	      ps->ps_card = 0.01;
+	      return;
+	    }
 	  jp->jp_joined[jp->jp_n_joined++] = right_tb;
 	already_in:;
 	}
@@ -807,7 +812,7 @@ again:
       }
   }
   END_DO_SET ();
-  if (pred_ot != jp->jp_tb_dfe->_.table.ot->ot_super)
+  if (DFE_HAS_OT (jp->jp_tb_dfe) && pred_ot != jp->jp_tb_dfe->_.table.ot->ot_super)
     {
       /* if can be that a restricting join is imported into a subq from the enclosing.  So then do the preds in the subq plus the preds in the dt where the restriction comes from */
       pred_ot = pred_ot->ot_super;
@@ -1437,6 +1442,8 @@ sqlo_jp_all_joins (sqlo_t * so, dk_set_t * all_jps, int hash_set)
 	      continue;
 	    if (gethash ((void *) joined, visited))
 	      continue;
+	    if (!DFE_HAS_OT (joined))
+	      continue;
 
 	    jp2 = (join_plan_t *) t_alloc (sizeof (join_plan_t));
 	    memzero (jp2, sizeof (join_plan_t));
@@ -1562,7 +1569,10 @@ sqlo_jp_expand (sqlo_t * so, dk_set_t initial)
 	for (jinx = 0; jinx < start_jp->jp_n_joined; jinx++)
 	  {
 	    df_elt_t *joined = start_jp->jp_joined[jinx];
-	    join_plan_t *jp = joined->_.table.ot->ot_jp;
+	    join_plan_t *jp;
+	    if (!DFE_HAS_OT (joined))
+	      continue;
+	    jp = joined->_.table.ot->ot_jp;
 	    if (dk_set_member (so->so_hash_probes, (void *) joined->_.table.ot)
 		&& start_jp->jp_tb_dfe->_.table.ot->ot_super == joined->_.table.ot->ot_super)
 	      continue;		/* do not expand via a direct probe if the direct probe is on the same level */
