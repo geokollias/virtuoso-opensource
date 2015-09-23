@@ -1337,7 +1337,7 @@ sqlo_restr_as_exists (sqlo_t * so, dk_set_t path)
   DO_BOX (join_plan_t *, jp, inx, from)
   {
     df_elt_t *tb_dfe = jp->jp_tb_dfe;
-    caddr_t opts = list (2, OPT_JOIN_RESTR, jp->jp_join_flags);
+    caddr_t opts = t_list (2, OPT_JOIN_RESTR, jp->jp_join_flags);
     from[inx] =
 	t_listst (3, TABLE_REF, t_listst (6, TABLE_DOTTED, tb_dfe->_.table.ot->ot_table->tb_name, tb_dfe->_.table.ot->ot_new_prefix,
 	    NULL, NULL, opts), NULL);

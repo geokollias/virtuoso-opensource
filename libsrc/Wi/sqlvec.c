@@ -58,6 +58,7 @@ void sqlg_vec_cast (sql_comp_t * sc, state_slot_ref_t ** refs, state_slot_t ** c
 int ssl_is_const_card (sql_comp_t * sc, state_slot_t * ssl, sql_type_t * sqt);
 void sqlg_ts_add_copy (sql_comp_t * sc, table_source_t * ts, state_slot_t ** ssls);
 caddr_t box_concat (caddr_t b1, caddr_t b2);
+caddr_t ssl_cast_name (state_slot_t * ssl);
 
 
 
@@ -4070,7 +4071,7 @@ qn_vec_slots (sql_comp_t * sc, data_source_t * qn, dk_hash_t * res, dk_hash_t * 
 	    state_slot_t *sh;
 	    REF_SSL (res, tn->tn_input[inx]);
 	    ref = tn->tn_input[inx];
-	    sh = ssl_new_vec (sc->sc_cc, ref->ssl_name, ref->ssl_dtp);
+	    sh = ssl_new_vec (sc->sc_cc, ssl_cast_name (ref), ref->ssl_dtp);
 	    sh->ssl_column = ssl_base_ssl (ref)->ssl_column;
 	    sh->ssl_sqt.sqt_non_null = ref->ssl_sqt.sqt_non_null;
 	    tn->tn_input_ref[inx] = sh;
@@ -4233,14 +4234,18 @@ qn_vec_slots (sql_comp_t * sc, data_source_t * qn, dk_hash_t * res, dk_hash_t * 
 int
 sp_ssl_count (sql_comp_t * sc, search_spec_t * sp, unsigned char *n_eq, int *cast_changes_card)
 {
-  /* set n_eqs to be the count of leading eqs */
+  /* set n_eqs to be the count of sortable search params.  These are leading eqs and optionally one lower bound if one follows eqs. Should also sort to have increasing lower bound for eq prefix */
   int n = 0, all_eq = 1;
   for (sp = sp; sp; sp = sp->sp_next)
     {
       if (all_eq && sp->sp_min_op != CMP_EQ)
 	{
 	  if (n_eq)
-	    *n_eq = n;
+	    {
+	      *n_eq = n;
+	      if (sp->sp_min_ssl && SSL_CONSTANT != sp->sp_min_ssl->ssl_type && !sp->sp_min_ssl->ssl_qr_global)
+		(*n_eq)++;
+	    }
 	  all_eq = 0;
 	}
       if (sp->sp_min_ssl)

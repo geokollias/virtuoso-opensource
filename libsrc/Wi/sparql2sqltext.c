@@ -122,6 +122,7 @@ rdf_ds_load_all (void)
   qmf->qmfValRange.rvrDatatype = NULL;
   qmf->qmfValRange.rvrLanguage = NULL;
   qmf->qmfValRange.rvrFixedValue = NULL;
+  qmf->qmfValRange.rvrFixedOrigText = NULL;
   qmf->qmfValRange.rvrSprintffs = NULL;
   qmf->qmfValRange.rvrSprintffCount = 0;
   qmf->qmfValRange.rvrIriClasses = NULL;
@@ -171,6 +172,7 @@ rdf_ds_load_all (void)
   qmf->qmfValRange.rvrDatatype = NULL;
   qmf->qmfValRange.rvrLanguage = NULL;
   qmf->qmfValRange.rvrFixedValue = NULL;
+  qmf->qmfValRange.rvrFixedOrigText = NULL;
   qmf->qmfValRange.rvrSprintffs = NULL;
   qmf->qmfValRange.rvrSprintffCount = 0;
   qmf->qmfValRange.rvrIriClasses = NULL;
@@ -1864,12 +1866,13 @@ sparp_equiv_native_valmode (sparp_t * sparp, SPART * gp, sparp_equiv_t * eq)
     {
       if (SPART_VARR_IS_REF & eq->e_rvr.rvrRestrictions)
 	{
-	  caddr_t qmf_name =
-	      (SPART_VARR_NOT_NULL & eq->e_rvr.
-	      rvrRestrictions) ? uname_rdfdf_ns_uri_default_iid : uname_rdfdf_ns_uri_default_iid_nullable;
-	  jso_rtti_t *qmf_rtti = (jso_rtti_t *) gethash (qmf_name, jso_rttis_of_names);
-	  if ((NULL != qmf_rtti) && JSO_STATUS_LOADED == qmf_rtti->jrtti_status)
-	    return (ssg_valmode_t) (qmf_rtti->jrtti_self);
+	  int eq_not_null = (SPART_VARR_NOT_NULL & eq->e_rvr.rvrRestrictions);
+	  caddr_t qmf_name = eq_not_null ? uname_rdfdf_ns_uri_default_iid : uname_rdfdf_ns_uri_default_iid_nullable;
+	  jso_class_descr_t *qmf_cd = NULL;
+	  jso_rtti_t *qmf_rtti = NULL;
+	  if (JSO_GET_OK != jso_get_pinned_cd_and_rtti (uname_virtrdf_ns_uri_QuadMapFormat, qmf_name, &qmf_cd, &qmf_rtti))
+	    return (ssg_valmode_t) (eq_not_null ? qm_format_default : qm_format_default_nullable);
+	  return (ssg_valmode_t) (qmf_rtti->jrtti_self);
 	}
       if (SPART_VARR_IS_BOOL & eq->e_rvr.rvrRestrictions)
 	return SSG_VALMODE_BOOL;
@@ -2901,6 +2904,12 @@ ssg_print_literal_as_sqlval (spar_sqlgen_t * ssg, ccaddr_t type, SPART * lit)
       if (SPAR_LIT == lit->type)
 	{
 	  value = lit->_.lit.val;
+	  if ((NULL != lit->_.lit.original_text) && ((DV_DOUBLE_FLOAT == DV_TYPE_OF (value))
+		  || DV_SINGLE_FLOAT == DV_TYPE_OF (value) || DV_NUMERIC == DV_TYPE_OF (value)))
+	    {
+	      ssg_print_float_literal_as_original (ssg, lit);
+	      return;
+	    }
 	  dt = lit->_.lit.datatype;
 	  lang = lit->_.lit.language;
 	}
@@ -3018,10 +3027,9 @@ ssg_print_literal_as_long (spar_sqlgen_t * ssg, SPART * lit)
 	{
 	  value = lit->_.lit.val;
 	  if ((NULL != lit->_.lit.original_text) && ((DV_DOUBLE_FLOAT == DV_TYPE_OF (value))
-		  || DV_SINGLE_FLOAT == DV_TYPE_OF (value)))
+		  || DV_SINGLE_FLOAT == DV_TYPE_OF (value) || DV_NUMERIC == DV_TYPE_OF (value)))
 	    {
-	      ssg_putchar (' ');
-	      ssg_puts (lit->_.lit.original_text);
+	      ssg_print_float_literal_as_original (ssg, lit);
 	      return;
 	    }
 	  datatype = lit->_.lit.datatype;
@@ -6772,6 +6780,9 @@ ssg_print_rvr_fixed_val (spar_sqlgen_t * ssg, rdf_val_range_t * rvr, ssg_valmode
     goto use_temporary_literal;
   if (!(rvr->rvrRestrictions & SPART_VARR_TYPED))
     goto use_sql_box;
+  if ((NULL != rvr->rvrFixedOrigText) && ((DV_DOUBLE_FLOAT == DV_TYPE_OF (rvr->rvrFixedValue))
+	  || DV_SINGLE_FLOAT == DV_TYPE_OF (rvr->rvrFixedValue) || DV_NUMERIC == DV_TYPE_OF (rvr->rvrFixedValue)))
+    goto use_temporary_literal;
   if ((rvr->rvrDatatype == uname_xmlschema_ns_uri_hash_string)
       || (rvr->rvrDatatype != xsd_type_of_box ((caddr_t) (rvr->rvrFixedValue))))
     goto use_temporary_literal;
@@ -6787,6 +6798,7 @@ use_temporary_literal:
     lit->_.lit.val = (caddr_t) (rvr->rvrFixedValue);
     lit->_.lit.datatype = (caddr_t) (rvr->rvrDatatype);
     lit->_.lit.language = (caddr_t) (rvr->rvrLanguage);
+    lit->_.lit.original_text = (caddr_t) (rvr->rvrFixedOrigText);
     ssg_print_scalar_expn (ssg, lit, needed, asname);
   }
 }
@@ -7975,7 +7987,16 @@ ghost variable can be used as a sample variable only in absence of plain vars */
       sample_var->_.var.rvr.rvrRestrictions &= ~restrs_not_filtered_in_subqs;
       if (SPART_VARR_FIXED & restrs_not_filtered_in_subqs)
 	{
-	  SPART *bop = spartlist (ssg->ssg_sparp, 3, BOP_EQ, sample_var, eq->e_rvr.rvrFixedValue);
+	  SPART *rval, *bop;
+	  if (((DV_STRING == DV_TYPE_OF (eq->e_rvr.rvrFixedValue)) && (NULL != eq->e_rvr.rvrDatatype)
+		  && (rb_uname_to_flags_of_parseable_datatype (eq->e_rvr.rvrDatatype) & RDF_TYPE_PARSEABLE))
+	      || (NULL != eq->e_rvr.rvrFixedOrigText))
+	    rval =
+		spartlist (ssg->ssg_sparp, 5, SPAR_LIT, eq->e_rvr.rvrFixedValue, eq->e_rvr.rvrDatatype, eq->e_rvr.rvrLanguage,
+		eq->e_rvr.rvrFixedOrigText);
+	  else
+	    rval = (SPART *) (eq->e_rvr.rvrFixedValue);
+	  bop = spartlist (ssg->ssg_sparp, 3, BOP_EQ, sample_var, rval);
 	  ssg_print_where_or_and (ssg, "value of equiv class, fixed by replaced filter");
 	  ssg_print_bop_bool_expn (ssg, bop, " = ", " equ (", 1, SSG_VALMODE_BOOL);
 	}

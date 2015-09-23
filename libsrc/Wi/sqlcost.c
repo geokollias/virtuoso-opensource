@@ -2228,8 +2228,10 @@ err:
   cli->cli_user = usr;
   cli->cli_anytime_started = at_start;
   cli->cli_rpc_timeout = rpc_timeout;
-  log_error ("compiler text card estimate got error %s %s, assuming unknown count", !err ? "" : ERR_STATE (err),
+#ifndef NDEBUG
+  log_warning ("compiler text card estimate got error %s %s, assuming unknown count", !err ? "" : ERR_STATE (err),
       !err ? "no message:" : ERR_MESSAGE (err));
+#endif
   if (err)
     dk_free_tree (err);
   if (entered)
@@ -5310,12 +5312,12 @@ dfe_table_cost_ic_1 (df_elt_t * dfe, index_choice_t * ic, int inx_only)
 	total_cost += mem_cost * 0.5 * (dk_set_length (dfe->_.table.out_cols) - 1);
       if (!dfe->_.table.is_unique)
 	total_cost += 2 * mem_cost * MAX (0, total_arity - 1);
-      p_arity *= dfe_hash_fill_cond_card (dfe);
+      total_arity *= dfe_hash_fill_cond_card (dfe);
     }
   SET_THR_ATTR (THREAD_CURRENT_THREAD, TA_IC, NULL);
   if (dfe->_.table.top_pred)
     total_arity *= dfe->_.table.top_sel;
-  total_cost += p_cost * arity_scale (total_arity);
+  total_cost += p_cost * total_arity;
   total_arity *= p_arity;
   if (dfe->_.table.ot->ot_is_outer)
     total_arity = MAX (1, total_arity);

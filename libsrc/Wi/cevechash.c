@@ -268,6 +268,7 @@ SETS_NAME (col_pos_t * cpo, db_buf_t ce_first, int n_values, int n_bytes)
     {
       while (inx < n_matches && (s1 = matches[inx]) < last)
 	{
+	  matches[mfill] = s1;
 	  mfill++;
 	  inx++;
 	}

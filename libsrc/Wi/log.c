@@ -332,9 +332,23 @@ log_fsync (dk_session_t * ses)
     fd_fsync (tcpses_get_fd (ses->dks_session));
 }
 
+void
+log_merge_commit (lock_trx_t * lt)
+{
+  DO_SET (log_merge_t *, lm, &lt->lt_log_merge)
+  {
+    strses_write_out (lm->lm_log, lt->lt_log);
+    lt->lt_blob_log = dk_set_conc (lt->lt_blob_log, lm->lm_blob_log);
+    lm->lm_blob_log = NULL;
+  }
+  END_DO_SET ();
+  lt_free_merge (lt);
+}
+
 
 extern long dbf_log_no_disk;
 long tc_log_write_clocks;
+int log_commit_ctr;
 
 int
 log_commit (lock_trx_t * lt)
@@ -440,6 +454,12 @@ log_commit (lock_trx_t * lt)
 #if LOG_DEBUG_LEVEL>1
   long start_log_pos = log_ses->dks_out_fill;	/* strses_length (log_ses); */
 #endif
+  log_commit_ctr++;
+  if (0 && 3 == local_cll.cll_this_host && 43 <= log_commit_ctr)
+    {
+      cl_set_break (1, 1);
+      CL_BREAKPOINT (1, "txn 43");
+    }
   CATCH_WRITE_FAIL (log_ses)
   {
     print_object ((caddr_t) cbox, log_ses, NULL, NULL);
@@ -461,7 +481,6 @@ log_commit (lock_trx_t * lt)
 #endif
     strses_write_out (lt->lt_log, log_ses);
     session_flush_1 (log_ses);
-    log_fsync (log_ses);
 #if LOG_DEBUG_LEVEL>1
     fprintf (stderr, "** log_commit from %ld to %ld\n", start_log_pos, log_ses->dks_bytes_sent);
 #endif
@@ -475,7 +494,7 @@ log_commit (lock_trx_t * lt)
       fprintf (stderr, "           blob added till %ld\n", end_log_pos);
 #endif
     }
-
+  log_fsync (log_ses);
   if (!lt->lt_backup)
     {
       dk_free_tree ((caddr_t) cbox);
@@ -939,12 +958,16 @@ lt_log_merge (lock_trx_t * lt, int in_txn)
 	LEAVE_TXN;
       return LTE_CANCEL;
     }
-  mutex_enter (main_lt->lt_log_mtx);
-  strses_write_out (lt->lt_log, main_lt->lt_log);
-  mutex_leave (main_lt->lt_log_mtx);
+  {
+    NEW_VARZ (log_merge_t, lm);
+    lm->lm_log = lt->lt_log;
+    lm->lm_blob_log = lt->lt_blob_log;
+    dk_set_push (&main_lt->lt_log_merge, (void *) lm);
+  }
   if (!in_txn)
     LEAVE_TXN;
-  strses_flush (lt->lt_log);
+  lt->lt_log = (dk_session_t *) resource_get (cl_strses_rc);
+  lt->lt_blob_log = NULL;
   return LTE_OK;
 }
 
@@ -3487,10 +3510,13 @@ log_set_immediate_client (client_connection_t * cli)
 }
 
 
+extern int enable_mt_ft_inx;
+
 client_connection_t *rfwd_cli;
 void
 log_replay_file (int fd)
 {
+  int mt_ft_save = enable_mt_ft_inx;
   int rc, do_replay;
   volatile OFF_T log_rec_start = 0;
   client_connection_t *cli = client_connection_create ();
@@ -3506,7 +3532,9 @@ log_replay_file (int fd)
   OFF_T total_size_bytes;
   OFF_T good_log_rec_start = 0;
   lr_executor_t *lr_executor = NULL;
-
+  /* if cluster rfwd, no mt text inx replay because logged per slice and aq does not preserve slice scope */
+  if (CL_RUN_LOCAL != cl_run_local_only)
+    enable_mt_ft_inx = 0;
   cli->cli_user = sec_id_to_user (U_ID_DBA);
   total_size_bytes = LSEEK (fd, 0, SEEK_END);
   if (total_size_bytes == (OFF_T) - 1)
@@ -3654,6 +3682,7 @@ log_replay_file (int fd)
   LEAVE_TXN;
   log_set_immediate_client (save_cli);
   client_connection_free (cli);
+  enable_mt_ft_inx = mt_ft_save;
   log_info ("Roll forward complete");
   if (!lite_mode)
     dk_alloc_set_reserve_mode (DK_ALLOC_RESERVE_PREPARED);

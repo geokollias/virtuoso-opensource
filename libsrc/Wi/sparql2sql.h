@@ -271,7 +271,8 @@ extern sparp_equiv_t *sparp_equiv_exact_copy (sparp_t * sparp, sparp_equiv_t * o
 
 /*! Tries to restrict \c primary by \c datatype and/or value.
 If neither datatype nor value is provided, SPARP_EQUIV_MERGE_OK is returned. */
-extern int sparp_equiv_restrict_by_constant (sparp_t * sparp, sparp_equiv_t * primary, ccaddr_t datatype, SPART * value);
+extern int sparp_equiv_restrict_by_constant (sparp_t * sparp, sparp_equiv_t * primary, ccaddr_t datatype, SPART * value,
+    ccaddr_t orig_text);
 
 /*! Removes unused \c garbage from the list of equivs of its gp.
 The debug version GPFs if the \c garbage is somehow used. */
@@ -385,7 +386,8 @@ If dest is equal to SPARP_RVR_CREATE then it allocates new rvr otherwise it over
 extern rdf_val_range_t *sparp_rvr_copy (sparp_t * sparp, rdf_val_range_t * dest, const rdf_val_range_t * src);
 
 /*! Tries to zap \c dest and then restrict it by \c datatype and/or value. */
-extern void sparp_rvr_set_by_constant (sparp_t * sparp, rdf_val_range_t * dest, ccaddr_t datatype, SPART * value);
+extern void sparp_rvr_set_by_constant (sparp_t * sparp, rdf_val_range_t * dest, ccaddr_t datatype, SPART * value,
+    ccaddr_t orig_text);
 
 /*! Restricts \c dest by additional restrictions from \c addon_restrictions.
 The operation checks for validity of resulting combination of the \c rvrRestrictions bits and may set SPART_VARR_CONFLICT.
@@ -530,7 +532,7 @@ extern qm_value_t *sparp_find_qmv_of_var_or_retval (sparp_t * sparp, SPART * var
 extern int sparp_find_language_dialect_by_service (sparp_t * sparp, SPART * service_expn);
 
 /*! This searches for storage by its name. NULL arg means default (or no storage if there's no default loaded), empty UNAME means no storage */
-extern quad_storage_t *sparp_find_storage_by_name (ccaddr_t name);
+extern quad_storage_t *sparp_find_storage_by_name (sparp_t * sparp, ccaddr_t name);
 
 /*! This searches for quad map by its name. */
 extern quad_map_t *sparp_find_quad_map_by_name (ccaddr_t name);

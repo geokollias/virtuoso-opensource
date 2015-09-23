@@ -1187,7 +1187,7 @@ sparp_use_assume_rvr_restr (sparp_t * sparp, SPART * curr, SPART ** expn_ptr, SP
       if (NULL != expn_ptr)
 	{
 	  rdf_val_range_t rvr;
-	  sparp_rvr_set_by_constant (sparp, &rvr, NULL, arg);
+	  sparp_rvr_set_by_constant (sparp, &rvr, NULL, arg, NULL);
 	  sparp_rvr_add_restrictions (sparp, &rvr, addon_restrictions);
 	  if (rvr.rvrRestrictions & SPART_VARR_CONFLICT)
 	    expn_ptr[0] = SPAR_ASSUME_IS_CONTRADICTION;
@@ -1714,7 +1714,7 @@ spar_var_eq_to_equiv (sparp_t * sparp, SPART * curr, sparp_equiv_t * eq_l, SPART
     case SPAR_QNAME:
       {
 	int old_rvr = eq_l->e_rvr.rvrRestrictions;
-	ret = sparp_equiv_restrict_by_constant (sparp, eq_l, NULL, r);
+	ret = sparp_equiv_restrict_by_constant (sparp, eq_l, NULL, r, NULL);
 	if ((SPARP_EQUIV_MERGE_OK != ret) && (SPARP_EQUIV_MERGE_CONFLICT != ret) && (SPARP_EQUIV_MERGE_DUPE != ret))
 	  return 0;
 	flags = SPART_VARR_FIXED | (eq_l->e_rvr.rvrRestrictions & ~old_rvr);
@@ -1889,7 +1889,7 @@ sparp_filter_to_equiv (sparp_t * sparp, SPART * curr, SPART * filt)
 			  int restr_ret;
 			  SPART *lval_tmp_qname =
 			      spartlist (sparp, 2, SPAR_QNAME, t_box_dv_uname_nchars (str_lval, box_length (str_lval) - 1));
-			  restr_ret = sparp_equiv_restrict_by_constant (sparp, rarg1_eq, NULL, lval_tmp_qname);
+			  restr_ret = sparp_equiv_restrict_by_constant (sparp, rarg1_eq, NULL, lval_tmp_qname, NULL);
 			  if ((SPARP_EQUIV_MERGE_OK != restr_ret) &&
 			      (SPARP_EQUIV_MERGE_CONFLICT != restr_ret) && (SPARP_EQUIV_MERGE_DUPE != restr_ret))
 			    return 0;
@@ -2587,7 +2587,7 @@ sparp_restr_of_select_eq_from_connected_subvalues (sparp_t * sparp, sparp_equiv_
 	case SPAR_QNAME:
 	  {
 	    rdf_val_range_t tmp;
-	    sparp_rvr_set_by_constant (sparp, &tmp, NULL, sub_expn);
+	    sparp_rvr_set_by_constant (sparp, &tmp, NULL, sub_expn, NULL);
 	    sparp_rvr_tighten (sparp, &(eq->e_rvr), &tmp, ~0);
 	    break;
 	  }
@@ -3634,7 +3634,7 @@ sparp_get_expn_rvr (sparp_t * sparp, SPART * tree, rdf_val_range_t * rvr_ret, in
       return;
     case SPAR_LIT:
     case SPAR_QNAME:		/* case SPAR_QNAME_NS: */
-      sparp_rvr_set_by_constant (sparp, rvr_ret, NULL, tree);
+      sparp_rvr_set_by_constant (sparp, rvr_ret, NULL, tree, NULL);
       return;
     case ORDER_L:
     case SPAR_GRAPH:
@@ -4477,7 +4477,7 @@ As a result of tightening, the \c eq->e_rvr.rvrSprintffCount may grow, thus \c m
 	  datum = binv->_.binv.data_rows[rowctr][varctr];
 	  if (NULL == datum)
 	    continue;
-	  sparp_rvr_set_by_constant (sparp, &tmp, NULL, datum);
+	  sparp_rvr_set_by_constant (sparp, &tmp, NULL, datum, NULL);
 	  eq->e_rvr.rvrRestrictions &= ~SPART_VARR_SPRINTFF;
 	  eq->e_rvr.rvrSprintffCount = 0;
 	  sparp_rvr_tighten (sparp, &tmp, &(eq->e_rvr), ~0);
@@ -4659,7 +4659,7 @@ spar_refresh_binv_var_rvrs (sparp_t * sparp, SPART * binv)
 	    continue;
 	  var = binv->_.binv.vars[varctr];
 	  datum = binv->_.binv.data_rows[rowctr][varctr];
-	  sparp_rvr_set_by_constant (sparp, &(var->_.var.rvr), NULL, datum);
+	  sparp_rvr_set_by_constant (sparp, &(var->_.var.rvr), NULL, datum, NULL);
 	}
       return;
     }
@@ -5229,7 +5229,7 @@ sparp_find_triple_cases (sparp_t * sparp, SPART * triple, SPART ** sources, int 
     {
       SPART *sinv = SPARP_SINV (sparp, unbox (((caddr_t *) sinv_idx_and_qms)[0]));
       triple_storage_iri = sinv->_.sinv.storage_uri;
-      triple_storage = sparp_find_storage_by_name (triple_storage_iri);
+      triple_storage = sparp_find_storage_by_name (sparp, triple_storage_iri);
       if (NULL == triple_storage)
 	spar_internal_error (sparp, "quad storage metadata are lost");
       if ((SPART **) ((ptrlong) (_STAR)) == sources)
@@ -7506,7 +7506,7 @@ sparp_rewrite_all (sparp_t * sparp, SPART * req_top, int safely_copy_retvals)
 {
   ptrlong top_type = SPART_TYPE (req_top);
   if ((NULL == sparp->sparp_env->spare_storage_name) && (NULL == sparp->sparp_storage))
-    sparp->sparp_storage = sparp_find_storage_by_name (NULL);
+    sparp->sparp_storage = sparp_find_storage_by_name (sparp, NULL);
   if (SPAR_QM_SQL_FUNCALL == top_type)
     return req_top;
   if (SPAR_CODEGEN == top_type)
@@ -7571,7 +7571,8 @@ sparp_gp_trav_restore_filters_for_weird_subq (sparp_t * sparp, SPART * curr, spa
 	else if (eq->e_rvr.rvrRestrictions & SPART_VARR_IS_REF)
 	  r = spartlist (sparp, 2, SPAR_QNAME, eq->e_rvr.rvrFixedValue);
 	else
-	  r = spartlist (sparp, 5, SPAR_LIT, eq->e_rvr.rvrFixedValue, eq->e_rvr.rvrDatatype, eq->e_rvr.rvrLanguage, NULL);
+	  r = spartlist (sparp, 5, SPAR_LIT, eq->e_rvr.rvrFixedValue, eq->e_rvr.rvrDatatype, eq->e_rvr.rvrLanguage,
+	      eq->e_rvr.rvrFixedOrigText);
 	filt = spartlist (sparp, 3, BOP_EQ, l, r);
 	sparp_gp_attach_filter (sparp, parent_gp, filt, 0, NULL);
 	if (NULL == recv_eq)

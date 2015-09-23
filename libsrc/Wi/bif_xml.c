@@ -3831,7 +3831,6 @@ box_cast_to_UTF8_uname (caddr_t * qst, caddr_t raw_name)
   return NULL;			/* never reached */
 }
 
-
 caddr_t
 bif_xte_head (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {

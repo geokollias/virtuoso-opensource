@@ -2900,7 +2900,6 @@ sqlg_make_trans_dt (sqlo_t * so, df_elt_t * dt_dfe, ST ** target_names, dk_set_t
       tn->tn_path_ctr = cc_new_instance_slot (sc->sc_cc);
       tn->tn_keep_path = 1;
     }
-  tn->tn_after_join_test = sqlg_pred_body (so, dt_dfe->_.sub.after_join_test);
   if (trans->_.trans.min)
     tn->tn_min_depth = scalar_exp_generate (sc, trans->_.trans.min, pre_code);
   if (trans->_.trans.max)
@@ -3839,7 +3838,8 @@ sqlg_is_multistate_gb (sqlo_t * so)
 	/* a derived table with gby/oby is multistate and will have the set no in the setp  if in the enclosing there is a ts or dt before it.  But  a dt w no qr   does not count because this is the immediately enclosing, not a previous one.  On the top qr, ignore anything that is inside a hash filler  */
 	if (dk_set_member (hf_nodes, qn))
 	  continue;
-	if (IS_TS (qn) || (IS_QN (qn, subq_node_input) && ((subq_source_t *) qn)->sqs_query) || IS_RTS (qn))
+	if (IS_TS (qn) || (IS_QN (qn, subq_node_input) && ((subq_source_t *) qn)->sqs_query)
+	    || IS_RTS (qn) || IS_QN (qn, trans_node_input))
 	  return 1;
       }
       END_DO_SET ();
@@ -3898,6 +3898,9 @@ sqlg_distinct_fun_ref_col (sql_comp_t * sc, state_slot_t * data, dk_set_t prev_k
   setp.setp_ssa.ssa_set_no = set_no;
   setp.setp_distinct = 1;
   setp.setp_keys = dk_set_copy (prev_keys);
+  setp.setp_set_no_in_key = !sc->sc_is_single_state;
+  if (setp.setp_set_no_in_key)
+    dk_set_push (&setp.setp_keys, (void *) sc->sc_set_no_ssl);
   /* below  if always true since even if a top gby key in count distinct the distinct hash is expected to have an extra key part for the chash implementation, whether redundant or not */
   if (1 || dk_set_position (setp.setp_keys, (void *) data) < 0)
     setp.setp_keys = dk_set_conc (setp.setp_keys, dk_set_cons ((void *) data, NULL));

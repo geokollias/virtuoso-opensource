@@ -3282,7 +3282,10 @@ cha_dk_box_col (chash_t * cha, hash_area_t * ha, db_buf_t row, int inx)
     case DV_DATETIME:
       {
 	caddr_t dt = dk_alloc_box (DT_LENGTH, DV_DATETIME);
-	memcpy_dt (dt, ((caddr_t *) row)[inx]);
+	caddr_t v = ((caddr_t *) row)[inx + 1];
+	if (!v)
+	  return dk_alloc_box (0, DV_DB_NULL);
+	memcpy_dt (dt, v);
 	return dt;
       }
     default:
@@ -7407,7 +7410,9 @@ ce_int_chash_check (col_pos_t * cpo, db_buf_t val, dtp_t flags, int64 offset, in
 {
   caddr_t *inst;
   int64 *ent;
-  hash_source_t *hs;
+  search_spec_t *sp = cpo->cpo_itc->itc_col_spec;
+  hash_range_spec_t *hrng = (hash_range_spec_t *) sp->sp_min_ssl;
+  hash_source_t *hs = hrng->hrng_hs;
   uint64 h = 1;
   int64 **array, k;
   int pos1_1, ctr, e;
