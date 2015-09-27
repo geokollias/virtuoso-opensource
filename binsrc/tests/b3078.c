@@ -1,4 +1,5 @@
 /*
+ *  $Id$
  *
  *  This file is part of the OpenLink Software Virtuoso Open-Source (VOS)
  *  project.
@@ -370,8 +371,7 @@ ODBC_Execute()
 }
 
 
-int
-main(int argc, char *argv[])
+void main(int argc, char *argv[])
 {
   /*   if (ODBC_Connect ("O_Sql2k", "sa", "") != 0) */
   if (ODBC_Connect (argv[1], argv[2], argv[3]) != 0)
@@ -391,7 +391,6 @@ main(int argc, char *argv[])
    */
   ODBC_Disconnect ();
 
-  exit(0);
 }
 
 

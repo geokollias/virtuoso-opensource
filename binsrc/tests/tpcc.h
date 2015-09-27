@@ -1,4 +1,5 @@
 /*
+ *  $Id$
  *
  *  This file is part of the OpenLink Software Virtuoso Open-Source (VOS)
  *  project.
@@ -71,9 +72,16 @@ void MakeAddress  (char *str1, char *str2, char *city,
 int MakeAlphaString (int sz1, int sz2, char * str);
 long random_i_id (void);
 long random_c_id (void);
+int other_w_id ();
 void Lastname (int num, char *name);
 
 
 void run_test (int argc, char ** argv);
 void run_timed_test (int argc, char **argv);
+void check_reconnect ();
+int new_order ();
+void payment ();
+void ostat ();
+void slevel ();
+void delivery_1 (long, long);
 

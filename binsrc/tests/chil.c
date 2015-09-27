@@ -556,6 +556,9 @@ out:;
 
   if (!strchr (mode, 'b'))
     http_init_part_two ();
+#ifdef CL6
+  cluster_after_online ();
+#endif
 #ifdef REPLICATION
   if (read_from_rebuilt_database)	/* if booting from crash log, */
     {				/* go read the account levels from db */

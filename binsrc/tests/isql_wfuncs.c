@@ -47,7 +47,7 @@ malloc_narrow_as_wide (char *narrow)
 }
 
 static char *
-malloc_wide_as_narrow (const wchar_t * wide)
+malloc_wide_as_narrow (const wchar_t *wide)
 {
   char *ret;
   size_t sz;
@@ -67,10 +67,9 @@ malloc_wide_as_narrow (const wchar_t * wide)
 }
 
 
-extern int wmain (int argc, wchar_t * argv[]);
+extern int wmain (int argc, wchar_t *argv[]);
 
-int
-main (int argc, char *argv[])
+int main (int argc, char *argv[])
 {
   wchar_t **wargv = (wchar_t **) malloc (argc * sizeof (wchar_t *));
   int inx;
@@ -81,8 +80,9 @@ main (int argc, char *argv[])
     wprintf (L"Locale=%s\n", setlocale (LC_ALL, ""));
   else
     wprintf (L"Can't apply the system locale. "
-	L"Possibly wrong setting for LANG environment variable. " L"Using the C locale instead.\n");
-  for (inx = 0; inx < argc; inx++)
+	L"Possibly wrong setting for LANG environment variable. "
+	L"Using the C locale instead.\n");
+  for (inx = 0 ; inx < argc; inx++)
     {
       wargv[inx] = malloc_narrow_as_wide (argv[inx]);
     }
@@ -91,7 +91,7 @@ main (int argc, char *argv[])
 
 #ifndef HAVE_SWPRINTF
 int
-isqlt_swprintf (wchar_t * str, const wchar_t * format, ...)
+isqlt_swprintf(wchar_t *str, const wchar_t *format, ...)
 {
 #if defined (linux) || defined (SOLARIS)
   va_list lst;
@@ -106,22 +106,22 @@ isqlt_swprintf (wchar_t * str, const wchar_t * format, ...)
 
 #ifndef HAVE_WEXECVP
 int
-isqlt_wexecvp (const wchar_t * file, wchar_t * const argv[])
+isqlt_wexecvp(const wchar_t *file, wchar_t *const argv[])
 {
   char *nfile = malloc_wide_as_narrow (file);
   char **nargv;
   int inx, ret, argc = 0;
 
-  for (inx = 0; argv[inx]; inx++)
+  for (inx = 0 ; argv[inx]; inx++)
     argc++;
 
   nargv = (char **) calloc (argc + 1, sizeof (char *));
 
-  for (inx = 0; inx < argc; inx++)
+  for (inx = 0 ; inx < argc; inx++)
     nargv[inx] = malloc_wide_as_narrow (argv[inx]);
 
   ret = execvp (nfile, nargv);
-  for (inx = 0; nargv[inx]; inx++)
+  for (inx = 0 ; nargv[inx]; inx++)
     free (nargv[inx]);
   free (nargv);
   return ret;
@@ -130,7 +130,7 @@ isqlt_wexecvp (const wchar_t * file, wchar_t * const argv[])
 
 #ifndef HAVE_WSYSTEM
 int
-isqlt_wsystem (const wchar_t * string)
+isqlt_wsystem(const wchar_t *string)
 {
   int ret;
   char *nstring = malloc_wide_as_narrow (string);
@@ -144,7 +144,7 @@ isqlt_wsystem (const wchar_t * string)
 
 #ifndef HAVE_WTOI
 int
-isqlt_wtoi (const wchar_t * nptr)
+isqlt_wtoi(const wchar_t *nptr)
 {
   int ret;
   char *nstring = malloc_wide_as_narrow (nptr);
@@ -158,7 +158,7 @@ isqlt_wtoi (const wchar_t * nptr)
 
 #ifndef HAVE_WPERROR
 void
-isqlt_wperror (const wchar_t * s)
+isqlt_wperror(const wchar_t *s)
 {
   char *nstring;
   int errno_save = errno;
@@ -173,7 +173,7 @@ isqlt_wperror (const wchar_t * s)
 
 #ifndef HAVE_WTOL
 long
-isqlt_wtol (const wchar_t * nptr)
+isqlt_wtol(const wchar_t *nptr)
 {
   long ret;
   char *nstring = malloc_wide_as_narrow (nptr);
@@ -187,7 +187,7 @@ isqlt_wtol (const wchar_t * nptr)
 
 #ifndef HAVE_WFOPEN
 FILE *
-isqlt_wfopen (const wchar_t * path, const wchar_t * mode)
+isqlt_wfopen(const wchar_t *path, const wchar_t *mode)
 {
   FILE *ret;
   char *npath = malloc_wide_as_narrow (path);
@@ -206,7 +206,7 @@ isqlt_wfopen (const wchar_t * path, const wchar_t * mode)
 
 #ifndef HAVE_WGETENV
 wchar_t *
-isqlt_wgetenv (const wchar_t * name)
+isqlt_wgetenv(const wchar_t *name)
 {
   char *nret;
   char *nname = malloc_wide_as_narrow (name);
@@ -220,8 +220,7 @@ isqlt_wgetenv (const wchar_t * name)
 
 #ifndef WIN32
 #ifndef HAVE_WGETPASS
-wchar_t *
-isqlt_wgetpass (const wchar_t * prompt)
+wchar_t *isqlt_wgetpass( const wchar_t * prompt )
 {
   char *nret;
   char *nprompt = malloc_wide_as_narrow (prompt);
@@ -236,8 +235,7 @@ isqlt_wgetpass (const wchar_t * prompt)
 
 #if defined (SOLARIS)
 #ifndef HAVE_WGETPASSPHRASE
-wchar_t *
-isqlt_wgetpassphrase (const wchar_t * prompt)
+wchar_t *isqlt_wgetpassphrase( const wchar_t * prompt )
 {
   char *nret;
   char *nprompt = malloc_wide_as_narrow (prompt);
@@ -252,7 +250,7 @@ isqlt_wgetpassphrase (const wchar_t * prompt)
 
 #ifndef HAVE_WCSNICMP
 int
-isqlt_wcsnicmp (const wchar_t * s1, const wchar_t * s2, size_t n)
+isqlt_wcsnicmp (const wchar_t *s1, const wchar_t *s2, size_t n)
 {
 #if defined (HAVE_TOWLOWER) || defined (HAVE_TOWUPPER)
   int cmp;
@@ -289,7 +287,7 @@ isqlt_wcsnicmp (const wchar_t * s1, const wchar_t * s2, size_t n)
 
 #ifndef HAVE_WCSICMP
 int
-isqlt_wcsicmp (const wchar_t * s1, const wchar_t * s2)
+isqlt_wcsicmp (const wchar_t *s1, const wchar_t *s2)
 {
 #if defined (HAVE_TOWLOWER) || defined (HAVE_TOWUPPER)
   int cmp;
@@ -322,11 +320,10 @@ isqlt_wcsicmp (const wchar_t * s1, const wchar_t * s2)
 
 
 #ifndef HAVE_WCSDUP
-wchar_t *
-isqlt_wcsdup (const wchar_t * s)
+wchar_t *isqlt_wcsdup(const wchar_t *s)
 {
   int len = 0;
-  wchar_t *ret, *ptr;
+  wchar_t * ret, *ptr;
 
   if (!s)
     return NULL;
@@ -335,7 +332,7 @@ isqlt_wcsdup (const wchar_t * s)
   len = wcslen (s);
 #else
   for (ptr = s; *ptr; ptr++)
-    len++;
+    len ++;
 #endif
   len++;
 

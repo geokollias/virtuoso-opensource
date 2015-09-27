@@ -492,7 +492,7 @@ option /t or /s is present with /b).
 Have to be global as a few functions need these.
 */
 #if defined(ODBC_ONLY)
-TCHAR *datasource = _T("Virtuoso");
+TCHAR *datasource = _T("Local Virtuoso");
 TCHAR *username = NULL;
 TCHAR *password = NULL;
 
@@ -6171,6 +6171,7 @@ again_exec:;
       else if (sparql_translate_mode)
         {
           const TCHAR* q = text;
+	  print_blobs_flag = 1;
           if (!strncasecmp (text, _T("SPARQL"), isqlt_tcslen(_T("SPARQL"))))
             q = text + isqlt_tcslen(_T("SPARQL"));
 
@@ -6183,7 +6184,7 @@ again_exec:;
       else if (profile_mode)
         {
 	  print_blobs_flag = 1;
-	  rc = SQLPrepare (stmt, _T("PROFILE(?)"), SQL_NTS);
+	  rc = SQLPrepare (stmt, _T("DB..PROFILE(?)"), SQL_NTS);
 	  IF_ERR_GO (stmt, error, rc);
 	  rc = SQLBindParameter (stmt, 1, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, isqlt_tcslen(text), 0, UCP(text), isqlt_tcslen(text), NULL);
 	  IF_ERR_GO (stmt, error, rc);
@@ -6995,7 +6996,7 @@ rep_loop (FILE * infp, TCHAR *new_prompt)
       else if (ifdef_current_is_true ())
         /* A normal semicolon terminated statement */
         {
-          if (virtext &&
+          if (virtext && !sparql_translate_mode &&
               ( latest_statement_begins_at () != current_linecount() ||
                 is_declaration (input) ) )
             {
@@ -9514,19 +9515,15 @@ connect_to_datasource (TCHAR *datasource, TCHAR *username, TCHAR *password)
 				  &conn_str_length,
 				  SQL_DRIVER_COMPLETE)))
 	{
+	  isql_fprintf (error_stream, _T("Connection: %") PCT_S _T("\n"),
+		rc == SQL_SUCCESS_WITH_INFO ? _T("Establised (with info)") : _T("Failed"));
 	  print_error (((HENV) 0), hdbc, ((HSTMT) 0), rc);
-	  isql_fprintf (error_stream,
-			_T("%") PCT_S _T("connect with connection string \"%") PCT_S _T("\". Completed as: \"%") PCT_S _T("\", length=%d\n"),
-			((SQL_ERROR == rc) ? _T("could not ") : _T("")),
-			datasource, completed_conn_string, conn_str_length);
 	  if (rc != SQL_SUCCESS && rc != SQL_SUCCESS_WITH_INFO)
 	    isql_exit (3);
 	}
       else if (verbose_mode)	/* A success */
 	{
-	  isql_fprintf (error_stream,
-			_T("connected with connection string \"%") PCT_S _T("\". Completed as: \"%") PCT_S _T("\", length=%d.\n"),
-			datasource, completed_conn_string, conn_str_length);
+	  isql_fprintf (error_stream, _T("Connection: Established\n"));
 	}
 #endif
     }
