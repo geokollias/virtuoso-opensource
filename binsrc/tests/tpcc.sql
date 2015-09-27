@@ -193,20 +193,8 @@ create procedure payment (
         from customer
 	where c_last = _c_last
 	  and c_d_id = _d_id
-	  and c_w_id = _w_id;
-
-
-
-      select count(C_ID) into namecnt2
-        from customer
-	where c_last = _c_last
-	  and c_d_id = _d_id
-	  and c_w_id = _w_id;
-
-
-	if (namecnt <> namecnt2)
-	  dbg_printf ('Bad count for last %s d %d c1 %d c2 %d', _c_last, _d_id, namecnt, namecnt2);
-	      declare c_byname cursor for
+	  and c_w_id = _c_w_id;
+      declare c_byname cursor for
 	select c_id
 	  from customer
 	  where c_w_id = _c_w_id
@@ -214,7 +202,7 @@ create procedure payment (
 	    and c_last = _c_last
 	  order by c_w_id, c_d_id, c_last, c_first;
 
-      open c_byname (exclusive);
+      open c_byname;
 
       n := 0;
       while (n <= namecnt / 2)
@@ -466,7 +454,8 @@ create procedure ol_insert (
 }
 
 
--- cust_info - part of New Order transaction. Return customer info.
+
+
 create procedure cust_info (
     in w_id integer,
     in d_id integer,
@@ -477,7 +466,7 @@ create procedure cust_info (
 {
   whenever not found goto err;
   select c_last, c_discount, c_credit into _c_last, _c_discount, _c_credit
-    from customer
+    from customer 
     where c_w_id = w_id
       and c_d_id = d_id
       and c_id = _c_id;
@@ -486,7 +475,6 @@ create procedure cust_info (
 err:
   signal ('NOCUS', 'No customer');
 }
-
 
 -- new_order - Top level procedure of New Order transaction.
 -- Take a fixed 10 order lines as individually named parameters
@@ -719,6 +707,20 @@ lines_done:
 }
 
 
+create procedure delivery (in w_id int, in carrier_id int)
+{
+  declare d int;
+  for (d := 1; d <= 10; d:=d + 1)
+    {
+      declare exit handler for sqlstate '40001', sqlstate '4000X'{
+	goto again;
+      };
+    again:
+      delivery_1 (w_id, carrier_id, d);
+      commit work;
+    }
+}
+
 
 -- ostat - Top level procedure for the Order Status transaction.
 create procedure ostat (
@@ -728,11 +730,12 @@ create procedure ostat (
     in _c_last varchar)
 {
   set isolation = 'serializable';
-  declare _c_first, _c_middle, _c_balance varchar;
+  declare _c_first, _c_middle  varchar;
+  declare _c_balance numeric;
   declare
     _o_id, _ol_i_id, _ol_supply_w_id, _ol_quantity, _o_carrier_id, n integer;
   declare _ol_amount float;
-  declare _ol_delivery_d, _o_entry_d varchar;
+  declare _ol_delivery_d, _o_entry_d datetime;
 
   if (_c_id = 0)
     {
@@ -821,7 +824,6 @@ no_customer:
 no_order:
   return 0;
 }
-
 
 
 create procedure order_check (in _w_id integer, in _d_id integer)
