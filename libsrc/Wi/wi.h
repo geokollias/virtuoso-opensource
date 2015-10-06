@@ -176,6 +176,14 @@ struct it_map_s
     remap_dp = dp; \
 }
 
+#define DP_BUF_PREFETCH(_it, _dp) \
+{ \
+  dp_addr_t __dp = dp; \
+  index_tree_t * __tree = it; \
+  dk_hash_t * ht = &(IT_DP_MAP (__tree, __dp))->itm_dp_to_buf; \
+  uint32 hno = HASH_INX (ht, (void*)(ptrlong)__dp); \
+  __builtin_prefetch (&ht->ht_elements[hno]); \
+}
 
 
 typedef unsigned int32 bp_ts_t;	/* timestamp of buffer, use in  cache replacement to distinguish old buffers.  Faster than double linked list for LRU.  Wraparound does not matter since only differences of values are considered.  */

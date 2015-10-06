@@ -2213,6 +2213,7 @@ sqlg_hash_source (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * pre_code)
       hs->hs_roj = cc_new_instance_slot (sc->sc_cc);
       cc_new_instance_slot (sc->sc_cc);
       hs->hs_roj_state = cc_new_instance_slot (sc->sc_cc);;
+      hs->hs_roj_pos = cc_new_instance_slot (sc->sc_cc);;
       hs->hs_roj_dc = ssl_new_vec (sc->sc_cc, "roj", DV_LONG_INT);
       setp->setp_fill_right_oj = 1;
       if (roj_key_out)
@@ -4973,6 +4974,12 @@ sqlg_fref_qp (sql_comp_t * sc, fun_ref_node_t * fref, df_elt_t * dt_dfe)
     }
 }
 
+int
+qn_is_non_oj_sctr (data_source_t * qn)
+{
+  return IS_QN (qn, set_ctr_input) && !((set_ctr_node_t *) qn)->sctr_ose;
+}
+
 
 void
 sqlg_place_fref (sql_comp_t * sc, data_source_t ** head, fun_ref_node_t * fref, df_elt_t * dt_dfe)
@@ -4986,7 +4993,7 @@ sqlg_place_fref (sql_comp_t * sc, data_source_t ** head, fun_ref_node_t * fref, 
     }
   for (qn = *head; qn; (prev = qn, qn = qn_next (qn)))
     {
-      if (IS_QN (qn, hash_fill_node_input) || IS_QN (qn, set_ctr_input))
+      if (IS_QN (qn, hash_fill_node_input) || qn_is_non_oj_sctr (qn))
 	continue;
       if (IS_QN (qn, subq_node_input) && ((subq_source_t *) qn)->sqs_is_hash_filler)
 	continue;

@@ -251,11 +251,15 @@ void
 stn_roj_outer (stage_node_t * stn, caddr_t * inst)
 {
   hash_source_t *hs = (hash_source_t *) qn_next_qn ((data_source_t *) stn, (qn_input_fn) hash_source_input);
+  if (!QST_INT (inst, hs->hs_roj_state))
+    {
+      QST_INT (inst, hs->hs_roj_state) = 1;
+      QST_INT (inst, hs->clb.clb_nth_set) = 0;
+      QST_INT (inst, hs->hs_roj) = 0;
+      hash_source_roj_input (hs, inst, NULL);
+    }
   SRC_IN_STATE (stn, inst) = NULL;
-  QST_INT (inst, hs->hs_roj_state) = 1;
-  QST_INT (inst, hs->clb.clb_nth_set) = 0;
-  QST_INT (inst, hs->hs_roj) = 0;
-  hash_source_roj_input (hs, inst, NULL);
+  QST_INT (inst, hs->hs_roj_state) = 0;
 }
 
 
@@ -313,12 +317,14 @@ stn_continue (stage_node_t * stn, caddr_t * inst)
   SESSION_SCH_DATA (&clib.clib_in_strses) = &clib.clib_in_siod;
   DKS_CL_DATA (&clib.clib_in_strses) = &clses;
   DKS_QI_DATA (&clib.clib_in_strses) = (query_instance_t *) inst;
-  dfg_inc_completed ("at continue");
   if (stn->stn_roj_outer && QST_INT (inst, stn->stn_roj_outer))
     {
       stn_roj_outer (stn, inst);
+      dfg_inc_completed ("after roj outer");
       return;
     }
+  dfg_inc_completed ("at continue");
+
 new_batch:
   itcl->itcl_n_results = 0;
   dc_reset_array (inst, (data_source_t *) stn, stn->stn_inner_params, -1);

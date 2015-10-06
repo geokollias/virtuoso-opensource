@@ -3605,8 +3605,8 @@ create procedure DB.DBA.RDF_LONG_TO_TTL (inout obj any, inout ses any)
             {
               http (case sparql_ebv_of_obj (obj) when 0 then '"false"^^<' else '"true"^^<' end, ses);
               http ('http://www.w3.org/2001/XMLSchema#boolean> ', ses);
+              return;
             }
-          return;
         }
       else
         dt_iri := null;
@@ -11482,7 +11482,7 @@ retry_reload:
         }
       else
         {
-          DB.DBA.JSO_LOAD_SYS_GRAPH (graphiri, 1, 0, 1);
+          DB.DBA.JSO_LOAD_GRAPH (graphiri, 1, 0, 1);
         }
       result ('00000', 'Metadata from system graph are cached in memory-resident JSOs (JavaScript Objects)');
       return;

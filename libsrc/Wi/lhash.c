@@ -4286,10 +4286,9 @@ hs_send_output (hash_source_t * hs, caddr_t * inst, chash_t * cha)
 	}
       for (inx = inx; inx < fill; inx++)
 	ROJ_SET (0);
+      hs_init_roj (hs, inst);
     }
   qn_send_output ((data_source_t *) hs, inst);
-  if (hs->hs_roj)
-    hs_init_roj (hs, inst);
 }
 
 
@@ -6253,6 +6252,8 @@ cha_roj_res_array (hash_source_t * hs, caddr_t * inst, chash_t * cha, int64 * ro
 {
   int n_values;
   int out_inx = 0, inx;
+  if (!out_slots || !BOX_ELEMENTS (out_slots))
+    return;
   for (inx = start_col; inx < start_col + n_cols; inx++)
     {
       dtp_t ch_dtp = cha->cha_sqt[out_inx + (is_key ? 0 : cha->cha_n_keys)].sqt_dtp;
@@ -6348,17 +6349,17 @@ cha_roj_result (hash_source_t * hs, caddr_t * inst, chash_t * cha, int64 * row, 
   hash_area_t *ha = hs->hs_ha;
   int n_keys = ha->ha_n_keys;
   int *sets = QST_BOX (int *, inst, hs->src_gen.src_sets), batch_sz;
-  batch_sz = QST_INT (inst, hs->src_gen.src_batch_size) - 1;
+  batch_sz = QST_INT (inst, hs->src_gen.src_batch_size);
   int n_values = 0;
   int key1 = cha->cha_is_1_int || cha->cha_is_1_int_key ? 0 : 1;
   cha_roj_res_array (hs, inst, cha, row, key1, n_keys, hs->hs_roj_key_out, 1);
   cha_roj_res_array (hs, inst, cha, row, cha->cha_n_keys + key1, cha->cha_n_dependent, hs->hs_out_slots, 0);
-  n_values = QST_INT (inst, hs->src_gen.src_out_fill)++;
-  sets[n_values] = 0;
+  n_values = ++QST_INT (inst, hs->src_gen.src_out_fill);
+  sets[n_values - 1] = 0;
   if (n_values == batch_sz)
     {
-      QST_INT (inst, hs->clb.clb_nth_set) = ((int64) nth_part << 32) | nth_bit;
-      QST_INT (inst, hs->hs_roj) = start_bit;
+      QST_INT (inst, hs->clb.clb_nth_set) = ((int64) nth_part << 32) | (nth_bit + 1);
+      QST_INT (inst, hs->hs_roj_pos) = start_bit;
       SRC_IN_STATE (hs, inst) = inst;
       hs_roj_output (hs, inst);
       QST_INT (inst, hs->src_gen.src_out_fill) = 0;
@@ -6404,12 +6405,12 @@ hash_source_roj_input (hash_source_t * hs, caddr_t * inst, caddr_t * state)
   if (state)
     {
       QST_INT (inst, hs->clb.clb_nth_set) = pos = 0;
-      QST_INT (inst, hs->hs_roj) = start_bit = 0;
+      QST_INT (inst, hs->hs_roj_pos) = start_bit = 0;
     }
   else
     {
       pos = QST_INT (inst, hs->clb.clb_nth_set);
-      start_bit = QST_INT (inst, hs->hs_roj);
+      start_bit = QST_INT (inst, hs->hs_roj_pos);
     }
   QST_INT (inst, hs->src_gen.src_out_fill) = 0;
   dc_reset_array (inst, (data_source_t *) hs, hs->hs_roj_key_out, -1);

@@ -1473,7 +1473,7 @@ cpt_neodisk_page (const void *key, void *value)
 	  extent_map_t *em;
 	  remhash (DP_ADDR2VOID (logical), cpt_dbs->dbs_cpt_remap);
 	  if (it_from_g->it_col_extent_maps)
-	    em = dbs_dp_to_em (it_from_g->it_storage, logical);
+	    em = dbs_dp_to_em (it_from_g->it_storage, cp_remap);
 	  else
 	    em = it_from_g->it_extent_map;
 	  if (em)
@@ -1609,6 +1609,27 @@ dbs_backup_check (dbe_storage_t * dbs, int flag)
     }
 #endif
 }
+
+#ifdef PAGE_DEBUG
+void
+dbs_em_check (dbe_storage_t * dbs)
+{
+  int n;
+  for (n = 0; n < dbs->dbs_n_pages; n += EXTENT_SZ)
+    {
+      extent_map_t *em;
+      extent_t *ext;
+      em = dbs_dp_to_em (dbs, n);
+      if (!em)
+	continue;
+      ext = EM_DP_TO_EXT (em, EXT_ROUND (n));
+      if (!ext)
+	{
+	  log_error ("Inconsistent extent map %s, dp=%d", em->em_name, n);
+	}
+    }
+}
+#endif
 
 void
 dbs_cache_check (dbe_storage_t * dbs, int mode)
@@ -2162,6 +2183,9 @@ dbs_checkpoint (char *log_name, int shutdown)
 	  log_info ("Exiting in mid checkpoint");
 	  call_exit (-1);
 	}
+#ifdef PAGE_DEBUG
+      dbs_em_check (dbs);
+#endif
       DO_SET (index_tree_t *, it, &dbs->dbs_trees)
       {
 	mcp_itc->itc_thread = THREAD_CURRENT_THREAD;

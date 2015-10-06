@@ -455,11 +455,6 @@ log_commit (lock_trx_t * lt)
   long start_log_pos = log_ses->dks_out_fill;	/* strses_length (log_ses); */
 #endif
   log_commit_ctr++;
-  if (0 && 3 == local_cll.cll_this_host && 43 <= log_commit_ctr)
-    {
-      cl_set_break (1, 1);
-      CL_BREAKPOINT (1, "txn 43");
-    }
   CATCH_WRITE_FAIL (log_ses)
   {
     print_object ((caddr_t) cbox, log_ses, NULL, NULL);
@@ -2224,12 +2219,15 @@ query_t *
 log_key_ins_del_qr (dbe_key_t * key, caddr_t * err_ret, int op, int ins_mode, int is_rfwd)
 {
   /* if is_rfwd this is roll forward and no cluster is not specified since the host may have multiple partitions (except for replicated tables)  if elastic cluster */
+  client_connection_t *cli = sqlc_client ();
   query_t *res;
   dbe_table_t *key_table = key->key_table;
   string_buffer sb;
   caddr_t err;
   char temp1[MAX_NAME_LEN], temp2[MAX_NAME_LEN], temp3[MAX_NAME_LEN];
   key_id_t old_key = key->key_migrate_to;
+  if (!cli)
+    cli = bootstrap_cli;
   if (key->key_partition && clm_replicated == key->key_partition->kpd_map)
     is_rfwd = 0;
   while (key->key_migrate_to)
@@ -2308,7 +2306,7 @@ log_key_ins_del_qr (dbe_key_t * key, caddr_t * err_ret, int op, int ins_mode, in
     default:
       GPF_T1 ("log_key_ins_del_qr: invalid operation");
     }
-  res = sql_compile (sb.sb_buf, bootstrap_cli, &err, SQLC_DEFAULT);
+  res = sql_compile (sb.sb_buf, cli, &err, SQLC_DEFAULT);
   if (err != SQL_SUCCESS)
     {
       err_log_error (err);
@@ -2328,6 +2326,7 @@ id_hash_t *upd_replay_cache;
 query_t *
 log_key_upd_qr (dbe_key_t * key, oid_t * col_ids, caddr_t * err_ret)
 {
+  client_connection_t *cli = sqlc_client ();
   query_t *res;
   dbe_table_t *key_table = key->key_table;
   string_buffer sb;
@@ -2336,6 +2335,8 @@ log_key_upd_qr (dbe_key_t * key, oid_t * col_ids, caddr_t * err_ret)
   query_t **place;
   caddr_t h_key;
   char **names;
+  if (!cli)
+    cli = bootstrap_cli;
   while (key->key_migrate_to)
     key = sch_id_to_key (wi_inst.wi_schema, key->key_migrate_to);
   if (!upd_replay_cache)
@@ -2376,7 +2377,7 @@ log_key_upd_qr (dbe_key_t * key, oid_t * col_ids, caddr_t * err_ret)
   sb_printf (&sb, " option (no identity, no trigger)");
   dk_free (names, n_cols * sizeof (char *));
 
-  res = sql_compile (sb.sb_buf, bootstrap_cli, &err, SQLC_DEFAULT);
+  res = sql_compile (sb.sb_buf, cli, &err, SQLC_DEFAULT);
   if (err != SQL_SUCCESS)
     {
       err_log_error (err);
@@ -2652,7 +2653,7 @@ repl_append_vec_entry_async (lre_queue_t * lq, client_connection_t * cli, lre_re
   if (!key)
     {
       dk_free_tree ((caddr_t) row);
-      return srv_make_new_error ("42000", "RFWNK", "No key %d", unbox (row[0]));
+      return srv_make_new_error ("42000", "RFWNK", "No key " BOXINT_FMT, unbox (row[0]));
     }
   rd.rd_allocated = RD_AUTO;
   rd.rd_values = &row[1];
@@ -2776,7 +2777,6 @@ repl_append_vec_entry_async (lre_queue_t * lq, client_connection_t * cli, lre_re
       dc_append_box (dc, arg);
       dk_free_tree (to_free);
     }
-ret:
   dk_free_tree (row);
   return SQL_SUCCESS;
 }
@@ -3492,10 +3492,11 @@ int dbf_first_to_replay = 0;
 int dbf_stop_rfwd;
 
 client_connection_t *
-log_set_immediate_client (client_connection_t * cli)
+log_set_immediate_client (client_connection_t * cli, client_connection_t * old_sqlc_cli)
 {
   dk_session_t *ses;
   client_connection_t *old;
+  sqlc_set_client (old_sqlc_cli);
   if ((ses = IMMEDIATE_CLIENT))
     {
       old = DKS_DB_DATA (ses);
@@ -3522,7 +3523,8 @@ log_replay_file (int fd)
   client_connection_t *cli = client_connection_create ();
   dk_session_t *file_in = dk_session_allocate (SESCLASS_TCPIP);
   dk_session_t trx_ses;
-  client_connection_t *save_cli = log_set_immediate_client (cli);
+  client_connection_t *old_sqlc_cli = sqlc_client ();
+  client_connection_t *save_cli = log_set_immediate_client (cli, NULL);
   scheduler_io_data_t trx_sio;
   dk_session_t *str_in = &trx_ses;
   caddr_t trx_string;
@@ -3680,7 +3682,7 @@ log_replay_file (int fd)
   if (cli->cli_trx)
     lt_done (cli->cli_trx);
   LEAVE_TXN;
-  log_set_immediate_client (save_cli);
+  log_set_immediate_client (save_cli, old_sqlc_cli);
   client_connection_free (cli);
   enable_mt_ft_inx = mt_ft_save;
   log_info ("Roll forward complete");

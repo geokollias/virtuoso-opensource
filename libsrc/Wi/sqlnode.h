@@ -1000,6 +1000,7 @@ struct query_frag_s
   bitf_t qf_is_agg:2;
   char qf_need_enlist;		/* excl parts later in the chain, enlist from start */
   char qf_nth;			/* ordinal no of qf in qr, for debug */
+  ssl_index_t qf_roj_state;	/* if qf has a roj, set if roj outer continue has been invoked */
   state_slot_t **qf_agg_res;
   int qf_agg_is_any;
   state_slot_t **qf_trigger_args;
@@ -1071,6 +1072,7 @@ typedef struct hash_source_s
   char hs_cl_partition;		/* in cluster, is hash table replicated or partitioned on key or partitioned on key and colocated with probe */
   ssl_index_t hs_roj;		/* 2 words in qi for right outer join hits recording */
   ssl_index_t hs_roj_state;
+  ssl_index_t hs_roj_pos;
   state_slot_t *hs_roj_dc;
   state_slot_t **hs_roj_key_out;
   code_vec_t hs_after_join_test;

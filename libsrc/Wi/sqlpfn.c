@@ -1595,7 +1595,6 @@ sqlp_view_u_id (void)
 }
 
 
-dk_set_t html_lines;
 
 caddr_t
 sqlp_html_string (void)
