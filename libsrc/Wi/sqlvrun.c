@@ -2733,6 +2733,7 @@ ts_thread (table_source_t * ts, caddr_t * inst, it_cursor_t * itc, int aq_state,
       aq->aq_ts = get_msec_real_time ();
       aq->aq_row_autocommit = qi->qi_client->cli_row_autocommit;
       aq->aq_non_txn_insert = qi->qi_non_txn_insert;
+      qi->qi_client->cli_trx->lt_has_branches = 1;
       qst_set (inst, ts->ts_aq, (caddr_t) aq);
     }
   if (!qis || BOX_ELEMENTS (qis) <= inx)
@@ -3374,7 +3375,8 @@ ts_initial_itc_1 (table_source_t * ts, caddr_t * inst, it_cursor_t * itc)
   if (no_mt || !ts->ts_aq || KI_TEMP == itc->itc_insert_key->key_id
       || enable_qp < 2
       || !ITC_COL_SPLITTABLE (itc)
-      || itc->itc_n_sets * ts->ts_cost_after * compiler_unit_msecs * 1000 < 2 * qp_thread_min_usec || itc->itc_is_vacuum)
+      || itc->itc_n_sets * ts->ts_cost_after * compiler_unit_msecs * 1000 < 2 * qp_thread_min_usec
+      || srv_have_global_lock (THREAD_CURRENT_THREAD) || itc->itc_is_vacuum)
     return itc_reset (itc);
   if (!qi->qi_is_branch && !qi->qi_root_id)
     qi_assign_root_id (qi);
@@ -4246,6 +4248,21 @@ void
 ts_aq_result (table_source_t * ts, caddr_t * inst)
 {
   /* a ts completed itts branches.  Add up the results.  Can be in a fref or a scalar/exists subq. */
+  QNCAST (QI, qi, inst);
+  if (!IS_MT_BRANCH (qi->qi_trx))
+    {
+      dk_set_t merges;
+      lock_trx_t *lt = qi->qi_trx;
+      IN_TXN;
+      if ((merges = qi->qi_trx->lt_log_merge))
+	{
+	  qi->qi_trx->lt_log_merge = NULL;
+	  LEAVE_TXN;
+	  log_merge_commit (qi->qi_trx, merges);
+	}
+      else
+	LEAVE_TXN;
+    }
   if (prof_on || !ts->src_gen.src_query->qr_select_node)
     {
       qi_add_stats ((QI *) inst, qst_get (inst, ts->ts_aq_qis), ts->src_gen.src_query);

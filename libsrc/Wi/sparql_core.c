@@ -3241,6 +3241,30 @@ spar_gp_add_ppath_leaf (sparp_t * sparp, SPART ** parts, int part_count, int pp_
 }
 
 SPART *
+sparp_find_first_transitive_step_in_path (SPART * pp)
+{
+  SPART **parts = pp->_.ppath.parts;
+  int part_ctr, part_count = BOX_ELEMENTS (parts);
+  switch (pp->_.ppath.subtype)
+    {
+    case '/':
+    case '|':
+    case 'D':
+      for (part_ctr = 0; part_ctr < part_count; part_ctr++)
+	{
+	  SPART *hit = sparp_find_first_transitive_step_in_path (parts[part_ctr]);
+	  if (NULL != hit)
+	    return hit;
+	}
+    case '*':
+      return pp;
+    default:
+      break;
+    }
+  return NULL;
+}
+
+SPART *
 spar_gp_add_ppath_triples (sparp_t * sparp, SPART * graph, SPART * subject, SPART * pp, SPART * object, SPART ** qm_iri_or_pair,
     int banned_tricks)
 {
@@ -3522,8 +3546,15 @@ spar_gp_add_triplelike (sparp_t * sparp, SPART * graph, SPART * subject, SPART *
       if (NULL != sparp->sparp_env->spare_context_sinvs)
 	{
 	  SPART *sinv = (SPART *) (sparp->sparp_env->spare_context_sinvs->data);
-	  if (unbox (sinv->_.sinv.syntax) & SSG_SD_SPARQL11_MORE)
+	  boxint status = unbox (sinv->_.sinv.syntax);
+	  if (status & SSG_SD_SPARQL11_MORE)
 	    expand_ppath_to_triples = 0;
+	  else if (!(status & SSG_SD_TRANSIT))
+	    {
+	      int path_has_trans = (NULL != sparp_find_first_transitive_step_in_path (predicate));
+	      if (path_has_trans)
+		expand_ppath_to_triples = 0;
+	    }
 	}
       if (expand_ppath_to_triples)
 	return spar_gp_add_ppath_triples (sparp, graph, subject, predicate, object, qm_iri_or_pair,

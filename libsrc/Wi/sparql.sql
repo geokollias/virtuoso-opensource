@@ -5951,6 +5951,13 @@ create procedure DB.DBA.SPARQL_RESULTS_CSV_WRITE_VALUE (inout _env any, in val a
   t := __tag (val);
   if (t = __tag of rdf_box)
     {
+      if (__tag of datetime = rdf_box_data_tag (val))
+	{
+	  http ('"', _env);
+	  __rdf_long_to_ttl (val, _env);
+	  http ('"', _env);
+	  return;
+	}
       val := rdf_box_data (val);
       t := __tag (val);
     }
@@ -7026,8 +7033,6 @@ create procedure DB.DBA.RDF_INSERT_TRIPLES (in graph_iid any, inout triples any,
     return RDF_INSERT_TRIPLES_CL (graph_iid, triples, log_mode);
   if (not isiri_id (graph_iid))
     graph_iid := iri_to_id (graph_iid);
-  if (__rdf_graph_is_in_enabled_repl (graph_iid))
-    DB.DBA.RDF_REPL_INSERT_TRIPLES (id_to_iri (graph_iid), triples);
   old_log_enable := log_enable (log_mode, 1);
   declare exit handler for sqlstate '*' { log_enable (old_log_enable, 1); resignal; };
   if (0 = bit_and (old_log_enable, 2))
@@ -7081,6 +7086,8 @@ create procedure DB.DBA.RDF_INSERT_TRIPLES (in graph_iid any, inout triples any,
       log_enable (old_log_enable, 1);
       return;
     }
+  if (__rdf_graph_is_in_enabled_repl (graph_iid))
+    DB.DBA.RDF_REPL_INSERT_TRIPLES (id_to_iri (graph_iid), triples);
   ro_id_dict := null;
   for (ctr := length (triples) - 1; ctr >= 0; ctr := ctr - 1)
     {
@@ -17528,6 +17535,55 @@ create procedure DB.DBA.RDF_REPL_FLUSH_DP (inout dp any)
 }
 ;
 
+create procedure DB.DBA.RDF_REPL_QUAD_O_VAL (in row any)
+{
+  declare o_val_2 any;
+  declare lid, tid int;
+  declare o_lang, o_type, o_val any;
+  o_val := row[3];
+  o_type := row[4];
+  o_lang := row[5];
+  if (o_lang)
+    {
+      lid := rdf_cache_id ('l', o_lang);
+      if (lid = 0)
+	lid := rdf_rl_lang_id (o_lang);
+    }
+  else
+    lid := 257;
+  if (o_type)
+    {
+      declare parsed any;
+      parsed := __xqf_str_parse_to_rdf_box (o_val, o_type, isstring (o_val));
+      if (parsed is not null)
+	{
+	  if (__tag of rdf_box = __tag (parsed))
+	    {
+	      tid := rdf_cache_id ('t', o_type);
+	      if (tid = 0)
+		tid := rdf_rl_type_id (o_type);
+	      rdf_box_set_type (parsed, tid);
+	    }
+	  else if (__tag of XML = __tag (parsed))
+	    {
+	      parsed := rdf_box (parsed, 300, 257, 0, 1);
+	      rdf_box_set_type (parsed, 257);
+	    }
+	  o_val_2 := parsed;
+	  goto nxt;
+	}
+      tid := rdf_cache_id ('t', o_type);
+      if (tid = 0)
+	tid := rdf_rl_type_id (o_type);
+    }
+  else
+    tid := 257;
+  o_val_2 := rdf_box (o_val, tid, lid, 0, 1);
+  nxt:;
+  return o_val_2;
+}
+;
+
 create procedure DB.DBA.RDF_REPL_DELETE_QUADS (in quads any)
 {
   declare len, inx int;
@@ -17542,7 +17598,14 @@ create procedure DB.DBA.RDF_REPL_DELETE_QUADS (in quads any)
   dpipe_set_rdf_load (dp, 8);
   for (inx := 0; inx < len; inx := inx + 1)
     {
-      dpipe_input (dp, quads[inx][0], quads[inx][1], quads[inx][2], quads[inx][3]);
+      if (length (quads[inx]) > 4)
+	{
+	  declare o_val_2 any;
+	  o_val_2 := DB.DBA.RDF_REPL_QUAD_O_VAL (quads[inx]);
+	  dpipe_input (dp, quads[inx][0], quads[inx][1], quads[inx][2], o_val_2);
+	}
+      else
+        dpipe_input (dp, quads[inx][0], quads[inx][1], quads[inx][2], quads[inx][3]);
     }
   DB.DBA.RDF_REPL_FLUSH_DP (dp);
 }
@@ -17563,7 +17626,14 @@ create procedure DB.DBA.RDF_REPL_INS_QUADS (in quads any)
   dpipe_set_rdf_load (dp, 16);
   for (inx := 0; inx < len; inx := inx + 1)
     {
-      dpipe_input (dp, quads[inx][0], quads[inx][1], quads[inx][2], quads[inx][3]);
+      if (length (quads[inx]) > 4)
+	{
+	  declare o_val_2 any;
+	  o_val_2 := DB.DBA.RDF_REPL_QUAD_O_VAL (quads[inx]);
+	  dpipe_input (dp, quads[inx][0], quads[inx][1], quads[inx][2], o_val_2);
+	}
+      else
+	dpipe_input (dp, quads[inx][0], quads[inx][1], quads[inx][2], quads[inx][3]);
     }
   DB.DBA.RDF_REPL_FLUSH_DP (dp);
 }
@@ -17608,6 +17678,26 @@ create procedure DB.DBA.RDF_QUAD_REPL_DEL (in quads any)
     }
   dpipe_next (dp, 1);
   rep:
+  for (inx := 0; inx < cnt; inx := inx + 1)
+    {
+      row := quads[inx];
+      if (__tag of rdf_box = __tag (row[3]))
+	{
+	  declare o_val any;
+	  declare dt_twobyte, lang_twobyte integer;
+	  o_val := row[3];
+	  dt_twobyte := rdf_box_type (o_val);
+	  lang_twobyte := rdf_box_lang (o_val);
+	  if (257 <> dt_twobyte)
+	    quads[inx] := vector (row[0], row[1], row[2], rdf_box_data (o_val),
+	    (select RDT_QNAME from DB.DBA.RDF_DATATYPE where RDT_TWOBYTE = dt_twobyte), NULL);
+	  else if (257 <> lang_twobyte)
+	    quads[inx] := vector (row[0], row[1], row[2], rdf_box_data (o_val),
+	    NULL, (select RL_ID from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = lang_twobyte));
+	  else
+	    quads[inx] := vector (row[0], row[1], row[2], rdf_box_data (o_val));
+	}
+    }
   repl_text ('__rdf_repl', 'DB.DBA.RDF_REPL_DELETE_QUADS (?)', quads);
 }
 ;
@@ -17632,11 +17722,30 @@ create procedure DB.DBA.RDF_QUAD_REPL_INS (in quads any)
   for (inx := 0; inx < cnt; inx := inx + 1)
     {
       row := dpipe_next (dp, 0);
-      --dbg_obj_print (row);
       quads[inx] := row;
     }
   dpipe_next (dp, 1);
   rep:
+  for (inx := 0; inx < cnt; inx := inx + 1)
+    {
+      row := quads[inx];
+      if (__tag of rdf_box = __tag (row[3]))
+	{
+	  declare o_val any;
+	  declare dt_twobyte, lang_twobyte integer;
+	  o_val := row[3];
+	  dt_twobyte := rdf_box_type (o_val);
+	  lang_twobyte := rdf_box_lang (o_val);
+	  if (257 <> dt_twobyte)
+	    quads[inx] := vector (row[0], row[1], row[2], rdf_box_data (o_val),
+	    (select RDT_QNAME from DB.DBA.RDF_DATATYPE where RDT_TWOBYTE = dt_twobyte), NULL);
+	  else if (257 <> lang_twobyte)
+	    quads[inx] := vector (row[0], row[1], row[2], rdf_box_data (o_val),
+	    NULL, (select RL_ID from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = lang_twobyte));
+	  else
+	    quads[inx] := vector (row[0], row[1], row[2], rdf_box_data (o_val));
+	}
+    }
   repl_text ('__rdf_repl', 'DB.DBA.RDF_REPL_INS_QUADS (?)', quads);
 }
 ;

@@ -1725,7 +1725,7 @@ dbs_cpt_recov_ems (dbe_storage_t * dbs, caddr_t * reg)
     {
       caddr_t *ent = (caddr_t *) reg[inx];
       caddr_t name = ent[0];
-      if (0 == strncmp (name, "__EM:", 5) || 0 == strcmp (name, "__sys_ext_map"))
+      if (0 == strncmp (name, "__EM:", 5) || 0 == strncmp (name, "__EMC:", 6) || 0 == strcmp (name, "__sys_ext_map"))
 	{
 	  extent_map_t *em = dbs_read_extent_map (dbs, name, atoi (ent[1]));
 	  dk_set_push (&all_ems, (void *) em);

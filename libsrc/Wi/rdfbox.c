@@ -3125,6 +3125,7 @@ ttl_try_to_cache_new_prefix (caddr_t * qst, dk_session_t * ses, ttl_env_t * env,
   id_hash_iterator_t *ns2pref_hit = env->te_used_prefixes;
   id_hash_t *ns2pref = ns2pref_hit->hit_hash;
   caddr_t *prefx_ptr;
+  caddr_t prefix, ns;
   ptrlong ns_counter_val;
   if ('\0' == ti->ns[0])
     return 0;
@@ -3165,10 +3166,18 @@ ttl_try_to_cache_new_prefix (caddr_t * qst, dk_session_t * ses, ttl_env_t * env,
 	}
       ti->prefix = box_sprintf (20, "ns%d", ns2pref->ht_count);
     }
-  id_hash_set (ns2pref, (caddr_t) (&ti->ns), (caddr_t) (&(ti->prefix)));
-  ti->prefix = box_copy (ti->prefix);
+  if (ns2pref->ht_mp)
+    {
+      prefix = mp_full_box_copy_tree ((mem_pool_t *) (ns2pref->ht_mp), ti->prefix);
+      ns = mp_full_box_copy_tree ((mem_pool_t *) (ns2pref->ht_mp), ti->ns);
+    }
+  else
+    {
+      prefix = box_copy (ti->prefix);
+      ns = box_copy (ti->ns);
+    }
+  id_hash_set (ns2pref, (caddr_t) (&ns), (caddr_t) (&prefix));
   ns_counter_ptr[0] = ns_counter_val + 1;
-  ti->ns = box_copy (ti->ns);
   return 1;
 }
 
@@ -5715,6 +5724,7 @@ bif_sparql_iri_split_rdfa_qname (caddr_t * qst, caddr_t * err_ret, state_slot_t 
   const char *tail;
   int iri_strlen;
   caddr_t ns_iri, prefix, *prefix_ptr, res = NULL, to_free = NULL;
+  caddr_t t_prefix, t_ns_iri;
   switch (DV_TYPE_OF (raw_iri))
     {
     case DV_IRI_ID:
@@ -5783,11 +5793,23 @@ bif_sparql_iri_split_rdfa_qname (caddr_t * qst, caddr_t * err_ret, state_slot_t 
 	    {
 	      if (flags & 0x1)
 		{
-		  id_hash_set (ht, (caddr_t) (&ns_iri), (caddr_t) (&prefix));
-		  to_free = NULL;	/* to be released when hash table is free */
+		  if (ht->ht_mp)
+		    {
+		      t_prefix = mp_full_box_copy_tree ((mem_pool_t *) (ht->ht_mp), prefix);
+		      t_ns_iri = mp_full_box_copy_tree ((mem_pool_t *) (ht->ht_mp), ns_iri);
+		      dk_free_box (prefix);
+		      prefix = NULL;
+		    }
+		  else
+		    {
+		      t_prefix = prefix;
+		      t_ns_iri = ns_iri;
+		      to_free = NULL;	/* to be released when hash table is free */
+		    }
+		  id_hash_set (ht, (caddr_t) (&t_ns_iri), (caddr_t) (&t_prefix));
 		}
 	      res =
-		  (flags & 0x2) ? list (3, box_copy (prefix), box_copy (ns_iri), box_dv_short_nchars (tail,
+		  (flags & 0x2) ? list (3, box_copy (t_prefix), box_copy (ns_iri), box_dv_short_nchars (tail,
 		      iri + iri_strlen - tail)) : NULL;
 	      break;
 	    }
@@ -5796,9 +5818,18 @@ bif_sparql_iri_split_rdfa_qname (caddr_t * qst, caddr_t * err_ret, state_slot_t 
 	{
 	  char buf[10];
 	  sprintf (buf, "n%ld", (long) (ht->ht_count));
-	  prefix = box_dv_short_string (buf);
-	  id_hash_set (ht, (caddr_t) (&ns_iri), (caddr_t) (&prefix));
-	  to_free = NULL;	/* to be released when hash table is free */
+	  if (ht->ht_mp)
+	    {
+	      prefix = mp_box_string ((mem_pool_t *) (ht->ht_mp), buf);
+	      t_ns_iri = mp_full_box_copy_tree ((mem_pool_t *) (ht->ht_mp), ns_iri);
+	    }
+	  else
+	    {
+	      prefix = box_dv_short_string (buf);
+	      t_ns_iri = ns_iri;
+	      to_free = NULL;	/* to be released when hash table is free */
+	    }
+	  id_hash_set (ht, (caddr_t) (&t_ns_iri), (caddr_t) (&prefix));
 	  break;
 	}
       res = (flags & 0x2) ? list (3, NULL, box_copy (ns_iri), box_dv_short_nchars (tail, iri + iri_strlen - tail)) : NULL;

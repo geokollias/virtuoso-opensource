@@ -128,6 +128,17 @@ clb_init (comp_context_t * cc, cl_buffer_t * clb, int is_select)
 
 
 void
+qn_dl_from_qr (sql_comp_t * sc, data_source_t * qn)
+{
+  /* when putting a qn into a qf, it is no longer in its qr.  The qr can be union branch in which case its super will have the qn instead, so go through supers */
+  query_t *qr;
+  for (qr = qn->src_query; qr; qr = qr->qr_super)
+    dk_set_delete (&qr->qr_nodes, (void *) qn);
+  dk_set_delete (&sc->sc_cc->cc_query->qr_nodes, qn);
+}
+
+
+void
 sqlg_cl_insert (sql_comp_t * sc, comp_context_t * cc, insert_node_t * ins, ST * tree, dk_set_t * code)
 {
   int inx;

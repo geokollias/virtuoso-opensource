@@ -104,14 +104,49 @@ id_hash_print (id_hash_t * ht)
   END_DO_IDHASH;
 }
 
-void
-ht_print (dk_hash_t * ht)
+int
+ht_print_cmp (const void *s1, const void *s2)
 {
-  DO_HT (void *, k, void *, d, ht)
-  {
-    printf ("%p -> %p\n", k, d);
-  }
-  END_DO_HT;
+  ptrlong l1 = *(ptrlong **) s1;
+  ptrlong l2 = *(ptrlong **) s2;
+  return l1 < l2 ? -1 : 1;
+}
+
+
+void
+ht_print (dk_hash_t * ht, int n)
+{
+  /* n 0 means print all, positive n means print least n, negative n means print greatest -n */
+  if (n)
+    {
+      int sz = 2 * sizeof (caddr_t) * ht->ht_count, fill = 0;
+      int ctr, cnt = n < 0 ? -n : n;
+      void **arr = dk_alloc (sz);
+      if (cnt > ht->ht_count)
+	cnt = ht->ht_count;
+      DO_HT (void *, k, void *, d, ht)
+      {
+	arr[fill++] = k;
+	arr[fill++] = d;
+      }
+      END_DO_HT;
+      qsort (arr, ht->ht_count, 2 * sizeof (void *), ht_print_cmp);
+      for (ctr = 0; ctr < cnt; ctr++)
+	{
+	  void **place = n > 0 ? &arr[ctr * 2] : &arr[(ht->ht_count - (ctr + 1)) * 2];
+	  printf ("%p -> %p\n", place[0], place[1]);
+	}
+      dk_free (arr, sz);
+    }
+  else
+    {
+      HT_NO_REQUIRE_MTX (ht);
+      DO_HT (void *, k, void *, d, ht)
+      {
+	printf ("%p -> %p\n", k, d);
+      }
+      END_DO_HT;
+    }
 }
 
 
