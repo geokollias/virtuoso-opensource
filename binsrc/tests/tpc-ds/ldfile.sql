@@ -1,0 +1,26 @@
+ft_set_file ('dbgen_version_f', 'outputDir/dbgen_version.dat', delimiter => '|');
+ft_set_file ('customer_address_f', 'outputDir/customer_address.dat', delimiter => '|');
+ft_set_file ('customer_demographics_f', 'outputDir/customer_demographics.dat', delimiter => '|');
+ft_set_file ('date_dim_f', 'outputDir/date_dim.dat', delimiter => '|');
+ft_set_file ('warehouse_f', 'outputDir/warehouse.dat', delimiter => '|');
+ft_set_file ('ship_mode_f', 'outputDir/ship_mode.dat', delimiter => '|');
+ft_set_file ('time_dim_f', 'outputDir/time_dim.dat', delimiter => '|');
+ft_set_file ('reason_f', 'outputDir/reason.dat', delimiter => '|');
+ft_set_file ('income_band_f', 'outputDir/income_band.dat', delimiter => '|');
+ft_set_file ('item_f', 'outputDir/item.dat', delimiter => '|');
+ft_set_file ('store_f', 'outputDir/store.dat', delimiter => '|');
+ft_set_file ('call_center_f', 'outputDir/call_center.dat', delimiter => '|');
+ft_set_file ('customer_f', 'outputDir/customer.dat', delimiter => '|');
+ft_set_file ('web_site_f', 'outputDir/web_site.dat', delimiter => '|');
+ft_set_file ('store_returns_f', 'outputDir/store_returns.dat', delimiter => '|');
+ft_set_file ('household_demographics_f', 'outputDir/household_demographics.dat', delimiter => '|');
+ft_set_file ('web_page_f', 'outputDir/web_page.dat', delimiter => '|');
+ft_set_file ('promotion_f', 'outputDir/promotion.dat', delimiter => '|');
+ft_set_file ('catalog_page_f', 'outputDir/catalog_page.dat', delimiter => '|');
+ft_set_file ('inventory_f', 'outputDir/inventory.dat', delimiter => '|');
+ft_set_file ('catalog_returns_f', 'outputDir/catalog_returns.dat', delimiter => '|');
+ft_set_file ('web_returns_f', 'outputDir/web_returns.dat', delimiter => '|');
+ft_set_file ('web_sales_f', 'outputDir/web_sales.dat', delimiter => '|');
+ft_set_file ('catalog_sales_f', 'outputDir/catalog_sales.dat', delimiter => '|');
+ft_set_file ('store_sales_f', 'outputDir/store_sales.dat', delimiter => '|');
+
