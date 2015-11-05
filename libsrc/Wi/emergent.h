@@ -153,3 +153,10 @@ void csetp_bloom (cset_p_t * csetp, caddr_t * inst, uint64 ** bf_ret, uint32 * b
 #define CSQ_ 0
 
 cset_p_t **cset_p_array (cset_t * cset);
+
+
+
+extern caddr_t csg_s_uname;
+extern caddr_t csg_g_uname;
+extern caddr_t csg_o_uname;
+extern caddr_t csg_p_uname;

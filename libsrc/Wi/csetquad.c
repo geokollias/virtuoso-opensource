@@ -305,6 +305,7 @@ ts_csq_new_cset (table_source_t * ts, caddr_t * inst)
     }
   ksp_cmp_func (&cs_ks->ks_spec, NULL);
   ks_set_search_params (NULL, NULL, cs_ks);
+  cs_ks->ks_n_vec_sort_cols = !cs_ks->ks_spec.ksp_spec_array ? 0 : cs_ks->ks_spec.ksp_spec_array->sp_next ? 2 : 1;
 }
 
 
@@ -507,6 +508,8 @@ ks_cset_quad_start_search (key_source_t * ks, caddr_t * inst, buffer_desc_t ** b
     ts_top_oby_limit (ts, inst, itc);
   itc->itc_rows_on_leaves = 0;
   itc->itc_rows_selected = 0;
+  if (ks->ks_key->key_is_col && ks->ks_row_spec && !itc->itc_multistate_row_specs)
+    itc->itc_multistate_row_specs = itc_is_multistate_row_spec (itc);	/* can be vec paramsdoes not set if params are not cast, e.g. come from prev qn and are same type */
   qr = ts->src_gen.src_query;
   if (ks->ks_lock_mode)
     itc->itc_lock_mode = ks->ks_lock_mode;
@@ -672,15 +675,19 @@ ts_csq_end (table_source_t * ts, caddr_t * inst)
 void
 ts_psog_scan (table_source_t * ts, caddr_t * inst, caddr_t * state)
 {
+  QNCAST (QI, qi, inst);
   int step, qp_start = 0;
   table_source_t *cs_ts;
   int n_sets = QST_INT (inst, ts->src_gen.src_prev->src_out_fill);
   cset_quad_t *csq = ts->ts_csq;
-  caddr_t *o_mode = (caddr_t *) qst_get (inst, csq->csq_o_scan_mode);
   cset_t *cset;
-  if (state && !o_mode)
+  caddr_t *o_mode;
+  qi->qi_set = 0;
+  o_mode = (caddr_t *) qst_get (inst, csq->csq_o_scan_mode);
+  if (state && (!o_mode || DV_DB_NULL == DV_TYPE_OF (o_mode)))
     {
-      /* The cols  are bound by posg, output 1:1 */
+      /* The cols  are bound by posg, output 1:1
+       * in cluster case, this gets only s's of this partition */
       QN_CHECK_SETS (ts, inst, n_sets + 1);
       QST_INT (inst, ts->src_gen.src_out_fill) = n_sets;
       int_asc_fill (QST_BOX (int *, inst, ts->src_gen.src_sets), n_sets, 0);
@@ -712,7 +719,7 @@ ts_psog_scan (table_source_t * ts, caddr_t * inst, caddr_t * state)
 	  for (csp = csp; csp; csp = csp->next)
 	    {
 	      QNCAST (cset_p_t, csetp, csp->data);
-	      if (p == csetp->csetp_iri)
+	      if (cset == csetp->csetp_cset)
 		{
 		  QST_BOX (dk_set_t, inst, csq->csq_cset) = csp;
 		  goto found;

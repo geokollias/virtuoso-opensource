@@ -129,6 +129,8 @@ typedef struct op_table_s
   dk_set_t ot_all_dts;		/* all currently placed dts,scalar subqs.  Can look for intermediate reuse. In top ot only */
   dk_set_t ot_lp_cols;		/* late projection cols, to fetch after gby or top oby */
   float ot_initial_cost;	/* cost of initial plan with this ot in first position */
+  float ot_joined_card;
+  char ot_is_rdf;
   char ot_any_plan;		/* true if there is at least one full plan with this ot in first position */
   char ot_is_right_oj;		/* for a dt ot, set if trying a right hash oj plan.  Only hash join is considered */
   char ot_has_top_test;
@@ -600,6 +602,7 @@ struct sqlo_s
   char so_place_code_forr_cond;	/* inside cond exp, do not precalculate */
   char so_inside_control_exp;	/* if set, do not place things outside of the innermost enclosing control exp */
   char so_for_late_proj;
+  char so_lit_param;
   dk_set_t so_hash_fillers;
   dk_set_t so_hash_probes;	/* when making a join in build, do not include these tables these are directly on the probe side either directly or on the probe side of a containing hash filler */
   dk_set_t so_inside_subq;	/* list of exists/scalar subq being made.   Contains rename-insensitive hash no.  Used to avoid importing a subq pred as restriction inside itself */
@@ -816,6 +819,10 @@ typedef struct index_choice_s
   dk_set_t ic_lit_param_nos;
   uint64 ic_n_rows_sampled;
   uint64 ic_n_row_spec_matches;
+  float ic_slice_pct;		/* 0 means any, other means set pct, actual pct returned here */
+  int ic_n_slices;		/* no of slices sampled in cluster */
+  int ic_n_small_slices;	/* no of empty or small cluster slices */
+  char ic_insufficient_slices;
 } index_choice_t;
 
 typedef struct pred_score_s
@@ -880,7 +887,7 @@ struct dfe_reuse_s
   df_elt_t *dfr_last;		/* if the reuse is only for the start of the dt, this is the last dfe in the reusable leading sect */
   dk_set_t dfr_extra_cols;	/* what cols would have to be added to the reuse candidate */
   dk_set_t dfr_extra_preds;	/* if reused, these preds must be added to filter out the data for reuse. */
-  dk_hash_t *dfr_cn_map;	/* from reuser correlation no to reused correlation no */
+  id_hash_t *dfr_cn_map;	/* from reuser correlation no to reused correlation no */
 };
 
 
@@ -1168,6 +1175,7 @@ key_source_t *sqlg_key_source_create (sqlo_t * so, df_elt_t * tb_dfe, dbe_key_t 
 void sqlg_non_index_ins (sql_comp_t * sc, df_elt_t * tb_dfe, key_source_t * ks);
 void sqlg_is_text_only (sqlo_t * so, df_elt_t * tb_dfe, table_source_t * ts);
 data_source_t *sqlg_make_path_ts (sqlo_t * so, df_elt_t * tb_dfe);
+int ts_check_unq (table_source_t * ts, int flg);
 int sqlg_rdf_ck (sql_comp_t * sc, table_source_t * ts, int is_wr);
 int dfe_is_eq_pred (df_elt_t * pred);
 float sqlo_index_path_cost (dk_set_t path, float *cost_ret, float *card_ret, char *sure_ret, df_elt_t * tb_dfe);
@@ -1186,6 +1194,7 @@ extern caddr_t uname_one_of_these;
 #define PRED_IS_EQ_OR_IN(dfe) ((DFE_BOP_PRED == dfe->dfe_type || DFE_BOP == dfe->dfe_type) && (BOP_EQ == dfe->_.bin.op || 1 == dfe->_.bin.is_in_list))
 float sqlo_inx_sample (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_elt_t ** uppers, int n_parts,
     index_choice_t * ic);
+int ic_is_insufficient_slices (index_choice_t * ic);
 float arity_scale (float ar);
 caddr_t sqlo_rdf_lit_const (ST * tree);
 caddr_t sqlo_rdf_obj_const_value (ST * tree, caddr_t * val_ret, caddr_t * lang_ret);
@@ -1315,6 +1324,7 @@ uint32 sqlo_subq_id_hash (ST * tree);
 caddr_t sqlo_new_prefix (sqlo_t * so);
 void dfe_pred_body_cost (df_elt_t ** body, float *unit_ret, float *arity_ret, float *overhead_ret, df_elt_t * in_tb);
 int sqlo_has_node (ST * tree, int type);
+void dfe_unplace_in_middle (df_elt_t * dfe);
 
 
 /* bsp */

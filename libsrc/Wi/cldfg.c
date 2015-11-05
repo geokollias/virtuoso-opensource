@@ -163,6 +163,7 @@ stn_divide_bulk_input (stage_node_t * stn, caddr_t * inst)
     dfg_slice_set_thread (inst, cm);
     stn_in_batch (target_stn, inst, cm, NULL, 0, 0);
     dk_free_box (cm->cm_cl_stack);
+    CM_FREE_TRACE (cm, __FILE__, __LINE__);
     dk_free ((caddr_t) cm, sizeof (cl_message_t));
   }
   END_DO_RBUF;
@@ -250,11 +251,15 @@ void
 stn_roj_outer (stage_node_t * stn, caddr_t * inst)
 {
   hash_source_t *hs = (hash_source_t *) qn_next_qn ((data_source_t *) stn, (qn_input_fn) hash_source_input);
+  if (!QST_INT (inst, hs->hs_roj_state))
+    {
+      QST_INT (inst, hs->hs_roj_state) = 1;
+      QST_INT (inst, hs->clb.clb_nth_set) = 0;
+      QST_INT (inst, hs->hs_roj) = 0;
+      hash_source_roj_input (hs, inst, NULL);
+    }
   SRC_IN_STATE (stn, inst) = NULL;
-  QST_INT (inst, hs->hs_roj_state) = 1;
-  QST_INT (inst, hs->clb.clb_nth_set) = 0;
-  QST_INT (inst, hs->hs_roj) = 0;
-  hash_source_roj_input (hs, inst, NULL);
+  QST_INT (inst, hs->hs_roj_state) = 0;
 }
 
 
@@ -277,6 +282,21 @@ stn_extend_batch (stage_node_t * stn, caddr_t * inst, itc_cluster_t * itcl, dc_r
 }
 
 
+int
+stn_no_cm_merge (stage_node_t * stn)
+{
+  /* in cset posg + o scan cases, the stn gets the csets to scan one by one in distinct messages.  These should not be combined in a vector of messages */
+  table_source_t *ts = (table_source_t *) qn_next (stn);
+  if (!IS_TS (ts))
+    return 0;
+  if (ts->ts_csq && ts->ts_csq->csq_o_scan_mode)
+    return 1;
+  if (ts->ts_csts && ts->ts_csts->csts_o_scan_mode)
+    return 1;
+  return 0;
+}
+
+
 int dfg_clo_mp_limit = 10000000;
 void
 stn_continue (stage_node_t * stn, caddr_t * inst)
@@ -290,6 +310,7 @@ stn_continue (stage_node_t * stn, caddr_t * inst)
   dk_session_t *ses = &clib.clib_in_strses;
   int ctr;
   int no_dc_break = stn->stn_loc_ts->ts_order_ks->ks_is_flood && IS_QN (qn_next ((data_source_t *) stn), chash_read_input);
+  int no_cm_merge = stn_no_cm_merge (stn);
   cl_op_t *itcl_clo = (cl_op_t *) qst_get (inst, stn->clb.clb_itcl);
   itc_cluster_t *itcl = itcl_clo ? itcl_clo->_.itcl.itcl : NULL;
   stn_divide_bulk_input (stn, inst);
@@ -312,12 +333,14 @@ stn_continue (stage_node_t * stn, caddr_t * inst)
   SESSION_SCH_DATA (&clib.clib_in_strses) = &clib.clib_in_siod;
   DKS_CL_DATA (&clib.clib_in_strses) = &clses;
   DKS_QI_DATA (&clib.clib_in_strses) = (query_instance_t *) inst;
-  dfg_inc_completed ("at continue");
   if (stn->stn_roj_outer && QST_INT (inst, stn->stn_roj_outer))
     {
       stn_roj_outer (stn, inst);
+      dfg_inc_completed ("after roj outer");
       return;
     }
+  dfg_inc_completed ("at continue");
+
 new_batch:
   itcl->itcl_n_results = 0;
   dc_reset_array (inst, (data_source_t *) stn, stn->stn_inner_params, -1);
@@ -395,7 +418,7 @@ again:
 		    stn_extend_batch (stn, inst, itcl, dre);
 		    goto more_from_dre;
 		  }
-		if (itcl->itcl_batch_size == itcl->itcl_n_results)
+		if (itcl->itcl_batch_size == itcl->itcl_n_results || no_cm_merge)
 		  goto full_batch;
 		goto again;
 	      }
@@ -425,7 +448,7 @@ again:
 		    stn_extend_batch (stn, inst, itcl, dre);
 		    goto more_from_dre2;
 		  }
-		if (itcl->itcl_n_results >= itcl->itcl_batch_size)
+		if (itcl->itcl_n_results >= itcl->itcl_batch_size || no_cm_merge)
 		  goto full_batch;
 		goto again;
 	      }
@@ -545,6 +568,7 @@ aq_dfg_local_func (caddr_t av, caddr_t * err_ret)
   claq->claq_of_parent = 2;
   cli->cli_claq = NULL;
   claq_free (claq);
+  qi->qi_client = NULL;
   IN_CLL;
   qi->qi_dfg_running = 0;
   qi->qi_thread = NULL;

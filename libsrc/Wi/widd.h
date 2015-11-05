@@ -907,6 +907,8 @@ dbe_key_t *tb_text_key (dbe_table_t * tb);
 void key_add_part (dbe_key_t * key, oid_t col);
 void sqt_max_desc (sql_type_t * res, sql_type_t * arg);
 int dbe_cols_are_valid (db_buf_t row, dbe_key_t * key, int throw_error);
+dbe_column_t *key_col_by_id (dbe_key_t * key, ptrlong id);
+
 
 #include "emergent.h"
 

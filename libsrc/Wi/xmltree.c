@@ -1655,8 +1655,8 @@ xslt_format_number (numeric_t value, caddr_t format, xslt_number_format_t * nf)
 		right_padding_zero_count = 0;
 	      total_digits = numeric_raw_precision (_value) - numeric_scale (_value) + padding_zero_count;
 	      grouping_symbols =
-		  !grouping_used ? 0 : (int) ((box_length (nf->xsnf_grouping_sep) -
-		      1) * ((double) (min_int_digits + padding_zero_count)) / grouping_size + 1);
+		  !grouping_used ? 0 : (int) ((box_length (nf->
+			  xsnf_grouping_sep) - 1) * ((double) (min_int_digits + padding_zero_count)) / grouping_size + 1);
 
 	      out_ptr = res = dk_alloc_box_zero (box_length (res_prefix) - 1 +
 		  ((5 + total_digits) * (2 + grouping_symbols)) +
@@ -8377,8 +8377,11 @@ xn_xe_from_text (xpath_node_t * xn, query_instance_t * qi)
    do { \
       if ((xn)->src_gen.src_sets) \
 	{ \
+	  caddr_t __v = (v); \
 	  data_col_t * dc = QST_BOX (data_col_t *, qst, (ssl)->ssl_index); \
-	  dc_append_box (dc, v); \
+	  dc_append_box (dc, __v); \
+	  if (DCT_BOXES & dc->dc_type) \
+	    dk_free_tree (__v); \
 	} \
       else \
 	qst_set ((qst), (ssl), (v)); \

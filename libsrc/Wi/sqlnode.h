@@ -291,8 +291,8 @@ typedef struct _qc_data_s
 {
   /* a group of cached compilationhs of one text with different parametrizable literals */
   int qcd_ref_count;
-  short qcd_n_queries;
   char qcd_to_drop;		/* last reader will free when exiting */
+  uint64 qcd_hash;
   caddr_t qcd_tree;
   query_t **qcd_queries;
   dk_set_t qcd_to_add;
@@ -307,7 +307,6 @@ typedef struct qr_cache_ent_s
   int qce_n_used;
   uint64 qce_exec_msec;
   uint32 qce_last_used;
-  uint32 qce_size;		/* approx size of plan in qns */
   oid_t qce_user;		/* user account */
   char qce_user_only;
   char qce_free_when_done;
@@ -351,6 +350,7 @@ struct query_s
   bitf_t qr_need_cli_sec:1;
   char qr_hidden_columns;
   char qr_n_stages;		/* if represents distr frag */
+  ushort qr_size;		/* approx count of operators fir tracking qrc space */
   /* The query state array's description */
   dk_set_t qr_state_map;
   state_slot_t **qr_freeable_slots;
@@ -880,6 +880,13 @@ typedef struct cset_mode_s
 #define CSET_SCAN_FIRST 1
 #define CSET_SCAN_LAST 2
 
+typedef struct psog_pre_node_s
+{
+  data_source_t src_gen;
+  state_slot_t *psp_o_scan_mode;
+  ssl_index_t psp_nth_set;
+} psog_pre_node_t;
+
 
 typedef struct cset_quad_s
 {
@@ -1196,6 +1203,7 @@ struct query_frag_s
   bitf_t qf_is_agg:2;
   char qf_need_enlist;		/* excl parts later in the chain, enlist from start */
   char qf_nth;			/* ordinal no of qf in qr, for debug */
+  ssl_index_t qf_roj_state;	/* if qf has a roj, set if roj outer continue has been invoked */
   state_slot_t **qf_agg_res;
   int qf_agg_is_any;
   state_slot_t **qf_trigger_args;
@@ -1267,6 +1275,7 @@ typedef struct hash_source_s
   char hs_cl_partition;		/* in cluster, is hash table replicated or partitioned on key or partitioned on key and colocated with probe */
   ssl_index_t hs_roj;		/* 2 words in qi for right outer join hits recording */
   ssl_index_t hs_roj_state;
+  ssl_index_t hs_roj_pos;
   state_slot_t *hs_roj_dc;
   state_slot_t **hs_roj_key_out;
   code_vec_t hs_after_join_test;
@@ -1896,7 +1905,6 @@ typedef struct comp_context_s
   dk_set_t cc_state_slots;
   id_hash_t *cc_slots;
   query_t *cc_query;
-  dbe_schema_t *cc_schema;
   caddr_t cc_error;
   struct comp_context_s *cc_super_cc;
   dk_hash_t *cc_keep_ssl;
@@ -1911,9 +1919,6 @@ typedef struct comp_context_s
   memset (&cc, 0, sizeof (cc)); \
   cc.cc_query = qr; \
   cc.cc_instance_fill = QI_FIRST_FREE; \
-  cc.cc_schema = wi_inst.wi_schema; \
-  if (cli->cli_new_schema) \
-    cc.cc_schema = cli->cli_new_schema; \
   cc.cc_super_cc = &cc;
 
 

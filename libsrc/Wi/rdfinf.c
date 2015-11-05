@@ -941,8 +941,6 @@ ric_allocate (caddr_t n2)
   id_hash_set_rehash_pct (ctx->ric_ifp_exclude, 200);
   ctx->ric_ifp_exclude = id_hash_allocate (61, sizeof (caddr_t), sizeof (caddr_t), treehash, treehashcmp);
   ctx->ric_mtx = mutex_allocate ();
-  ctx->ric_samples = id_hash_allocate (601, sizeof (caddr_t), sizeof (tb_sample_t), treehash, treehashcmp);
-  id_hash_set_rehash_pct (ctx->ric_samples, 200);
   ctx->ric_p_stat = hash_table_allocate (11);
   return ctx;
 }
@@ -1588,7 +1586,7 @@ char *cl_rdf_init_srv =
     "   DB.DBA.RDF_QNAME_OF_IID (null); \n"
     "   rdf_inf_const_init (); \n"
     "   select count (*) into c from (select distinct s.RS_NAME from sys_rdf_schema s) sub where 0 = rdfs_load_schema (sub.RS_NAME); \n"
-    "   JSO_LOAD_AND_PIN_SYS_GRAPH_RO  (); \n" "   commit work; \n" "   rdf_init_thread (0); \n" " } \n";
+    "   DB.DBA.JSO_LOAD_GRAPH (DB.DBA.JSO_SYS_GRAPH(), 1, 0, 0);\n" "   commit work; \n" "   rdf_init_thread (0); \n" " } \n";
 
 dk_set_t rdf_inf_init_queue;
 user_t *cl_rdf_inf_init_user;
@@ -1735,7 +1733,6 @@ cl_rdf_bif_check_init (bif_t bif)
 	}
     }
 }
-
 rdf_inf_ctx_t *empty_ric;
 
 void
@@ -2617,6 +2614,19 @@ qn_set_after_join_test (data_source_t * qn, code_vec_t tst)
 }
 
 
+data_source_t *
+qn_skip_inits (data_source_t * qn)
+{
+  data_source_t *next;
+  while ((next = qn_next (qn)))
+    {
+      if (!IS_QN (qn, hash_fill_node_input))
+	break;
+      qn = next;
+    }
+  return qn;
+}
+
 outer_seq_end_node_t *
 sqlg_cl_bracket_outer (sqlo_t * so, data_source_t * first)
 {
@@ -2670,7 +2680,7 @@ sqlg_cl_bracket_outer (sqlo_t * so, data_source_t * first)
   {
     data_source_t *qn;
     SQL_NODE_INIT (set_ctr_node_t, sctr, set_ctr_input, set_ctr_free);
-    qn_ins_before (sc, &first, qn_next (first), (data_source_t *) sctr);
+    qn_ins_before (sc, &first, qn_skip_inits (qn_next (first)), (data_source_t *) sctr);
     clb_init (sc->sc_cc, &sctr->clb, 1);
     sctr->sctr_role = is_roj ? SCTR_RIGHT_OJ : SCTR_OJ;
     sctr->sctr_itcl = ssl_new_inst_variable (so->so_sc->sc_cc, "buf_row", DV_ARRAY_OF_POINTER);

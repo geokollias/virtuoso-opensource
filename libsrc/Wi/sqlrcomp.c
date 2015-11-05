@@ -165,7 +165,7 @@ sqlc_print_literal_proc (char *text, size_t tlen, int *fill, char *name, ST ** p
     }
   else
     {
-      query_t *qr = sch_proc_def (sc->sc_cc->cc_schema, name);
+      query_t *qr = sch_proc_def (wi_inst.wi_schema, name);
       if (!qr || IS_REMOTE_ROUTINE_QR (qr) || !qr->qr_proc_ret_type)
 	return;
       else
@@ -346,7 +346,7 @@ sqlc_print_standard_proc (char *text, size_t tlen, int *fill, char *name, ST ** 
 	}
       else
 	{
-	  query_t *qr = sch_proc_def (sc->sc_cc->cc_schema, name);
+	  query_t *qr = sch_proc_def (wi_inst.wi_schema, name);
 	  if (qr && !IS_REMOTE_ROUTINE_QR (qr) && qr->qr_proc_ret_type)
 	    {
 	      ptrlong *rtype = (ptrlong *) qr->qr_proc_ret_type;
@@ -821,7 +821,7 @@ sqlc_remote_assign_param_type (sql_comp_t * sc, char *tb_name, char *col_name)
 {
   if (sc->sc_exp_param && sc->sc_exp_param->ssl_dtp == DV_UNKNOWN)
     {
-      dbe_table_t *tb = sch_name_to_table (sc->sc_cc->cc_schema, tb_name);
+      dbe_table_t *tb = sch_name_to_table (wi_inst.wi_schema, tb_name);
       dbe_column_t *col = tb_name_to_column (tb, col_name);
       sc->sc_exp_param->ssl_sqt = col->col_sqt;
     }
@@ -1215,7 +1215,7 @@ sqlc_exp_print (sql_comp_t * sc, comp_table_t * ct, ST * exp, char *text, size_t
 	  {
 	    caddr_t col_alias = rds_get_info (target_rds, SQL_COLUMN_ALIAS);
 	    sqlc_exp_print (sc, ct, tree->_.as_exp.left, text, tlen, fill);
-	    if (ST_P (tree->_.as_exp.left, COL_DOTTED) && !tree->_.as_exp.left->_.col_ref.prefix &&
+	    if (ST_COLUMN (tree->_.as_exp.left, COL_DOTTED) && !tree->_.as_exp.left->_.col_ref.prefix &&
 		!CASEMODESTRCMP (tree->_.as_exp.left->_.col_ref.name, tree->_.as_exp.name))
 	      break;
 	    if (DV_STRINGP (col_alias) && box_length (col_alias) > 1 && toupper (col_alias[0]) == 'Y')
@@ -1376,7 +1376,7 @@ sqlc_exp_print (sql_comp_t * sc, comp_table_t * ct, ST * exp, char *text, size_t
 
 	case TABLE_DOTTED:
 	  {
-	    dbe_table_t *tb = sch_name_to_table (sc->sc_cc->cc_schema, tree->_.table.name);
+	    dbe_table_t *tb = sch_name_to_table (wi_inst.wi_schema, tree->_.table.name);
 	    comp_table_t *ct = sqlc_table_ct (sc, tb, tree);
 	    char *c_prefix = sqlc_ct_vdb_prefix (sc, ct);
 	    remote_table_t *rt = find_remote_table (tb->tb_name, 0);
@@ -1469,7 +1469,7 @@ sqlc_exp_print (sql_comp_t * sc, comp_table_t * ct, ST * exp, char *text, size_t
 	case INSERT_STMT:
 	  {
 	    ST *tb_ref = tree->_.insert.table;
-	    dbe_table_t *tb = sch_name_to_table (sc->sc_cc->cc_schema, tb_ref->_.table.name);
+	    dbe_table_t *tb = sch_name_to_table (wi_inst.wi_schema, tb_ref->_.table.name);
 	    sprintf_more (text, tlen, fill, "INSERT INTO ");
 	    sqlc_quote_dotted (text, tlen, fill, tb_remote_name (tb));
 	    if (!sec_tb_check (tb, (oid_t) unbox (tb_ref->_.table.g_id), (oid_t) unbox (tb_ref->_.table.u_id), GR_INSERT) ||
@@ -1603,7 +1603,7 @@ sqlc_exp_print (sql_comp_t * sc, comp_table_t * ct, ST * exp, char *text, size_t
 		    }
 		  else
 		    {
-		      query_t *qr = sch_proc_def (sc->sc_cc->cc_schema, tree->_.call.name);
+		      query_t *qr = sch_proc_def (wi_inst.wi_schema, tree->_.call.name);
 		      if (qr && !IS_REMOTE_ROUTINE_QR (qr) && qr->qr_proc_ret_type)
 			{
 			  ptrlong *rtype = (ptrlong *) qr->qr_proc_ret_type;
@@ -1841,7 +1841,7 @@ sqlc_expand_remote_cursor (sql_comp_t * sc, ST * tree)
   ST *t1 = from ? from[0]->_.table_ref.table : NULL;
   if (1 == BOX_ELEMENTS_0 (from) && ST_P (t1, TABLE_DOTTED) && !tree->_.select_stmt.table_exp->_.table_exp.group_by)
     {
-      dbe_table_t *tb = sch_name_to_table (sc->sc_cc->cc_schema, t1->_.table.name);
+      dbe_table_t *tb = sch_name_to_table (wi_inst.wi_schema, t1->_.table.name);
       remote_table_t *rt;
       if (!tb)
 	return 0;

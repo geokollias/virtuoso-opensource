@@ -454,7 +454,7 @@ qi_inst_state_free (caddr_t * qi_box)
   query_t *qr = qi->qi_query;
   state_slot_t **slots = qr->qr_freeable_slots;
   int n = slots ? BOX_ELEMENTS (slots) : 0, inx;
-  if (prof_on && CLI_TERMINATE != cli->cli_terminate_requested)
+  if (prof_on && qi->qi_log_stats && cli && CLI_TERMINATE != cli->cli_terminate_requested)
     qi_qn_stat (qi);
   if (!qi->qi_is_branch && qi->qi_root_id)
     qi_root_done (qi);
@@ -3755,7 +3755,7 @@ fref_setp_flush (fun_ref_node_t * fref, caddr_t * state)
 uint32 cl_ht_id_ctr;
 
 uint64
-qi_new_ht_id (query_instance_t * qi)
+qi_new_ht_id (query_instance_t * qi, uint64 high_bits)
 {
   return 0;
 }

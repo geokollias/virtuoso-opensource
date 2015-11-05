@@ -40,6 +40,10 @@
 #include "sqlbif.h"
 #include "mhash.h"
 
+#if (GCC_VERSION >= 3004) || defined (__clang__)
+#define ENABLE_GCC_OPTS
+#endif
+
 #define IS_64(n) \
   (!((n) >= (int64) INT32_MIN && (n) <= (int64) INT32_MAX))
 
@@ -973,7 +977,7 @@ void
 ce_head_info (db_buf_t ce, int *r_bytes, int *r_values, dtp_t * r_ce_type, dtp_t * r_flags, int *r_hl)
 {
   dtp_t flags, ce_type;
-  int n_bytes, n_values, hl, is_null;
+  int n_bytes = 0, n_values = 0, hl = 0, is_null;
   flags = ce[0];
   ce_type = flags & CE_TYPE_MASK;
   if (ce_type < CE_BITS)
@@ -1059,7 +1063,7 @@ int enable_ce_skip_bits_2 = 0;
   {if (enable_ce_skip_bits_2) ce_skip_bits_2 (bits, skip, byte, bit);	\
    else ce_skip_bits (bits, skip, byte, bit);}
 
-#if !defined (ENABLE_GCC)
+#if !defined (ENABLE_GCC_OPTS)
 uint64
 popcount (uint64 x)
 {
@@ -1473,7 +1477,7 @@ mp_box_n_chars (mem_pool_t * mp, caddr_t b, int l)
  else dc_append_bytes (dc, b, n, NULL, 0);
 
 int enable_ce_result_cvt = 1;
-
+int64 ce_result_trap = 0;
 
 int
 ce_result (col_pos_t * cpo, int row, dtp_t flags, db_buf_t val, int len, int64 offset, int rl)
@@ -1483,6 +1487,11 @@ ce_result (col_pos_t * cpo, int row, dtp_t flags, db_buf_t val, int len, int64 o
   it_cursor_t *itc = cpo->cpo_itc;
   data_col_t *dc = cpo->cpo_dc;
 #if 0
+  if (ce_result_trap)
+    {
+      if (offset > ce_result_trap)
+	bing ();
+    }
   if (itc->itc_n_matches && row != (next = itc->itc_matches[itc->itc_match_in]))
     GPF_T1 ("ce result getting row no out of whack");
 #endif
@@ -1595,10 +1604,13 @@ ce_result (col_pos_t * cpo, int row, dtp_t flags, db_buf_t val, int len, int64 o
       else if (DCT_BOXES & dc->dc_type)
 	{
 	  dtp_t dtp = CE_IS_IRI & flags ? DV_IRI_ID : DV_LONG_INT;
+	  dtp_t cl_dtp = cpo->cpo_cl && (DV_SINGLE_FLOAT == cpo->cpo_cl->cl_sqt.sqt_col_dtp
+	      || DV_DOUBLE_FLOAT == cpo->cpo_cl->cl_sqt.sqt_col_dtp) ? dtp_canonical[cpo->cpo_cl->cl_sqt.sqt_col_dtp] : dtp;
 	  for (ctr = 0; ctr < rl; ctr++)
 	    {
 	      caddr_t box =
-		  DCT_FROM_POOL & dc->dc_type ? mp_alloc_box (dc->dc_mp, sizeof (int64), dtp) : dk_alloc_box (sizeof (int64), dtp);
+		  DCT_FROM_POOL & dc->dc_type ? mp_alloc_box (dc->dc_mp, sizeof (int64), cl_dtp) : dk_alloc_box (sizeof (int64),
+		  cl_dtp);
 	      *(int64 *) box = offset;
 	      ((caddr_t *) dc->dc_values)[dc->dc_n_values++] = box;
 	    }
@@ -1644,6 +1656,9 @@ ce_result (col_pos_t * cpo, int row, dtp_t flags, db_buf_t val, int len, int64 o
 	    box = DCT_FROM_POOL & dc->dc_type
 		? mp_box_deserialize_ce_string (dc->dc_mp, val, len, offset)
 		: mp_box_deserialize_ce_string (NULL, val, len, offset);
+	  if (cpo->cpo_cl && (DV_SINGLE_FLOAT == cpo->cpo_cl->cl_sqt.sqt_col_dtp
+		  || DV_DOUBLE_FLOAT == cpo->cpo_cl->cl_sqt.sqt_col_dtp))
+	    box_tag_modify (box, cpo->cpo_cl->cl_sqt.sqt_col_dtp);
 	  ((caddr_t *) dc->dc_values)[dc->dc_n_values++] = box;
 	  for (ctr = 1; ctr < rl; ctr++)
 	    {
@@ -1761,20 +1776,41 @@ ce_result (col_pos_t * cpo, int row, dtp_t flags, db_buf_t val, int len, int64 o
 }
 
 
+int
+clk_is_in_sets (it_cursor_t * itc, col_row_lock_t * clk, int *nth_match_ret)
+{
+  int inx;
+  for (inx = itc->itc_match_in; inx < itc->itc_n_matches; inx++)
+    {
+      if (itc->itc_matches[inx] == clk->clk_pos)
+	return 1;
+      if (itc->itc_matches[inx] > clk->clk_pos)
+	{
+	  *nth_match_ret = inx;
+	  return 0;
+	}
+    }
+  return 0;
+}
+
+
 void
-cpo_next_pre (col_pos_t * cpo, int is_first)
+cpo_next_pre (col_pos_t * cpo, row_no_t row, int is_first)
 {
   it_cursor_t *itc = cpo->cpo_itc;
   row_lock_t *rl = itc->itc_rl;
+  int64 w_id = itc->itc_ltrx->lt_rc_w_id ? itc->itc_ltrx->lt_rc_w_id : itc->itc_ltrx->lt_w_id;
   int n_significant = itc->itc_insert_key->key_n_significant;
   int inx;
+  int nth_match = itc->itc_match_in;
   if (!is_first)
     cpo->cpo_clk_inx++;
   for (inx = cpo->cpo_clk_inx; inx < rl->rl_n_cols; inx++)
     {
       col_row_lock_t *clk = rl->rl_cols[inx];
       if (clk->clk_change & CLK_REVERT_AT_ROLLBACK
-	  && clk->pl_owner != itc->itc_ltrx && clk->clk_rbe[cpo->cpo_cl->cl_nth - n_significant])
+	  && (itc->itc_n_matches ? clk_is_in_sets (itc, clk, &nth_match) : clk->clk_pos >= row)
+	  && clk->pl_owner->lt_w_id != w_id && clk->clk_rbe[cpo->cpo_cl->cl_nth - n_significant])
 	break;
     }
   if (inx >= rl->rl_n_cols)
@@ -1811,7 +1847,7 @@ ce_preimage (col_pos_t * cpo, int row, dtp_t flags, db_buf_t val, int len, int64
 		  pre = ((db_buf_t *) clk->clk_rbe)[cpo->cpo_cl->cl_nth - n_significant];
 		  DB_BUF_TLEN (pre_len, pre[0], pre);
 		  (cpo->cpo_dc ? ce_result : ce_filter) (cpo, r, CE_VEC | CET_ANY, pre, pre_len, 0, 1);
-		  cpo_next_pre (cpo, 0);
+		  cpo_next_pre (cpo, r + 1, 0);
 		}
 	      else
 		(cpo->cpo_dc ? ce_result : ce_filter) (cpo, r, flags, val, len, offset, 1);
@@ -1831,7 +1867,10 @@ ce_preimage (col_pos_t * cpo, int row, dtp_t flags, db_buf_t val, int len, int64
 		  pre = ((db_buf_t *) clk->clk_rbe)[cpo->cpo_cl->cl_nth - n_significant];
 		  DB_BUF_TLEN (pre_len, pre[0], pre);
 		  next = (cpo->cpo_dc ? ce_result : ce_filter) (cpo, r, CE_VEC | CET_ANY, pre, pre_len, 0, 1);
-		  cpo_next_pre (cpo, 0);
+		  /* advance if in last pos or if next is other than this pos */
+		  if (itc->itc_match_in >= itc->itc_n_matches - 1
+		      || itc->itc_matches[itc->itc_match_in] != itc->itc_matches[itc->itc_match_in + 1])
+		    cpo_next_pre (cpo, itc->itc_matches[itc->itc_match_in + 1], 0);
 		}
 	      else
 		next = (cpo->cpo_dc ? ce_result : ce_filter) (cpo, r, flags, val, len, offset, 1);
@@ -1851,7 +1890,7 @@ cs_preimage_init (col_pos_t * cpo, int from)
   it_cursor_t *itc = cpo->cpo_itc;
   row_no_t ign = 0;
   itc_clk_at (itc, from, &cpo->cpo_clk_inx, &ign);
-  cpo_next_pre (cpo, 1);
+  cpo_next_pre (cpo, from, 1);
   if (COL_NO_ROW != cpo->cpo_next_pre)
     cpo->cpo_value_cb = ce_preimage;
 }
@@ -1888,12 +1927,12 @@ new_ce:
   while (ce < first_ce + str_bytes)
     {
       dtp_t flags, ce_type, is_null;
-      unsigned short n_bytes, n_values;
+      unsigned short n_bytes, n_values = 0;
       dtp_t *ce_first, *ce_first_val;
       dtp_t *ce_end;
       int64 first;
       ce_op_t ce_op;
-      int skip = 0, hl, first_len;
+      int skip = 0, hl, first_len = 0;
 
       {
 	flags = ce[0];
@@ -2760,7 +2799,7 @@ cs_write_rld (compress_state_t * cs, int from, int to)
   cs_append_header (cs->cs_asc_output, &cs->cs_asc_fill, CE_RL_DELTA | flags, to - from, 1000);
   fill = cs->cs_asc_fill;
   org_fill = fill;
-  cs_append_any (cs, cs->cs_asc_output, &fill, from, 0), flags;
+  cs_append_any (cs, cs->cs_asc_output, &fill, from, 0);
   for (inx = from + 1; inx < to; inx++)
     {
       int64 n = numbers[inx];
@@ -4889,6 +4928,7 @@ v = v + (v >> 16); \
   w += w >> 32; \
   w &= 0xff;
 
+#if 0
 void
 test_restr (int **res, int *a1, int *a2, int n)
 {
@@ -5063,7 +5103,7 @@ dveq (db_buf_t dv1, db_buf_t dv2)
   DB_BUF_TLEN (len2, dv2[0], dv2);
   if (len1 != len2)
     return 1;
-#if defined(ENABLE_GCC)
+#if defined(ENABLE_GCC_OPTS)
   return __builtin_memcmp (dv1, dv2, len1);
 #else
   return memcmp (dv1, dv2, len1);
@@ -5159,7 +5199,7 @@ dveq_test (int mode, int repeats)
 int
 memcmp_inl (char *s1, char *s2, int l)
 {
-#if defined(ENABLE_GCC)
+#if defined(ENABLE_GCC_OPTS)
   return __builtin_memcmp (s1, s2, l);
 #else
   return memcmp (s1, s2, l);
@@ -5254,11 +5294,9 @@ test_if (int n)
 int
 test_popcnt (unsigned long l)
 {
-#if defined(ENABLE_GCC)
   return __builtin_popcountl (l);
-#endif
-  return 0;
 }
+
 
 #include "simd.h"
 #include "mhash.h"
@@ -5312,7 +5350,7 @@ mhash64 (const void *key, int len, uint64 seed)
 
 
 
-#if defined(ENABLE_GCC)
+#if defined(ENABLE_GCC_OPTS)
 v2di_t mhash_r_v;
 v2di_t mhash_m_v;
 
@@ -5331,7 +5369,6 @@ v2di_t mhash_m_v;
 #endif
 
 
-#if 0
 void
 vhtst (v2di_t data, v2di_t h)
 {
@@ -5343,7 +5380,6 @@ vhtst (v2di_t data, v2di_t h)
   h ^= k;
   h *= mhash_m_v;
 }
-#endif
 
 
 uint64 *hash_test_m;
@@ -5396,7 +5432,6 @@ hash_test_4 (uint64 * in, int n)
 
 v2di_u_t test_vs;
 
-#if 0
 int
 hash_test_4v (uint64 * in, int n)
 {
@@ -5432,7 +5467,6 @@ hash_test_4v (uint64 * in, int n)
     }
   return res;
 }
-#endif
 
 
 int
@@ -5459,7 +5493,7 @@ test_add_2 (int64 * str, int n)
 void
 bzero16 (long *p, int n)
 {
-#if defined(ENABLE_GCC)
+#if defined(ENABLE_GCC_OPTS)
   int i;
   v2di_u_t z;
   z.l[0] = 0;
@@ -5478,7 +5512,7 @@ bzero16 (long *p, int n)
 void
 cpy16 (long *t, long *s, int n)
 {
-#if defined(ENABLE_GCC)
+#if defined(ENABLE_GCC_OPTS)
   ptrlong t2 = (ptrlong) t;
   ptrlong s2 = (ptrlong) s;
   int i;
@@ -5501,7 +5535,7 @@ cpy16 (long *t, long *s, int n)
 void
 memcpy_c_inl (char *s1, char *s2, int l)
 {
-#if defined(ENABLE_GCC)
+#if defined(ENABLE_GCC_OPTS)
   __builtin_memcpy (s1, s2, l);
 #else
   memcpy (s1, s2, l);
@@ -5511,7 +5545,7 @@ memcpy_c_inl (char *s1, char *s2, int l)
 void
 memcpy_d_inl (long *s1, long *s2, int l)
 {
-#if defined(ENABLE_GCC)
+#if defined(ENABLE_GCC_OPTS)
   __builtin_memcpy (s1, s2, l);
 #else
   memcpy (s1, s2, l);
@@ -5522,7 +5556,7 @@ memcpy_d_inl (long *s1, long *s2, int l)
 void
 test_bzero (long *p, int n)
 {
-#if defined(ENABLE_GCC)
+#if defined(ENABLE_GCC_OPTS)
   __builtin_memset (p, 0, 8 * n);
 #endif
 }
@@ -5544,7 +5578,7 @@ test_vecplus (double *res, double *d1, double *d2, int n)
 int
 test_cmp (char *s1, char *s2)
 {
-#if defined(ENABLE_GCC)
+#if defined(ENABLE_GCC_OPTS)
   v2di_u_t r;
   r.v = *(v2di_t *) s1 - *(v2di_t *) s2;
   if (0 == (r.l[0] | r.l[1]))
@@ -5605,7 +5639,7 @@ test_bits_2 (query_instance_t * qi, dtp_t * set_mask, int n_sets)
     }
   return res;
 }
-
+#endif
 
 
 
@@ -5613,7 +5647,7 @@ caddr_t
 bif_rnd_string (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   caddr_t str;
-  static int s;
+  static int32 s;
   int len = bif_long_arg (qst, args, 0, "rnd_string");
   int inx;
   str = dk_alloc_box (len * 8, DV_STRING);
@@ -5623,6 +5657,7 @@ bif_rnd_string (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 }
 
 
+#if 0
 int
 crc_test (caddr_t str, int rep)
 {
@@ -5665,6 +5700,7 @@ mhash_no_test (caddr_t str, int rep)
     }
   return h;
 }
+#endif
 
 
 caddr_t
@@ -5892,6 +5928,7 @@ bif_string_test (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 }
 
 
+#ifdef TEST_BIFS
 int
 f_clz (int64 arg)
 {
@@ -5965,6 +6002,7 @@ print_primes (int p1, int p2, int pct)
     }
   printf ("\n");
 }
+#endif
 
 
 int ce_op_fill = 1;
@@ -6218,9 +6256,11 @@ col_init ()
   bif_define ("col_count_test", bif_col_count_test);
   bif_define ("rnd_string", bif_rnd_string);
   bif_define ("__dcv_test", bif_dcvt);
+#ifdef TEST_BIFS
   bif_define_typed ("__hash", bif_hash_test, &bt_integer);
   bif_define_typed ("__next_prime", bif_next_prime, &bt_integer);
   bif_define ("__string_test", bif_string_test);
+#endif
   bif_define ("__ddl_table_col_drop_update", bif_ddl_table_col_update);
   dtp_no_dict[DV_COL_BLOB_SERIAL] = 1;
   dtp_no_dict[DV_ARRAY_OF_POINTER] = 1;

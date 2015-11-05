@@ -38,7 +38,7 @@
 void *
 dfr_gethash (void *k, id_hash_t * ht)
 {
-  void **place = id_hash_get (ht, (caddr_t) & k);
+  void **place = (void **) id_hash_get (ht, (caddr_t) & k);
   return place ? *place : NULL;
 }
 
@@ -68,6 +68,7 @@ sqlo_pred_is_range (ST * pred, ST ** col, ST ** lower, ST ** upper)
 int
 sqlo_is_range (ST * cond, ST * col, dk_set_t * eqs, dk_set_t * lts, dk_set_t * ltes, dk_set_t * gts, dk_set_t * gtes)
 {
+  return 0;
 }
 
 
@@ -77,7 +78,7 @@ sqlo_all_conds (dk_set_t cl, ST * col, dk_set_t * eqs, dk_set_t * lts, dk_set_t 
   /* cl is a a list of or'ed eq or range conditions on col.  If there is a member of cl that is not an eq or range of col, return 0.  If all are such, return 1 and put all the eqs, lts etc in the corresponding list */
   DO_SET (ST *, cond, &cl)
   {
-    if (!sqlo_is_range (cond, col, &eqs, &lts, &ltes, &gts, &gtes))
+    if (!sqlo_is_range (cond, col, eqs, lts, ltes, gts, gtes))
       return 0;
   }
   END_DO_SET ();
@@ -318,8 +319,13 @@ st_cmp_n (sql_comp_t * sc, ST * st1, ST * st2)
 	  {
 	    if (box_equal (st1->_.col_ref.name, st2->_.col_ref.name))
 	      {
-		void *cn1 = gethash ((void *) (ptrlong) OT_NO (st1->_.col_ref.prefix), sc->sc_cn_normalize);
-		void *cn2 = gethash ((void *) (ptrlong) (CN_NN_STEP + OT_NO (st2->_.col_ref.prefix)), sc->sc_cn_normalize);
+		void *cn1, *cn2;
+		if (!st1->_.col_ref.prefix && !st2->_.col_ref.prefix)
+		  return 1;
+		if (!st1->_.col_ref.prefix || !st2->_.col_ref.prefix)
+		  return 0;
+		cn1 = gethash ((void *) (ptrlong) OT_NO (st1->_.col_ref.prefix), sc->sc_cn_normalize);
+		cn2 = gethash ((void *) (ptrlong) (CN_NN_STEP + OT_NO (st2->_.col_ref.prefix)), sc->sc_cn_normalize);
 		return cn1 == cn2;
 	      }
 	    return 0;
@@ -441,6 +447,30 @@ sqlo_implied_eqs (sqlo_t * so, op_table_t * ot)
   sqlo_trans_eqs (so, so->so_top_ot);
 }
 
+
+int
+sqlo_same_hash_keys (df_elt_t * filler, df_elt_t * new_filler, dfe_reuse_t * dfr)
+{
+  sqlo_t *so = filler->dfe_sqlo;
+  dk_set_t k1 = DFE_TABLE == filler->dfe_type ? filler->_.table.hash_keys : filler->_.sub.hash_keys;
+  dk_set_t k2 = DFE_TABLE == new_filler->dfe_type ? new_filler->_.table.hash_keys : new_filler->_.sub.hash_keys;
+  int l1 = dk_set_length (k1), nth = 0;
+  if (l1 != dk_set_length (k2))
+    return 0;
+  DO_SET (df_elt_t *, cand_key, &k1)
+  {
+    df_elt_t *new_key = (df_elt_t *) dk_set_nth (k2, nth), *reuse_key;
+    nth++;
+    reuse_key = sqlo_dfe_in_reuse (so, new_key, dfr);
+    if (reuse_key != cand_key)
+      return 0;
+
+  }
+  END_DO_SET ();
+  return 1;
+}
+
+
 int enable_hash_fill_reuse = 1;
 
 int
@@ -454,7 +484,8 @@ sqlo_hash_fill_reuse (sqlo_t * so, df_elt_t ** fill_dfe, float *fill_unit, dfe_r
   {
     dfe_reuse_t dfr;
     memzero (&dfr, sizeof (dfr));
-    if (sqlo_dfe_reuse (so, filler, new_filler, &dfr) && !dfr.dfr_extra_preds && !dfr.dfr_extra_cols)
+    if (sqlo_dfe_reuse (so, filler, new_filler, &dfr)
+	&& !dfr.dfr_extra_preds && !dfr.dfr_extra_cols && sqlo_same_hash_keys (filler, new_filler, &dfr))
       {
 	*fill_dfe = filler;
 	*fill_unit = 0;

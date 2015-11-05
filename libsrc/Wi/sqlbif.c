@@ -2713,6 +2713,13 @@ bif_substr (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 }
 
 
+caddr_t
+bif_substr_2 (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  return bif_substr (qst, err_ret, args);
+}
+
+
 /* left(str,n) takes n first characters of str. */
 caddr_t
 bif_left (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
@@ -9653,6 +9660,19 @@ bif_tlsf_dump (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   return NULL;
 }
 
+caddr_t
+bif_tlsf_dump_all (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  QNCAST (QI, qi, qst);
+  char *fn = bif_string_or_null_arg (qst, args, 0, "tlsf_dump_bp");
+  id_hash_iterator_t *hit;
+  id_hash_t *ht = NULL;
+  int ht_mode = AB_ALLOCD;
+  int tlp;
+  for (tlp = 0; tlp < MAX_TLSFS; tlp++)
+    tlsf_dump_1 (tlp, fn, ht, ht_mode);
+  return NULL;
+}
 
 caddr_t
 bif_mem_get_current_total (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
@@ -12034,8 +12054,7 @@ print_object_to_new_string (caddr_t xx, const char *fun_name, caddr_t * err_ret,
   END_WRITE_FAIL (out);
   if (!STRSES_CAN_BE_STRING (out))
     {
-      *err_ret = STRSES_LENGTH_ERROR ("serialize");
-      res = NULL;
+      return out;
     }
   else
     res = strses_string (out);
@@ -12063,6 +12082,10 @@ bif_deserialize (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     return (box_deserialize_string (xx, 0, 0));
   if (DV_DB_NULL == dtp)
     return NEW_DB_NULL;
+  if (DV_STRING_SESSION == dtp)
+    {
+      return read_object (xx);
+    }
   if (!IS_BLOB_HANDLE_DTP (dtp))
     sqlr_new_error ("22023", "SR581", "deserialize() requires a blob or NULL or string argument");
   if (((blob_handle_t *) xx)->bh_ask_from_client)
@@ -12225,7 +12248,7 @@ icc_lock_from_hashtable (caddr_t name)
   if (NULL == hash_lock_ptr)
     {
       hash_lock = icc_lock_alloc (box_copy (name), NULL, NULL);
-      hash_lock->iccl_sem = semaphore_allocate (1);
+      hash_lock->iccl_rwlock = rwlock_allocate ();
       id_hash_set (icc_locks, (caddr_t) (&(hash_lock->iccl_name)), (caddr_t) (&(hash_lock)));
     }
   else
@@ -12258,7 +12281,7 @@ icc_lock_release (caddr_t name, client_connection_t * cli)
     {
       hash_lock->iccl_qi = NULL;
       hash_lock->iccl_cli = NULL;
-      semaphore_leave (hash_lock->iccl_sem);
+      rwlock_unlock (hash_lock->iccl_rwlock);
     }
   return 1;
 }
@@ -12304,17 +12327,25 @@ bif_icc_try_lock (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       return NEW_DB_NULL;
     }
   hash_lock = icc_lock_from_hashtable (name);
-  if (ICCL_WAIT & flags)
-    semaphore_enter (hash_lock->iccl_sem);
-  else
+  switch ((ICCL_WAIT | ICCL_RDONLY) & flags)
     {
-      if (!semaphore_try_enter (hash_lock->iccl_sem))
+    case ICCL_WAIT:
+      rwlock_wrlock (hash_lock->iccl_rwlock);
+      break;
+    case ICCL_WAIT | ICCL_RDONLY:
+      rwlock_rdlock (hash_lock->iccl_rwlock);
+      break;
+    case 0:
+      if (!rwlock_trywrlock (hash_lock->iccl_rwlock))
+	return box_num (0);
+    case ICCL_RDONLY:
+      if (!rwlock_trywrlock (hash_lock->iccl_rwlock))
 	return box_num (0);
     }
   hash_lock->iccl_cli = qi->qi_client;
   cli_lock = icc_lock_alloc (hash_lock->iccl_name, cli, ((flags & ICCL_IS_LOCAL) ? qi : NULL));
   hash_lock->iccl_qi = cli_lock->iccl_qi;
-  cli_lock->iccl_sem = hash_lock->iccl_sem;
+  cli_lock->iccl_rwlock = hash_lock->iccl_rwlock;
   cli->cli_icc_lock = cli_lock;
   if (flags & ICCL_IS_LOCAL)
     qi->qi_icc_lock = cli_lock;
@@ -12333,13 +12364,14 @@ bif_icc_lock_at_commit (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   if (NULL != cli->cli_icc_lock)
     {
       sqlr_new_error ("42000", "ICC03",
-	  "Unable to schedule ICC lock '%s' in the client connection that has %s the lock '%s' already.", name,
-	  (cli->cli_icc_lock->iccl_waits_for_commit ? "scheduled" : "obtained"), cli->cli_icc_lock->iccl_name);
+	  "Unable to schedule ICC lock '%s' in the client connection that has %s the %s lock '%s' already.", name,
+	  ((cli->cli_icc_lock->iccl_flags & ICCL_SHEDULED_ON_COMMIT) ? "scheduled" : "obtained"),
+	  ((cli->cli_icc_lock->iccl_flags & ICCL_RDONLY) ? "read-only" : "exclusive"), cli->cli_icc_lock->iccl_name);
     }
   hash_lock = icc_lock_from_hashtable (name);
   cli_lock = icc_lock_alloc (hash_lock->iccl_name, cli, ((flags & ICCL_IS_LOCAL) ? qi : NULL));
-  cli_lock->iccl_waits_for_commit = 1;
-  cli_lock->iccl_sem = hash_lock->iccl_sem;
+  cli_lock->iccl_flags = flags | ICCL_SHEDULED_ON_COMMIT;
+  cli_lock->iccl_rwlock = hash_lock->iccl_rwlock;
   cli->cli_icc_lock = cli_lock;
   if (flags & ICCL_IS_LOCAL)
     qi->qi_icc_lock = cli_lock;
@@ -12409,13 +12441,16 @@ bif_commit (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       if (qi->qi_client->cli_icc_lock)
 	{
 	  icc_lock_t *cli_lock = qi->qi_client->cli_icc_lock;
-	  if (cli_lock->iccl_waits_for_commit)
+	  if (cli_lock->iccl_flags & ICCL_SHEDULED_ON_COMMIT)
 	    {
 	      icc_lock_t *hash_lock = icc_lock_from_hashtable (cli_lock->iccl_name);
-	      cli_lock->iccl_waits_for_commit = 0;
+	      cli_lock->iccl_flags &= ~ICCL_SHEDULED_ON_COMMIT;
 	      IO_SECT (qst)
 	      {
-		semaphore_enter (cli_lock->iccl_sem);
+		if (cli_lock->iccl_flags & ICCL_RDONLY)
+		  rwlock_rdlock (cli_lock->iccl_rwlock);
+		else
+		  rwlock_wrlock (cli_lock->iccl_rwlock);
 	      }
 	      END_IO_SECT (err_ret);
 	      hash_lock->iccl_cli = qi->qi_client;
@@ -12500,6 +12535,7 @@ bif_replay (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   return NULL;
 }
 
+extern int rq_key_inited;
 
 caddr_t
 bif_ddl_change (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
@@ -12507,6 +12543,7 @@ bif_ddl_change (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   char *tb = bif_string_arg (qst, args, 0, "__ddl_change");
   query_instance_t *qi = (query_instance_t *) qst;
   caddr_t repl = box_copy_tree ((box_t) qi->qi_trx->lt_replicate);
+  rq_key_inited = 0;
   /* save the logging mode across the autocommit inside the schema read */
   dbe_table_t *tb_def = sch_name_to_table (wi_inst.wi_schema, tb);
   int sys_tb = (id_hash_system_tables && NULL != id_hash_get (id_hash_system_tables, (caddr_t) & tb));
@@ -12517,6 +12554,16 @@ bif_ddl_change (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   qi_read_table_schema (qi, tb_def && !sys_tb ? tb_def->tb_name : tb);
   qi->qi_trx->lt_replicate = (caddr_t *) repl;
   return 0;
+}
+
+caddr_t
+bif_table_exists (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  char *tb = bif_string_arg (qst, args, 0, "table_exists");
+  dbe_table_t *tb_def = sch_name_to_table (wi_inst.wi_schema, tb);
+  if (NULL != tb_def)
+    return box_num (1);
+  return box_num (0);
 }
 
 #if 0
@@ -14108,7 +14155,12 @@ caddr_t
 bif_mutex_stat (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
 #ifdef MTX_METER
-  mutex_stat ();
+  int mode = 0, max = 100;
+  if (BOX_ELEMENTS (args) > 0)
+    mode = bif_long_arg (qst, args, 0, "mutex_stat");
+  if (BOX_ELEMENTS (args) > 1)
+    max = bif_long_arg (qst, args, 1, "mutex_stat");
+  mutex_stat (mode, max);
 #endif
   return 0;
 }
@@ -16455,6 +16507,7 @@ sql_bif_init (void)
   bif_define_ex ("subseq", bif_subseq, BMD_RET_TYPE, &bt_string, BMD_MIN_ARGCOUNT, 2, BMD_MAX_ARGCOUNT, 3, BMD_IS_PURE, BMD_DONE);
   bif_define_ex ("substring", bif_substr, BMD_RET_TYPE, &bt_string, BMD_MIN_ARGCOUNT, 2, BMD_MAX_ARGCOUNT, 3, BMD_IS_PURE,
       BMD_DONE);
+  bif_define_ex ("substr", bif_substr_2, BMD_RET_TYPE, &bt_string, BMD_MIN_ARGCOUNT, 2, BMD_MAX_ARGCOUNT, 3, BMD_IS_PURE, BMD_DONE);
   bif_define_ex ("left", bif_left, BMD_RET_TYPE, &bt_string, BMD_MIN_ARGCOUNT, 2, BMD_MAX_ARGCOUNT, 2, BMD_IS_PURE, BMD_DONE);
   bif_define_ex ("right", bif_right, BMD_RET_TYPE, &bt_string, BMD_MIN_ARGCOUNT, 2, BMD_MAX_ARGCOUNT, 2, BMD_IS_PURE, BMD_DONE);
   bif_define_ex ("ltrim", bif_ltrim, BMD_RET_TYPE, &bt_string, BMD_MIN_ARGCOUNT, 1, BMD_MAX_ARGCOUNT, 2, BMD_IS_PURE, BMD_DONE);
@@ -16786,6 +16839,7 @@ sql_bif_init (void)
   bif_define ("replay", bif_replay);
   bif_define ("txn_killall", bif_txn_killall);
 
+  bif_define ("table_exists", bif_table_exists);
   bif_define ("__ddl_changed", bif_ddl_change);
   /*bif_define ("__ddl_table_renamed", bif_ddl_table_renamed); */
   bif_define ("__ddl_index_def", bif_ddl_index_def);
@@ -16863,6 +16917,7 @@ sql_bif_init (void)
   bif_define ("mem_summary", bif_mem_summary);
   bif_define ("tlsf_dump_bp", bif_tlsf_dump_bp);
   bif_define ("tlsf_dump", bif_tlsf_dump);
+  bif_define ("tlsf_dump_all", bif_tlsf_dump_all);
 
 #ifdef MALLOC_STRESS
   bif_define ("set_hard_memlimit", bif_set_hard_memlimit);

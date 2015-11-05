@@ -1038,7 +1038,7 @@ strstr_utf8_with_collation (caddr_t dv1, long n1, caddr_t dv2, long n2, caddr_t 
 		  /* ignore all remaining ignorable signs */
 		  rc1 = (int) virt_mbrtowc_z (&wtmp1, (unsigned char *) dv1 + n1inx_beg, utf8_1len - n1inx_beg, &state1);
 		  if (rc1 < 0)
-		    GPF_T1 ("inconsistent wide char data");
+		    sqlr_new_error ("22023", "MB000", "inconsistent wide char data");
 		  if (!COLLATION_XLAT_WIDE (collation, wtmp1))
 		    {		/* ignore symbol, unicode normalization algorithm */
 		      n1inx_beg += rc1;
@@ -1049,7 +1049,7 @@ strstr_utf8_with_collation (caddr_t dv1, long n1, caddr_t dv2, long n2, caddr_t 
 	    }
 	  rc2 = (int) virt_mbrtowc_z (&wtmp2, (unsigned char *) dv2 + n2inx, utf8_2len - n2inx, &state2);
 	  if (rc2 < 0)
-	    GPF_T1 ("inconsistent wide char data");
+	    sqlr_new_error ("22023", "MB000", "inconsistent wide char data");
 	  xlat_wtmp2 = COLLATION_XLAT_WIDE (collation, wtmp2);
 	  if (!xlat_wtmp2)
 	    {			/* ignore symbol, unicode normalization algorithm */
@@ -1058,7 +1058,7 @@ strstr_utf8_with_collation (caddr_t dv1, long n1, caddr_t dv2, long n2, caddr_t 
 	    }
 	  rc1 = (int) virt_mbrtowc_z (&wtmp1, (unsigned char *) dv1 + n1inx, utf8_1len - n1inx, &state1);
 	  if (rc1 < 0)
-	    GPF_T1 ("inconsistent wide char data");
+	    sqlr_new_error ("22023", "MB000", "inconsistent wide char data");
 	  xlat_wtmp1 = COLLATION_XLAT_WIDE (collation, wtmp1);
 	  if (!xlat_wtmp1)
 	    {			/* ignore symbol, unicode normalization algorithm */
@@ -1096,7 +1096,7 @@ strstr_utf8_with_collation (caddr_t dv1, long n1, caddr_t dv2, long n2, caddr_t 
 	  rc1 = (int) virt_mbrtowc_z (&wtmp1, (unsigned char *) dv1 + n1inx, utf8_1len - n1inx, &state1);
 	  rc2 = (int) virt_mbrtowc_z (&wtmp2, (unsigned char *) dv2 + n2inx, utf8_2len - n2inx, &state2);
 	  if (rc1 < 0 || rc2 < 0)
-	    GPF_T1 ("inconsistent wide char data");
+	    sqlr_new_error ("22023", "MB000", "inconsistent wide char data");
 	  if (wtmp1 != wtmp2)
 	    {
 	      n1inx += rc1;

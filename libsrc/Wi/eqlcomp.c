@@ -210,7 +210,9 @@ dependence_def_new (int sz)
 {
   NEW_VARZ (dependence_def_t, ddep);
   ddep->ddef_name_to_qr = id_str_hash_create (sz);
+  id_hash_rehash (ddep->ddef_name_to_qr, 100);
   ddep->ddef_mtx = mutex_allocate ();
+  mutex_option (ddep->ddef_mtx, "ddep", NULL, NULL);
   return ddep;
 }
 
@@ -218,19 +220,21 @@ dependence_def_new (int sz)
 void
 qr_uses_object (query_t * qr, const char *tb, dependent_t * dep, dependence_def_t * ddef)
 {
-  dk_set_t *place;
+  dk_hash_t **place;
   if (!qr)
     return;
   if (!qr_add_used_object (qr, tb, dep))
     return;
   mutex_enter (ddef->ddef_mtx);
-  place = (dk_set_t *) id_hash_get (ddef->ddef_name_to_qr, (caddr_t) & tb);
-  if (place)
-    dk_set_push (place, (void *) qr);
+  place = (dk_hash_t **) id_hash_get (ddef->ddef_name_to_qr, (caddr_t) & tb);
+  if (place && *place)
+    sethash ((void *) qr, *place, (void *) 1);
   else
     {
       caddr_t tb_copy = box_string (tb);
-      dk_set_t lst = dk_set_cons (qr, NULL);
+      dk_hash_t *lst = hash_table_allocate (1000);
+      dk_rehash (lst, 100);
+      sethash ((void *) qr, lst, (void *) 1);
       id_hash_set (ddef->ddef_name_to_qr, (caddr_t) & tb_copy, (caddr_t) & lst);
     }
   mutex_leave (ddef->ddef_mtx);
@@ -248,18 +252,18 @@ qr_uses_table (query_t * qr, const char *tb)
 void
 object_mark_affected (const char *tb, dependence_def_t * ddef, int force_text_reparsing)
 {
-  dk_set_t *place;
+  dk_hash_t **place;
   mutex_enter (ddef->ddef_mtx);
-  place = (dk_set_t *) id_hash_get (ddef->ddef_name_to_qr, (char *) &tb);
-  if (place)
+  place = (dk_hash_t **) id_hash_get (ddef->ddef_name_to_qr, (char *) &tb);
+  if (place && *place)
     {
-      DO_SET (query_t *, aqr, place)
+      DO_HT (query_t *, aqr, void *, dummy, *place)
       {
 	if (force_text_reparsing)
 	  aqr->qr_parse_tree_to_reparse = 1;
 	aqr->qr_to_recompile = 1;
       }
-      END_DO_SET ();
+      END_DO_HT;
     }
   mutex_leave (ddef->ddef_mtx);
 }
@@ -276,13 +280,14 @@ tb_mark_affected (const char *tb)
 void
 qr_drop_obj_dependencies (query_t * qr, dependent_t * dep, dependence_def_t * ddef)
 {
-  dk_set_t *lp;
+  dk_hash_t **lp;
 
   mutex_enter (ddef->ddef_mtx);
   DO_SET (char *, atb, dep)
   {
-    lp = (dk_set_t *) id_hash_get (ddef->ddef_name_to_qr, (caddr_t) & atb);
-    dk_set_delete (lp, (void *) qr);
+    lp = (dk_hash_t **) id_hash_get (ddef->ddef_name_to_qr, (caddr_t) & atb);
+    if (lp && *lp)
+      remhash ((void *) qr, *lp);
   }
   END_DO_SET ();
   mutex_leave (ddef->ddef_mtx);
@@ -1753,7 +1758,7 @@ table_source_create (comp_context_t * cc, char *table_name,
     char *orderby, char *cr_name, char **cols, char **preds, char *from_position)
 {
   search_spec_t **sps = ts_preds_to_sps (cc, preds);
-  dbe_table_t *table = sch_name_to_table (cc->cc_schema, table_name);
+  dbe_table_t *table = sch_name_to_table (wi_inst.wi_schema, table_name);
   dbe_key_t *order_key;
   dbe_key_t *main_key;
 
@@ -1858,7 +1863,7 @@ ins_col_slot (comp_context_t * cc, insert_node_t * ins, oid_t col_id)
       }
   }
   END_DO_BOX;
-  col = sch_id_to_column (cc->cc_schema, col_id);
+  col = sch_id_to_column (wi_inst.wi_schema, col_id);
   return (ssl_new_constant (cc, col->col_default));
 }
 
@@ -1964,7 +1969,7 @@ insert_node_create (comp_context_t * cc, char *tb_name, char **col_names, char *
   int inx;
   oid_t *col_ids = (oid_t *) dk_alloc_box (box_length ((caddr_t) col_names),
       DV_ARRAY_OF_LONG);
-  dbe_table_t *table = sch_name_to_table (cc->cc_schema, tb_name);
+  dbe_table_t *table = sch_name_to_table (wi_inst.wi_schema, tb_name);
   NEW_VARZ (insert_node_t, ins);
   if (!table)
     sqlc_new_error (cc, "42S02", "SQ051", "No table %s.", tb_name);
@@ -2260,7 +2265,7 @@ update_node_compile (comp_context_t * cc, caddr_t * stmt, data_source_t ** head_
   if (len & 1)
     sqlc_new_error (cc, "21S01", "SQ055", "Odd assignment list for update.");
 
-  tb = sch_name_to_table (cc->cc_schema, table);
+  tb = sch_name_to_table (wi_inst.wi_schema, table);
   if (!tb)
     sqlc_new_error (cc, "42S02", "SQ056", "No table %s in update.", table);
 
@@ -2303,7 +2308,7 @@ update_ind_node_compile (comp_context_t * cc, caddr_t * stmt, data_source_t ** h
 void
 key_insert_compile (comp_context_t * cc, caddr_t * stmt, data_source_t ** head_ret, data_source_t ** tail_ret)
 {
-  dbe_key_t *key = sch_table_key (cc->cc_schema, stmt[2], stmt[3], 0);
+  dbe_key_t *key = sch_table_key (wi_inst.wi_schema, stmt[2], stmt[3], 0);
   NODE_INIT (key_insert_node_t, ins, key_insert_node_input, NULL);
 
   if (!key)

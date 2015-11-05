@@ -254,6 +254,8 @@ csg_add_tb (sqlo_t * so, dbe_key_t * key)
 dbe_column_t *
 cset_col_by_iri (cset_t * cset, iri_id_t iri)
 {
+  if (!cset->cset_table)
+    return NULL;
   DO_SET (dbe_column_t *, col, &cset->cset_table->tb_primary_key->key_parts)
   {
     if (!col->col_csetp)
@@ -281,6 +283,8 @@ csgc_cmp (const void *s1, const void *s2)
 float
 csgc_selectivity (cset_t * cset, table_source_t * ts, dbe_column_t * ref_col, dbe_column_t * cset_col)
 {
+  if (!cset_col)
+    return 1;
   key_source_t *ks = ts->ts_order_ks;
   float tb_count = dbe_key_count (cset->cset_table->tb_primary_key);
   float col_count = ref_col->col_count;
@@ -978,7 +982,7 @@ csg_rq_set_cycle (sql_comp_t * sc, table_source_t * rq_ts)
       if (rq_ts->ts_is_outer)
 	ts_set_cycle (sc, rq_ts, 1, (qn_input_fn *) list (3, cset_psog_cset_values, cset_psog_input, psog_outer_nulls));
       else if (csm->csm_cset_scan_state)
-	ts_set_cycle (sc, rq_ts, 1, (qn_input_fn *) list (3, cset_psog_cset_values, cset_psog_input, psog_cset_scan_exceptions));
+	ts_set_cycle (sc, rq_ts, 1, (qn_input_fn *) list (2, cset_psog_cset_values, cset_psog_input));
       else
 	ts_set_cycle (sc, rq_ts, 1, (qn_input_fn *) list (2, cset_psog_cset_values, cset_psog_input));
     }
@@ -1120,6 +1124,14 @@ csg_extra_specs (sqlo_t * so, cset_t * cset, query_t * qr, table_source_t * mode
 	    csg_rq_set_cycle (sc, ts);
 	}
     }
+  if (model_ts->ts_order_ks->ks_is_qf_first && IS_TS (qr->qr_head_node))
+    {
+      QNCAST (table_source_t, head, qr->qr_head_node);
+      key_source_t *head_ks = head->ts_order_ks;
+      head_ks->ks_is_qf_first = 1;
+      head_ks->ks_vec_source = (state_slot_ref_t **) box_copy ((caddr_t) model_ts->ts_order_ks->ks_vec_source);
+      head_ks->ks_vec_cast = (state_slot_t **) box_copy ((caddr_t) model_ts->ts_order_ks->ks_vec_cast);
+    }
   if (cset_ts)
     cset_ts->ts_csm->csm_bit = n_bits;
   csa = (cset_align_node_t *) qn_next_qn (qr->qr_head_node, (qn_input_fn) cset_align_input);
@@ -1169,6 +1181,7 @@ csg_top (sql_comp_t * sc, cset_t * cset, table_source_t * ts, int mode)
   so->so_dfe = top_ot->ot_work_dfe;
   so->so_top_ot = top_ot;
   best = csg_dfe (so, top_ot, cset, ts, mode);
+  so->so_sc->sc_order = TS_ORDER_NONE;	/* no extra ordering cols, comes naturally in key order */
   so->so_sc->sc_delay_colocate = 1;	/* in cluster, the cset expansion is all colocated with the cset model ts */
   sqlg_top (so, best);
   csg_extra_specs (so, cset, so->so_sc->sc_cc->cc_query, ts);

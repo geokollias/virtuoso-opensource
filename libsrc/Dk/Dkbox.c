@@ -279,7 +279,7 @@ dk_try_alloc_box (size_t bytes, dtp_t tag)
 #endif
 
   if (align_bytes >= box_min_mmap)
-    ptr = dk_alloc_mmap (align_bytes);
+    ptr = (unsigned char *)dk_alloc_mmap (align_bytes);
   else
     ptr = (unsigned char *) dk_try_alloc (align_bytes);
   if (!ptr)
@@ -1702,7 +1702,7 @@ int
 box_equal (cbox_t b1, cbox_t b2)
 {
   uint32 l1, l2, bf1, bf2;
-  dtp_t b1_tag, b2_tag;
+  dtp_t b1_tag, b2_tag, nl1, nl2;
   boxint b1_long_val = 0, b2_long_val = 0;
 
   if (b1 == b2)
@@ -1745,8 +1745,13 @@ box_equal (cbox_t b1, cbox_t b2)
   l2 = box_length (b2);
   if (l1 != l2)
     return 0;
-
-  if (IS_NONLEAF_DTP (b1_tag) && IS_NONLEAF_DTP (b2_tag))
+  if (DV_DB_NULL == b1_tag && DV_DB_NULL == b2_tag)
+    return 1;
+  if (DV_DB_NULL == b1_tag || DV_DB_NULL == b2_tag)
+    return 0;
+  nl1 = IS_NONLEAF_DTP (b1_tag);
+  nl2 = IS_NONLEAF_DTP (b2_tag);
+  if (nl1 && nl2)
     {
       uint32 inx;
       l1 /= sizeof (caddr_t);
@@ -1757,6 +1762,8 @@ box_equal (cbox_t b1, cbox_t b2)
 	}
       return 1;
     }
+  if (nl1 || nl2)
+    return 0;
   memcmp_8 (b1, b2, l1, neq);
   bf1 = box_flags (b1);
   bf2 = box_flags (b2);
@@ -1786,7 +1793,7 @@ int
 box_strong_equal (cbox_t b1, cbox_t b2)
 {
   uint32 l1, l2, bf1, bf2;
-  dtp_t b1_tag, b2_tag;
+  dtp_t b1_tag, b2_tag, nl1, nl2;
   boxint b1_long_val = 0, b2_long_val = 0;
 
   if (b1 == b2)
@@ -1832,7 +1839,13 @@ box_strong_equal (cbox_t b1, cbox_t b2)
   l2 = box_length (b2);
   if (l1 != l2)
     return 0;
-  if (IS_NONLEAF_DTP (b1_tag) && IS_NONLEAF_DTP (b2_tag))
+  if (DV_DB_NULL == b1_tag && DV_DB_NULL == b2_tag)
+    return 1;
+  if (DV_DB_NULL == b1_tag || DV_DB_NULL == b2_tag)
+    return 0;
+  nl1 = IS_NONLEAF_DTP (b1_tag);
+  nl2 = IS_NONLEAF_DTP (b2_tag);
+  if (nl1 && nl2)
     {
       uint32 inx;
       l1 /= sizeof (caddr_t);
@@ -1843,6 +1856,8 @@ box_strong_equal (cbox_t b1, cbox_t b2)
 	}
       return 1;
     }
+  if (nl1 || nl2)
+    return 0;
   memcmp_8 (b1, b2, l1, neq);
   bf1 = box_flags (b1);
   bf2 = box_flags (b2);
@@ -2516,7 +2531,7 @@ dk_box_initialize (void)
 #ifdef MALLOC_DEBUG
   dk_mem_hooks_2 (DV_NON_BOX, box_copy_non_box, NULL, 0, box_mp_copy_non_box);
 #endif
-  dk_mem_hooks (DV_RBUF,  box_non_copiable, rbuf_free_cb, 0);
+  dk_mem_hooks (DV_RBUF,  box_non_copiable, (box_destr_f)rbuf_free_cb, 0);
   uname_mutex = mutex_allocate ();
   if (NULL == uname_mutex)
     GPF_T;

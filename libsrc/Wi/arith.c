@@ -1176,12 +1176,19 @@ dvc_num_double (numeric_t num1, double d2)
   numeric_to_double (num1, &d1);
   if (d1 == d2)
     {
-      if (num1->n_len + num1->n_scale < 15)
+      if (d2 > MIN_INT_DOUBLE && d2 < MAX_INT_DOUBLE)
+	{
+	  NUMERIC_VAR (num2);
+	  numeric_from_double (num2, d2);
+	  return numeric_compare_dvc ((numeric_t) num1, (numeric_t) num2);
+	}
+      if (num1->n_len + num1->n_scale <= 15)
 	return DVC_MATCH;
       if (0 < d2)
 	return DVC_GREATER;
       else
 	return DVC_LESS;
+
     }
   if (d1 < d2)
     return DVC_LESS;
@@ -1399,11 +1406,12 @@ artm_date_to_date (double *target, data_col_t * dc, int *sets, int first_set, in
   int inx, fill = 0;
   if (sets)
     {
+      db_buf_t tgt = ((db_buf_t) target);
       for (inx = 0; inx < n; inx++)
 	{
-	  db_buf_t tgt = ((db_buf_t) target) + fill;
 	  db_buf_t src = ((db_buf_t) dc->dc_values) + DT_LENGTH * sets[inx];
 	  memcpy_dt (tgt, src);
+	  tgt += DT_LENGTH;
 	}
     }
   else

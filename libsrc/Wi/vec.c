@@ -1570,10 +1570,11 @@ else      { \
     { \
       if (dc->dc_nulls) \
 	{ \
-	  if (!DC_IS_NULL (dc, s##nth_v)) \
+	  if (!DC_IS_NULL (dc, s##nth_v)) { \
 	    lin_sets[fill] = n + nth_v - 1; \
 	    sets[fill++] = s##nth_v; \
-	} \
+	  } \
+	}					\
       else if ((DCT_BOXES & dc->dc_type))	\
 	{ \
       caddr_t val = ((caddr_t*)dc->dc_values)[s##nth_v]; \
@@ -2271,6 +2272,9 @@ cl_dc_funcs ()
   cl_dcf_id ((col_ref_t) vc_anynn);
   cl_dcf_id ((col_ref_t) vc_anynn_generic);
   cl_dcf_id ((col_ref_t) vc_generic);
+
+  cl_dcf_id (table_source_input);
+  cl_dcf_id (ts_sp_cset_p);
 }
 
 
@@ -3283,6 +3287,57 @@ dcp_find (data_col_t * dc, int64 x)
     }
   printf ("first %d last %d n %d \n", first, last, n);
 }
+
+
+char *
+strnstrdv (char *str1, int len1, char *str2, int len2)
+{
+  int start;
+  for (start = 0; start <= len1 - len2; start++)
+    if (!strncmp (str1 + start, str2, len2))
+      return str1 + start;
+  return NULL;
+}
+
+
+void
+dcp_str_find (data_col_t * dc, char *str)
+{
+  int inx, first = -1, last = -1, n = 0, len = strlen (str);
+  for (inx = 0; inx < dc->dc_n_values; inx++)
+    {
+      long l, hl;
+      db_buf_t dv = ((db_buf_t *) dc->dc_values)[inx];
+      db_buf_length (dv, &hl, &l);
+      if (strnstrdv (dv + hl, l, str, len))
+	{
+	  if (-1 == first)
+	    first = inx;
+	  last = inx;
+	  n++;
+	}
+    }
+  printf ("first %d last %d n %d \n", first, last, n);
+}
+
+
+void
+int_find (int *arr, int len, int val)
+{
+  int inx, first = -1, last = -1, n = 0;
+  for (inx = 0; inx < len; inx++)
+    {
+      if (arr[inx] == val)
+	{
+	  if (-1 == first)
+	    first = inx;
+	  last = inx;
+	  n++;
+	}
+    }
+  printf ("first %d last %d n %d \n", first, last, n);
+}
+
 
 void
 anyp (db_buf_t a)

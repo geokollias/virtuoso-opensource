@@ -113,7 +113,7 @@ EXE_EXPORT (bif_metadata_t *, find_bif_metadata_by_name, (const char *name));
 EXE_EXPORT (bif_metadata_t *, find_bif_metadata_by_raw_name, (const char *name));
 #define find_bif_metadata_by_raw_name_safe(name) ((NULL == name_to_bif_metadata_idhash) ? NULL : find_bif_metadata_by_raw_name(name))
 EXE_EXPORT (bif_metadata_t *, bif_define, (const char *name, bif_t bif));
-EXE_EXPORT (bif_metadata_t *, bif_define_ex, (const char *name, bif_t bif, ...));
+EXE_EXPORT (bif_metadata_t *, bif_define_ex, (const char *name, bif_t bif,...));
 EXE_EXPORT (bif_metadata_t *, bif_define_typed, (const char *name, bif_t bif, bif_type_t * bt));
 EXE_EXPORT (void, bif_set_uses_index, (bif_t bif));
 EXE_EXPORT (bif_t, bif_find, (const char *name));

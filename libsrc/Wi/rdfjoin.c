@@ -208,7 +208,7 @@ itc_init_exc_bits (it_cursor_t * itc, buffer_desc_t * buf)
   bytes = (last + 1) * bit_bytes;
   qi_ensure_array (itc->itc_out_state, &inst[csm->csm_exc_tmp_bits], last * csm->csm_cset_bit_bytes + 8, 0);
   arr = QST_BOX (caddr_t, inst, csm->csm_exc_tmp_bits);
-  itc->itc_cset_bits = arr;
+  itc->itc_cset_bits = (db_buf_t) arr;
   if (itc->itc_n_matches)
     {
       if (1 == bit_bytes)
@@ -831,7 +831,7 @@ table_source_cset_lookup_input (table_source_t * ts, caddr_t * inst, caddr_t * s
   state_slot_t *s_ssl;
   data_col_t *s_dc;
   iri_id_t s_const = 0;
-  caddr_t *o_mode;
+  caddr_t *o_mode = NULL;
   db_buf_t cset_bits;
   cset_ts_t *csts = ts->ts_csts;
   int nth_cset, set;
@@ -851,6 +851,9 @@ table_source_cset_lookup_input (table_source_t * ts, caddr_t * inst, caddr_t * s
 	}
     }
   if (csts->csts_o_scan_mode && (o_mode = (caddr_t *) qst_get (inst, csts->csts_o_scan_mode)))
+    if (DV_DB_NULL == DV_TYPE_OF (o_mode))
+      o_mode = NULL;
+  if (o_mode)
     {
       /* scan variant with an o cond */
       if (state)
@@ -1211,18 +1214,21 @@ psog_exc_scan_sets (table_source_t * ts, caddr_t * inst, int init_out)
 void
 psog_cset_scan_exceptions (table_source_t * ts, caddr_t * inst, caddr_t * state)
 {
+  /* the ts is the cset ts.  rq_* are the parts of the next ts (on psog), which here becomes a scan of an interval of s instead of a lookup for extra values of the first p */
   search_spec_t *cset_s_spec;
   buffer_desc_t *buf;
+  table_source_t *cset_ts = ts;
+  table_source_t *rq_ts = (table_source_t *) qn_next ((data_source_t *) ts);
+  cset_mode_t *rq_csm = rq_ts->ts_csm;
   QNCAST (QI, qi, inst);
-  int n_sets = QST_INT (inst, ts->src_gen.src_prev->src_out_fill);
+  int n_sets = ts->src_gen.src_prev ? QST_INT (inst, ts->src_gen.src_prev->src_out_fill) : qi->qi_n_sets;
   int init_out = QST_INT (inst, ts->src_gen.src_out_fill);
   int scan_state, from_next, batch_size;
   key_source_t *ks = ts->ts_order_ks;
+  key_source_t *rq_ks = rq_ts->ts_order_ks;
   it_cursor_t *cset_itc;
-  cset_mode_t *csm = ts->ts_csm;
-  data_col_t *s_out_dc = QST_BOX (data_col_t *, inst, ks->ks_spec.ksp_spec_array->sp_next->sp_min_ssl->ssl_index);
-  data_col_t *exc_s_dc = QST_BOX (data_col_t *, inst, csm->csm_exc_scan_exc_s->ssl_index);
-  table_source_t *cset_ts = rq_ts_cset_ts (ts);
+  data_col_t *s_out_dc = QST_BOX (data_col_t *, inst, rq_ks->ks_spec.ksp_spec_array->sp_next->sp_min_ssl->ssl_index);
+  data_col_t *exc_s_dc = QST_BOX (data_col_t *, inst, rq_csm->csm_exc_scan_exc_s->ssl_index);
   cset_mode_t *cset_csm = cset_ts->ts_csm;
   it_cursor_t *itc = TS_ORDER_ITC (ts, inst);
   iri_id_t lower = 0, upper = 0;
@@ -1231,25 +1237,25 @@ psog_cset_scan_exceptions (table_source_t * ts, caddr_t * inst, caddr_t * state)
   if (state && QST_INT (inst, ts->src_gen.src_out_fill))
     {
       /* send results so far, the scan of exc will be its own set of vectors */
-      QST_INT (inst, csm->csm_mode) = PSOG_PRE_EXC_SCAN;
+      QST_INT (inst, rq_csm->csm_mode) = PSOG_PRE_EXC_SCAN;
       SRC_IN_STATE (ts, inst) = inst;
       qn_ts_send_output ((data_source_t *) ts, inst, NULL);
       ks_vec_new_results (ks, inst, NULL);
     }
-  if (!state && PSOG_PRE_EXC_SCAN == QST_INT (inst, csm->csm_mode))
+  if (!state && PSOG_PRE_EXC_SCAN == QST_INT (inst, rq_csm->csm_mode))
     state = inst;
 again:
   batch_size = QST_INT (inst, ts->src_gen.src_batch_size);
   if (state)
     {
-      QST_INT (inst, csm->csm_mode) = PSOG_SCAN_EXC;
+      QST_INT (inst, rq_csm->csm_mode) = PSOG_SCAN_EXC;
       if (!itc)
 	{
 	  /* can be no itc if cset empty */
 	  s_lookup_dc = NULL;
 	  itc = itc_create (NULL, qi->qi_trx);
 	  TS_ORDER_ITC (ts, state) = itc;
-	  QST_BOX (data_col_t *, inst, csm->csm_exc_scan_exc_s->ssl_index)->dc_n_values = 0;
+	  QST_BOX (data_col_t *, inst, rq_csm->csm_exc_scan_exc_s->ssl_index)->dc_n_values = 0;
 	}
       else
 	{
@@ -1268,7 +1274,7 @@ again:
 	      : unbox_iri_id (cset_itc->itc_search_params[cset_s_spec->sp_min]);
 	}
       else if (s_lookup_dc)
-	lower = unbox_iri_id (qst_get (inst, csm->csm_exc_scan_upper));
+	lower = unbox_iri_id (qst_get (inst, rq_csm->csm_exc_scan_upper));
       if ((CSET_SCAN_LAST & scan_state))
 	{
 	  /* the upper is the next cset lower or the cset itc upper, if set */
@@ -1277,8 +1283,8 @@ again:
 	}
       else if (s_lookup_dc)
 	upper = ((iri_id_t *) s_lookup_dc->dc_values)[s_lookup_dc->dc_n_values - 1];
-      qst_set (inst, csm->csm_exc_scan_lower, box_iri_id (lower));
-      qst_set (inst, csm->csm_exc_scan_upper, box_iri_id (upper));
+      qst_set (inst, rq_csm->csm_exc_scan_lower, box_iri_id (lower));
+      qst_set (inst, rq_csm->csm_exc_scan_upper, box_iri_id (upper));
       dc_reset (s_out_dc);	/* the lookup s is also an ouit dc of this, reset */
       itc_col_free (itc);
       ks_start_search (exc_ks, inst, inst, itc, &buf, ts, SM_READ);
@@ -1408,10 +1414,10 @@ psog_outer_nulls (table_source_t * ts, caddr_t * inst, caddr_t * state)
 void
 cset_psog_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
 {
-  int n_sets = QST_INT (inst, ts->src_gen.src_prev->src_out_fill);
+  query_instance_t *qi = (query_instance_t *) inst;
+  int n_sets = ts->src_gen.src_prev ? QST_INT (inst, ts->src_gen.src_prev->src_out_fill) : qi->qi_n_sets;
   cset_mode_t *csm = ts->ts_csm;
   int order_buf_preset = 0;
-  query_instance_t *qi = (query_instance_t *) inst;
   int rc, start;
   int batch_size = QST_INT (inst, ts->src_gen.src_batch_size);
   if (state)
@@ -1599,6 +1605,7 @@ posg_special_o (table_source_t * ts, caddr_t * inst)
 	  max_o = o_spec->sp_max_ssl ? qst_get (inst, o_spec->sp_max_ssl) : NO_COND;
 	  if (CMP_EQ == o_spec->sp_min_op && csetp->csetp_non_index_o && !id_hash_get (csetp->csetp_non_index_o, (caddr_t) & min_o))
 	    continue;
+	  qi->qi_set = 0;
 	  qst_set (inst, csm->csm_o_scan_mode, cset_scan_mode (csetp, inst, o_spec, set));
 	  qn_result ((data_source_t *) ts, inst, set);
 	  SRC_IN_STATE (ts, inst) = (QST_BOX (dk_set_t, inst, csm->csm_posg_cset_pos) || set < n_sets - 1) ? inst : NULL;
@@ -1615,6 +1622,58 @@ posg_special_o (table_source_t * ts, caddr_t * inst)
 	}
     }
 }
+
+void
+psog_pre_node_input (psog_pre_node_t * psp, caddr_t * inst, caddr_t * state)
+{
+  /* rows where scan mode is null are sent consecutively.  A row where scan mode is not null is sent by itself.
+   * In cluster, placed before a qf that starts with a psog scan that is either s lookup for null scan ode or a dependent column
+   *scan as given by scan mode.  Pre-partition since whether partition or flood depends on scan mode. */
+  QNCAST (QI, qi, inst);
+  int n_sets = psp->src_gen.src_prev ? QST_INT (inst, psp->src_gen.src_prev->src_out_fill) : qi->qi_n_sets;
+  int nth_set;
+  caddr_t mode = NULL;
+  if (state)
+    {
+      nth_set = QST_INT (inst, psp->psp_nth_set) = 0;
+    }
+
+again:
+  QST_INT (inst, psp->src_gen.src_out_fill) = 0;
+  for (;;)
+    {
+      nth_set = QST_INT (inst, psp->psp_nth_set);
+      if (nth_set == n_sets)
+	{
+	  SRC_IN_STATE (psp, inst) = NULL;
+	  if (QST_INT (inst, psp->src_gen.src_out_fill))
+	    qn_send_output ((data_source_t *) psp, inst);
+	  return;
+	}
+      qi->qi_set = nth_set;
+      mode = qst_get (inst, psp->psp_o_scan_mode);
+      if (mode && DV_DB_NULL != DV_TYPE_OF (mode))
+	{
+	  if (QST_INT (inst, psp->src_gen.src_out_fill))
+	    {
+	      SRC_IN_STATE (psp, inst) = inst;
+	      QST_INT (inst, psp->psp_nth_set) = nth_set;
+	      qn_send_output ((data_source_t *) psp, inst);
+	      goto again;
+	    }
+	  QST_INT (inst, psp->src_gen.src_out_fill) = 0;
+	  qn_result ((data_source_t *) psp, inst, nth_set);
+	  nth_set++;
+	  QST_INT (inst, psp->psp_nth_set) = nth_set;
+	  qn_send_output ((data_source_t *) psp, inst);
+	}
+      else
+	qn_result ((data_source_t *) psp, inst, nth_set);
+      nth_set++;
+      QST_INT (inst, psp->psp_nth_set) = nth_set;
+    }
+}
+
 
 #define SG_INIT 0
 #define SG_CSET 1

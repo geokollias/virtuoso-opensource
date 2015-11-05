@@ -120,6 +120,7 @@ extern char *http_proxy_address;
 extern char *http_cli_proxy_server;
 extern char *http_cli_proxy_except;
 extern int32 http_enable_client_cache;
+extern int32 ws_write_timeout;
 extern int32 log_proc_overwrite;
 extern char * backup_ignore_keys;
 
@@ -132,6 +133,8 @@ extern int32 https_client_verify;
 extern int32 https_client_verify_depth;
 extern char * https_client_verify_file;
 extern char * https_client_verify_crl_file;
+extern char * https_cipher_list;
+extern char * https_protocols;
 
 extern char *c_ssl_server_port;
 extern char *c_ssl_server_cert;
@@ -140,6 +143,8 @@ extern char *c_ssl_server_extra_certs;
 extern int32 ssl_server_verify;
 extern int32 ssl_server_verify_depth;
 extern char *ssl_server_verify_file;
+extern char *ssl_server_cipher_list;
+extern char *ssl_server_protocols;
 #endif
 extern int spotlight_integration;
 #ifdef BIF_XML
@@ -272,6 +277,8 @@ extern int32 vdb_serialize_connect;
 extern int prpc_disable_burst_mode;
 extern int prpc_forced_fixed_thread;
 extern int prpc_force_burst_mode;
+extern int32 max_bad_rpc_on_connection;
+extern int32 max_bad_rpc_timeout;
 
 extern long sqlc_add_views_qualifiers;
 int32 c_sqlc_add_views_qualifiers;
@@ -393,6 +400,7 @@ extern void (*cfg_set_checkpoint_interval)(int32 f);
 extern dp_addr_t crashdump_start_dp, crashdump_end_dp;
 
 int32 c_vt_batch_size_limit = 0;
+extern int32 txs_max_terms;
 
 int32 c_callstack_on_exception = 0;
 extern long callstack_on_exception; /* from sqlintrp.c */
@@ -483,7 +491,8 @@ extern size_t c_max_large_vec;
 extern int32 mon_enable;
 
 extern int timezoneless_datetimes;
-int c_timezoneless_datetimes;
+extern long simple_rdf_numbers;
+long c_timezoneless_datetimes;
 
 /* for use in bif_servers */
 int
@@ -682,6 +691,8 @@ int cfg_getsize (PCONFIG pc, char * sec, char * attr, size_t * sz);
 int   cfg2_getsize (PCONFIG pc, PCONFIG pc_g, char * sec, char * attr, size_t * sz);
 
 extern LOG *virtuoso_log;
+extern int tn_step_refers_to_input;
+
 static char *prefix;
 int
 cfg_setup (void)
@@ -691,7 +702,7 @@ cfg_setup (void)
   char *section;
   int32 long_helper;
   char * f_config_g_file = NULL;
-
+  char * tmp_str;
   if (f_config_file == NULL)
     f_config_file = "virtuoso.ini";
 
@@ -799,6 +810,13 @@ cfg_setup (void)
   if (cfg_getlong (pconfig, section, "DisableTcpSocket", &c_disable_listen_on_tcp_sock) == -1)
     c_disable_listen_on_tcp_sock = 0;
 
+  if (cfg_getlong (pconfig, section, "MaxBadRPCs", &max_bad_rpc_on_connection) == -1)
+    max_bad_rpc_on_connection = 100;
+  if (max_bad_rpc_on_connection  > 0xffff) /* max 64k bad RPC requests */
+    max_bad_rpc_on_connection = 0xffff;
+
+  if (cfg_getlong (pconfig, section, "MaxBadRPCtimeout", &max_bad_rpc_timeout) == -1)
+    max_bad_rpc_timeout = 60;
 #ifdef _SSL
   if (cfg_getstring (pconfig, section, "SSLServerPort", &c_ssl_server_port) == -1)
     c_ssl_server_port = NULL;
@@ -821,6 +839,12 @@ cfg_setup (void)
 
   if (cfg_getstring (pconfig, section, "X509ClientVerifyCAFile", &ssl_server_verify_file) == -1)
     ssl_server_verify_file = NULL;
+
+  if (cfg_getstring (pconfig, section, "SSL_CIPHER_LIST", &ssl_server_cipher_list) == -1)
+    ssl_server_cipher_list = "default";
+
+  if (cfg_getstring (pconfig, section, "SSL_PROTOCOLS", &ssl_server_protocols) == -1)
+    ssl_server_protocols = "default";
 #endif
 
   if (cfg_getlong (pconfig, section, "ServerThreads", &c_server_threads) == -1)
@@ -971,7 +995,7 @@ cfg_setup (void)
     c_future_thread_sz = 140000;
 
   if (cfg_getlong (pconfig, section, "ThreadCleanupInterval", &long_helper) == -1)
-    c_cfg_thread_live_period = 0;
+    c_cfg_thread_live_period = 2;
   else
     c_cfg_thread_live_period = (unsigned long) long_helper;
 
@@ -981,7 +1005,7 @@ cfg_setup (void)
     c_cfg_thread_threshold = (unsigned long) long_helper;
 
   if (cfg_getlong (pconfig, section, "ResourcesCleanupInterval", &long_helper) == -1)
-    c_cfg_resources_clear_interval = 0;
+    c_cfg_resources_clear_interval = 5;
   else
     c_cfg_resources_clear_interval = (unsigned long) long_helper;
 
@@ -999,6 +1023,9 @@ cfg_setup (void)
 
   if (cfg_getlong (pconfig, section, "FreeTextBatchSize", &c_vt_batch_size_limit) == -1)
     c_vt_batch_size_limit = 10000000;
+
+  if (cfg_getlong (pconfig, section, "FreeTextMaxQueryTerms", &txs_max_terms) == -1)
+    txs_max_terms = 300;
 
   if (cfg_getlong (pconfig, section, "CallstackOnException", &c_callstack_on_exception) == -1)
     c_callstack_on_exception = 0;
@@ -1090,9 +1117,6 @@ cfg_setup (void)
     chash_space_avail = MAX (1000000000, main_bufs * 1000);
   if (cfg_getlong (pconfig, section, "UseAIO", &c_c_use_aio) == -1)
     c_c_use_aio = 0;
-
-  if (cfg_getlong (pconfig, section, "AsyncQueueMaxThreads", &c_aq_max_threads) == -1)
-    c_aq_max_threads = 48;
 
   if (cfg_getlong (pconfig, section, "BuffersAllocation", &malloc_bufs) == -1)
     malloc_bufs = 0;
@@ -1287,6 +1311,10 @@ cfg_setup (void)
     {
       enable_qp = 16;
     }
+
+  if (cfg_getlong (pconfig, section, "AsyncQueueMaxThreads", &c_aq_max_threads) == -1)
+    c_aq_max_threads = enable_qp * 2;
+
   if (cfg_getlong (pconfig, section, "MaxVectorSize", &dc_max_q_batch_sz) == -1)
     dc_max_q_batch_sz = 1000000;
   /*
@@ -1302,7 +1330,14 @@ cfg_setup (void)
   if (cfg_getlong (pconfig, section, "EnableMonitor", &mon_enable) == -1)
     mon_enable = 1;
   if (cfg_getlong (pconfig, section, "TimezonelessDatetimes", &c_timezoneless_datetimes) == -1)
-    c_timezoneless_datetimes = -1; /* temporary value to be reset on reading dataabse config page or before writing it */
+    c_timezoneless_datetimes = -1; /* temporary value to be reset on reading database config page or before writing it */
+  else if ((c_timezoneless_datetimes < 0) || (c_timezoneless_datetimes > 4))
+    {
+      log_error ("TimezonelessDatetimes should have value 0 (old behavior), 1 (by ISO), 2 (times are timezoneless unless TZ is specified), 3 (set local timezone by default), or 4 (set GMT by default), The value in [Parameters] section .ini file value is %d; wrong, ignored.", c_timezoneless_datetimes);
+      c_timezoneless_datetimes = -1;
+    }
+  if (cfg_getlong (pconfig, section, "SimpleRdfNumbers", &simple_rdf_numbers) == -1)
+    simple_rdf_numbers = 0;
 
   section = "Flags";
   {
@@ -1436,6 +1471,12 @@ cfg_setup (void)
 
   if (cfg_getstring (pconfig, section, "X509ClientVerifyCAFile", &c_https_client_verify_file) == -1)
     c_https_client_verify_file = NULL;
+
+  if (cfg_getstring (pconfig, section, "SSL_CIPHER_LIST", &https_cipher_list) == -1)
+    https_cipher_list = "default";
+
+  if (cfg_getstring (pconfig, section, "SSL_PROTOCOLS", &https_protocols) == -1)
+    https_protocols = "default";
 #endif
 
   if (cfg_getlong (pconfig, section, "ServerThreads", &c_http_threads) == -1)
@@ -1507,6 +1548,8 @@ cfg_setup (void)
   if (cfg_getlong (pconfig, section, "HTTPClientCache", &http_enable_client_cache) == -1)
     http_enable_client_cache = 0;
 
+  if (cfg_getlong (pconfig, section, "WriteTimeout", &ws_write_timeout) == -1)
+    ws_write_timeout = 0;
   /*
    * FIXME: set meaningful default for c_http_proxy_connection_cache_timeout
    * if c_http_max_cached_proxy_connections is set to something whenever
@@ -1615,6 +1658,12 @@ cfg_setup (void)
     c_rdf_query_graph_keywords = 0;
   if (cfg_getlong (pconfig, section, "TransitivityCacheEnabled", &tn_cache_enable) == -1)
     tn_cache_enable = 0;
+  if (0 == cfg_getstring (pconfig, "Parameters", "TransStepMode", &tmp_str))
+    {
+      if (!stricmp ("input", tmp_str))
+	tn_step_refers_to_input = 1;
+    }
+
   if (cfg_getlong (pconfig, section, "EnablePstats", &enable_p_stat) == -1)
     enable_p_stat = 2;
 
@@ -2417,7 +2466,7 @@ static int
 db_lck_lock_fd (int fd, char *name)
 {
 #if defined (F_SETLK)
-  struct flock fl;
+  struct flock fl = {0};
 
   /* Get an advisory WRITE lock */
   fl.l_type = F_WRLCK;
@@ -2450,7 +2499,7 @@ static void
 db_lck_unlock_fd (int fd, char *name)
 {
 #if defined (F_SETLK)
-  struct flock fl;
+  struct flock fl = {0};
 
   /* Unlock */
   fl.l_type = F_UNLCK;

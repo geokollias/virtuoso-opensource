@@ -27,7 +27,7 @@ virtrdf:QuadStorage virtrdf:isGcResistantType "2" .
 
 # Don't forget to change version, both here and in DB.DBA.SPARQL_RELOAD_QM_GRAPH, to force reload.
 <http://www.openlinksw.com/sparql/virtrdf-data-formats.ttl>
-  virtrdf:version '2015-03-16 0001v7' ;
+  virtrdf:version '2015-07-16 0001v7' ;
   virtrdf:item
     rdfdf:default-iid ,				rdfdf:default-iid-nullable ,
     rdfdf:default-iid-nonblank ,			rdfdf:default-iid-nonblank-nullable ,
@@ -81,6 +81,7 @@ virtrdf:QuadStorage virtrdf:isGcResistantType "2" .
     rdfdf:sql-nvarchar-uri-fn ,			rdfdf:sql-nvarchar-uri-fn-nullable ,
     rdfdf:sql-integer-uri-fn ,			rdfdf:sql-integer-uri-fn-nullable ,
     rdfdf:sql-numeric-uri-fn ,			rdfdf:sql-numeric-uri-fn-nullable ,
+    rdfdf:sql-doubleprecision-uri-fn ,		rdfdf:sql-doubleprecision-uri-fn-nullable ,
     rdfdf:sql-date-uri-fn ,			rdfdf:sql-date-uri-fn-nullable ,
     rdfdf:sql-time-uri-fn ,			rdfdf:sql-time-uri-fn-nullable ,
     rdfdf:sql-datetime-uri-fn ,			rdfdf:sql-datetime-uri-fn-nullable ,

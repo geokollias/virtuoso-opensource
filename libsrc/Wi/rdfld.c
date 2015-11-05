@@ -199,13 +199,17 @@ cu_rl_local_exec (cucurbit_t * cu)
 		    id_hash_t *ht;
 		    if (dict_place && (ht = dict_ht (*dict_place)))
 		      {
-			caddr_t one = (caddr_t) 1, id_box = box_num (id);
+			caddr_t one = (caddr_t) 1, id_box;
+			if (ht->ht_mp)
+			  id_box = mp_box_num ((mem_pool_t *) (ht->ht_mp), id);
+			else
+			  id_box = box_num (id);
 			id_hash_set (ht, (caddr_t) & id_box, (caddr_t) & one);
 		      }
 		  }
 		cu_set_value (cu, vs, box_copy_tree ((caddr_t) rb));
 	      }
-	    else if (DV_STRING == DV_TYPE_OF (vs->vs_org_value))
+	    else if (DV_STRING == DV_TYPE_OF (vs->vs_org_value) || IS_WIDE_STRING_DTP (DV_TYPE_OF (vs->vs_org_value)))
 	      {
 		rdf_box_t *rb = rb_allocate ();
 		rb->rb_ro_id = id;
@@ -220,7 +224,11 @@ cu_rl_local_exec (cucurbit_t * cu)
 		    id_hash_t *ht;
 		    if (dict_place && (ht = dict_ht (*dict_place)))
 		      {
-			caddr_t one = (caddr_t) 1, id_box = box_num (id);
+			caddr_t one = (caddr_t) 1, id_box;
+			if (ht->ht_mp)
+			  id_box = mp_box_num ((mem_pool_t *) (ht->ht_mp), id);
+			else
+			  id_box = box_num (id);
 			id_hash_set (ht, (caddr_t) & id_box, (caddr_t) & one);
 		      }
 		  }
@@ -445,7 +453,7 @@ cu_rl_cols (cucurbit_t * cu, caddr_t g_iid)
 	  caddr_t x = row[5];
 	  QNCAST (rdf_box_t, rb, x);
 	  int is_rb = DV_RDF == DV_TYPE_OF (x) && rb->rb_is_complete && rb->rb_ro_id;
-	  if (DV_DB_NULL == DV_TYPE_OF (x) || DV_STRING == DV_TYPE_OF (x))
+	  if (DV_DB_NULL == DV_TYPE_OF (x) || DV_STRING == DV_TYPE_OF (x) || IS_WIDE_STRING_DTP (DV_TYPE_OF (x)))
 	    sqlr_new_error ("42000", "CL...", "NULL and string not allowed for O column value");
 	  if (is_rb)
 	    rb->rb_is_complete = 0;
@@ -559,6 +567,12 @@ l_make_ro_disp (cucurbit_t * cu, caddr_t * args, value_state_t * vs)
     {
       l_null = dk_alloc_box (0, DV_DB_NULL);
       cf = cu_func ("L_O_LOOK", 1);
+    }
+  if (IS_WIDE_STRING_DTP (dtp))
+    {
+      mem_pool_t *pool = cu->cu_clrg->clrg_pool;
+      box = mp_box_wide_as_utf8_char (pool, box, box_length (box) / sizeof (wchar_t) - 1, DV_SHORT_STRING);
+      dtp = DV_TYPE_OF (box);
     }
   if (DV_RDF == dtp)
     {

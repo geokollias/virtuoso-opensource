@@ -173,6 +173,73 @@ RDF_FETCH_OR_CREATE_1 (virtrdf_ns_uri)
 iri_id_t bnode_t_treshold = ~((iri_id_t) 0);
 
 int
+rb_uname_to_wellknown_datatype_twobyte (ccaddr_t dt_uname)
+{
+  if (uname_xmlschema_ns_uri_hash_byte == dt_uname)
+    return rb_type__xsd_byte;
+  if (uname_xmlschema_ns_uri_hash_decimal == dt_uname)
+    return rb_type__xsd_decimal;
+  if (uname_xmlschema_ns_uri_hash_double == dt_uname)
+    return rb_type__xsd_double;
+  if (uname_xmlschema_ns_uri_hash_float == dt_uname)
+    return rb_type__xsd_float;
+  if (uname_xmlschema_ns_uri_hash_int == dt_uname)
+    return rb_type__xsd_int;
+  if (uname_xmlschema_ns_uri_hash_integer == dt_uname)
+    return rb_type__xsd_integer;
+  if (uname_xmlschema_ns_uri_hash_long == dt_uname)
+    return rb_type__xsd_long;
+  if (uname_xmlschema_ns_uri_hash_negativeInteger == dt_uname)
+    return rb_type__xsd_negativeInteger;
+  if (uname_xmlschema_ns_uri_hash_nonNegativeInteger == dt_uname)
+    return rb_type__xsd_nonNegativeInteger;
+  if (uname_xmlschema_ns_uri_hash_nonPositiveInteger == dt_uname)
+    return rb_type__xsd_nonPositiveInteger;
+  if (uname_xmlschema_ns_uri_hash_positiveInteger == dt_uname)
+    return rb_type__xsd_positiveInteger;
+  if (uname_xmlschema_ns_uri_hash_short == dt_uname)
+    return rb_type__xsd_short;
+  if (uname_xmlschema_ns_uri_hash_unsignedByte == dt_uname)
+    return rb_type__xsd_unsignedByte;
+  if (uname_xmlschema_ns_uri_hash_unsignedInt == dt_uname)
+    return rb_type__xsd_unsignedInt;
+  if (uname_xmlschema_ns_uri_hash_unsignedLong == dt_uname)
+    return rb_type__xsd_unsignedLong;
+  if (uname_xmlschema_ns_uri_hash_unsignedShort == dt_uname)
+    return rb_type__xsd_unsignedShort;
+  if (uname_xmlschema_ns_uri_hash_boolean == dt_uname)
+    return rb_type__xsd_boolean;
+  if (uname_xmlschema_ns_uri_hash_date == dt_uname)
+    return rb_type__xsd_date;
+  if (uname_xmlschema_ns_uri_hash_duration == dt_uname)
+    return rb_type__xsd_duration;
+  if (uname_xmlschema_ns_uri_hash_gDay == dt_uname)
+    return rb_type__xsd_gDay;
+  if (uname_xmlschema_ns_uri_hash_gMonth == dt_uname)
+    return rb_type__xsd_gMonth;
+  if (uname_xmlschema_ns_uri_hash_gMonthDay == dt_uname)
+    return rb_type__xsd_gMonthDay;
+  if (uname_xmlschema_ns_uri_hash_gYear == dt_uname)
+    return rb_type__xsd_gYear;
+  if (uname_xmlschema_ns_uri_hash_gYearMonth == dt_uname)
+    return rb_type__xsd_gYearMonth;
+  if (uname_xmlschema_ns_uri_hash_yearMonthDuration == dt_uname)
+    return rb_type__xsd_yearMonthDuration;
+
+  /* (uname_xmlschema_ns_uri_hash_dayTimeDuration       == dt_uname) */
+  /* (uname_xmlschema_ns_uri_hash_dateTime              == dt_uname) */
+  /* (uname_xmlschema_ns_uri_hash_dateTimeStamp         == dt_uname) */
+  /* (uname_xmlschema_ns_uri_hash_hexBinary             == dt_uname) */
+  /* (uname_xmlschema_ns_uri_hash_language              == dt_uname) */
+  /* (uname_xmlschema_ns_uri_hash_normalizedString      == dt_uname) */
+  /* (uname_xmlschema_ns_uri_hash_string                == dt_uname) */
+  /* (uname_xmlschema_ns_uri_hash_time                  == dt_uname) */
+  /* (uname_xmlschema_ns_uri_hash_token                 == dt_uname) */
+
+  return 0;
+}
+
+int
 rb_uname_to_flags_of_parseable_datatype (ccaddr_t dt_uname)
 {
   if ((uname_xmlschema_ns_uri_hash_byte == dt_uname)
@@ -1035,7 +1102,7 @@ rbs_ro_id (db_buf_t rbs)
   if (RBS_EXT_TYPE & flags)
     {
       l = 2;
-      if (RBS_HAS_TYPE & flags)
+      if (!(RBS_HAS_TYPE & flags))
 	l += 2;
       hl = 0;
       goto ret_id;
@@ -2939,7 +3006,7 @@ bif_http_sys_find_best_sparql_accept (caddr_t * qst, caddr_t * err_ret, state_sl
       int ctr;
       caddr_t *tmp;
 /*INDENT-OFF*/
-      tmp = (caddr_t *) list (29 * 2, "text/rdf+n3", "TTL",	/*  0 */
+      tmp = (caddr_t *) list (30 * 2, "text/rdf+n3", "TTL",	/*  0 */
 	  "text/rdf+ttl", "TTL",	/*  1 */
 	  "text/rdf+turtle", "TTL",	/*  2 */
 	  "text/turtle", "TTL",	/*  3 */
@@ -2967,8 +3034,8 @@ bif_http_sys_find_best_sparql_accept (caddr_t * qst, caddr_t * err_ret, state_sl
 	  "text/csv", "CSV",	/* 25 */
 	  "text/tab-separated-values", "TSV",	/* 26 */
 	  "application/x-nice-turtle", "NICE_TTL",	/* 27 */
-	  "text/x-html-nice-turtle", "HTML;NICE_TTL"	/* 28 Increase count in this list() call when add more MIME types! */
-	  );
+	  "text/x-html-nice-turtle", "HTML;NICE_TTL",	/* 28 */
+	  "text/x-html+tr", "HTML;TR");	/* 29 Increase count in this list() call when add more MIME types! */
 /*INDENT-ON*/
       for (ctr = BOX_ELEMENTS (tmp); ctr--; /* no step */ )
 	tmp[ctr] = box_dv_short_string (tmp[ctr]);
@@ -3058,6 +3125,7 @@ ttl_try_to_cache_new_prefix (caddr_t * qst, dk_session_t * ses, ttl_env_t * env,
   id_hash_iterator_t *ns2pref_hit = env->te_used_prefixes;
   id_hash_t *ns2pref = ns2pref_hit->hit_hash;
   caddr_t *prefx_ptr;
+  caddr_t prefix, ns;
   ptrlong ns_counter_val;
   if ('\0' == ti->ns[0])
     return 0;
@@ -3098,10 +3166,18 @@ ttl_try_to_cache_new_prefix (caddr_t * qst, dk_session_t * ses, ttl_env_t * env,
 	}
       ti->prefix = box_sprintf (20, "ns%d", ns2pref->ht_count);
     }
-  id_hash_set (ns2pref, (caddr_t) (&ti->ns), (caddr_t) (&(ti->prefix)));
-  ti->prefix = box_copy (ti->prefix);
+  if (ns2pref->ht_mp)
+    {
+      prefix = mp_full_box_copy_tree ((mem_pool_t *) (ns2pref->ht_mp), ti->prefix);
+      ns = mp_full_box_copy_tree ((mem_pool_t *) (ns2pref->ht_mp), ti->ns);
+    }
+  else
+    {
+      prefix = box_copy (ti->prefix);
+      ns = box_copy (ti->ns);
+    }
+  id_hash_set (ns2pref, (caddr_t) (&ns), (caddr_t) (&prefix));
   ns_counter_ptr[0] = ns_counter_val + 1;
-  ti->ns = box_copy (ti->ns);
   return 1;
 }
 
@@ -5648,6 +5724,7 @@ bif_sparql_iri_split_rdfa_qname (caddr_t * qst, caddr_t * err_ret, state_slot_t 
   const char *tail;
   int iri_strlen;
   caddr_t ns_iri, prefix, *prefix_ptr, res = NULL, to_free = NULL;
+  caddr_t t_prefix, t_ns_iri;
   switch (DV_TYPE_OF (raw_iri))
     {
     case DV_IRI_ID:
@@ -5716,11 +5793,23 @@ bif_sparql_iri_split_rdfa_qname (caddr_t * qst, caddr_t * err_ret, state_slot_t 
 	    {
 	      if (flags & 0x1)
 		{
-		  id_hash_set (ht, (caddr_t) (&ns_iri), (caddr_t) (&prefix));
-		  to_free = NULL;	/* to be released when hash table is free */
+		  if (ht->ht_mp)
+		    {
+		      t_prefix = mp_full_box_copy_tree ((mem_pool_t *) (ht->ht_mp), prefix);
+		      t_ns_iri = mp_full_box_copy_tree ((mem_pool_t *) (ht->ht_mp), ns_iri);
+		      dk_free_box (prefix);
+		      prefix = NULL;
+		    }
+		  else
+		    {
+		      t_prefix = prefix;
+		      t_ns_iri = ns_iri;
+		      to_free = NULL;	/* to be released when hash table is free */
+		    }
+		  id_hash_set (ht, (caddr_t) (&t_ns_iri), (caddr_t) (&t_prefix));
 		}
 	      res =
-		  (flags & 0x2) ? list (3, box_copy (prefix), box_copy (ns_iri), box_dv_short_nchars (tail,
+		  (flags & 0x2) ? list (3, box_copy (t_prefix), box_copy (ns_iri), box_dv_short_nchars (tail,
 		      iri + iri_strlen - tail)) : NULL;
 	      break;
 	    }
@@ -5729,9 +5818,18 @@ bif_sparql_iri_split_rdfa_qname (caddr_t * qst, caddr_t * err_ret, state_slot_t 
 	{
 	  char buf[10];
 	  sprintf (buf, "n%ld", (long) (ht->ht_count));
-	  prefix = box_dv_short_string (buf);
-	  id_hash_set (ht, (caddr_t) (&ns_iri), (caddr_t) (&prefix));
-	  to_free = NULL;	/* to be released when hash table is free */
+	  if (ht->ht_mp)
+	    {
+	      prefix = mp_box_string ((mem_pool_t *) (ht->ht_mp), buf);
+	      t_ns_iri = mp_full_box_copy_tree ((mem_pool_t *) (ht->ht_mp), ns_iri);
+	    }
+	  else
+	    {
+	      prefix = box_dv_short_string (buf);
+	      t_ns_iri = ns_iri;
+	      to_free = NULL;	/* to be released when hash table is free */
+	    }
+	  id_hash_set (ht, (caddr_t) (&t_ns_iri), (caddr_t) (&prefix));
 	  break;
 	}
       res = (flags & 0x2) ? list (3, NULL, box_copy (ns_iri), box_dv_short_nchars (tail, iri + iri_strlen - tail)) : NULL;
@@ -7329,8 +7427,8 @@ rdf_make_long_of_typedsqlval_strings (caddr_t * qst, caddr_t strval, caddr_t dt_
       MAKE_RDF_GRAPH_DICT (rdf_graph_default_private_perms_of_user_dict);
       bif_define_ex ("__rdf_set_bnode_t_treshold", bif_rdf_set_bnode_t_treshold, BMD_RET_TYPE, &bt_integer, BMD_DONE);
       bif_set_uses_index (bif_rdf_set_bnode_t_treshold);
-      bif_define ("rdf_box", bif_rdf_box);
-      bif_define ("rdf_box_from_ro_id", bif_rdf_box_from_ro_id);
+      bif_define_ex ("rdf_box", bif_rdf_box, BMD_IS_PURE, BMD_DONE);
+      bif_define_ex ("rdf_box_from_ro_id", bif_rdf_box_from_ro_id, BMD_IS_PURE, BMD_DONE);
       bif_define ("ro_digest_from_parts", bif_ro_digest_from_parts);
       bif_define_ex ("is_rdf_box", bif_is_rdf_box, BMD_RET_TYPE, &bt_integer, BMD_DONE);
       bif_define_ex ("rdf_box_set_data", bif_rdf_box_set_data, BMD_RET_TYPE, &bt_any, BMD_DONE);

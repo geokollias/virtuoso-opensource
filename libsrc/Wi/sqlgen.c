@@ -506,7 +506,8 @@ sqlg_non_index_ins (sql_comp_t * sc, df_elt_t * tb_dfe, key_source_t * ks)
 	df_elt_t **pred;
 	df_elt_t *call = cp->_.bin.right;
 	dbe_column_t *left_col = dfe_in_list_left (call, subr);
-	if (call->_.call.extra && dk_set_member (ks->ks_key->key_parts, (void *) left_col))
+	if (call->_.call.extra
+	    && sqlg_qn_dfe ((data_source_t *) call->_.call.extra) && dk_set_member (ks->ks_key->key_parts, (void *) left_col))
 	  {
 	    /* this is an invisible hash join against a chash filled by chash_in_init */
 	    dk_set_push (&ks->ks_hash_spec, sqlg_chash_in_spec (sc, ks, call, subr, cp->_.bin.is_not));
@@ -1640,8 +1641,7 @@ ts_add_cset (sql_comp_t * sc, df_elt_t * tb_dfe, table_source_t * ts)
   search_spec_t *sp;
   int inx, n_places = 0, n_slots = 0, n_opts = 0, n_scalars = 0, n_sets = 0;
   dk_hash_t *ht = hash_table_allocate (23);
-  int n_reqd = 0, fill = 0;
-  dk_set_t col_iter;
+  int fill = 0;
   key_source_t *ks = ts->ts_order_ks;
   NEW_VARZ (cset_ts_t, csts);
   ts->ts_csts = csts;
@@ -1677,7 +1677,6 @@ ts_add_cset (sql_comp_t * sc, df_elt_t * tb_dfe, table_source_t * ts)
       csts->csts_last_cset_s = ssl_new_variable (sc->sc_cc, "prev_last_s", DV_IRI_ID);
       csts->csts_last_s_chash = ssl_new_tree (sc->sc_cc, "last_s");
     }
-  col_iter = ks->ks_out_cols;
   DO_SET (dbe_column_t *, col, &ks->ks_key->key_parts)
   {
     if (!COL_IS_CSET (col))
@@ -1696,8 +1695,8 @@ ts_add_cset (sql_comp_t * sc, df_elt_t * tb_dfe, table_source_t * ts)
   END_DO_HT;
   n_slots = 3 + ht->ht_count * 10 + (n_opts * 12);
   n_scalars = 2 * (ht->ht_count + n_opts) + 2;
-  csts->csts_scalar_ssls = (state_slot_t *) dk_alloc_box (sizeof (caddr_t) * n_scalars, DV_BIN);
-  csts->csts_vec_ssls = (state_slot_t *) dk_alloc_box (sizeof (caddr_t) * n_slots, DV_BIN);
+  csts->csts_scalar_ssls = (state_slot_t **) dk_alloc_box (sizeof (caddr_t) * n_scalars, DV_BIN);
+  csts->csts_vec_ssls = (state_slot_t **) dk_alloc_box (sizeof (caddr_t) * n_slots, DV_BIN);
   n_places = (ht->ht_count + 1) * 16 + (n_opts * 13);
   csts->csts_qi_places = (ssl_index_t *) dk_alloc_box (sizeof (ssl_index_t) * n_places, DV_BIN);
   for (inx = 0; inx < n_slots; inx++)
@@ -1780,6 +1779,8 @@ ts_add_cset_posg_psog (sql_comp_t * sc, df_elt_t * tb_dfe, table_source_t * posg
   csq->csq_o_scan_mode = posg_ts->ts_csm->csm_o_scan_mode;
   csq->csq_itc = ssl_new_variable (sc->sc_cc, "cset_itc", DV_ITC);
   ks->ks_key = rq->tb_primary_key;
+  if (ks->ks_key->key_partition)
+    clb_init (sc->sc_cc, &ts->clb, 1);
   posg_ts->src_gen.src_continuations = CONS (ts, NULL);
   p_sp = posg_ts->ts_order_ks->ks_spec.ksp_spec_array;
   if (p_sp)
@@ -1859,7 +1860,8 @@ ts_add_cset_posg (sql_comp_t * sc, df_elt_t * tb_dfe, table_source_t * ts)
   csm->csm_posg_cset_pos = cc_new_instance_slot (sc->sc_cc);
   csm->csm_posg_last_set = cc_new_instance_slot (sc->sc_cc);
   csm->csm_o_scan_mode = ssl_new_variable (sc->sc_cc, "scan_mode", DV_ANY);
-  csm->csm_o_scan_mode->ssl_qr_global = 1;
+  if (CL_RUN_LOCAL == cl_run_local_only)
+    csm->csm_o_scan_mode->ssl_qr_global = 1;
   sc->sc_cset_o_scan_mode = csm->csm_o_scan_mode;
   if (tb_dfe->_.table.add_cset_psog)
     ts_add_cset_posg_psog (sc, tb_dfe, ts);
@@ -1932,7 +1934,7 @@ sqlg_ts_cset_posg_prepare (sql_comp_t * sc, df_elt_t * tb_dfe)
   /*  if the cset ts that follows accesses the o of this, the o will have to come from here instead, except for the o scan case */
   df_elt_t *cset_dfe = tb_dfe->dfe_next;
   iri_id_t p_iri = dfe_lit_p (sc, tb_dfe);
-  if (!p_iri || DFE_TABLE != cset_dfe->dfe_type || !cset_dfe->_.table.key->key_over_csets)
+  if (!p_iri || !cset_dfe || DFE_TABLE != cset_dfe->dfe_type || !cset_dfe->_.table.key->key_over_csets)
     return;
   DO_SET (df_elt_t *, out_col, &cset_dfe->_.table.out_cols)
   {
@@ -2034,7 +2036,7 @@ sqlg_make_np_ts (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * pre_code)
   ts->ts_is_outer = tb_dfe->_.table.ot->ot_is_outer;
   order_ks = ts->ts_order_ks;
   if (order_ks && order_ks->ks_spec.ksp_spec_array)
-    ts->ts_is_unique = tb_dfe->_.table.is_unique;
+    ts->ts_is_unique = ts_check_unq (ts, tb_dfe->_.table.is_unique);
   /* if the order key has no spec then this can't be a full match of the key.  The situation is a contradiction, can happen if there is a unique pred but the wrong key.  Aberration of score function is possible cause. */
 
   if (order_ks)
@@ -2867,6 +2869,7 @@ sqlg_hash_source (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * pre_code)
       hs->hs_roj = cc_new_instance_slot (sc->sc_cc);
       cc_new_instance_slot (sc->sc_cc);
       hs->hs_roj_state = cc_new_instance_slot (sc->sc_cc);;
+      hs->hs_roj_pos = cc_new_instance_slot (sc->sc_cc);;
       hs->hs_roj_dc = ssl_new_vec (sc->sc_cc, "roj", DV_LONG_INT);
       setp->setp_fill_right_oj = 1;
       if (roj_key_out)
@@ -3648,7 +3651,6 @@ sqlg_make_trans_dt (sqlo_t * so, df_elt_t * dt_dfe, ST ** target_names, dk_set_t
       tn->tn_path_ctr = cc_new_instance_slot (sc->sc_cc);
       tn->tn_keep_path = 1;
     }
-  tn->tn_after_join_test = sqlg_pred_body (so, dt_dfe->_.sub.after_join_test);
   if (trans->_.trans.min)
     tn->tn_min_depth = scalar_exp_generate (sc, trans->_.trans.min, pre_code);
   if (trans->_.trans.max)
@@ -4120,14 +4122,20 @@ sqlg_pred_1 (sqlo_t * so, df_elt_t ** body, dk_set_t * code, int succ, int fail,
 	  if (inx != n_terms - 1)
 	    {
 	      jmp_label_t temp_fail = sqlc_new_label (sc);
+	      if (inx == 2)
+		sqlg_cond_start (sc);
 	      sqlg_pred_1 (so, (df_elt_t **) body[inx], code, succ, temp_fail, temp_fail);
 	      cv_label (code, temp_fail);
 	    }
 	  else
 	    {
+	      if (inx == 2)
+		sqlg_cond_start (sc);
 	      sqlg_pred_1 (so, (df_elt_t **) body[inx], code, succ, fail, unk);
 	    }
 	}
+      if (inx > 1)
+	sqlg_cond_end (sc);
       return;
     }
   if (BOP_AND == op)
@@ -4137,22 +4145,27 @@ sqlg_pred_1 (sqlo_t * so, df_elt_t ** body, dk_set_t * code, int succ, int fail,
 	  if (inx < n_terms - 1)
 	    {
 	      jmp_label_t temp_succ = sqlc_new_label (sc);
+	      if (2 == inx)
+		sqlg_cond_start (sc);
 	      sqlg_pred_1 (so, (df_elt_t **) body[inx], code, temp_succ, fail, unk);
 	      cv_label (code, temp_succ);
 	    }
 	  else
-	    sqlg_pred_1 (so, (df_elt_t **) body[inx], code, succ, fail, unk);
+	    {
+	      if (2 == inx)
+		sqlg_cond_start (sc);
+	      sqlg_pred_1 (so, (df_elt_t **) body[inx], code, succ, fail, unk);
+	    }
 	}
+      if (inx > 1)
+	sqlg_cond_end (sc);
       return;
     }
   else
     {
       for (inx = 1; inx < n_terms; inx++)
 	{
-	  char save = sc->sc_re_emit_code;
-	  sc->sc_re_emit_code = 1 != sc->sc_is_first_cond;
 	  sqlg_dfe_code (so, body[inx], code, succ, fail, unk);
-	  sc->sc_re_emit_code = save;
 	}
       sc->sc_is_first_cond = 0;
     }
@@ -4275,16 +4288,8 @@ code_vec_t
 sqlg_pred_body (sqlo_t * so, df_elt_t ** body)
 {
   code_vec_t cv;
-  dk_set_t save = so->so_sc->sc_re_emitted_dfes;
-  so->so_sc->sc_re_emitted_dfes = NULL;
   so->so_sc->sc_is_first_cond = 1;
   cv = sqlg_pred_body_1 (so, body, NULL);
-  DO_SET (df_elt_t *, dfe, &so->so_sc->sc_re_emitted_dfes)
-  {
-    dfe->dfe_ssl = NULL;
-  }
-  END_DO_SET ();
-  so->so_sc->sc_re_emitted_dfes = save;
   return cv;
 }
 
@@ -4603,7 +4608,8 @@ sqlg_is_multistate_gb (sqlo_t * so)
 	/* a derived table with gby/oby is multistate and will have the set no in the setp  if in the enclosing there is a ts or dt before it.  But  a dt w no qr   does not count because this is the immediately enclosing, not a previous one.  On the top qr, ignore anything that is inside a hash filler  */
 	if (dk_set_member (hf_nodes, qn))
 	  continue;
-	if (IS_TS (qn) || (IS_QN (qn, subq_node_input) && ((subq_source_t *) qn)->sqs_query) || IS_RTS (qn))
+	if (IS_TS (qn) || (IS_QN (qn, subq_node_input) && ((subq_source_t *) qn)->sqs_query)
+	    || IS_RTS (qn) || IS_QN (qn, trans_node_input))
 	  return 1;
       }
       END_DO_SET ();
@@ -4662,6 +4668,9 @@ sqlg_distinct_fun_ref_col (sql_comp_t * sc, state_slot_t * data, dk_set_t prev_k
   setp.setp_ssa.ssa_set_no = set_no;
   setp.setp_distinct = 1;
   setp.setp_keys = dk_set_copy (prev_keys);
+  setp.setp_set_no_in_key = !sc->sc_is_single_state;
+  if (setp.setp_set_no_in_key)
+    dk_set_push (&setp.setp_keys, (void *) sc->sc_set_no_ssl);
   /* below  if always true since even if a top gby key in count distinct the distinct hash is expected to have an extra key part for the chash implementation, whether redundant or not */
   if (1 || dk_set_position (setp.setp_keys, (void *) data) < 0)
     setp.setp_keys = dk_set_conc (setp.setp_keys, dk_set_cons ((void *) data, NULL));
@@ -4801,6 +4810,7 @@ setp_copy_if_constant (sql_comp_t * sc, setp_node_t * setp, state_slot_t * ssl)
       dk_set_push (&setp->setp_const_gb_values, (void *) ssl);
       return ssl2;
     }
+  ssl->ssl_always_vec = 1;
   return ssl;
 }
 
@@ -5769,6 +5779,12 @@ sqlg_fref_qp (sql_comp_t * sc, fun_ref_node_t * fref, df_elt_t * dt_dfe)
     }
 }
 
+int
+qn_is_non_oj_sctr (data_source_t * qn)
+{
+  return IS_QN (qn, set_ctr_input) && !((set_ctr_node_t *) qn)->sctr_ose;
+}
+
 
 void
 sqlg_place_fref (sql_comp_t * sc, data_source_t ** head, fun_ref_node_t * fref, df_elt_t * dt_dfe)
@@ -5782,7 +5798,7 @@ sqlg_place_fref (sql_comp_t * sc, data_source_t ** head, fun_ref_node_t * fref, 
     }
   for (qn = *head; qn; (prev = qn, qn = qn_next (qn)))
     {
-      if (IS_QN (qn, hash_fill_node_input) || IS_QN (qn, set_ctr_input))
+      if (IS_QN (qn, hash_fill_node_input) || qn_is_non_oj_sctr (qn))
 	continue;
       if (IS_QN (qn, subq_node_input) && ((subq_source_t *) qn)->sqs_is_hash_filler)
 	continue;
@@ -6107,7 +6123,7 @@ sqlg_make_sort_nodes (sqlo_t * so, data_source_t ** head, ST ** order_by,
 		}
 	      aggregate = sqlg_dfe_ssl (so, sqlo_df (so, fref));
 	      if (AMMSC_USER != fref->_.fn_ref.fn_code)
-		sqlg_find_aggregate_sqt (sc->sc_cc->cc_schema, &(arg->ssl_sqt), fref, &(aggregate->ssl_sqt));
+		sqlg_find_aggregate_sqt (wi_inst.wi_schema, &(arg->ssl_sqt), fref, &(aggregate->ssl_sqt));
 	      else
 		aggregate->ssl_sqt.sqt_dtp = DV_ARRAY_OF_POINTER;
 	      if (!dk_set_member (out_slots, aggregate))
@@ -7100,12 +7116,11 @@ sqlg_add_fail_stub (sqlo_t * so, data_source_t ** head)
   sql_node_append (head, (data_source_t *) en);
 }
 
-
 data_source_t *
 sqlg_add_breakup_node (sql_comp_t * sc, data_source_t ** head, state_slot_t *** ssl_ret, int n_per_set, dk_set_t * code)
 {
   state_slot_t **ssl_out = *ssl_ret;
-  int inx;
+  int inx, alen = box_length (ssl_out) / sizeof (caddr_t);
   SQL_NODE_INIT (breakup_node_t, brk, breakup_node_input, breakup_node_free);
   brk->brk_all_output = ssl_out;
   DO_BOX (state_slot_t *, ssl, inx, ssl_out)
@@ -7133,7 +7148,12 @@ sqlg_add_breakup_node (sql_comp_t * sc, data_source_t ** head, state_slot_t *** 
   brk->brk_output = dk_alloc_box (sizeof (caddr_t) * n_per_set, DV_BIN);
   brk->brk_current_slot = cc_new_instance_slot (sc->sc_cc);
   for (inx = 0; inx < n_per_set; inx++)
-    brk->brk_output[inx] = brk->brk_all_output[inx];
+    {
+      state_slot_t *ssl = brk->brk_all_output[inx];
+      state_slot_t *v = ssl_new_inst_variable (sc->sc_cc, ssl->ssl_name, ssl->ssl_sqt.sqt_dtp);
+      v->ssl_sqt.sqt_non_null = ssl->ssl_sqt.sqt_non_null;
+      brk->brk_output[inx] = v;
+    }
   sql_node_append (head, (data_source_t *) brk);
   *ssl_ret = (state_slot_t **) box_copy ((caddr_t) brk->brk_output);
   return (data_source_t *) brk;
@@ -8065,7 +8085,10 @@ sqlg_lit_params (sql_comp_t * sc)
       char str[20];
       state_slot_t *ssl;
       if (!dfe)
-	continue;
+	{
+	  dfe = sqlo_new_dfe (sc->sc_so, DFE_CONST, NULL);
+	  dfe->dfe_nth_param = inx + 1;
+	}
       snprintf (str, sizeof (str), ":lp%d", dfe->dfe_nth_param);
       ssl = ssl_new_parameter (sc->sc_cc, str);
       dk_set_push (&qr->qr_parms, (void *) ssl);
@@ -8084,7 +8107,6 @@ sqlg_top_1 (sqlo_t * so, df_elt_t * dfe, state_slot_t *** sel_out_ret)
   comp_context_t *outer_cc = so->so_sc->sc_cc;
   comp_context_t inner_cc;
   memset (&inner_cc, 0, sizeof (inner_cc));
-  inner_cc.cc_schema = outer_cc->cc_schema;
   inner_cc.cc_super_cc = outer_cc->cc_super_cc;
   inner_cc.cc_query = outer_cc->cc_query;
   inner_cc.cc_in_cset_gen = outer_cc->cc_in_cset_gen;

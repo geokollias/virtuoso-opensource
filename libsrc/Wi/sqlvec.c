@@ -58,6 +58,7 @@ void sqlg_vec_cast (sql_comp_t * sc, state_slot_ref_t ** refs, state_slot_t ** c
 int ssl_is_const_card (sql_comp_t * sc, state_slot_t * ssl, sql_type_t * sqt);
 void sqlg_ts_add_copy (sql_comp_t * sc, table_source_t * ts, state_slot_t ** ssls);
 caddr_t box_concat (caddr_t b1, caddr_t b2);
+caddr_t ssl_cast_name (state_slot_t * ssl);
 
 
 
@@ -2173,7 +2174,7 @@ sqlg_vec_del (sql_comp_t * sc, delete_node_t * del)
   data_source_t *qn = sc->sc_vec_qf ? sc->sc_vec_qf->qf_head_node : sc->sc_cc->cc_query->qr_head_node;
   int is_first = 1;
   table_source_t *last_no_test = NULL;
-  if (sch_view_def (sc->sc_cc->cc_schema, del->del_table->tb_name))
+  if (sch_view_def (wi_inst.wi_schema, del->del_table->tb_name))
     {
       del->del_is_view = 1;
       return;
@@ -2510,7 +2511,7 @@ sqlg_vec_upd (sql_comp_t * sc, update_node_t * upd)
   data_source_t *qn = sc->sc_vec_qf ? sc->sc_vec_qf->qf_head_node : sc->sc_cc->cc_query->qr_head_node;
   int is_first = 1;
   table_source_t *last_no_test = NULL;
-  if (sch_view_def (sc->sc_cc->cc_schema, upd->upd_table->tb_name))
+  if (sch_view_def (wi_inst.wi_schema, upd->upd_table->tb_name))
     {
       upd->upd_is_view = 1;
       return;
@@ -2807,6 +2808,8 @@ ks_cast_nullable (key_source_t * ks, int n_params, int nth)
   if (!ks->ks_cast_null)
     ks->ks_cast_null = dk_alloc_box_zero (n_params, DV_BIN);
   ks->ks_cast_null[nth] = 1;
+  if (ks->ks_vec_cast && ks->ks_vec_cast[nth])
+    ks->ks_vec_cast[nth]->ssl_sqt.sqt_non_null = 0;
 }
 
 #define QF_CHECK_OUTER \
@@ -2814,6 +2817,75 @@ ks_cast_nullable (key_source_t * ks, int n_params, int nth)
     sc->sc_qf_in_outer = 1; \
   else if (IS_QN (qn, outer_seq_end_input)) \
     sc->sc_qf_in_outer = 0;
+
+void
+sqlg_check_ks_nulls (sql_comp_t * sc, key_source_t * ks, state_slot_t * ssl)
+{
+  int inx, n_pars = BOX_ELEMENTS_0 (ks->ks_vec_cast);
+  state_slot_t *shadow;
+  if (ssl->ssl_sqt.sqt_non_null)
+    return;
+  shadow = (state_slot_t *) gethash ((void *) (ptrlong) ssl->ssl_index, sc->sc_vec_ssl_shadow);
+  if (!shadow)
+    return;
+  DO_BOX (state_slot_t *, param, inx, ks->ks_vec_cast)
+  {
+    if (param == ssl || param == shadow)
+      ks_cast_nullable (ks, n_pars, inx);
+  }
+  END_DO_BOX;
+}
+
+void
+sqlg_qf_ks_nulls (sql_comp_t * sc, key_source_t * ks)
+{
+  setp_node_t *setp = NULL;
+  data_source_t *qn = sc->sc_vec_first_of_qf;
+  int inx;
+
+  while (NULL != (qn = qn_next (qn)))
+    {
+      if (IS_QN (qn, setp_node_input))
+	{
+	  setp = (setp_node_t *) qn;
+	  break;
+	}
+    }
+  if (!setp || (setp->setp_ha->ha_op != HA_GROUP && setp->setp_ha->ha_op != HA_ORDER))
+    return;
+  DO_BOX (state_slot_t *, ssl, inx, setp->setp_keys_box)
+  {
+    sqlg_check_ks_nulls (sc, ks, ssl);
+  }
+  END_DO_BOX;
+  DO_BOX (state_slot_t *, ssl, inx, setp->setp_dependent_box)
+  {
+    sqlg_check_ks_nulls (sc, ks, ssl);
+  }
+  END_DO_BOX;
+}
+
+
+int
+sqlg_posg_psog_part (sql_comp_t * sc, table_source_t * loc_ts, dk_set_t * ssls, dk_set_t * casts, dk_set_t * cast_funcs,
+    data_source_t * qf_head, dk_set_t * scalar)
+{
+  /* if a cset posg is followed by a psog for special non indexed o's, then the s of the posg is the partitioning key  for the psog */
+  search_spec_t s_sp;
+  if (loc_ts->ts_csq && loc_ts->ts_csq->csq_o_scan_mode)
+    {
+      memzero (&s_sp, sizeof (s_sp));
+      s_sp.sp_min_ssl = loc_ts->ts_csq->csq_org_s;
+      s_sp.sp_min_op = CMP_EQ;
+      s_sp.sp_cl.cl_sqt.sqt_dtp = DV_IRI_ID;
+      s_sp.sp_cl.cl_sqt.sqt_col_dtp = DV_IRI_ID;
+      sc->sc_is_first_of_qf = 1;
+      sqlg_qf_ks_param (sc, &loc_ts->ts_csq->csq_org_s, &s_sp, ssls, casts, cast_funcs, qf_head, scalar);
+      sc->sc_is_first_of_qf = 0;
+      return 1;
+    }
+  return 0;
+}
 
 
 void
@@ -2852,6 +2924,8 @@ sqlg_qf_first_ks (sql_comp_t * sc, query_frag_t * qf)
 	else
 	  ks->ks_vec_cp = (col_partition_t **) box_append_1 ((caddr_t) ks->ks_vec_cp, (void *) cp);
       }
+    else if (sqlg_posg_psog_part (sc, loc_ts, &ssls, &casts, &cast_funcs, qf_head, &scalar))
+      ;
     else
       {
 	ks->ks_is_flood = 1;
@@ -2952,6 +3026,8 @@ no_part:
   ks->ks_dc_val_cast = (dc_val_cast_t *) dk_set_to_array (cast_funcs);
   if (ks->ks_cl_local_cast)
     sqlg_ks_subst_local_anyfy (ks);
+  /* look for next group/sorting setp, check if any of ssls are in src or cast and make ks_cast_nulls for it */
+  sqlg_qf_ks_nulls (sc, ks);
   sc->sc_vec_first_of_qf = NULL;
 }
 
@@ -3785,7 +3861,7 @@ qn_vec_slots (sql_comp_t * sc, data_source_t * qn, dk_hash_t * res, dk_hash_t * 
 {
   int inx, src_resets_done;
   sc->sc_ssl_prereset_only = NULL;
-
+  sc->sc_qr_size++;
   if (sc->sc_cc->cc_super_cc->cc_instance_fill >= STATE_SLOT_LIMIT)
     SQL_GPF_T1 (sc->sc_cc, "Query too large, variables in state over the limit");
 
@@ -4110,7 +4186,7 @@ qn_vec_slots (sql_comp_t * sc, data_source_t * qn, dk_hash_t * res, dk_hash_t * 
 	    state_slot_t *sh;
 	    REF_SSL (res, tn->tn_input[inx]);
 	    ref = tn->tn_input[inx];
-	    sh = ssl_new_vec (sc->sc_cc, ref->ssl_name, ref->ssl_dtp);
+	    sh = ssl_new_vec (sc->sc_cc, ssl_cast_name (ref), ref->ssl_dtp);
 	    sh->ssl_column = ssl_base_ssl (ref)->ssl_column;
 	    sh->ssl_sqt.sqt_non_null = ref->ssl_sqt.sqt_non_null;
 	    tn->tn_input_ref[inx] = sh;
@@ -4287,14 +4363,18 @@ qn_vec_slots (sql_comp_t * sc, data_source_t * qn, dk_hash_t * res, dk_hash_t * 
 int
 sp_ssl_count (sql_comp_t * sc, search_spec_t * sp, unsigned char *n_eq, int *cast_changes_card)
 {
-  /* set n_eqs to be the count of leading eqs */
+  /* set n_eqs to be the count of sortable search params.  These are leading eqs and optionally one lower bound if one follows eqs. Should also sort to have increasing lower bound for eq prefix */
   int n = 0, all_eq = 1;
   for (sp = sp; sp; sp = sp->sp_next)
     {
       if (all_eq && sp->sp_min_op != CMP_EQ)
 	{
 	  if (n_eq)
-	    *n_eq = n;
+	    {
+	      *n_eq = n;
+	      if (sp->sp_min_ssl && SSL_CONSTANT != sp->sp_min_ssl->ssl_type && !sp->sp_min_ssl->ssl_qr_global)
+		(*n_eq)++;
+	    }
 	  all_eq = 0;
 	}
       if (sp->sp_min_ssl)
@@ -4873,6 +4953,7 @@ sqlg_ts_vec_cset (sql_comp_t * sc, table_source_t * ts)
       REF_SSL (res, csm->csm_cset_o);
       ASG_SSL (res, all_res, csm->csm_rq_o);
       ASG_SSL (res, all_res, csm->csm_o_scan_mode);
+      ks->ks_always_null = CONS (csm->csm_o_scan_mode, NULL);
       if (csm->csm_exc_scan_ks)
 	{
 	  key_source_t *exc_ks = csm->csm_exc_scan_ks;
@@ -4900,6 +4981,8 @@ sqlg_ts_vec_cset (sql_comp_t * sc, table_source_t * ts)
       REF_SSL (res, csq->csq_org_o);
       REF_SSL (res, csq->csq_org_g);
       REF_SSL (res, csq->csq_o_scan_mode);
+      ASG_SSL (res, all_res, csq->csq_s_min);
+      ASG_SSL (res, all_res, csq->csq_s_max);
     }
 }
 
@@ -5501,4 +5584,5 @@ sqlg_vector (sql_comp_t * sc, query_t * qr)
       sqlg_vector_subq (sc);
     }
   qr_set_vec_ssls (qr);
+  qr->qr_size = sc->sc_qr_size < 0xffff ? sc->sc_qr_size : 0xffff;
 }

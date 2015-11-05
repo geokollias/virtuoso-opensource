@@ -626,10 +626,15 @@ ins_call (instruction_t * ins, caddr_t * qst, code_vec_t code_vec)
 	  /* for vectored call of non vectored proc filling proc table temp, do not drop the fill itc until there is termination from eerror of having done the last set */
 	  hash_area_t *ha = (hash_area_t *) cli->cli_result_ts;
 	  caddr_t *result_qst = (caddr_t *) cli->cli_result_qi;
-	  it_cursor_t *ins_itc = (it_cursor_t *) result_qst[ha->ha_insert_itc->ssl_index];
-	  if (ins_itc)
-	    itc_free (ins_itc);
-	  result_qst[ha->ha_insert_itc->ssl_index] = NULL;
+	  if (result_qst)
+	    {
+	      it_cursor_t *ins_itc = (it_cursor_t *) result_qst[ha->ha_insert_itc->ssl_index];
+	      if (ins_itc)
+		itc_free (ins_itc);
+	      result_qst[ha->ha_insert_itc->ssl_index] = NULL;
+	    }
+	  else
+	    log_error ("result_qst is null");
 	}
       PROC_RESTORE_SAVED;
     }

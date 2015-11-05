@@ -35,6 +35,8 @@
 #include "sqlbif.h"
 #include "srvstat.h"
 #include "geo.h"
+#include "sqlcmps.h"
+#include "sqlo.h"
 
 
 signed char db_buf_const_length[256];
@@ -641,7 +643,6 @@ dv_base_type (dtp_t dtp)
       return dtp;
     }
 }
-
 void
 dv_num_offset (db_buf_t dv, int64 offset, db_buf_t tmp, int sz)
 {
@@ -3171,11 +3172,13 @@ itc_up_rnd_check (it_cursor_t * itc, buffer_desc_t ** buf_ret)
 
 
 int
-col_is_leading (dbe_column_t * col)
+col_is_leading (dbe_column_t * col, dbe_key_t * sample_key)
 {
   dbe_table_t *tb = col->col_defined_in;
   DO_SET (dbe_key_t *, key, &tb->tb_keys)
   {
+    if (key != sample_key)
+      continue;
     if (key->key_parts && (void *) col == key->key_parts->data)
       return 1;
   }
@@ -3291,6 +3294,8 @@ cs_set_hist (col_stat_t * cs, dbe_column_t * col, caddr_t * hist, int64 est, it_
     }
   if (bcnt)
     dk_set_push (&buckets, list (2, box_num (prev_cnt * mpy), box_copy_tree (hist[prev_inx])));
+  if (hist[len - 1])
+    dk_set_push (&buckets, list (2, box_num (est), box_copy (hist[len - 1])));
   col->col_hist = list_to_array (dk_set_nreverse (buckets));
   if (!keep_cs)
     dk_free_tree ((caddr_t) hist);
@@ -3345,7 +3350,8 @@ itc_col_stat_free (it_cursor_t * itc, int upd_col, float est)
       else
 	{
 	  int fill = 0;
-	  hist = cs_hist (cs, col, est, itc);
+	  if (upd_col)
+	    hist = cs_hist (cs, col, est, itc);
 	  id_hash_iterator (&hit, cs->cs_distinct);
 	  while (hit_next (&hit, (caddr_t *) & data, (caddr_t *) & count))
 	    {
@@ -3430,7 +3436,7 @@ itc_col_stat_free (it_cursor_t * itc, int upd_col, float est)
 		  /* if it is an int then the max distinct is the difference between min and max seen */
 		  col->col_min = box_num (min);
 		  col->col_max = box_num (max);
-		  if (col->col_n_distinct > max - min && !col_is_leading (col))
+		  if (col->col_n_distinct > max - min && !col_is_leading (col, key))
 		    col->col_n_distinct = MAX (1, max - min);
 		}
 	      if (!is_int && !hist)
@@ -3438,6 +3444,8 @@ itc_col_stat_free (it_cursor_t * itc, int upd_col, float est)
 		  col->col_min = col_min_max_trunc (minb);
 		  col->col_max = col_min_max_trunc (maxb);
 		}
+	      if (col == (dbe_column_t *) key->key_parts->data && key->key_is_primary && 1 == key->key_n_significant)
+		col->col_n_distinct = est;
 	    }
 	  else if (key && !key->key_distinct)
 	    {
@@ -4054,7 +4062,7 @@ itc_sample_1 (it_cursor_t * it, buffer_desc_t ** buf_ret, int64 * n_leaves_ret, 
   int level_of_single_leaf_match = -1;
   int ctr = 0, leaf_ctr = 0, rows_per_bm, ends_with_match;
   int64 leaf_estimate = 0;
-
+  it->itc_is_sample = 1;
   if (angle > 980)
     angle = 980;
   it->itc_search_mode = SM_READ;
@@ -4396,7 +4404,7 @@ itc_sample (it_cursor_t * itc)
 
 
 unsigned int64
-key_count_estimate_slice (dbe_key_t * key, int n_samples, int upd_col_stats, slice_id_t slice)
+key_count_estimate_slice_inner (dbe_key_t * key, int n_samples, int upd_col_stats, slice_id_t slice, index_choice_t * ic)
 {
   int64 res = 0, sample;
   int n;
@@ -4405,6 +4413,7 @@ key_count_estimate_slice (dbe_key_t * key, int n_samples, int upd_col_stats, sli
   it_cursor_t *itc = &itc_auto;
   ITC_INIT (itc, key->key_fragments[0]->kf_it, NULL);
   itc_clear_stats (itc);
+  itc->itc_sample_ic = ic;
   QR_RESET_CTX
   {
     if (!key->key_is_elastic || CL_RUN_CLUSTER != cl_run_local_only)
@@ -4451,6 +4460,23 @@ key_count_estimate_slice (dbe_key_t * key, int n_samples, int upd_col_stats, sli
   if (upd_col_stats)
     itc_col_stat_free (itc, 1, res / n_samples);
   return res / n_samples;
+}
+
+
+unsigned int64
+key_count_estimate_slice (dbe_key_t * key, int n_samples, int upd_col_stats, slice_id_t slice)
+{
+  index_choice_t ic;
+  unsigned int64 res;
+  memzero (&ic, sizeof (ic));
+  res = key_count_estimate_slice_inner (key, n_samples, upd_col_stats, slice, &ic);
+  if (ic_is_insufficient_slices (&ic))
+    {
+      memzero (&ic, sizeof (ic));
+      ic.ic_slice_pct = 100;
+      res = key_count_estimate_slice_inner (key, n_samples, upd_col_stats, slice, &ic);
+    }
+  return res;
 }
 
 

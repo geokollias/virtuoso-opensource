@@ -935,10 +935,10 @@ int STRLIKE_NAME (__cmp_like) (const SLCHAR * string, const SLCHAR * pattern,
     {
 #ifndef SLCHAR_WIDE
       if (collation)
-	return ((! !nc_strstr_coll ((const SLUCHAR *) string, (const SLUCHAR *) (pattern + 2), collation)) ? DVC_MATCH : DVC_LESS);
+	return ((!!nc_strstr_coll ((const SLUCHAR *) string, (const SLUCHAR *) (pattern + 2), collation)) ? DVC_MATCH : DVC_LESS);
       else
 #endif
-	return ((! !STRLIKE_NAME (nc_strstr) ((const SLUCHAR *) string, (const SLUCHAR *) (pattern + 2))) ? DVC_MATCH : DVC_LESS);
+	return ((!!STRLIKE_NAME (nc_strstr) ((const SLUCHAR *) string, (const SLUCHAR *) (pattern + 2))) ? DVC_MATCH : DVC_LESS);
     }
 
   if (*pattern == STRLIKE_NAME (MATCH_TO_LAST_CHAR))	/* Call fuzzy match instead. */

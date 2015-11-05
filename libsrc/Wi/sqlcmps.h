@@ -220,6 +220,7 @@ typedef struct sql_comp_s
   dk_set_t sc_jt_preds;
 
   dk_set_t sc_compound_scopes;
+  dk_set_t sc_with_list;
   int sc_is_trigger_decl;
   int sc_in_cursor_def;
   state_slot_t *sc_grouping;
@@ -264,7 +265,8 @@ typedef struct sql_comp_s
   char sc_any_rdf;
   char sc_gen_rdf_rd_sec;
 
-  dk_set_t sc_re_emitted_dfes;
+  dk_set_t sc_re_emitted_dfes;	/* dfes assigned in cond part, not defined after the cond part */
+  dk_set_t sc_cond_defd_dfes;	/* stack for saving the containing cond enps'sc_re_emitted_dfes */
   rdf_inf_slots_t *sc_rdf_inf_slots;
   dk_hash_t *sc_safe_g;		/* ssls with g values checked for safety. if g eequals one of these, no check needed */
 
@@ -299,6 +301,7 @@ typedef struct sql_comp_s
   int sc_cn_ctr2;
   dk_set_t sc_dfe_reuses;	/* list of allocd for freeing at end */
   struct st_lit_state_s *sc_stl;
+  int sc_qr_size;
   char sc_no_lit_param;		/* a lit in this place will not be a param even if the same lit is so elsewhere */
   char sc_is_rdf_type_p;
   qf_level_t *sc_qfl;
@@ -583,6 +586,8 @@ void qr_set_local_code_and_funref_flag (query_t * qr);
 
 state_slot_t *scalar_exp_generate_typed (sql_comp_t * sc, ST * tree, dk_set_t * code, sql_type_t * expect);
 
+void sqlg_cond_start (sql_comp_t * sc);
+void sqlg_cond_end (sql_comp_t * sc);
 
 sql_type_t *sqlc_stmt_nth_col_type (sql_comp_t * sc, dbe_table_t * tb, ST * tree, int nth);
 
@@ -751,8 +756,10 @@ dbe_key_t *sqlg_flood_key ();
 
 #define  RDF_UNTYPED ((caddr_t) 1)
 #define RDF_LANG_STRING ((caddr_t) 2)
+#define RDF_SCALAR ((caddr_t)3)
 
 caddr_t sqlo_rdf_obj_const_value (ST * tree, caddr_t * val_ret, caddr_t * lang_ret);
+caddr_t xqf_str_parse_to_rdf_box (caddr_t arg, caddr_t type_iri, int *err_ret);
 int rdf_obj_of_sqlval (caddr_t val, caddr_t * data_ret);
 int rdf_obj_of_typed_sqlval (caddr_t val, caddr_t vtype, caddr_t lang, caddr_t * data_ret);
 int setp_is_high_card (setp_node_t * setp);

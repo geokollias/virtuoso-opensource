@@ -1,9 +1,9 @@
 #
-#  jso_metameta.awk
+# jso_metameta.awk
 #
-#  $Id$
+# $Id$
 #
-#  Embeds SQL code into a C file
+# Embeds SQL code into a C file
 #
 #  This file is part of the OpenLink Software Virtuoso Open-Source (VOS)
 #  project.
@@ -84,9 +84,10 @@ function top_h ()
     }
   if (post_init == "")
     {
-      #init_name = FILENAME
-      #gsub("[.]jso$","_jso_init",init_name)
-      post_init = "\nextern void " init_name "_jso_init (void);"
+      init_name = FILENAME
+      gsub("[.]/","",init_name)
+      gsub("[.]jso$","_jso_init",init_name)
+      post_init = "\nextern void " init_name " (void);"
     }
 }
 
@@ -94,12 +95,16 @@ function write_array_h (c_name, type_ns, type_local, el_c_name, el_ns, el_local,
 {
   if (group_c_type == "")
     {
-  top_h()
-  print ""
-  if (cmt != "")
-    print "/*! " cmt " */"
-  print "#define JSO_IRI_OF_" c_name " " c_esc(type_ns type_local)
-  print "typedef " el_c_name " *" c_name "_t;"
+      top_h()
+      print ""
+      if (cmt != "")
+        print "/*! " cmt " */"
+      print "#define JSO_IRI_OF_" c_name " " c_esc(type_ns type_local)
+      print "typedef " el_c_name " *" c_name "_t;"
+      print ""
+      if (cmt != "")
+        print "/*! JSO description of " cmt " */"
+      print "extern jso_class_descr_t jso__" c_name ";"
     }
 }
 
@@ -138,30 +143,33 @@ function write_struct_begin_h (cmt)
 function write_scalar_h (c_name, type, status, cmt)
 {
   if (group_c_type == "")
-  print "  " c_type_name(type) "\t" c_name ";\t/*!< " cmt " */"
+    print "  " c_type_name(type) "\t" c_name ";\t/*!< " cmt " */"
 }
 
 function write_struct_end_h ()
 {
   print "} " struct_c_name "_t;"
+  print ""
+  if (cmt != "")
+    print "/*! JSO description of " cmt " */"
+  print "extern jso_class_descr_t jso__" struct_c_name ";"
 }
-
 
 function top_c ()
 {
   if (includes_printed == 0)
     {
-      #header_name = FILENAME
-      #gsub("[.]jso$","_jso.h",header_name)
-      header_name = init_name "_jso.h"
+      header_name = FILENAME
+      gsub("[.]jso$","_jso.h",header_name)
       print "#include \"" header_name "\""
       includes_printed = 1
     }
   if (post_init == "")
     {
-      #init_name = FILENAME
-      #gsub("[.]jso$","_jso_init",init_name)
-      post_init = "\nvoid\n" init_name "_jso_init (void)\n{"
+      init_name = FILENAME
+      gsub("[.]/","",init_name)
+      gsub("[.]jso$","_jso_init",init_name)
+      post_init = "\nvoid\n" init_name " (void)\n{"
     }
 }
 
@@ -169,18 +177,18 @@ function write_array_c (c_name, type_ns, type_local, el_c_name, el_ns, el_local,
 {
   if (group_c_type == "")
     {
-  top_c()
-  print ""
-  if (cmt != "")
-    print "/*! JSO description of " cmt " */"
-  print "jso_class_descr_t jso__" c_name " = {"
-  print "  JSO_CAT_ARRAY, " c_esc("array of " el_c_name) ","
-  print " " c_esc(type_ns type_local), ","
-  print " " c_esc(type_ns), "," c_esc(type_local), ","
-      print "  NULL /* jsocd_validation_cbk */, NULL /* jsocd_rttis */, {"
-  print "    { 0, -1, NULL, NULL },"
-  print "    { " c_esc(el_ns el_local), ", " mincount ", " maxcount "} } };"
-  post_init = post_init "\n  jso_define_class(&jso__" c_name ");"
+      top_c()
+      print ""
+      if (cmt != "")
+        print "/*! JSO description of " cmt " */"
+      print "jso_class_descr_t jso__" c_name " = {"
+      print "  JSO_CAT_ARRAY, " c_esc("array of " el_c_name) ","
+      print " " c_esc(type_ns type_local), ","
+      print " " c_esc(type_ns), "," c_esc(type_local), ","
+      print "  NULL /* jsocd_rwlock_id */, NULL /* jsocd_validation_cbk */, NULL /* jsocd_pinned_rttis */, NULL /* jsocd_draft_rttis */, {"
+      print "    { 0, -1, NULL, NULL },"
+      print "    { " c_esc(el_ns el_local), ", " mincount ", " maxcount "} } };"
+      post_init = post_init "\n  jso_define_class(&jso__" c_name ");"
     }
 }
 
@@ -210,7 +218,7 @@ function write_struct_begin_c (cmt, header_name)
 function write_scalar_c (c_name, type, status, cmt)
 {
   if (group_c_type == "")
-  print "  { NULL\t," c_esc(c_name) "\t, " type "\t, JSO_" status "\t, JSO_FIELD_OFFSET(" struct_c_name "_t," c_name ")\t, NULL },"
+    print "  { NULL\t," c_esc(c_name) "\t, " type "\t, JSO_" status "\t, JSO_FIELD_OFFSET(" struct_c_name "_t," c_name ")\t, NULL },"
   else
     print "  { NULL\t," c_esc(group_c_name "-" c_name) "\t, " type "\t, JSO_" status "\t, JSO_FIELD_OFFSET(" struct_c_name "_t," group_c_name "." c_name ")\t, NULL },"
 }
@@ -225,7 +233,7 @@ function write_struct_end_c ()
   print "  JSO_CAT_STRUCT, " c_esc("struct " struct_c_name "_s") ","
   print " " c_esc(struct_type_ns struct_type_local), ","
   print " " c_esc(struct_type_ns), "," c_esc(struct_type_local), ","
-  print "  NULL /* jsocd_validation_cbk */, NULL /* jsocd_rttis */, {"
+  print "  NULL /* jsocd_rwlock_id */, NULL /* jsocd_validation_cbk */, NULL /* jsocd_pinned_rttis */, NULL /* jsocd_draft_rttis */, {"
   print "    {"
   print "      sizeof (" struct_c_name "_t),"
   print "      -1, jso_fields__" struct_c_name ", NULL /* jsosd_field_hash */, NULL /* jsosd_fields_by_idx */ },"
@@ -238,11 +246,11 @@ function write_array_ttl (c_name, type_ns, type_local, el_c_name, el_ns, el_loca
 {
   if (group_c_type == "")
     {
-  print ttl_iri(type_ns type_local)
-  print "\trdf:type rdfs:Class ;"
-  if (cmt != "")
-    print "\trdfs:comment " ttl_esc(cmt) " ;"
-  print "\t."
+      print ttl_iri(type_ns type_local)
+      print "\trdf:type rdfs:Class ;"
+      if (cmt != "")
+        print "\trdfs:comment " ttl_esc(cmt) " ;"
+      print "\t."
     }
 }
 
@@ -618,14 +626,14 @@ match($0,"^JSO_STRUCT_BEGIN.*$",line)	{
   next
   }
 
-#          1                       2---------------------- 3             4---------------------- 5             6------- 7                             8--------
-match($0,"^(JSO_SCALAR[[:blank:]]+)([a-zA-Z_][a-zA-Z0-9_]*)([[:blank:]]+)([a-zA-Z_][a-zA-Z0-9_]*)([[:blank:]]+)([A-Z_]+)([[:blank:]]*--!<[[:blank:]]*)([^\r\n]*)$",line)	{
+#          1                       2---------------------- 3             4---------------------- 5             6------------- 7                             8--------
+match($0,"^(JSO_SCALAR[[:blank:]]+)([a-zA-Z_][a-zA-Z0-9_]*)([[:blank:]]+)([a-zA-Z_][a-zA-Z0-9_]*)([[:blank:]]+)([A-Z_]+[0-9]*)([[:blank:]]*--!<[[:blank:]]*)([^\r\n]*)$",line)	{
   write_scalar(line[2], "JSO_" line[4], line[6], line[8])
   next
   }
 
-#          1                       2---------------------- 3             4---------------------- 5             6------- 7
-match($0,"^(JSO_SCALAR[[:blank:]]+)([a-zA-Z_][a-zA-Z0-9_]*)([[:blank:]]+)([a-zA-Z_][a-zA-Z0-9_]*)([[:blank:]]+)([A-Z_]+)([[:blank:]]*)$",line)	{
+#          1                       2---------------------- 3             4---------------------- 5             6------------- 7
+match($0,"^(JSO_SCALAR[[:blank:]]+)([a-zA-Z_][a-zA-Z0-9_]*)([[:blank:]]+)([a-zA-Z_][a-zA-Z0-9_]*)([[:blank:]]+)([A-Z_]+[0-9]*)([[:blank:]]*)$",line)	{
   write_scalar(line[2], "JSO_" line[4], line[6], "")
   next
   }
@@ -635,14 +643,14 @@ match($0,"^JSO_SCALAR.*$",line)	{
   next
   }
 
-#          1                        2---------------------- 3             4---------------------- 5             6------- 7                             8--------
-match($0,"^(JSO_POINTER[[:blank:]]+)([a-zA-Z_][a-zA-Z0-9_]*)([[:blank:]]+)([a-zA-Z_][a-zA-Z0-9_]*)([[:blank:]]+)([A-Z_]+)([[:blank:]]*--!<[[:blank:]]*)([^\r\n]*)$",line)	{
+#          1                        2---------------------- 3             4---------------------- 5             6------------- 7                             8--------
+match($0,"^(JSO_POINTER[[:blank:]]+)([a-zA-Z_][a-zA-Z0-9_]*)([[:blank:]]+)([a-zA-Z_][a-zA-Z0-9_]*)([[:blank:]]+)([A-Z_]+[0-9]*)([[:blank:]]*--!<[[:blank:]]*)([^\r\n]*)$",line)	{
   write_scalar(line[2], "JSO_IRI_OF_" line[4], line[6], line[8])
   next
   }
 
-#          1                        2---------------------- 3             4---------------------- 5             6------- 7
-match($0,"^(JSO_POINTER[[:blank:]]+)([a-zA-Z_][a-zA-Z0-9_]*)([[:blank:]]+)([a-zA-Z_][a-zA-Z0-9_]*)([[:blank:]]+)([A-Z_]+)([[:blank:]]*)$",line)	{
+#          1                        2---------------------- 3             4---------------------- 5             6------------- 7
+match($0,"^(JSO_POINTER[[:blank:]]+)([a-zA-Z_][a-zA-Z0-9_]*)([[:blank:]]+)([a-zA-Z_][a-zA-Z0-9_]*)([[:blank:]]+)([A-Z_]+[0-9]*)([[:blank:]]*)$",line)	{
   write_scalar(line[2], "JSO_IRI_OF_" line[4], line[6], "")
   next
   }

@@ -1152,6 +1152,12 @@ posg:
   tb_dfe->_.table.key = tb_px_key (tb, rq.rq_o_col);
   if (extra_psog)
     {
+      if (CL_RUN_LOCAL != cl_run_local_only)
+	{
+	  /* in cluster case the posg ts always fetches s because this is the partition col for the next ts */
+	  df_elt_t *s_col = sqlo_df (so, t_listst (3, COL_DOTTED, tb_dfe->_.table.ot->ot_new_prefix, csg_s_uname));
+	  t_set_pushnew (&tb_dfe->_.table.out_cols, (void *) s_col);
+	}
       tb_dfe->_.table.cset_role = TS_CSET_POSG;
       tb_dfe->_.table.add_cset_psog = 1;
     }

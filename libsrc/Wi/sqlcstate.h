@@ -45,6 +45,7 @@ typedef struct scn3_context_s
   int last_keyword_yyleng;
   dk_session_t *split_ses;
   yyscan_t scanner;
+  dk_set_t html_lines;
 } scn3_context_t;
 
 typedef struct sql_compile_state_s	/* serialized in parse_sem */
@@ -111,6 +112,7 @@ typedef struct sql_compile_state_s	/* serialized in parse_sem */
 #define sqlc_current_sc global_scs->scs_current_sc
 #define sqlp_bin_op_serial global_scs->scs_bin_op_serial
 
+#define html_lines global_scs->scs_scn3c.html_lines
 
 #define SET_SCS(scs) \
   THREAD_CURRENT_THREAD->thr_sql_scs = (void*)scs

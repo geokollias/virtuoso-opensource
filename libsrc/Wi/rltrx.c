@@ -184,7 +184,58 @@ pg_move_lock (it_cursor_t * itc, row_lock_t ** locks, int n_locks, int from, int
     }
 }
 
+#if 0
+void
+itc_split_lock (it_cursor_t * itc, buffer_desc_t * left, buffer_desc_t * extend)
+{
+  page_lock_t *left_pl = left->bd_pl;
+  page_lock_t *extend_pl;
+  int is_col;
+  if (!left_pl)
+    return;
+  is_col = left_pl->pl_it && left_pl->pl_it->it_key && left_pl->pl_it->it_key->key_is_col;
+  extend_pl = pl_allocate ();
+  extend_pl->pl_page = extend->bd_page;
+  PL_SET_TYPE (extend_pl, PL_EXCLUSIVE);
+  extend_pl->pl_it = itc->itc_tree;
 
+  ITC_IN_TRANSIT (itc, left->bd_page, extend->bd_page);
+  sethash (DP_ADDR2VOID (extend->bd_page), &IT_DP_MAP (itc->itc_tree, extend->bd_page)->itm_locks, (void *) extend_pl);
+  extend->bd_pl = extend_pl;
+  mtx_assert (left_pl == IT_DP_PL (itc->itc_tree, left->bd_page));
+  if (PL_IS_FINALIZE (left_pl))
+    PL_SET_FLAG (extend_pl, PL_FINALIZE);
+
+  if (PL_IS_PAGE (left_pl) || is_col || !itc->itc_ltrx)
+    {
+      extend_pl->pl_type = left_pl->pl_type;
+
+      if (left_pl->pl_is_owner_list)
+	{
+	  TC (tc_pl_split_multi_owner_page);
+	  extend_pl->pl_is_owner_list = 1;
+	  DO_SET (lock_trx_t *, owner, (dk_set_t *) & left_pl->pl_owner)
+	  {
+	    dk_set_push ((dk_set_t *) & extend_pl->pl_owner, (void *) owner);
+	    lt_add_pl (owner, extend_pl, 0);
+	  }
+	  END_DO_SET ();
+	}
+      else
+	{
+	  extend_pl->pl_owner = left_pl->pl_owner;
+	  lt_add_pl (left_pl->pl_owner, extend_pl, 1);
+	}
+
+      TC (tc_pl_split);
+    }
+  else if (!itc->itc_non_txn_insert && itc->itc_ltrx)
+    lt_add_pl (itc->itc_ltrx, extend_pl, 1);
+
+  /* must add after PL_IS_PAGE is set. If row level, extend_pl
+   * may end up empty but that's OK. The last referencing txn will free it */
+}
+#else
 void
 itc_split_lock (it_cursor_t * itc, buffer_desc_t * left, buffer_desc_t * extend)
 {
@@ -227,13 +278,13 @@ itc_split_lock (it_cursor_t * itc, buffer_desc_t * left, buffer_desc_t * extend)
 
       TC (tc_pl_split);
     }
-  else if (!itc->itc_non_txn_insert)
+  else if (!itc->itc_non_txn_insert && itc->itc_ltrx)
     lt_add_pl (itc->itc_ltrx, extend_pl, 1);
 
   /* must add after PL_IS_PAGE is set. If row level, extend_pl
    * may end up empty but that's OK. The last referencing txn will free it */
 }
-
+#endif
 
 void
 itc_split_lock_waits (it_cursor_t * itc, buffer_desc_t * left, buffer_desc_t * extend)
@@ -386,6 +437,9 @@ pl_clk_lt_refs (page_lock_t * pl, row_lock_t * rl)
 }
 
 
+void lt_add_pl_simple (lock_trx_t * lt, page_lock_t * pl);
+
+
 void
 itc_insert_rl (it_cursor_t * itc, buffer_desc_t * buf, int pos, row_lock_t * rl, int no_escalation)
 {
@@ -421,6 +475,7 @@ itc_insert_rl (it_cursor_t * itc, buffer_desc_t * buf, int pos, row_lock_t * rl,
       if (IS_MT_BRANCH (itc->itc_ltrx) && itc->itc_lock_lt == itc->itc_ltrx)
 	{
 	  /* page lock owned by closing main lt.  Must now put a row for the closing branch, to rb later.  So must go to row locks because will be 2 owners */
+	  lt_add_pl_simple (itc->itc_lock_lt, itc->itc_pl);
 	  page_lock_to_row_locks (buf);
 	  no_escalation = 1;
 	}
@@ -652,6 +707,31 @@ lt_pl_add_main_lt (lock_trx_t * lt, int *has_txn, int flags)
   if (!in_txn)
     *has_txn = 1;
   return main_lt;
+}
+
+
+void
+lt_add_pl_simple (lock_trx_t * lt, page_lock_t * pl)
+{
+  /* add the lt to the owners of pl.  Done when a pl could be added from a branch to the main lt but the main lt went out before adding an rl or rl + clk.  In this case the branch must reference the pl */
+  IN_LT_LOCKS (lt);
+  sethash ((void *) pl, &lt->lt_lock, (void *) 1);
+  LEAVE_LT_LOCKS (lt);
+
+  if (pl->pl_is_owner_list)
+    {
+      dk_set_push ((dk_set_t *) & pl->pl_owner, (void *) lt);
+    }
+  else if (!pl->pl_owner)
+    pl->pl_owner = lt;
+  else
+    {
+      lock_trx_t *prev = pl->pl_owner;
+      pl->pl_is_owner_list = 1;
+      pl->pl_owner = NULL;
+      dk_set_push ((dk_set_t *) & pl->pl_owner, (void *) prev);
+      dk_set_push ((dk_set_t *) & pl->pl_owner, (void *) lt);
+    }
 }
 
 
@@ -1718,8 +1798,8 @@ lt_transact (lock_trx_t * lt, int op)
       char user[16];
       char peer[32];
       dks_client_ip (lt->lt_client, from, user, peer, sizeof (from), sizeof (user), sizeof (peer));
-      log_info ("LTRS_1 %s %s %s %s transact %p %li", user, from, peer,
-	  op == SQL_COMMIT ? "Commit" : "Rollback", lt, lt->lt_client ? lt->lt_client->cli_autocommit : 0);
+      log_info ("LTRS_1 %s %s %s %s transact %p %d " BOXINT_FMT, user, from, peer,
+	  op == SQL_COMMIT ? "Commit" : "Rollback", lt, lt->lt_client ? (int) lt->lt_client->cli_autocommit : 0, lt->lt_w_id);
     }
   lt->lt_status = LT_CLOSING;
 #ifdef PAGE_TRACE

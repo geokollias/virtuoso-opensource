@@ -400,6 +400,8 @@ create procedure DB.DBA.TTLP_RL_GS_TRIPLE_L (
   declare dp any;
  dp := app_env[1];
   declare is_text int;
+  if (isstring (g_iid))
+    g_iid := __i2id (g_iid);
   connection_set ('g_iid', g_iid);
   if (__rdf_obj_ft_rule_check (g_iid, p_uri))
     is_text := 1;
@@ -502,7 +504,7 @@ create procedure DB.DBA.TTLP_V_GS (in strg varchar, in base varchar, in graph va
   app_env := vector (async_queue (threads, 1), rl_local_dpipe_gs (), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
   if (bit_and (flags, 2048))
     dpipe_set_rdf_load (app_env[1], 6);
-  g_iid := iri_to_id (graph);
+  g_iid := case when length (graph) > 0 then iri_to_id (graph) else null end;
   rdf_load_turtle (strg, base, graph, flags,
     vector (
       'DB.DBA.TTLP_RL_GS_NEW_GRAPH',
@@ -554,6 +556,10 @@ create procedure DB.DBA.TTLP_V (in strg varchar, in base varchar, in graph varch
     }
   else
     threads := 0;
+  if (log_enable is not null)
+    {
+      old_log_mode := log_enable (log_enable, 1);
+    }
   if (126 = __tag (strg))
     strg := cast (strg as varchar);
 
@@ -927,7 +933,7 @@ create procedure DB.DBA.RDF_INSERT_TRIPLE_C (in s any array, in p any array, in 
     else
       {
         dp := dpipe (5, 'IRI_TO_ID_1', 'IRI_TO_ID_1', 'IRI_TO_ID_1', 'MAKE_RO_1', 'IRI_TO_ID_1');
-	dpipe_set_rdf_load (dp, 1);
+	dpipe_set_rdf_load (dp, 2);
       }
   }
   --dbg_obj_princ ('After bnodes check, will call dpipe_input (dp, ', s, p, null, o, g, ')...');

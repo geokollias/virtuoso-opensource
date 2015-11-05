@@ -177,6 +177,14 @@ struct it_map_s
     remap_dp = dp; \
 }
 
+#define DP_BUF_PREFETCH(_it, _dp) \
+{ \
+  dp_addr_t __dp = dp; \
+  index_tree_t * __tree = it; \
+  dk_hash_t * ht = &(IT_DP_MAP (__tree, __dp))->itm_dp_to_buf; \
+  uint32 hno = HASH_INX (ht, (void*)(ptrlong)__dp); \
+  __builtin_prefetch (&ht->ht_elements[hno]); \
+}
 
 
 typedef unsigned int32 bp_ts_t;	/* timestamp of buffer, use in  cache replacement to distinguish old buffers.  Faster than double linked list for LRU.  Wraparound does not matter since only differences of values are considered.  */
@@ -903,6 +911,7 @@ struct it_cursor_s
   bitf_t itc_bm_insert:1;	/* in bm insert, do not consider delete flag on rows encountered */
   bitf_t itc_desc_serial_landed:1;	/* if set, failure to get first lock (right above the selected range) resets search */
   bitf_t itc_desc_serial_reset:1;
+  bitf_t itc_is_sample:1;
   bitf_t itc_is_outer:1;	/* in vectored exec, put a row of nulls into the output if not found */
   bitf_t itc_is_pure:1;		/* if repeated search pars, can just copy the results, no side effects or deps on non-search par ssls */
   bitf_t itc_asc_eq:1;		/* params are asc sorted and condition is eq, use previous hit as start pos for finding next */
@@ -2138,7 +2147,7 @@ extern int64 bdf_is_avail_mask;	/* all bits on except read aside flag which does
 /* When inside an itc reset context, periodically call this  to check that no external async condition forces the search to abort or pause */
 #define CHECK_TRX_DEAD(it, buf, may_ret) \
 { \
-  lock_trx_t *__lt = it->itc_ltrx; \
+  lock_trx_t *__lt = it->itc_is_sample ? NULL : it->itc_ltrx;	\
       CHECK_DK_MEM_RESERVE (__lt); \
       CHECK_SESSION_DEAD (__lt, it, buf);		   \
       if ((__lt && __lt->lt_status != LT_PENDING)  \

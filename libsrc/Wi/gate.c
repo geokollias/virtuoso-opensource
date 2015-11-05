@@ -1311,6 +1311,7 @@ buffer_desc_t *DBGP_NAME (itc_reset) (DBGP_PARAMS it_cursor_t * it)
   dp_addr_t dp, back_link;
   it->itc_landed = 0;
   it->itc_prev_split_search_res = 0;
+  it->itc_split_search_res = 0;
   it->itc_bm_insert = 0;
   it->itc_range_opt = 0;
   it->itc_siblings_parent = 0;

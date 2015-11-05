@@ -125,7 +125,7 @@ sparp_ctor_fields_are_disjoin_with_where_fields (sparp_t * sparp, SPART * top, S
 	case SPAR_QNAME:
 	  {
 	    rdf_val_range_t tmp;
-	    sparp_rvr_set_by_constant (sparp, &tmp, NULL, ctor_fld);
+	    sparp_rvr_set_by_constant (sparp, &tmp, NULL, ctor_fld, NULL);
 	    sparp_rvr_tighten (sparp, &rvr, &tmp, ~0);
 	    break;
 	  }
@@ -144,7 +144,7 @@ sparp_ctor_fields_are_disjoin_with_where_fields (sparp_t * sparp, SPART * top, S
 	case SPAR_QNAME:
 	  {
 	    rdf_val_range_t tmp;
-	    sparp_rvr_set_by_constant (sparp, &tmp, NULL, where_fld);
+	    sparp_rvr_set_by_constant (sparp, &tmp, NULL, where_fld, NULL);
 	    sparp_rvr_tighten (sparp, &rvr, &tmp, ~0);
 	    break;
 	  }

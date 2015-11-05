@@ -1795,7 +1795,6 @@ xqf_numeric_gt (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
   else
     XQI_SET (xqi, tree->_.xp_func.res, (caddr_t) 0L);
 }
-
 static void
 xqf_numeric_lt (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -2830,7 +2829,6 @@ xqf_boolean_equal (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
   else
     XQI_SET (xqi, tree->_.xp_func.res, (caddr_t) 0L);
 }
-
 static void
 xqf_boolean_lt (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -2914,7 +2912,6 @@ xqf_YM_gt (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 
   XQI_SET (xqi, tree->_.xp_func.res, box_num_nonull (arg1 > arg2));
 }
-
 static void
 xqf_DT_eq (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -3109,7 +3106,6 @@ xqf_yMd_add (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 
   XQI_SET (xqi, tree->_.xp_func.res, xqf_YM_from_months (a1 + a2));
 }
-
 static void
 xqf_yMd_sub (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -3118,7 +3114,6 @@ xqf_yMd_sub (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 
   XQI_SET (xqi, tree->_.xp_func.res, xqf_YM_from_months (a1 - a2));
 }
-
 static void
 xqf_yMd_mult (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -3131,7 +3126,6 @@ xqf_yMd_mult (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
   XQI_SET (xqi, tree->_.xp_func.res, xqf_YM_from_months ((long) (virt_rint (a1 * unbox_double (d2)))));
   dk_free_box (d2);
 }
-
 static void
 xqf_yMd_div (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -3143,7 +3137,6 @@ xqf_yMd_div (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
   XQI_SET (xqi, tree->_.xp_func.res, xqf_YM_from_months ((long) (virt_rint (a1 / unbox_double (d2)))));
   dk_free_box (d2);
 }
-
 static void
 xqf_yMd_div_yMd (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -3163,7 +3156,6 @@ xqf_dT_add (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 
   XQI_SET (xqi, tree->_.xp_func.res, xqf_DT_from_secs (a1 + a2));
 }
-
 static void
 xqf_dT_sub (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -3172,7 +3164,6 @@ xqf_dT_sub (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 
   XQI_SET (xqi, tree->_.xp_func.res, xqf_DT_from_secs (a1 - a2));
 }
-
 static void
 xqf_dT_mult (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -3185,7 +3176,6 @@ xqf_dT_mult (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
   XQI_SET (xqi, tree->_.xp_func.res, xqf_DT_from_secs (a1 * unbox_double (d2)));
   dk_free_box (d2);
 }
-
 static void
 xqf_dT_div (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -3197,7 +3187,6 @@ xqf_dT_div (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
   XQI_SET (xqi, tree->_.xp_func.res, xqf_DT_from_secs (a1 / unbox_double (d2)));
   dk_free_box (d2);
 }
-
 static void
 xqf_dT_div_dT (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -3208,7 +3197,6 @@ xqf_dT_div_dT (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 
   XQI_SET (xqi, tree->_.xp_func.res, box_double (a1 / a2));
 }
-
 static void
 xqf_adj_tz (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -3219,7 +3207,6 @@ xqf_adj_tz (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
   DT_SET_TZ (res, mins);
   XQI_SET (xqi, tree->_.xp_func.res, res);
 }
-
 static void
 xqf_dT_sub_yMD (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 {
@@ -3637,6 +3624,7 @@ bif_xqf_str_parse_to_rdf_box (caddr_t * qst, caddr_t * err_ret, state_slot_t ** 
 	  xte->xe_doc.xd->xd_id_scan = XD_ID_SCAN_COMPLETED;
 	  xte->xe_doc.xd->xd_ns_2dict = ns_2dict;
 	  xte->xe_doc.xd->xd_namespaces_are_valid = 0;
+	  xte->xe_doc.xd->xout_encoding = box_dv_short_string ("UTF-8");
 	  /* test only : xte_word_range(xte,&l1,&l2); */
 	  return ((caddr_t) xte);
 	}
@@ -3650,7 +3638,7 @@ bif_xqf_str_parse_to_rdf_box (caddr_t * qst, caddr_t * err_ret, state_slot_t ** 
 	  if (!err)
 	    {
 	      rdf_box_t *rb = rb_allocate ();
-	      geo_calc_bounding (g, GEO_CALC_BOUNDING_DO_ALL);
+	      geo_calc_bounding ((geo_t *) g, GEO_CALC_BOUNDING_DO_ALL);
 	      rb->rb_type = RDF_BOX_GEO;
 	      rb->rb_lang = RDF_BOX_DEFAULT_LANG;
 	      rb->rb_box = g;
@@ -3736,6 +3724,98 @@ res_ready:
       return (caddr_t) (rb);
     }
 }
+
+
+caddr_t
+xqf_str_parse_to_rdf_box (caddr_t arg, caddr_t type_iri, int *err_ret)
+{
+  dtp_t arg_dtp = DV_TYPE_OF (arg);
+  dtp_t type_iri_dtp = DV_TYPE_OF (type_iri);
+  caddr_t p_name;
+  caddr_t res = NULL;
+  long desc_idx;
+  xqf_str_parser_desc_t *desc;
+  {
+    if (IS_WIDE_STRING_DTP (type_iri_dtp))
+      goto err;
+
+  }
+  if ((strlen (type_iri) <= XMLSCHEMA_NS_URI_LEN) || ('#' != type_iri[XMLSCHEMA_NS_URI_LEN]))
+    {
+      if (!strcmp (type_iri, uname_rdf_ns_uri_XMLLiteral))
+	goto err;
+
+      if ((!strcmp (type_iri, "http://www.openlinksw.com/schemas/virtrdf#Geometry")
+	      || !strcmp (type_iri, "http://www.opengis.net/ont/geosparql#wktLiteral")) && DV_STRING == arg_dtp)
+	goto err;
+    }
+  p_name = type_iri + XMLSCHEMA_NS_URI_LEN + 1;	/* +1 is to skip '#' */
+  desc_idx = ecm_find_name (p_name, xqf_str_parser_descs, xqf_str_parser_desc_count, sizeof (xqf_str_parser_desc_t));
+  if (ECM_MEM_NOT_FOUND == desc_idx)
+    goto err;
+  desc = xqf_str_parser_descs + desc_idx;
+  if (DV_DB_NULL == arg_dtp)
+    goto err;
+  /* if we have wide and we want typed string we do utf8, cast do to default charset so we do not do it */
+  if (DV_WIDE == arg_dtp && desc->p_dest_dtp == DV_STRING)
+    {
+      res = box_wide_as_utf8_char (arg, box_length (arg) / sizeof (wchar_t) - 1, DV_STRING);
+      goto res_ready;
+    }
+  if (DV_STRING != arg_dtp)
+    {
+      caddr_t err = NULL;
+      if (desc->p_dest_dtp == arg_dtp)
+	{
+	  res = box_copy_tree (arg);
+	  goto res_ready;
+	}
+      if (!strcmp (type_iri, uname_xmlschema_ns_uri_hash_dayTimeDuration))
+	{
+	  caddr_t res1 = box_cast_to (NULL, arg, arg_dtp, DV_STRING, NUMERIC_MAX_PRECISION, NUMERIC_MAX_SCALE, &err);
+	  if (NULL == err)
+	    {
+	      res = box_sprintf (100, "PT%.100sS", res1);
+	      dk_free_box (res1);
+	      goto res_ready;
+	    }
+	  dk_free_box (res1);
+	}
+      else
+	{
+	  res = box_cast_to (NULL, arg, arg_dtp, desc->p_dest_dtp, NUMERIC_MAX_PRECISION, NUMERIC_MAX_SCALE, &err);
+	  if (NULL == err)
+	    goto res_ready;
+	}
+      goto err;
+    }
+  QR_RESET_CTX
+  {
+    desc->p_proc (&res, arg, desc->p_opcode);
+  }
+  QR_RESET_CODE
+  {
+    POP_QR_RESET;
+    goto err;
+  }
+  END_QR_RESET;
+
+res_ready:
+  if (desc->p_rdf_boxed)
+    {
+      rdf_box_t *rb = rb_allocate ();
+      rb->rb_box = res;
+      rb->rb_is_complete = 1;
+      rb->rb_type = RDF_BOX_DEFAULT_TYPE;
+      rb->rb_lang = RDF_BOX_DEFAULT_LANG;
+      return (caddr_t) (rb);
+    }
+  return res;
+err:
+  *err_ret = 1;
+  return NULL;
+}
+
 
 #define XQF_STR_FN(n) \
 caddr_t bif_xqf_str_parse_##n (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args) \

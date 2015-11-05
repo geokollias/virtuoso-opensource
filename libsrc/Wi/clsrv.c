@@ -305,6 +305,7 @@ cm_free_1 (cl_message_t * cm, char *file, int line)
   if (cm->cm_in_string)
     cl_msg_string_free (cm->cm_in_string);
   dk_free_box ((caddr_t) cm->cm_sec);
+  CM_FREE_TRACE (cm, file, line);
   dk_free ((caddr_t) cm, sizeof (cl_message_t));
 }
 

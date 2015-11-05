@@ -211,6 +211,7 @@ st_ignore_pred (ST * tree)
   return st_is_call (tree, "isiri_id", 1) || st_is_call (tree, "is_named_iri_id", 1);
 }
 
+
 int
 dfe_is_iri_id_test (df_elt_t * pred)
 {
@@ -226,6 +227,9 @@ dfe_is_iri_id_test (df_elt_t * pred)
     return 1;
   return 0;
 }
+
+
+#define DFE_HAS_OT(dfe) (DFE_TABLE == dfe->dfe_type || DFE_DT == dfe->dfe_type)
 
 
 extern caddr_t rdfs_type;
@@ -324,7 +328,7 @@ jp_fanout (join_plan_t * jp)
 	      misc_card *= 0.3;
 	      continue;
 	    }
-	  if (!PRED_IS_EQ (ps->ps_pred))
+	  if (!PRED_IS_EQ_OR_IN (ps->ps_pred))
 	    {
 	      df_elt_t **in_list = sqlo_in_list (ps->ps_pred, NULL, NULL);
 	      if (sqlo_is_sec_in_list (in_list))
@@ -347,7 +351,10 @@ jp_fanout (join_plan_t * jp)
 	    case 'O':
 	    case 'o':
 	      if (DV_DB_NULL == DV_TYPE_OF (ps->ps_const))
-		continue;
+		{
+		  misc_card *= 0.001;
+		  continue;
+		}
 	      o_col = ps->ps_left_col;
 	      is_o = ps->ps_pred;
 	      o = ps->ps_const;
@@ -404,7 +411,14 @@ jp_fanout (join_plan_t * jp)
       if (is_s && !is_o)
 	return jp->jp_fanout = (p_stat[0] / s_card) * misc_card;
       if (!is_s && is_o)
-	return jp->jp_fanout = (p_stat[0] / o_card) * misc_card;
+	{
+	  if (DFE_BOP_PRED == is_o->dfe_type && 1 == is_o->_.bin.is_in_list)
+	    {
+	      ST **in_list = sqlo_in_list (is_o, NULL, NULL);
+	      misc_card *= BOX_ELEMENTS (in_list) - 1;
+	    }
+	  return jp->jp_fanout = (p_stat[0] / o_card) * misc_card;
+	}
       if (is_s && is_o)
 	return (p_stat[0] / s_card / o_card) * misc_card;
       return jp->jp_fanout = p_stat[0] * misc_card;
@@ -427,8 +441,21 @@ jp_fanout (join_plan_t * jp)
 	}
       jp->jp_fanout = card;
     }
+  else if (DFE_DT == jp->jp_tb_dfe->dfe_type)
+    {
+      op_table_t *ot = jp->jp_tb_dfe->_.sub.ot;
+      if (ot->ot_is_proc_view)
+	jp->jp_fanout = 0.5;
+      else
+	jp->jp_fanout = 10;
+    }
+  if (DFE_HAS_OT (jp->jp_tb_dfe))
+    {
+      if (jp->jp_tb_dfe->_.table.ot->ot_is_outer && jp->jp_fanout < 1)
+	jp->jp_fanout = 1;
+    }
   else
-    jp->jp_fanout = 0.9;
+    jp->jp_fanout = 0.7;	/* no ot, not a table or dt */
   return jp->jp_fanout;
 }
 
@@ -722,6 +749,11 @@ jp_add (join_plan_t * jp, df_elt_t * tb_dfe, df_elt_t * pred, int is_join)
 	  for (jinx = 0; jinx < jp->jp_n_joined; jinx++)
 	    if (right_tb == jp->jp_joined[jinx])
 	      goto already_in;
+	  if (!DFE_HAS_OT (right_tb))
+	    {
+	      ps->ps_card = 0.01;
+	      return;
+	    }
 	  jp->jp_joined[jp->jp_n_joined++] = right_tb;
 	already_in:;
 	}
@@ -780,7 +812,7 @@ again:
       }
   }
   END_DO_SET ();
-  if (pred_ot != jp->jp_tb_dfe->_.table.ot->ot_super)
+  if (DFE_HAS_OT (jp->jp_tb_dfe) && pred_ot != jp->jp_tb_dfe->_.table.ot->ot_super)
     {
       /* if can be that a restricting join is imported into a subq from the enclosing.  So then do the preds in the subq plus the preds in the dt where the restriction comes from */
       pred_ot = pred_ot->ot_super;
@@ -1305,7 +1337,7 @@ sqlo_restr_as_exists (sqlo_t * so, dk_set_t path)
   DO_BOX (join_plan_t *, jp, inx, from)
   {
     df_elt_t *tb_dfe = jp->jp_tb_dfe;
-    caddr_t opts = list (2, OPT_JOIN_RESTR, jp->jp_join_flags);
+    caddr_t opts = t_list (2, OPT_JOIN_RESTR, jp->jp_join_flags);
     from[inx] =
 	t_listst (3, TABLE_REF, t_listst (6, TABLE_DOTTED, tb_dfe->_.table.ot->ot_table->tb_name, tb_dfe->_.table.ot->ot_new_prefix,
 	    NULL, NULL, opts), NULL);
@@ -1409,6 +1441,8 @@ sqlo_jp_all_joins (sqlo_t * so, dk_set_t * all_jps, int hash_set)
 	    if (0 && sqlo_is_same_level_probe (so, joined))
 	      continue;
 	    if (gethash ((void *) joined, visited))
+	      continue;
+	    if (!DFE_HAS_OT (joined))
 	      continue;
 
 	    jp2 = (join_plan_t *) t_alloc (sizeof (join_plan_t));
@@ -1535,7 +1569,10 @@ sqlo_jp_expand (sqlo_t * so, dk_set_t initial)
 	for (jinx = 0; jinx < start_jp->jp_n_joined; jinx++)
 	  {
 	    df_elt_t *joined = start_jp->jp_joined[jinx];
-	    join_plan_t *jp = joined->_.table.ot->ot_jp;
+	    join_plan_t *jp;
+	    if (!DFE_HAS_OT (joined))
+	      continue;
+	    jp = joined->_.table.ot->ot_jp;
 	    if (dk_set_member (so->so_hash_probes, (void *) joined->_.table.ot)
 		&& start_jp->jp_tb_dfe->_.table.ot->ot_super == joined->_.table.ot->ot_super)
 	      continue;		/* do not expand via a direct probe if the direct probe is on the same level */

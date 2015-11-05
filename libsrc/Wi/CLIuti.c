@@ -43,8 +43,8 @@ stmt_param_place_ptr (parm_binding_t * pb, int nth, cli_stmt_t * stmt, SQLULEN l
 
   /* quick rebinding offset */
   p_offset +=
-      stmt ? (stmt->stmt_imp_param_descriptor ? (stmt->stmt_imp_param_descriptor->d_bind_offset_ptr ? *(stmt->
-	      stmt_imp_param_descriptor->d_bind_offset_ptr) : 0) : 0) : 0;
+      stmt ? (stmt->stmt_imp_param_descriptor ? (stmt->
+	  stmt_imp_param_descriptor->d_bind_offset_ptr ? *(stmt->stmt_imp_param_descriptor->d_bind_offset_ptr) : 0) : 0) : 0;
 
   return pb->pb_place ? pb->pb_place + p_offset : NULL;
 }
@@ -2973,8 +2973,8 @@ stmt_set_columns (cli_stmt_t * stmt, caddr_t * row, int nth_in_set)
       if (cb->cb_place && stmt->stmt_retrieve_data == SQL_RD_ON)
 	{
 	  int rebind_offset =
-	      stmt->stmt_imp_row_descriptor ? (stmt->stmt_imp_row_descriptor->d_bind_offset_ptr ? *(stmt->stmt_imp_row_descriptor->
-		  d_bind_offset_ptr) : 0) : 0;
+	      stmt->stmt_imp_row_descriptor ? (stmt->stmt_imp_row_descriptor->
+	      d_bind_offset_ptr ? *(stmt->stmt_imp_row_descriptor->d_bind_offset_ptr) : 0) : 0;
 	  SQLLEN pl_offset = stmt->stmt_bind_type == 0 ? cb->cb_max_length * nth_in_set : nth_in_set * stmt->stmt_bind_type;
 	  int l_offset = stmt->stmt_bind_type == 0 ? sizeof (long) * nth_in_set : nth_in_set * stmt->stmt_bind_type;
 	  SQLLEN *len = cb->cb_length;

@@ -5108,8 +5108,6 @@ HTTP_GET_HOST ()
 create procedure
 date_rfc1123 (in dt datetime)
 {
-  if (timezone (dt) is null)
-    dt := dt_set_tz (dt, 0);
   return soap_print_box (dt, '', 1);
 }
 ;
@@ -6895,7 +6893,7 @@ return ((((SZ) + AL - 1) / AL) * AL);
 create procedure ir_init (in name varchar, in seq varchar, in  txn_n_ways int := null, in slice_bits int := null,
 			  in n_slices int := null, in hist_depth int := 5, in chunk int := 1, in mode int := 1, in ir_max int := 0)
 {
-  declare id, ign, mx, seq_start int;
+  declare id, ign, mx, seq_start, cur int;
  mx := ir_max;
  id := 3 + sequence_next ('__range_id_id', 1, 1);
   if (txn_n_ways is null)
@@ -6912,7 +6910,14 @@ create procedure ir_init (in name varchar, in seq varchar, in  txn_n_ways int :=
     n_slices := 2048;
     slice_bits := 8;
     }
-  seq_start := sequence_set (seq, 0, 2);
+  if (1 = sys_stat ('cl_run_local_only'))
+    seq_start := sequence_set (seq, 0, 2);
+  else
+    {
+    seq_start := sequence_set ('__NEXT__' || seq, 0, 2);
+      if (seq_start < (cur := sequence_set (seq, 0, 2)))
+      seq_start := cur;
+    }
   seq_start := __roundup (seq_start, bit_shift (1, slice_bits ) * n_slices * chunk);
   sequence_set (seq, seq_start, 0);
   insert into sys_id_range (ir_id, ir_name, ir_N_way_txn, ir_n_slices, ir_slice_bits, ir_hist_depth, ir_chunk, ir_main_seq, ir_cluster, ir_mode, ir_allocator_host, ir_max, ir_start, ir_options)

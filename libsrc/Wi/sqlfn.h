@@ -70,6 +70,7 @@ typedef struct spar_query_env_s
   int sparqre_key_gen;
   caddr_t sparqre_compiled_text;
   caddr_t sparqre_catched_error;
+  rwlock_t *sparqre_metadata_rwlock;
   const char *sparqre_dbg_query_text;	/*!< A source text as passed to the top-level sparql compilation. For debug purposes and for mem pool callback only. Can be NULL. */
   struct sparp_s *sparqre_dbg_sparp;	/*!< A top-level instance of sparql compiler. For debug purposes and for mem pool callback only. Can be NULL; when non-NULL then the structure under pointer may be half-full. */
 } spar_query_env_t;
@@ -327,6 +328,7 @@ int ks_start_search (key_source_t * ks, caddr_t * inst, caddr_t * state,
 void ks_cl_local_cast (key_source_t * ks, caddr_t * inst);
 int itc_il_search (it_cursor_t * itc, buffer_desc_t ** buf_ret, caddr_t * qst, inx_locality_t * il, placeholder_t * pl, int is_asc);
 
+int itc_is_multistate_row_spec (it_cursor_t * itc);
 void ts_outer_output (table_source_t * ts, caddr_t * qst);
 
 void hash_fill_node_input (fun_ref_node_t * fref, caddr_t * inst, caddr_t * qst);
@@ -380,7 +382,7 @@ extern server_lock_t server_lock;
 
 void plh_free (placeholder_t * plh);
 
-EXE_EXPORT (caddr_t, srv_make_new_error, (const char *code, const char *virt_code, const char *msg, ...));
+EXE_EXPORT (caddr_t, srv_make_new_error, (const char *code, const char *virt_code, const char *msg,...));
 #ifndef _USRDLL
 #ifdef __GNUC__
 caddr_t srv_make_new_error (const char *code, const char *virt_code, const char *msg, ...) __attribute__ ((format (printf, 3, 4)));
@@ -678,7 +680,7 @@ void ssl_alias (state_slot_t * alias, state_slot_t * real);
 void ssl_copy_types (state_slot_t * to, state_slot_t * from);
 
 EXE_EXPORT (caddr_t, qr_rec_exec, (query_t * qr, client_connection_t * cli, local_cursor_t ** lc_ret, query_instance_t * caller,
-	stmt_options_t * opts, long n_pars, ...));
+	stmt_options_t * opts, long n_pars,...));
 
 EXE_EXPORT (caddr_t, lc_nth_col, (local_cursor_t * lc, int n));
 
@@ -739,6 +741,7 @@ void table_source_cset_lookup_scan_input (table_source_t * ts, caddr_t * inst, c
 void ts_csq_end (table_source_t * ts, caddr_t * inst);
 void ts_csq_ret (table_source_t * ts, caddr_t * inst);
 int ks_cset_quad_start_search (key_source_t * ks, caddr_t * inst, buffer_desc_t ** buf_ret);
+void psog_pre_node_input (psog_pre_node_t * psp, caddr_t * inst, caddr_t * state);
 void ts_psog_scan (table_source_t * ts, caddr_t * inst, caddr_t * state);
 void ts_csq_cset_qp (table_source_t * ts, caddr_t * inst);
 
@@ -1195,6 +1198,7 @@ dk_session_t *dbs_read_registry (dbe_storage_t * dbs, client_connection_t * cli)
 
 boxint safe_atoi (const char *data, caddr_t * err_ret);
 double safe_atof (const char *data, caddr_t * err_ret);
+double box_to_double (caddr_t data, dtp_t dtp);
 caddr_t box_to_any (caddr_t data, caddr_t * err_ret);
 caddr_t box_to_any_1 (caddr_t data, caddr_t * err_ret, auto_pool_t * ap, int ser_flags);
 caddr_t mp_box_to_any_1 (caddr_t data, caddr_t * err_ret, mem_pool_t * ap, int ser_flags);
@@ -1213,20 +1217,18 @@ void udt_can_write_to (sql_type_t * sqt, caddr_t data, caddr_t * err_ret);
 
 /* interconnection communication */
 
-#define ICCL_IS_LOCAL	0x01
-#define ICCL_WAIT 2
+#define ICCL_IS_LOCAL		0x01
+#define ICCL_WAIT		0x02
+#define ICCL_RDONLY		0x04
+#define ICCL_SHEDULED_ON_COMMIT	0x10
 
 typedef struct icc_lock_s
 {
   caddr_t iccl_name;
   client_connection_t *iccl_cli;
   query_instance_t *iccl_qi;
-  int iccl_waits_for_commit;
-  /* Semaphore is used here instead of mutex in order to bypass
-     assertion checking when MTX_DEBUG is on.  */
-  /* dk_mutex_t *       iccl_mutex; */
-  semaphore_t *iccl_sem;
-
+  rwlock_t *iccl_rwlock;
+  int iccl_flags;
 } icc_lock_t;
 
 extern id_hash_t *icc_locks;
@@ -1491,7 +1493,7 @@ void update_node_vec_run (update_node_t * upd, caddr_t * inst, caddr_t * state);
 void dc_digit_sort (data_col_t ** dcs, int n_dcs, int *sets, int n_sets);
 void sslr_n_consec_ref (caddr_t * inst, state_slot_ref_t * sslr, int *sets, int set, int n_sets);
 void dc_reset_array (caddr_t * inst, data_source_t * qn, state_slot_t ** ssls, int new_sz);
-
+uint64 qi_new_ht_id (query_instance_t * qi, uint64 high_bits);
 void chash_init ();
 int setp_chash_group (setp_node_t * setp, caddr_t * inst);
 int setp_chash_distinct (setp_node_t * setp, caddr_t * inst);

@@ -350,10 +350,10 @@ DBG_NAME (mp_alloc_box) (DBG_PARAMS mem_pool_t * mp, size_t len1, dtp_t dtp)
 #ifndef LACERATED_POOL
   mem_block_t *mb = NULL, *f;
   if (DV_NON_BOX  == dtp && len1 > mp_large_min && len1 > mp->mp_block_size / 2)
-    return mp_large_alloc (mp, len1);
+    return (caddr_t)mp_large_alloc (mp, len1);
   else if (len1 > mp_large_min  && len1 > mp->mp_block_size / 2)
     {
-      ptr =  mp_large_alloc (mp, len1 + 8);
+      ptr = (dtp_t*) mp_large_alloc (mp, len1 + 8);
       ptr += 4;
       WRITE_BOX_HEADER (ptr, len1, dtp);
       memzero (ptr, len1);
@@ -406,7 +406,7 @@ DBG_NAME (mp_alloc_box) (DBG_PARAMS mem_pool_t * mp, size_t len1, dtp_t dtp)
     {
       if (DV_NON_BOX == dtp)
         return (caddr_t)mp_large_alloc (mp, len1);
-      ptr = (caddr_t)mp_large_alloc (mp, len1 + 8);
+      ptr = (dtp_t*)mp_large_alloc (mp, len1 + 8);
       ptr += 4;
       WRITE_BOX_HEADER (ptr, len1, dtp);
       memzero (ptr, len1);
@@ -1248,7 +1248,7 @@ DBG_NAME (t_set_delete) (DBG_PARAMS dk_set_t * set, void *item)
 
 
 int
-t_set_delete_test (DBG_PARAMS dk_set_t * set, void *item, void_test_func_t test)
+t_set_delete_test (dk_set_t * set, void *item, void_test_func_t test)
 {
   s_node_t *node = *set;
   dk_set_t *previous = set;
@@ -1520,7 +1520,7 @@ mp_mmap_mark (void * __ptr, size_t sz, int flag)
   if (!flag && !map) GPF_T1 ("freeing mmap mark where no mapping");
   if (!map)
     {
-      map = dk_pool_map[map_off] = malloc (sizeof (dk_pool_4g_t));
+      map = dk_pool_map[map_off] = (dk_pool_4g_t*)malloc (sizeof (dk_pool_4g_t));
       memzero (map, sizeof (dk_pool_4g_t));
     }
   ptr &= 0xffffffff;
@@ -1538,7 +1538,7 @@ mp_mmap_mark (void * __ptr, size_t sz, int flag)
 	  if (!flag && !map) GPF_T1 ("freeing mmap mark where no mapping");
 	  if (!map)
 	    {
-	      map = dk_pool_map[map_off] = malloc (sizeof (dk_pool_4g_t));
+	      map = dk_pool_map[map_off] = (dk_pool_4g_t*)malloc (sizeof (dk_pool_4g_t));
 	      memzero (map, sizeof (dk_pool_4g_t));
 	    }
 	}
@@ -1596,7 +1596,7 @@ mp_by_address (uint64 ptr)
       int fill = rc->rc_fill, inx2;
       for (inx2 = 0; inx2 < fill; inx2++)
 	{
-	  int64 start = rc->rc_items[inx2];
+	  int64 start = (int64)rc->rc_items[inx2];
 	  if (ptr >= start && ptr < start + mm_sizes[inx])
 	    {
 	      printf ("Address %x is %Ld bytes indes arc cached block start %p size %Ld\n", (void*)ptr, (long long)(ptr - start), (void*)start, (long long)(mm_sizes[inx]));

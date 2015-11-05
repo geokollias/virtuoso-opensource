@@ -155,6 +155,10 @@
 
 %type <tree> update_statement_searched
 %type <tree> scalar_exp
+%type <tree> analytical_exp
+%type <tree> opt_a_partition
+%type <tree> opt_a_order
+%type <tree> opt_a_window
 %type <tree> scalar_exp_no_col_ref
 %type <tree> scalar_exp_no_col_ref_no_mem_obs_chain
 %type <tree> array_ref
@@ -232,6 +236,7 @@
 %type <tree> view_def
 %type <tree> view_def_select_and_opt
 %type <tree> view_query_spec
+%type <list> with_commalist
 %type <tree> create_index_def
 %type <list> base_table_element_commalist
 %type <list> base_table_element
@@ -621,7 +626,7 @@
 /*%token BEGIN_FN_X BEGIN_CALL_X BEGIN_OJ_X BEGIN_U_X CONVERT CASE WHEN THEN IDENTITY FULL OUTER*/
 %token INNER CROSS NATURAL USING JOIN USE COALESCE CAST NULLIF NEW
 %token CORRESPONDING EXCEPT INTERSECT BEST TOP PERCENT TIES XML XPATH
-%token PERSISTENT INTERVAL INCREMENT_L COMPRESS PARTITION
+%token PERSISTENT INTERVAL INCREMENT_L COMPRESS PARTITION OVER
 /* IvAn/XmlView/000810 Options added for "create xml view" statement */
 %token DTD INTERNAL EXTERNAL
 /* %token SCHEMA is already reserved */
@@ -1990,6 +1995,7 @@ opt_best
 
 sqlonly_query_exp
 	: sqlonly_query_term
+	| WITH with_commalist sqlonly_query_exp { $$ = t_listst (3, WITH_STMT, t_list_to_array ($2), $3); }
 	| non_final_union_exp opt_best UNION opt_corresponding query_term
 		{ $$ = t_listst (5, UNION_ST, $1, $5, $4, sqlp_bunion_flag ($1, $5, $2)); }
 	| non_final_union_exp opt_best UNION ALL opt_corresponding query_term
@@ -2003,6 +2009,12 @@ sqlonly_query_exp
 	| non_final_union_exp EXCEPT ALL opt_corresponding query_term
 		{ $$ = t_listst (4, EXCEPT_ALL_ST, $1, $5, $4); }
 	;
+
+with_commalist
+	: identifier AS subquery  { $$ = t_CONS (t_listst (3, WITH_DT, $1, sqlp_view_def (NULL, $3, 0)), NULL); }
+	| with_commalist ',' identifier AS subquery { $$ = t_NCONC ($1, t_CONS (t_listst (3, WITH_DT, $3, sqlp_view_def (NULL, $5, 0)), NULL)); }
+	;
+
 
 query_exp
 	: sqlonly_query_exp
@@ -2525,6 +2537,7 @@ scalar_exp
 scalar_exp_no_col_ref
 	: atom_no_obe				{ $$ = (sql_tree_t *) $1; }
 	| aggregate_ref
+	| analytical_exp
 	| scalar_subquery
 	| '(' scalar_exp ')'		{ $$ = $2; }
 	| '(' scalar_exp ',' scalar_exp_commalist ')'
@@ -2700,17 +2713,23 @@ function_call
 		  $$ = t_listst (3, CALL_STMT,
 		      t_sqlp_box_id_upcase ($1 == SQL_FN_TIMESTAMPADD ? "timestampadd" : "timestampdiff"),
 		      t_listst (3, t_box_num($3), $5, $7));
+		  $$ = sqlp_patch_call_if_special_or_optimizable ($$);
 		}
 	| EXTRACT '(' NAME FROM scalar_exp ')'
-		{$$ = sqlp_extract ($3, $5); 		}
+		{$$ = sqlp_extract ($3, $5);
+ 		$$ = sqlp_patch_call_if_special_or_optimizable ($$);}
 	| BEGIN_FN_X identifier '(' opt_scalar_exp_commalist ')' ENDX
-		{ $$ = t_listst (3, CALL_STMT, $2, t_list_to_array ($4)); }
+		{ $$ = t_listst (3, CALL_STMT, $2, t_list_to_array ($4));
+		  $$ = sqlp_patch_call_if_special_or_optimizable ($$);}
 	| BEGIN_FN_X LEFT '(' opt_scalar_exp_commalist ')' ENDX
-		{ $$ = t_listst (3, CALL_STMT, t_sqlp_box_id_upcase ("left"), t_list_to_array ($4)); }
+		{ $$ = t_listst (3, CALL_STMT, t_sqlp_box_id_upcase ("left"), t_list_to_array ($4));
+		$$ = sqlp_patch_call_if_special_or_optimizable ($$);}
 	| BEGIN_FN_X RIGHT '(' opt_scalar_exp_commalist ')' ENDX
-		{ $$ = t_listst (3, CALL_STMT, t_sqlp_box_id_upcase ("right"), t_list_to_array ($4)); }
+		{ $$ = t_listst (3, CALL_STMT, t_sqlp_box_id_upcase ("right"), t_list_to_array ($4));
+		  $$ = sqlp_patch_call_if_special_or_optimizable ($$);}
 	| BEGIN_FN_X LOGX '(' opt_scalar_exp_commalist ')' ENDX
-		{ $$ = t_listst (3, CALL_STMT, t_sqlp_box_id_upcase ("log"), t_list_to_array ($4)); }
+		{ $$ = t_listst (3, CALL_STMT, t_sqlp_box_id_upcase ("log"), t_list_to_array ($4));
+		  $$ = sqlp_patch_call_if_special_or_optimizable ($$);}
 	| BEGIN_FN_X identifier '(' scalar_exp IN_L scalar_exp ')' ENDX
 		{
 		  if (stricmp ($2, "POSITION"))
@@ -2719,7 +2738,8 @@ function_call
 		      t_listst (2, $4, $6));
 		}
 	| BEGIN_CALL_X function_name  '(' opt_scalar_exp_commalist ')' ENDX
-		{ $$ = t_listst (3, CALL_STMT, $2, t_list_to_array ($4)); }
+		{ $$ = t_listst (3, CALL_STMT, $2, t_list_to_array ($4));
+		  $$ = sqlp_patch_call_if_special_or_optimizable ($$);}
 	| BEGIN_CALL_X function_name ENDX
 		{ $$ = t_listst (3, CALL_STMT, $2, t_list_to_array (NULL)); }
 	| BEGIN_FN_X USER '(' opt_scalar_exp_commalist ')' ENDX
@@ -2727,12 +2747,14 @@ function_call
 			t_sqlp_box_id_upcase ("get_user"), t_list_to_array ($4)); }
 	| BEGIN_FN_X CHARACTER '(' opt_scalar_exp_commalist ')' ENDX
 		{ $$ = t_listst (3, CALL_STMT,
-			t_sqlp_box_id_upcase ("chr"), t_list_to_array ($4)); }
+			t_sqlp_box_id_upcase ("chr"), t_list_to_array ($4));
+		  $$ = sqlp_patch_call_if_special_or_optimizable ($$);}
 	| BEGIN_FN_X TIMESTAMP_FUNC '(' SQL_TSI ',' scalar_exp ',' scalar_exp ')' ENDX
 		{
 		  $$ = t_listst (3, CALL_STMT,
 		      t_sqlp_box_id_upcase ($2 == SQL_FN_TIMESTAMPADD ? "timestampadd" : "timestampdiff"),
 		      t_listst (3, t_box_num($4), $6, $8));
+		  $$ = sqlp_patch_call_if_special_or_optimizable ($$);
 		}
 	| BEGIN_FN_X CONVERT '(' scalar_exp ',' NAME ')' ENDX
 		{
@@ -2742,12 +2764,14 @@ function_call
 		  $$ = t_listst (3, CALL_STMT,
 		      t_sqlp_box_id_upcase ("_cvt"),
 		      t_listst (2, t_list (2, QUOTE, data_type), $4));
+		  $$ = sqlp_patch_call_if_special_or_optimizable ($$);
 		}
 	| BEGIN_FN_X EXTRACT '(' NAME FROM scalar_exp ')' ENDX
 		{
 		  $$ = t_listst (3, CALL_STMT,
 		      t_sqlp_box_id_upcase ("__extract"),
 		      t_listst (2, t_box_string ($4), $6));
+		  $$ = sqlp_patch_call_if_special_or_optimizable ($$);
 		}
 	| CALL '(' scalar_exp ')' '(' opt_arg_commalist ')'
 		{ $$ = t_listst (3, CALL_STMT, t_list (1, $3),
@@ -2813,6 +2837,7 @@ obe_literal
 		{ $$ = t_listst (3, CALL_STMT,
 			t_sqlp_box_id_upcase (obe_keyword_to_bif_fun_name ($2)),
 			t_list (1, $3));
+		  $$ = sqlp_patch_call_if_special_or_optimizable ($$);
 		}
 	| BEGIN_U_X STRING ENDX
 		{ $$ = (ST*) t_list (3, CALL_STMT, t_sqlp_box_id_upcase ("get_keyword"),
@@ -2834,6 +2859,27 @@ scalar_exp_2_commalist
 	: scalar_exp_p_list  { $$ = t_CONS ($1, NULL); }
 	| scalar_exp_2_commalist ',' scalar_exp_p_list { t_NCONC ($1, t_CONS ($3, NULL)); }
 	;
+
+opt_a_partition
+	:  { $$ = NULL;}
+	| PARTITION BY scalar_exp_commalist  { $$ = t_list_to_array ($3); }
+	;
+
+opt_a_order
+	: { $$ = NULL; }
+	| ORDER BY ordering_spec_commalist { $$ = t_list_to_array ($3); }
+	;
+
+opt_a_window
+: { $$ = NULL; }
+;
+
+
+analytical_exp
+	: function_call OVER '(' opt_a_partition opt_a_order opt_a_window ')'  { $$ = t_listst (5, ANALYTICAL_EXP, $1, $4, $5, $6); }
+	| aggregate_ref OVER '(' opt_a_partition opt_a_order opt_a_window ')'  { $$ = t_listst (5, ANALYTICAL_EXP, $1, $4, $5, $6); }
+	;
+
 
 select_scalar_exp_commalist
 	: scalar_exp				{ $$ = t_CONS ($1, NULL); }

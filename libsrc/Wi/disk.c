@@ -1677,6 +1677,8 @@ bp_make_buffer_list (int n)
 	      if (c_use_o_direct)
 		GPF_T1 ("An exe compiled with malloc_bufs defd is not compatible with the use O_DIRECT setting");
 	      buf->bd_buffer = malloc (BUF_ALLOC_SZ);
+	      if (!buf->bd_buffer)
+		GPF_T1 ("Cannot allocate memory for Database buffers, try to decrease NumberOfBuffers INI setting");
 	      BUF_SET_END_MARK (buf);
 	      BUF_SET_CK (buf);
 	    }
@@ -3857,6 +3859,7 @@ dbs_write_cfg_page (dbe_storage_t * dbs, int is_first)
     fd = dbs->dbs_fd;
   memset (&db, 0, sizeof (db));
   strcpy_ck (db.db_ver, DBMS_SRV_VER_ONLY);
+  db_version_string = DBMS_SRV_VER_ONLY;
   if (!rdf_no_string_inline)
     strcpy_ck (db.db_generic, "3100");
   else
@@ -4250,7 +4253,6 @@ dbs_rev_h_blob_dir (dbe_storage_t * dbs, buffer_desc_t * buf)
       }
   }
 }
-
 void
 dbs_rev_h_incbackup (dbe_storage_t * dbs, buffer_desc_t * buf)
 {

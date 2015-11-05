@@ -1848,6 +1848,8 @@ itc_param_sort (key_source_t * ks, it_cursor_t * itc, int is_del_with_nulls)
       for (inx = 0; inx < n_params; inx++)
 	param_nos[inx] = inx;
     }
+  if (!itc->itc_n_sets)
+    return;
   itc->itc_asc_eq = ks->ks_vec_asc_eq;
   if (itc->itc_n_vec_sort_cols && !ks->ks_oby_order)
     {
@@ -2535,6 +2537,8 @@ ts_scan_counted (table_source_t * ts, caddr_t * inst)
   key->key_rows_in_sampled_segs = da->da_scan_rows;
   tb->tb_count_estimate = da->da_scan_rows;
   tb->tb_count_delta = 0;
+  if (1 == tb->tb_primary_key->key_n_significant)
+    ((dbe_column_t *) tb->tb_primary_key->key_parts->data)->col_n_distinct = tb->tb_count_estimate;
   tb->tb_is_counted = 1;
 }
 
@@ -2746,15 +2750,18 @@ aq_qr_func (caddr_t av, caddr_t * err_ret)
     cli_set_slice (cli, NULL, QI_NO_SLICE, NULL);
     if (RST_GB_ENOUGH == reset_code)
       {
+	qi->qi_client = NULL;
 	return (caddr_t) qi;
       }
     if (RST_ENOUGH == reset_code)
       {
+	qi->qi_client = NULL;
 	return (caddr_t) qi;
       }
     if (RST_ERROR == reset_code)
       {
 	*err_ret = thr_get_error_code (prev_qi_thread);
+	qi->qi_client = NULL;
 	return (caddr_t) qi;
       }
   }
@@ -2764,6 +2771,7 @@ aq_qr_func (caddr_t av, caddr_t * err_ret)
   CLAQ_IN_CLL;
   qi->qi_threads = 0;
   qi->qi_thread = NULL;
+  qi->qi_client = NULL;
   CLAQ_LEAVE_CLL;
   return (caddr_t) qi;
 }
@@ -2862,6 +2870,7 @@ ts_thread (table_source_t * ts, caddr_t * inst, it_cursor_t * itc, int aq_state,
       aq->aq_ts = get_msec_real_time ();
       aq->aq_row_autocommit = qi->qi_client->cli_row_autocommit;
       aq->aq_non_txn_insert = qi->qi_non_txn_insert;
+      qi->qi_client->cli_trx->lt_has_branches = 1;
       qst_set (inst, ts->ts_aq, (caddr_t) aq);
     }
   if (!qis || BOX_ELEMENTS (qis) <= inx)
@@ -3032,6 +3041,20 @@ typedef struct ts_split_state_s
 #define TSS_LAST 2
 #define TSS_AT_END 3
 
+#define ITC_MODE_VARS char dm_save; char lm_save; char iso_save
+
+#define ITC_SAMPLE_MODE(itc) {	\
+  lm_save = itc->itc_lock_mode; \
+  dm_save = itc->itc_dive_mode; \
+  iso_save = itc->itc_isolation; \
+  itc->itc_isolation = 0; \
+  itc->itc_dive_mode = PA_READ_ONLY; \
+  itc->itc_lock_mode = 0; }
+
+#define ITC_RESTORE_MODE(itc) { \
+  itc->itc_isolation = iso_save; \
+  itc->itc_dive_mode = dm_save; \
+  itc->itc_lock_mode = lm_save; }
 
 int
 itc_angle (it_cursor_t * itc, buffer_desc_t ** buf_ret, int angle, placeholder_t * prev, ts_split_state_t * tsp)
@@ -3045,12 +3068,13 @@ itc_angle (it_cursor_t * itc, buffer_desc_t ** buf_ret, int angle, placeholder_t
   float cost;
   int64 n_leaves;
   int rc;
+  ITC_MODE_VARS;
   if (itc->itc_insert_key->key_is_col && !itc->itc_is_col)
     itc_col_init (itc);		/* init the column inx data while the row specs are in place, else gonna miss cr's */
   ITC_SAVE_ROW_SPECS (itc);
   ITC_NO_ROW_SPECS (itc);
   itc->itc_random_search = RANDOM_SEARCH_ON;
-
+  ITC_SAMPLE_MODE (itc);
   if (!itc->itc_key_spec.ksp_spec_array)
     est = tsp->tsp_card_est = dbe_key_count (itc->itc_insert_key) / key_n_partitions (itc->itc_insert_key);
   else if (tsp->tsp_ts && tsp->tsp_ts->ts_inx_cardinality)
@@ -3062,6 +3086,7 @@ itc_angle (it_cursor_t * itc, buffer_desc_t ** buf_ret, int angle, placeholder_t
   itc_clear_stats (itc);
   itc->itc_st.mode = ITC_STAT_ANGLE;
   est2 = itc_sample_1 (itc, buf_ret, &n_leaves, angle);
+  ITC_RESTORE_MODE (itc);
   if (-1 == est)
     est = tsp->tsp_card_est = est2;
   ITC_RESTORE_ROW_SPECS (itc);
@@ -3460,7 +3485,7 @@ ts_must_split_sdfg (table_source_t * ts)
       if (IS_TS (qn))
 	{
 	  QNCAST (table_source_t, ts, qn);
-	  if (ts->ts_fs)
+	  if (ts->ts_fs || !ts->ts_aq)
 	    return 1;
 	  return 0;
 	}
@@ -3491,7 +3516,8 @@ ts_initial_itc_1 (table_source_t * ts, caddr_t * inst, it_cursor_t * itc)
   if (no_mt || !ts->ts_aq || KI_TEMP == itc->itc_insert_key->key_id
       || enable_qp < 2
       || !ITC_COL_SPLITTABLE (itc)
-      || itc->itc_n_sets * ts->ts_cost_after * compiler_unit_msecs * 1000 < 2 * qp_thread_min_usec || itc->itc_is_vacuum)
+      || itc->itc_n_sets * ts->ts_cost_after * compiler_unit_msecs * 1000 < 2 * qp_thread_min_usec
+      || srv_have_global_lock (THREAD_CURRENT_THREAD) || itc->itc_is_vacuum)
     return itc_reset (itc);
   if (!qi->qi_is_branch && !qi->qi_root_id)
     qi_assign_root_id (qi);
@@ -4357,7 +4383,10 @@ qi_add_stats (QI * qi, QI ** qis, query_t * qr)
   DO_BOX (query_instance_t *, branch, inx, qis)
   {
     if (branch && qi != branch)
-      qi_branch_stats (qi, branch, qr);
+      {
+	qi->qi_n_affected += branch->qi_n_affected;
+	qi_branch_stats (qi, branch, qr);
+      }
   }
   END_DO_BOX;
 }
@@ -4380,7 +4409,22 @@ void
 ts_aq_result (table_source_t * ts, caddr_t * inst)
 {
   /* a ts completed itts branches.  Add up the results.  Can be in a fref or a scalar/exists subq. */
-  if (prof_on)
+  QNCAST (QI, qi, inst);
+  if (!IS_MT_BRANCH (qi->qi_trx))
+    {
+      dk_set_t merges;
+      lock_trx_t *lt = qi->qi_trx;
+      IN_TXN;
+      if ((merges = qi->qi_trx->lt_log_merge))
+	{
+	  qi->qi_trx->lt_log_merge = NULL;
+	  LEAVE_TXN;
+	  log_merge_commit (qi->qi_trx, merges);
+	}
+      else
+	LEAVE_TXN;
+    }
+  if (prof_on || !ts->src_gen.src_query->qr_select_node)
     {
       qi_add_stats ((QI *) inst, qst_get (inst, ts->ts_aq_qis), ts_query (ts));
     }

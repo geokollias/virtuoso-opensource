@@ -249,6 +249,12 @@ csetp_bloom (cset_p_t * csetp, caddr_t * inst, uint64 ** bf_ret, uint32 * bf_n_r
   slice_id_t slid;
   if (CL_RUN_LOCAL == cl_run_local_only || QI_NO_SLICE == qi->qi_client->cli_slice)
     slid = 0;
+  else
+    {
+      slid = qi->qi_client->cli_slice;
+      if (QI_NO_SLICE == slid)
+	slid = 0;
+    }
   if (BOX_ELEMENTS (csetp->csetp_bloom) <= slid)
     {
       *bf_ret = NULL;

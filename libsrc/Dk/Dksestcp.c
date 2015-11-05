@@ -1107,7 +1107,7 @@ tcpses_is_write_ready (session_t * ses, timeout_t * to)
 size_t gzip_read (void * file, char * buffer, int bytes);
 OFF_T gzip_lseek (void * file, OFF_T offset, int whence);
 void gzip_close (void * file);
-
+int gzbuffer (void* file, unsigned size);
 void
 fileses_set_gzip (session_t * ses, void * gzfile)
 {

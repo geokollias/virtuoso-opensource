@@ -487,7 +487,6 @@ gb_arr_to_any (int64 * arr, int n, db_buf_t any_temp, int *any_temp_fill)
 {
   GPF_T1 ("gb col cast to any not done");
 }
-
 int ahash_array (int64 * arr, uint64 * hash_no, dtp_t chdtp, int first_set, int last_set, int elt_sz, ha_key_range_t * kr);
 
 void
@@ -1150,9 +1149,12 @@ setp_non_agg_dep (setp_node_t * setp, caddr_t * inst, int nth_col, int set, char
 int
 cha_is_null (setp_node_t * setp, caddr_t * inst, int nth_col, int row_no)
 {
-  data_col_t *dc = QST_BOX (data_col_t *, inst, setp->setp_ha->ha_slots[nth_col]->ssl_index);
+  state_slot_t *ssl = setp->setp_ha->ha_slots[nth_col];
+  data_col_t *dc = QST_BOX (data_col_t *, inst, ssl->ssl_index);
   if (!dc->dc_any_null)
     return 0;
+  if (SSL_REF == ssl->ssl_type)
+    row_no = sslr_set_no (inst, ssl, row_no);
   return dc_is_null (dc, row_no);
 }
 
@@ -1261,15 +1263,6 @@ cha_gb_dep_col (setp_node_t * setp, caddr_t * inst, hash_area_t * ha, chash_t * 
 }
 
 
-void
-gby_trap (chash_t * cha, db_buf_t * row)
-{
-  if (2 == cha->cha_n_keys && DV_ANY == cha->cha_sqt[0].sqt_dtp && DV_ANY == cha->cha_sqt[1].sqt_dtp)
-    if (51136 == LONG_REF_NA (row[0] + 1) && 160 == LONG_REF_NA (row[1] + 1))
-      bing ();
-}
-
-
 int64 *
 cha_new_gb (setp_node_t * setp, caddr_t * inst, db_buf_t ** key_vecs, chash_t * cha, uint64 hash_no, int row_no, int base,
     dtp_t * nulls)
@@ -1337,7 +1330,6 @@ cha_new_gb (setp_node_t * setp, caddr_t * inst, db_buf_t ** key_vecs, chash_t * 
     }
   if (setp->setp_top_gby)
     GB_HAS_VALUE (ha, row, n_cols);	/* bit after last null flag set to indicate top gby row not deleted */
-  gby_trap (cha, row);
   return row;
 }
 
@@ -3334,7 +3326,10 @@ cha_dk_box_col (chash_t * cha, hash_area_t * ha, db_buf_t row, int inx)
     case DV_DATETIME:
       {
 	caddr_t dt = dk_alloc_box (DT_LENGTH, DV_DATETIME);
-	memcpy_dt (dt, ((caddr_t *) row)[inx]);
+	caddr_t v = ((caddr_t *) row)[inx + 1];
+	if (!v)
+	  return dk_alloc_box (0, DV_DB_NULL);
+	memcpy_dt (dt, v);
 	return dt;
       }
     default:
@@ -3556,14 +3551,14 @@ setp_chash_changed (setp_node_t * setp, caddr_t * inst, chash_t * cha)
 	      int64 *d_ent = (int64 *) LOW_48 (*drop);
 	      *drop = NULL;
 #if 0
+	      int i1;
 	      for (i1 = 0; i1 < fill; i1++)
 		{
 		  if (!*arr[i1])
 		    bing ();
-		  if (i1 > 0
-		      && DVC_LESS != dv_compare (((db_buf_t ***) arr)[i1 - 1][0][nth_col + 1],
-			  ((db_buf_t ***) arr)[i1][0][nth_col + 1], NULL, 0))
+		  if (i1 > 0 && ((double ***) arr)[i1 - 1][0][nth_col] >= ((double ***) arr)[i1][0][nth_col])
 		    bing ();
+		  //if (i1 > 0 && DVC_LESS != dv_compare (((db_buf_t***)arr)[i1 - 1][0][nth_col], ((db_buf_t***)arr)[i1][0][nth_col], NULL, 0)) bing ();
 		}
 #endif
 	      GB_NO_VALUE (setp->setp_ha, d_ent, n_cols);
@@ -3643,7 +3638,10 @@ cha_ent_merge (setp_node_t * setp, chash_t * cha, int64 * tar, int64 * ent)
   {
     int op = go->go_op;
     if (GB_IS_NULL (ha, ent, inx))
-      continue;
+      {
+	inx++;
+	continue;
+      }
     switch (AGG_C (cha->cha_sqt[inx].sqt_dtp, op))
       {
       case AGG_C (DV_LONG_INT, AMMSC_COUNT):
@@ -4386,10 +4384,9 @@ hs_send_output (hash_source_t * hs, caddr_t * inst, chash_t * cha)
 	}
       for (inx = inx; inx < fill; inx++)
 	ROJ_SET (0);
+      hs_init_roj (hs, inst);
     }
   qn_send_output ((data_source_t *) hs, inst);
-  if (hs->hs_roj)
-    hs_init_roj (hs, inst);
 }
 
 
@@ -6353,6 +6350,8 @@ cha_roj_res_array (hash_source_t * hs, caddr_t * inst, chash_t * cha, int64 * ro
 {
   int n_values;
   int out_inx = 0, inx;
+  if (!out_slots || !BOX_ELEMENTS (out_slots))
+    return;
   for (inx = start_col; inx < start_col + n_cols; inx++)
     {
       dtp_t ch_dtp = cha->cha_sqt[out_inx + (is_key ? 0 : cha->cha_n_keys)].sqt_dtp;
@@ -6448,17 +6447,17 @@ cha_roj_result (hash_source_t * hs, caddr_t * inst, chash_t * cha, int64 * row, 
   hash_area_t *ha = hs->hs_ha;
   int n_keys = ha->ha_n_keys;
   int *sets = QST_BOX (int *, inst, hs->src_gen.src_sets), batch_sz;
-  batch_sz = QST_INT (inst, hs->src_gen.src_batch_size) - 1;
+  batch_sz = QST_INT (inst, hs->src_gen.src_batch_size);
   int n_values = 0;
   int key1 = cha->cha_is_1_int || cha->cha_is_1_int_key ? 0 : 1;
   cha_roj_res_array (hs, inst, cha, row, key1, n_keys, hs->hs_roj_key_out, 1);
   cha_roj_res_array (hs, inst, cha, row, cha->cha_n_keys + key1, cha->cha_n_dependent, hs->hs_out_slots, 0);
-  n_values = QST_INT (inst, hs->src_gen.src_out_fill)++;
-  sets[n_values] = 0;
+  n_values = ++QST_INT (inst, hs->src_gen.src_out_fill);
+  sets[n_values - 1] = 0;
   if (n_values == batch_sz)
     {
-      QST_INT (inst, hs->clb.clb_nth_set) = ((int64) nth_part << 32) | nth_bit;
-      QST_INT (inst, hs->hs_roj) = start_bit;
+      QST_INT (inst, hs->clb.clb_nth_set) = ((int64) nth_part << 32) | (nth_bit + 1);
+      QST_INT (inst, hs->hs_roj_pos) = start_bit;
       SRC_IN_STATE (hs, inst) = inst;
       hs_roj_output (hs, inst);
       QST_INT (inst, hs->src_gen.src_out_fill) = 0;
@@ -6504,12 +6503,12 @@ hash_source_roj_input (hash_source_t * hs, caddr_t * inst, caddr_t * state)
   if (state)
     {
       QST_INT (inst, hs->clb.clb_nth_set) = pos = 0;
-      QST_INT (inst, hs->hs_roj) = start_bit = 0;
+      QST_INT (inst, hs->hs_roj_pos) = start_bit = 0;
     }
   else
     {
       pos = QST_INT (inst, hs->clb.clb_nth_set);
-      start_bit = QST_INT (inst, hs->hs_roj);
+      start_bit = QST_INT (inst, hs->hs_roj_pos);
     }
   QST_INT (inst, hs->src_gen.src_out_fill) = 0;
   dc_reset_array (inst, (data_source_t *) hs, hs->hs_roj_key_out, -1);
@@ -7510,7 +7509,9 @@ ce_int_chash_check (col_pos_t * cpo, db_buf_t val, dtp_t flags, int64 offset, in
 {
   caddr_t *inst;
   int64 *ent;
-  hash_source_t *hs;
+  search_spec_t *sp = cpo->cpo_itc->itc_col_spec;
+  hash_range_spec_t *hrng = (hash_range_spec_t *) sp->sp_min_ssl;
+  hash_source_t *hs = hrng->hrng_hs;
   uint64 h = 1;
   int64 **array, k;
   int pos1_1, ctr, e;
@@ -7938,7 +7939,7 @@ cl_chash_fill_init (fun_ref_node_t * fref, caddr_t * inst, index_tree_t * tree)
 	ssl_id = ((int64) setp->setp_ht_id->ssl_index << 48);
       else
 	ssl_id = ssl_id << 48;
-      id = (int64) (qi->qi_client->cli_cl_stack[0].clst_req_no) | ((int64) local_cll.cll_this_host << 32) | ssl_id;
+      id = qi_new_ht_id (qi, ((int64) local_cll.cll_this_host << 32) | ssl_id);
       qst_set (inst, setp->setp_chash_clrg, (caddr_t) clrg);
       qst_set (inst, setp->setp_ht_id, box_num (id));
       tree->it_hi->hi_cl_id = id;
@@ -8437,7 +8438,7 @@ bif_temp_table (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   if (CL_RUN_LOCAL != cl_run_local_only && ssl_is_settable (args[1]))
     {
       uint64 ssl_id = ((int64) setp->setp_ht_id->ssl_index << 48);
-      ssl_id = qi_new_ht_id (qi) | ssl_id;
+      ssl_id = qi_new_ht_id (qi, ssl_id);
       qst_set_long (qst, args[1], ssl_id);
     }
   dk_free_box ((caddr_t) ssls);

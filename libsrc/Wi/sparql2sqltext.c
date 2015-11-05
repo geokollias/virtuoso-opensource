@@ -122,6 +122,7 @@ rdf_ds_load_all (void)
   qmf->qmfValRange.rvrDatatype = NULL;
   qmf->qmfValRange.rvrLanguage = NULL;
   qmf->qmfValRange.rvrFixedValue = NULL;
+  qmf->qmfValRange.rvrFixedOrigText = NULL;
   qmf->qmfValRange.rvrSprintffs = NULL;
   qmf->qmfValRange.rvrSprintffCount = 0;
   qmf->qmfValRange.rvrIriClasses = NULL;
@@ -171,6 +172,7 @@ rdf_ds_load_all (void)
   qmf->qmfValRange.rvrDatatype = NULL;
   qmf->qmfValRange.rvrLanguage = NULL;
   qmf->qmfValRange.rvrFixedValue = NULL;
+  qmf->qmfValRange.rvrFixedOrigText = NULL;
   qmf->qmfValRange.rvrSprintffs = NULL;
   qmf->qmfValRange.rvrSprintffCount = 0;
   qmf->qmfValRange.rvrIriClasses = NULL;
@@ -1864,12 +1866,13 @@ sparp_equiv_native_valmode (sparp_t * sparp, SPART * gp, sparp_equiv_t * eq)
     {
       if (SPART_VARR_IS_REF & eq->e_rvr.rvrRestrictions)
 	{
-	  caddr_t qmf_name =
-	      (SPART_VARR_NOT_NULL & eq->e_rvr.
-	      rvrRestrictions) ? uname_rdfdf_ns_uri_default_iid : uname_rdfdf_ns_uri_default_iid_nullable;
-	  jso_rtti_t *qmf_rtti = (jso_rtti_t *) gethash (qmf_name, jso_rttis_of_names);
-	  if ((NULL != qmf_rtti) && JSO_STATUS_LOADED == qmf_rtti->jrtti_status)
-	    return (ssg_valmode_t) (qmf_rtti->jrtti_self);
+	  int eq_not_null = (SPART_VARR_NOT_NULL & eq->e_rvr.rvrRestrictions);
+	  caddr_t qmf_name = eq_not_null ? uname_rdfdf_ns_uri_default_iid : uname_rdfdf_ns_uri_default_iid_nullable;
+	  jso_class_descr_t *qmf_cd = NULL;
+	  jso_rtti_t *qmf_rtti = NULL;
+	  if (JSO_GET_OK != jso_get_pinned_cd_and_rtti (uname_virtrdf_ns_uri_QuadMapFormat, qmf_name, &qmf_cd, &qmf_rtti))
+	    return (ssg_valmode_t) (eq_not_null ? qm_format_default : qm_format_default_nullable);
+	  return (ssg_valmode_t) (qmf_rtti->jrtti_self);
 	}
       if (SPART_VARR_IS_BOOL & eq->e_rvr.rvrRestrictions)
 	return SSG_VALMODE_BOOL;
@@ -2922,6 +2925,12 @@ ssg_print_literal_as_sqlval (spar_sqlgen_t * ssg, ccaddr_t type, SPART * lit)
       if (SPAR_LIT == lit->type)
 	{
 	  value = lit->_.lit.val;
+	  if ((NULL != lit->_.lit.original_text) && ((DV_DOUBLE_FLOAT == DV_TYPE_OF (value))
+		  || DV_SINGLE_FLOAT == DV_TYPE_OF (value) || DV_NUMERIC == DV_TYPE_OF (value)))
+	    {
+	      ssg_print_float_literal_as_original (ssg, lit);
+	      return;
+	    }
 	  dt = lit->_.lit.datatype;
 	  lang = lit->_.lit.language;
 	}
@@ -2973,6 +2982,7 @@ ssg_print_literal_as_sqlval (spar_sqlgen_t * ssg, ccaddr_t type, SPART * lit)
   if ((NULL != type) && (NULL == lang))
     {
       caddr_t dflt_xsd_type_of_box = xsd_type_of_box (value);
+      int dt_twobytes_for_bif = 0;
       int box_is_plain_num = ((type == dflt_xsd_type_of_box)
 	  || ((uname_xmlschema_ns_uri_hash_decimal == type) && (uname_xmlschema_ns_uri_hash_double == dflt_xsd_type_of_box))
 	  || ((uname_xmlschema_ns_uri_hash_boolean == type) && (DV_LONG_INT == DV_TYPE_OF (value)) && ((0 == unbox (value))
@@ -2987,6 +2997,16 @@ ssg_print_literal_as_sqlval (spar_sqlgen_t * ssg, ccaddr_t type, SPART * lit)
 	      return;
 	    }
 	  ssg_print_box_as_sql_atom (ssg, value, SQL_ATOM_NARROW_OR_WIDE);
+	  return;
+	}
+      dt_twobytes_for_bif = rb_uname_to_wellknown_datatype_twobyte (type);
+      if (dt_twobytes_for_bif)
+	{
+	  char buf[50];
+	  ssg_puts_with_comment (" rdf_box (", "sqlval of typed literal");
+	  ssg_print_box_as_sql_atom (ssg, value, SQL_ATOM_NARROW_OR_WIDE);
+	  sprintf (buf, ", %d, 257, 0, 1)", dt_twobytes_for_bif);
+	  ssg_puts (buf);
 	  return;
 	}
     }
@@ -3028,10 +3048,9 @@ ssg_print_literal_as_long (spar_sqlgen_t * ssg, SPART * lit)
 	{
 	  value = lit->_.lit.val;
 	  if ((NULL != lit->_.lit.original_text) && ((DV_DOUBLE_FLOAT == DV_TYPE_OF (value))
-		  || DV_SINGLE_FLOAT == DV_TYPE_OF (value)))
+		  || DV_SINGLE_FLOAT == DV_TYPE_OF (value) || DV_NUMERIC == DV_TYPE_OF (value)))
 	    {
-	      ssg_putchar (' ');
-	      ssg_puts (lit->_.lit.original_text);
+	      ssg_print_float_literal_as_original (ssg, lit);
 	      return;
 	    }
 	  datatype = lit->_.lit.datatype;
@@ -3052,34 +3071,48 @@ ssg_print_literal_as_long (spar_sqlgen_t * ssg, SPART * lit)
   value_dtp = DV_TYPE_OF (value);
   if ((NULL != datatype) || (NULL != language))
     {
-      if ((NULL == language) && (datatype == xsd_type_of_box (value)) || (simple_rdf_numbers && ssg_xsd_type_is_numeric (datatype)))
+      int dt_twobytes_for_bif = 0;
+      if ((NULL == language) && (datatype == xsd_type_of_box (value)))
 	{
 	  ssg_print_box_as_sql_atom (ssg, value, SQL_ATOM_ABORT_ON_CAST);
 	  return;
 	}
-      ssg_puts_with_comment (" DB.DBA.RDF_MAKE_LONG_OF_TYPEDSQLVAL_STRINGS (", "lit as long");
-      if (DV_DATETIME == value_dtp)
+      if (NULL == language)
+	dt_twobytes_for_bif = rb_uname_to_wellknown_datatype_twobyte (datatype);
+      if (dt_twobytes_for_bif)
 	{
-	  char temp[100];
-	  int mode = DT_PRINT_MODE_XML | dt_print_flags_of_xsd_type_uname (datatype);
-	  dt_to_iso8601_string_ext (value, temp, sizeof (temp), mode);
-	  ssg_putchar ('\'');
-	  ssg_puts (temp);
-	  ssg_putchar ('\'');
+	  char buf[50];
+	  ssg_puts_with_comment (" rdf_box (", "lit as long");
+	  ssg_print_box_as_sql_atom (ssg, value, SQL_ATOM_NARROW_OR_WIDE);
+	  sprintf (buf, ", %d, 257, 0, 1)", dt_twobytes_for_bif);
+	  ssg_puts (buf);
 	}
       else
-	ssg_print_box_as_sql_atom (ssg, value, SQL_ATOM_NARROW_OR_WIDE);
-      ssg_putchar (',');
-      if (NULL != datatype)
-	ssg_print_box_as_sql_atom (ssg, datatype, SQL_ATOM_UNAME_ALLOWED);
-      else
-	ssg_puts (" NULL");
-      ssg_putchar (',');
-      if (NULL != language)
-	ssg_print_box_as_sql_atom (ssg, language, SQL_ATOM_ASCII_ONLY);
-      else
-	ssg_puts (" NULL");
-      ssg_putchar (')');
+	{
+	  ssg_puts_with_comment (" DB.DBA.RDF_MAKE_LONG_OF_TYPEDSQLVAL_STRINGS (", "lit as long");
+	  if (DV_DATETIME == value_dtp)
+	    {
+	      char temp[100];
+	      int mode = DT_PRINT_MODE_XML | dt_print_flags_of_xsd_type_uname (datatype);
+	      dt_to_iso8601_string_ext (value, temp, sizeof (temp), mode);
+	      ssg_putchar ('\'');
+	      ssg_puts (temp);
+	      ssg_putchar ('\'');
+	    }
+	  else
+	    ssg_print_box_as_sql_atom (ssg, value, SQL_ATOM_NARROW_OR_WIDE);
+	  ssg_putchar (',');
+	  if (NULL != datatype)
+	    ssg_print_box_as_sql_atom (ssg, datatype, SQL_ATOM_UNAME_ALLOWED);
+	  else
+	    ssg_puts (" NULL");
+	  ssg_putchar (',');
+	  if (NULL != language)
+	    ssg_print_box_as_sql_atom (ssg, language, SQL_ATOM_ASCII_ONLY);
+	  else
+	    ssg_puts (" NULL");
+	  ssg_putchar (')');
+	}
       return;
     }
   if ((DV_STRING == value_dtp) || (DV_WIDE == value_dtp) ||
@@ -6487,9 +6520,17 @@ ssg_print_retval (spar_sqlgen_t * ssg, SPART * tree, ssg_valmode_t vmode, const 
       if (VALUES_L == tree->_.retval.gp->_.gp.subtype)
 	{
 	  SPART *binv = tree->_.retval.gp->_.gp.subquery;
-	  int pos = sparp_find_binv_rset_pos_of_varname (ssg->ssg_sparp, tree->_.retval.gp, binv, e_varname);
-	  ssg_print_procview_rset_item (ssg, tree->_.retval.selid, pos, "BND",
-	      (SPAR_MAX_BINDINGS_VIEW_CN >= BOX_ELEMENTS (binv->_.binv.vars)), e_varname);
+	  if (0 == binv->_.binv.rows_in_use)
+	    {
+	      ssg_puts (" NULL");
+	      ssg_puts_comment ("value from empty binv");
+	    }
+	  else
+	    {
+	      int pos = sparp_find_binv_rset_pos_of_varname (ssg->ssg_sparp, tree->_.retval.gp, binv, e_varname);
+	      ssg_print_procview_rset_item (ssg, tree->_.retval.selid, pos, "BND",
+		  (SPAR_MAX_BINDINGS_VIEW_CN >= BOX_ELEMENTS (binv->_.binv.vars)), e_varname);
+	    }
 	  goto print_asname;	/* see below */
 	}
     }
@@ -6760,6 +6801,9 @@ ssg_print_rvr_fixed_val (spar_sqlgen_t * ssg, rdf_val_range_t * rvr, ssg_valmode
     goto use_temporary_literal;
   if (!(rvr->rvrRestrictions & SPART_VARR_TYPED))
     goto use_sql_box;
+  if ((NULL != rvr->rvrFixedOrigText) && ((DV_DOUBLE_FLOAT == DV_TYPE_OF (rvr->rvrFixedValue))
+	  || DV_SINGLE_FLOAT == DV_TYPE_OF (rvr->rvrFixedValue) || DV_NUMERIC == DV_TYPE_OF (rvr->rvrFixedValue)))
+    goto use_temporary_literal;
   if ((rvr->rvrDatatype == uname_xmlschema_ns_uri_hash_string)
       || (rvr->rvrDatatype != xsd_type_of_box ((caddr_t) (rvr->rvrFixedValue))))
     goto use_temporary_literal;
@@ -6775,6 +6819,7 @@ use_temporary_literal:
     lit->_.lit.val = (caddr_t) (rvr->rvrFixedValue);
     lit->_.lit.datatype = (caddr_t) (rvr->rvrDatatype);
     lit->_.lit.language = (caddr_t) (rvr->rvrLanguage);
+    lit->_.lit.original_text = (caddr_t) (rvr->rvrFixedOrigText);
     ssg_print_scalar_expn (ssg, lit, needed, asname);
   }
 }
@@ -7963,7 +8008,16 @@ ghost variable can be used as a sample variable only in absence of plain vars */
       sample_var->_.var.rvr.rvrRestrictions &= ~restrs_not_filtered_in_subqs;
       if (SPART_VARR_FIXED & restrs_not_filtered_in_subqs)
 	{
-	  SPART *bop = spartlist (ssg->ssg_sparp, 3, BOP_EQ, sample_var, eq->e_rvr.rvrFixedValue);
+	  SPART *rval, *bop;
+	  if (((DV_STRING == DV_TYPE_OF (eq->e_rvr.rvrFixedValue)) && (NULL != eq->e_rvr.rvrDatatype)
+		  && (rb_uname_to_flags_of_parseable_datatype (eq->e_rvr.rvrDatatype) & RDF_TYPE_PARSEABLE))
+	      || (NULL != eq->e_rvr.rvrFixedOrigText))
+	    rval =
+		spartlist (ssg->ssg_sparp, 5, SPAR_LIT, eq->e_rvr.rvrFixedValue, eq->e_rvr.rvrDatatype, eq->e_rvr.rvrLanguage,
+		eq->e_rvr.rvrFixedOrigText);
+	  else
+	    rval = (SPART *) (eq->e_rvr.rvrFixedValue);
+	  bop = spartlist (ssg->ssg_sparp, 3, BOP_EQ, sample_var, rval);
 	  ssg_print_where_or_and (ssg, "value of equiv class, fixed by replaced filter");
 	  ssg_print_bop_bool_expn (ssg, bop, " = ", " equ (", 1, SSG_VALMODE_BOOL);
 	}
