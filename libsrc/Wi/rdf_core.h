@@ -242,8 +242,15 @@ typedef void *yyscan_t;
 #define TTL_MAX_LANGNAME_LEN 64
 #define TTL_MAX_LITERAL_LEN 10000000
 
-extern int ttlyyparse (ttlp_t * ttlp_arg, yyscan_t scanner);
-extern int nqyyparse (ttlp_t * ttlp_arg, yyscan_t scanner);
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+  extern int ttlyyparse (ttlp_t * ttlp_arg, yyscan_t scanner);
+  extern int nqyyparse (ttlp_t * ttlp_arg, yyscan_t scanner);
+#ifdef __cplusplus
+}
+#endif
 extern void ttlyyerror_impl (ttlp_t * ttlp_arg, const char *raw_text, const char *strg);
 extern void ttlyyerror_impl_1 (ttlp_t * ttlp_arg, const char *raw_text, int yystate, short *yyssa, short *yyssp, const char *strg);
 

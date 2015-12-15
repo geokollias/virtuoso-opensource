@@ -33,6 +33,7 @@
 #include "netdb.h"
 #include "netinet/tcp.h"
 #endif
+#include "sqlbif.h"
 
 #define oddp(x) ((x) & 1)
 
@@ -48,7 +49,7 @@ cll_in_box_t *
 clib_allocate ()
 {
   B_NEW_VARZ (cll_in_box_t, clib);
-  clib->clib_req_strses = resource_get (cl_strses_rc);
+  clib->clib_req_strses = (dk_session_t *) resource_get (cl_strses_rc);
   clib->clib_req_strses->dks_cluster_flags = DKS_TO_CLUSTER;
   SESSION_SCH_DATA (&clib->clib_in_strses) = &clib->clib_in_siod;
   return clib;
@@ -104,49 +105,14 @@ id_hash_print (id_hash_t * ht)
   END_DO_IDHASH;
 }
 
-int
-ht_print_cmp (const void *s1, const void *s2)
-{
-  ptrlong l1 = *(ptrlong **) s1;
-  ptrlong l2 = *(ptrlong **) s2;
-  return l1 < l2 ? -1 : 1;
-}
-
-
 void
-ht_print (dk_hash_t * ht, int n)
+ht_print (dk_hash_t * ht)
 {
-  /* n 0 means print all, positive n means print least n, negative n means print greatest -n */
-  if (n)
-    {
-      int sz = 2 * sizeof (caddr_t) * ht->ht_count, fill = 0;
-      int ctr, cnt = n < 0 ? -n : n;
-      void **arr = dk_alloc (sz);
-      if (cnt > ht->ht_count)
-	cnt = ht->ht_count;
-      DO_HT (void *, k, void *, d, ht)
-      {
-	arr[fill++] = k;
-	arr[fill++] = d;
-      }
-      END_DO_HT;
-      qsort (arr, ht->ht_count, 2 * sizeof (void *), ht_print_cmp);
-      for (ctr = 0; ctr < cnt; ctr++)
-	{
-	  void **place = n > 0 ? &arr[ctr * 2] : &arr[(ht->ht_count - (ctr + 1)) * 2];
-	  printf ("%p -> %p\n", place[0], place[1]);
-	}
-      dk_free (arr, sz);
-    }
-  else
-    {
-      HT_NO_REQUIRE_MTX (ht);
-      DO_HT (void *, k, void *, d, ht)
-      {
-	printf ("%p -> %p\n", k, d);
-      }
-      END_DO_HT;
-    }
+  DO_HT (void *, k, void *, d, ht)
+  {
+    printf ("%p -> %p\n", k, d);
+  }
+  END_DO_HT;
 }
 
 
@@ -333,7 +299,7 @@ clrg_destroy (cl_req_group_t * clrg)
 cl_op_t *
 clo_allocate (char op)
 {
-  cl_op_t *clo = dk_alloc_box_zero (sizeof (cl_op_t), DV_CLOP);
+  cl_op_t *clo = (cl_op_t *) dk_alloc_box_zero (sizeof (cl_op_t), DV_CLOP);
   clo->clo_op = op;
   return clo;
 }
@@ -341,7 +307,7 @@ clo_allocate (char op)
 cl_op_t *
 clo_allocate_2 (char op)
 {
-  cl_op_t *clo = dk_alloc_box_zero (sizeof (cl_op_t), DV_CLOP);
+  cl_op_t *clo = (cl_op_t *) dk_alloc_box_zero (sizeof (cl_op_t), DV_CLOP);
   clo->clo_op = op;
   return clo;
 }
@@ -349,7 +315,7 @@ clo_allocate_2 (char op)
 cl_op_t *
 clo_allocate_3 (char op)
 {
-  cl_op_t *clo = dk_alloc_box_zero (sizeof (cl_op_t), DV_CLOP);
+  cl_op_t *clo = (cl_op_t *) dk_alloc_box_zero (sizeof (cl_op_t), DV_CLOP);
   clo->clo_op = op;
   return clo;
 }
@@ -357,7 +323,7 @@ clo_allocate_3 (char op)
 cl_op_t *
 clo_allocate_4 (char op)
 {
-  cl_op_t *clo = dk_alloc_box_zero (sizeof (cl_op_t), DV_CLOP);
+  cl_op_t *clo = (cl_op_t *) dk_alloc_box_zero (sizeof (cl_op_t), DV_CLOP);
   clo->clo_op = op;
   return clo;
 }
@@ -418,11 +384,11 @@ clo_destroy (cl_op_t * clo)
 	}
       break;
     case CLO_DELETE:
-      if (clo->_.delete.rd)
+      if (clo->_.delete_op.rd)
 	{
-	  if (clo->_.delete.rd->rd_itc)
-	    itc_free (clo->_.delete.rd->rd_itc);
-	  rd_free (clo->_.delete.rd);
+	  if (clo->_.delete_op.rd->rd_itc)
+	    itc_free (clo->_.delete_op.rd->rd_itc);
+	  rd_free (clo->_.delete_op.rd);
 	}
       break;
     case CLO_SELECT:
@@ -447,7 +413,7 @@ clo_destroy (cl_op_t * clo)
       break;
     case CLO_CALL:
       dk_free_tree (clo->_.call.func);
-      dk_free_tree (clo->_.call.params);
+      dk_free_tree ((caddr_t) (clo->_.call.params));
       break;
     case CLO_QF_EXEC:
       dk_free_tree ((caddr_t) clo->_.frag.params);

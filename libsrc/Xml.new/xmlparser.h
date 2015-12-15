@@ -30,6 +30,8 @@
 #include "Dk.h"
 #include "langfunc.h"
 
+VIRT_API_BEGIN
+
 struct vxml_parser_s;
 typedef struct vxml_parser_s vxml_parser_t;
 
@@ -406,6 +408,8 @@ extern caddr_t rfc1808_expand_uri (ccaddr_t base_uri, ccaddr_t rel_uri,
   ccaddr_t base_string_cs_name, /* Encoding used for base_uri IFF it is a narrow string, neither DV_UNAME nor WIDE */
   ccaddr_t rel_string_cs_name, /* Encoding used for rel_uri IFF it is a narrow string, neither DV_UNAME nor WIDE */
   caddr_t * err_ret );
+
+VIRT_API_END
 
 #endif /* _XML_PARSER_H */
 

@@ -664,7 +664,7 @@ setp_mem_insert (setp_node_t * setp, caddr_t * qst, int pos, caddr_t ** arr, int
       new_row = setp_mem_sort_row (setp, qst);
       if (setp_top_duplicate (arr, pos, fill, new_row, n_keys))
 	{
-	  dk_free_tree (new_row);
+	  dk_free_tree ((caddr_t) new_row);
 	  return;
 	}
     }

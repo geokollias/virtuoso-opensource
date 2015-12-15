@@ -675,7 +675,7 @@ client_connection_free (client_connection_t * cli)
     }
   LEAVE_TXN;
 #endif
-  dk_free_tree (cli->cli_info);
+  dk_free_tree ((caddr_t) (cli->cli_info));
   if (NULL != cli->cli_ns_2dict)
     {
       xml_ns_2dict_clean (cli->cli_ns_2dict);
@@ -1108,7 +1108,7 @@ sf_sql_connect (char *username, char *password, char *cli_ver, caddr_t * info)
   if (info)
     {
       cli->cli_user_info = box_dv_short_string (info[LGID_APP_NAME]);
-      cli->cli_info = box_copy_tree (info);
+      cli->cli_info = (caddr_t *) box_copy_tree ((caddr_t) info);
     }
   DKS_DB_DATA (client) = cli;
   cli->cli_session = client;
@@ -2104,7 +2104,7 @@ CLI_WRAPPER (sf_sql_execute,
 	    LEAVE_TXN;
 	  }
 	tpd->cli_tp_lt = cli->cli_trx;
-	cli->cli_trx->lt_2pc._2pc_xid = xid;
+	cli->cli_trx->lt_2pc._2pc_xid = (box_t) xid;
 
 	tpd->cli_tp_sem2 = semaphore_allocate (0);
 	cli->cli_tp_data = tpd;
@@ -2149,7 +2149,7 @@ CLI_WRAPPER (sf_sql_execute,
 	    err = srv_make_new_error ("TP109", "XA007", "XID identifier can not be decoded");
 	    DKST_RPC_DONE (client);
 	    PrpcAddAnswer (err, DV_ARRAY_OF_POINTER, 1, 1);
-	    dk_free_box (xid);
+	    dk_free_box ((box_t) xid);
 	    dk_free_tree (err);
 	    dk_free_tree (xid_str);
 	    return;
@@ -2164,7 +2164,7 @@ CLI_WRAPPER (sf_sql_execute,
 	  }
 	cli_set_new_trx (cli);
 	LEAVE_TXN;
-	dk_free_box (xid);
+	dk_free_box ((box_t) xid);
       }
       break;
     case SQL_XA_PREPARE:
@@ -2309,13 +2309,13 @@ CLI_WRAPPER (sf_sql_execute,
 	    DKST_RPC_DONE (client);
 	    PrpcAddAnswer (err, DV_ARRAY_OF_POINTER, 1, 1);
 	    dk_free_tree (err);
-	    dk_free_box (xid);
+	    dk_free_box ((box_t) xid);
 	    dk_free_tree (xid_str);
 	    return;
 	  }
 	xa_wait_commit (tpd);
 	virt_xa_remove_xid (xid);
-	dk_free_box (xid);
+	dk_free_box ((box_t) xid);
 	cli->cli_tp_data = NULL;
       }
       break;
@@ -3678,7 +3678,7 @@ sql_inprocess_leave (void *vp)
 int threads_is_fiber = 0;
 
 static void
-srv_global_init_clear_table (char *stmt)
+srv_global_init_clear_table (const char *stmt)
 {
   caddr_t err = NULL;
   query_t *qr;
@@ -3774,16 +3774,16 @@ srv_global_init (char *mode)
 /* Sanity check for list, to detect errors like errors catched by AMD Opteron port */
   int save_qp;
 #ifdef DEBUG
-  caddr_t *probe = list (7, NULL, 1, 2, 3L, 4L, box_dv_short_string ("5"), box_dv_short_string ("6"));
+  caddr_t *probe = (caddr_t *) list (7, NULL, 1, 2, 3L, 4L, box_dv_short_string ("5"), box_dv_short_string ("6"));
   if (probe[0] != NULL)
     GPF_T1 ("list probe 0");
-  if (probe[1] != 1)
+  if (probe[1] != (caddr_t) ((ptrlong) 1))
     GPF_T1 ("list probe 1");
-  if (probe[2] != 2)
+  if (probe[2] != (caddr_t) ((ptrlong) 2))
     GPF_T1 ("list probe 2");
-  if (probe[3] != 3)
+  if (probe[3] != (caddr_t) ((ptrlong) 3))
     GPF_T1 ("list probe 3");
-  if (probe[4] != 4)
+  if (probe[4] != (caddr_t) ((ptrlong) 4))
     GPF_T1 ("list probe 4");
   if (probe[5][0] != '5')
     GPF_T1 ("list probe 5");
@@ -3881,6 +3881,7 @@ srv_global_init (char *mode)
     pl_debug_all = 0;
 #endif
   wi_open (mode);
+  srv_client_defaults_init ();
   sql_bif_init ();
   bif_daq_init ();
   if (lite_mode)

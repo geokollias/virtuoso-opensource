@@ -72,7 +72,7 @@ dks_get_copy (dk_session_t * ses, int min_len, int *len_ret, int off)
   if (!copy)
     {
       int len = MAX (1000, 2 * min_len);
-      copy = ses->dks_out_buffer = dk_alloc (len);
+      copy = ses->dks_out_buffer = (char *) dk_alloc (len);
       ses->dks_out_length = len;
       *len_ret = ses->dks_out_length;
       return copy;
@@ -83,7 +83,7 @@ dks_get_copy (dk_session_t * ses, int min_len, int *len_ret, int off)
       return ses->dks_out_buffer;
     }
   dk_free (ses->dks_out_buffer, ses->dks_out_length);
-  ses->dks_out_buffer = dk_alloc (2 * min_len);
+  ses->dks_out_buffer = (char *) dk_alloc (2 * min_len);
   *len_ret = ses->dks_out_length = 2 * min_len;
   return ses->dks_out_buffer;
 }
@@ -93,11 +93,11 @@ char *
 dks_extend_copy (dk_session_t * ses, int *len_ret, int off)
 {
   caddr_t copy = ses->dks_out_buffer;
-  caddr_t nc;
+  char *nc;
   if (ses->dks_out_length > FT_MAX_FIELD)
     sqlr_new_error ("42000", "FTMAX", "CSV file table field length over %d, offset " BOXINT_FMT, FT_MAX_FIELD,
 	off + dks_prev_recd (ses));
-  nc = dk_alloc (2 * ses->dks_out_length);
+  nc = (char *) dk_alloc (2 * ses->dks_out_length);
   memcpy_16 (nc, copy, ses->dks_out_length);
   dk_free (copy, ses->dks_out_length);
   ses->dks_out_buffer = nc;
@@ -640,7 +640,7 @@ dc_like_compare (data_col_t * dc, caddr_t pattern, search_spec_t * spec)
   if (dc->dc_buf_fill < dc->dc_buf_len)
     {
       dv1[len1] = 0;
-      return cmp_like (dv1, pattern, collation, spec->sp_like_escape, st, pt);
+      return cmp_like ((const char *) dv1, pattern, collation, spec->sp_like_escape, st, pt);
     }
   if (len1 > sizeof (temp) - 1)
     {
@@ -899,7 +899,7 @@ fs_set_params (file_source_t * fs, caddr_t * inst)
       }
   }
   END_DO_BOX;
-  qst_set (inst, fs->fs_search_params, box);
+  qst_set (inst, fs->fs_search_params, (caddr_t) box);
 }
 
 

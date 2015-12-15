@@ -25,6 +25,10 @@
  *
  */
 
+#ifndef SQLVER_H
+#define SQLVER_H
+#include "Dk.h"
+
 #define PRODUCT_COPYRIGHT	"Copyright (C) 1998-2015 OpenLink Software"
 #define PRODUCT_NAME		"OpenLink Virtuoso"
 
@@ -33,7 +37,7 @@
 #define DBMS_SRV_NAME		PRODUCT_DBMS " Universal Server"
 #define DBMS_SRV_VER_ONLY	"07.50"
 #define DBMS_SRV_GEN_MAJOR	"32"
-#define DBMS_SRV_GEN_MINOR	"14"
+#define DBMS_SRV_GEN_MINOR	"15"
 #define DBMS_SRV_VER		DBMS_SRV_VER_ONLY "." \
 				DBMS_SRV_GEN_MAJOR DBMS_SRV_GEN_MINOR
 
@@ -51,10 +55,12 @@
 
 #define ODBC_DRV_VER_G_NO(v)	atoi (&(v)[6])
 
-
-extern char *build_date;
+VIRT_API_BEGIN extern char *build_date;
 extern char *build_host_id;
 extern char *build_opsys_id;
 extern char *build_thread_model;
 extern const char *build_special_server_model;
 void build_set_special_server_model (const char *new_model);
+
+VIRT_API_END
+#endif

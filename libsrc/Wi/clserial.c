@@ -33,6 +33,7 @@
 #include "sqlo.h"
 #include "rdfinf.h"
 #include "xmlnode.h"
+#include "xmltree.h"
 #include "remote.h"
 #include "security.h"
 #include "sqlrcomp.h"

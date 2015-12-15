@@ -777,7 +777,7 @@ bh_str_dtp (dtp_t cdtp)
 }
 
 
-char *
+const char *
 sch_id_to_col_name (dbe_schema_t * sch, oid_t col_id)
 {
   dbe_column_t *col = sch_id_to_column (sch, col_id);
@@ -1137,7 +1137,7 @@ ks_vec_params (key_source_t * ks, it_cursor_t * itc, caddr_t * inst)
 		      if (DV_DB_NULL == DV_TYPE_OF (((db_buf_t *) source_dc->dc_values)[source_row]))
 			goto was_null;
 		      ((db_buf_t *) target_dc->dc_values)[target_dc->dc_n_values++] =
-			  box_copy_tree (((db_buf_t *) source_dc->dc_values)[source_row]);
+			  (db_buf_t) box_copy_tree ((cbox_t) (((db_buf_t *) source_dc->dc_values)[source_row]));
 		    }
 		  else
 		    {
@@ -2175,7 +2175,7 @@ ins_check_batch_sz (insert_node_t * ins, caddr_t * inst, it_cursor_t * itc)
 	  return;
 	}
     }
-  qi_set_batch_sz (inst, ins, target_sz);
+  qi_set_batch_sz (inst, (table_source_t *) ins, target_sz);
 }
 
 /* query parallelization */
@@ -2733,7 +2733,6 @@ ts_thread (table_source_t * ts, caddr_t * inst, it_cursor_t * itc, int aq_state,
       aq->aq_ts = get_msec_real_time ();
       aq->aq_row_autocommit = qi->qi_client->cli_row_autocommit;
       aq->aq_non_txn_insert = qi->qi_non_txn_insert;
-      qi->qi_client->cli_trx->lt_has_branches = 1;
       qst_set (inst, ts->ts_aq, (caddr_t) aq);
     }
   if (!qis || BOX_ELEMENTS (qis) <= inx)
@@ -3044,7 +3043,7 @@ ts_split_sets (table_source_t * ts, caddr_t * inst, it_cursor_t * itc, int n_par
       cp_itc->itc_n_sets = chunk * (inx + 1);
       cp_itc->itc_param_order = itc->itc_param_order;
       if (itc->itc_is_col && itc->itc_set_eqs)
-	cp_itc->itc_set_eqs = box_copy (itc->itc_set_eqs);
+	cp_itc->itc_set_eqs = (dtp_t *) box_copy ((cbox_t) (itc->itc_set_eqs));
       ts_thread (ts, inst, cp_itc, TS_AQ_FIRST, ctr++);
     }
   QST_INT (inst, ts->ts_aq_state) = TS_AQ_COORD;
@@ -3196,6 +3195,17 @@ itc_set_boundary (it_cursor_t * itc, it_cursor_t * boundary, buffer_desc_t * buf
     itc->itc_boundary = plh_landed_copy ((placeholder_t *) boundary, buf);
 }
 
+buffer_desc_t *
+itc_check_dive_mode (it_cursor_t * itc, buffer_desc_t * buf)
+{
+  /* can be that ranges are split in read only for update but at the end the buffer must be in write access */
+  if (PA_READ_ONLY != itc->itc_dive_mode && !buf->bd_is_write)
+    {
+      itc_register_and_leave (itc, buf);
+      buf = page_reenter_excl (itc);
+    }
+  return buf;
+}
 
 buffer_desc_t *
 ts_split_range (table_source_t * ts, caddr_t * inst, it_cursor_t * itc, int n_parts)
@@ -3275,7 +3285,7 @@ ts_split_range (table_source_t * ts, caddr_t * inst, it_cursor_t * itc, int n_pa
 		  tsp_done (&tsp);
 		  return itc_reset (itc);
 		}
-	      return buf;
+	      return itc_check_dive_mode (itc, buf);
 	    }
 	  else
 	    {
@@ -3292,7 +3302,7 @@ ts_split_range (table_source_t * ts, caddr_t * inst, it_cursor_t * itc, int n_pa
 		  tsp_done (&tsp);
 		  return itc_reset (itc);
 		}
-	      return buf;
+	      return itc_check_dive_mode (itc, buf);
 	    }
 	}
       else if (TSS_AT_END == rc)
@@ -3323,7 +3333,7 @@ ts_split_range (table_source_t * ts, caddr_t * inst, it_cursor_t * itc, int n_pa
 	      tsp_done (&tsp);
 	      if (ts->ts_branch_by_value)
 		return itc_reset (itc);
-	      return buf;
+	      return itc_check_dive_mode (itc, buf);
 	    }
 	}
     }
@@ -3375,8 +3385,7 @@ ts_initial_itc_1 (table_source_t * ts, caddr_t * inst, it_cursor_t * itc)
   if (no_mt || !ts->ts_aq || KI_TEMP == itc->itc_insert_key->key_id
       || enable_qp < 2
       || !ITC_COL_SPLITTABLE (itc)
-      || itc->itc_n_sets * ts->ts_cost_after * compiler_unit_msecs * 1000 < 2 * qp_thread_min_usec
-      || srv_have_global_lock (THREAD_CURRENT_THREAD) || itc->itc_is_vacuum)
+      || itc->itc_n_sets * ts->ts_cost_after * compiler_unit_msecs * 1000 < 2 * qp_thread_min_usec || itc->itc_is_vacuum)
     return itc_reset (itc);
   if (!qi->qi_is_branch && !qi->qi_root_id)
     qi_assign_root_id (qi);
@@ -3736,7 +3745,7 @@ vec_fref_single_result (fun_ref_node_t * fref, table_source_t * ts, caddr_t * in
 	    }
 	  if (ssl->ssl_constant == (caddr_t) AMMSC_MAX || ssl->ssl_constant == (caddr_t) AMMSC_MIN)
 	    {
-	      int rc, is_max = ssl->ssl_constant == AMMSC_MAX;
+	      int rc, is_max = ssl->ssl_constant == (caddr_t) (AMMSC_MAX);
 	      if (no_old)
 
 		rc = DVC_UNKNOWN;
@@ -4248,24 +4257,9 @@ void
 ts_aq_result (table_source_t * ts, caddr_t * inst)
 {
   /* a ts completed itts branches.  Add up the results.  Can be in a fref or a scalar/exists subq. */
-  QNCAST (QI, qi, inst);
-  if (!IS_MT_BRANCH (qi->qi_trx))
-    {
-      dk_set_t merges;
-      lock_trx_t *lt = qi->qi_trx;
-      IN_TXN;
-      if ((merges = qi->qi_trx->lt_log_merge))
-	{
-	  qi->qi_trx->lt_log_merge = NULL;
-	  LEAVE_TXN;
-	  log_merge_commit (qi->qi_trx, merges);
-	}
-      else
-	LEAVE_TXN;
-    }
   if (prof_on || !ts->src_gen.src_query->qr_select_node)
     {
-      qi_add_stats ((QI *) inst, qst_get (inst, ts->ts_aq_qis), ts->src_gen.src_query);
+      qi_add_stats ((QI *) inst, (query_instance_t **) qst_get (inst, ts->ts_aq_qis), ts->src_gen.src_query);
     }
   if (!ts->ts_agg_node)
     return;

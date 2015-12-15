@@ -73,6 +73,7 @@ extern "C"
 #include "bif_text.h"
 #include "date.h"
 #include "security.h"
+#include "uuid_generator.h"
 
 #define XML_ELEMENT_NAME(x) \
   ((char *)( ((x) && DV_TYPE_OF (x) == DV_ARRAY_OF_POINTER && ((caddr_t *)(x))[0]) ? ((caddr_t **)(x))[0][0] : NULL))
@@ -97,8 +98,8 @@ static char WSSE_BASE64_ENCODING_TYPE[] = "wsse:Base64Binary";
 #define	DEFAULT_SHA_DIGEST	"sha1"
 #endif
 
-char *wsse_uris[] = { WSS_WSS_URI, WSS_WSS_URI_0204, WSS_WSS_URI_0207, WSS_WSS_URI_OASIS, NULL };
-char *wsu_uris[] = { WSS_WSU_URI, WSS_WSU_URI_OASIS, NULL };
+const char *wsse_uris[] = { WSS_WSS_URI, WSS_WSS_URI_0204, WSS_WSS_URI_0207, WSS_WSS_URI_OASIS, NULL };
+const char *wsu_uris[] = { WSS_WSU_URI, WSS_WSU_URI_OASIS, NULL };
 
 struct xpath_keyinst_s
 {
@@ -175,8 +176,6 @@ xenc_temp_keys_clear (void)
       usr->usr_xenc_temp_keys = 0;
     }
 }
-
-void uuid_set (uuid_t * u);
 
 static xenc_id_t DBG_NAME (_xenc_id) (DBG_PARAMS uuid_t * uu_id)
 {
@@ -1428,7 +1427,7 @@ xenc_key_create_from_x509_cert (char *name, char *certificate, char *private_key
 	      X509_STORE_add_cert (CA_certs, x);
 	    }
 	  mutex_leave (xenc_keys_mtx);
-	  sk_free (ca_list);
+	  sk_free ((_STACK *) ca_list);
 	}
     }
   else if (type == CERT_DER_FORMAT)
@@ -2360,7 +2359,7 @@ bif_xenc_key_rsa_read (caddr_t * qst, caddr_t * err_r, state_slot_t ** args)
 static caddr_t
 bif_xenc_key_rsa_construct (caddr_t * qst, caddr_t * err_r, state_slot_t ** args)
 {
-  static char *me = "xenc_key_RSA_construct";
+  static const char *me = "xenc_key_RSA_construct";
   caddr_t name = bif_key_name_arg (qst, args, 0, me);
   caddr_t mod = bif_string_arg (qst, args, 1, me);
   caddr_t exp = bif_string_arg (qst, args, 2, me);
@@ -2873,7 +2872,7 @@ xenc_encode_by_key (xenc_key_t * key, dk_session_t * ses, long seslen,
   xenc_id_t id = xenc_next_id ();
   char id_str[200];
   uuid_t id_stat;
-  uuid_unparse (id, id_str);
+  uuid_unparse ((const unsigned char *) id, id_str);
   memcpy (&id_stat, id, sizeof (uuid_t));
 
   snprintf (buf, 1024, "<xenc:EncryptedData Type=\"" XENC_NS "%s" "\" Id=\"Id-%s\" ", xenc_types[type_idx], id_str);
@@ -3675,12 +3674,12 @@ bif_xml_sign (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       {
 	if (child == elem)
 	  {
-	    dk_free_box (child);
+	    dk_free_box ((caddr_t) child);
 	    ((caddr_t **) top)[inx] = new_elem;
 	  }
       }
       END_DO_BOX;
-      xenc_set_namespaces (new_elem, box_copy_tree (curr_nss), _nss);
+      xenc_set_namespaces (new_elem, (caddr_t *) box_copy_tree (curr_nss), _nss);
     }
   else
     {
@@ -3871,7 +3870,7 @@ bif_dsig_template_ext (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   xenc_try_block_t t;
   dsig_signature_t *dsig = 0;
   caddr_t *ret;
-  char *error_tag = "unknown";
+  const char *error_tag = "unknown";
   xml_tree_ent_t *dsig_xte = 0;
   xml_doc_subst_t *xs;
   caddr_t ret_text;
@@ -3997,7 +3996,7 @@ xenc_security_token_id_format (char *buf, int maxlen, xenc_id_t id, int is_ref)
   else
     snprintf (buf, maxlen, "#SecurityToken-");
 
-  uuid_unparse (id, buf + strlen (buf));
+  uuid_unparse ((const unsigned char *) id, buf + strlen (buf));
 }
 
 void
@@ -4035,7 +4034,7 @@ xenc_tag_create (const char *uri, const char *name)
 }
 
 void
-xenc_tag_add_att (xenc_tag_t * t, char *name, char *val)
+xenc_tag_add_att (xenc_tag_t * t, const char *name, char *val)
 {
   char *_val = box_dv_short_string (val);
   char *_name = box_dv_uname_string (name);
@@ -4276,7 +4275,7 @@ xenc_generate_key_tag (xenc_key_t * key, int extended_ver, xenc_id_t * ids, int 
 	    char uuid_str[200];
 	    char buf[256];
 	    xenc_tag_t *dr;
-	    uuid_unparse (id, uuid_str);
+	    uuid_unparse ((const unsigned char *) id, uuid_str);
 	    snprintf (buf, 255, "#Id-%s", uuid_str);
 	    dr = xenc_tag_create (XENC_NS, ":DataReference");
 	    xenc_tag_add_att (dr, "URI", buf);
@@ -4607,7 +4606,7 @@ xenc_generate_encrypted_key_tag (query_instance_t * qi, xenc_key_inst_t * kei, x
 	char uuid_str[200];
 	char buf[256];
 	xenc_tag_t *dr;
-	uuid_unparse (id, uuid_str);
+	uuid_unparse ((const unsigned char *) id, uuid_str);
 	snprintf (buf, 255, "#Id-%s", uuid_str);
 	dr = xenc_tag_create (XENC_NS, ":DataReference");
 	xenc_tag_add_att (dr, "URI", buf);
@@ -4647,7 +4646,7 @@ xenc_generate_ref_list (query_instance_t * qi, xenc_id_t * ids)
     xenc_tag_t *ref;
     memset (id_str, 0, 200);
     stpcpy (id_str, "#Id-");
-    uuid_unparse ((uuid_t *) id, id_str + strlen (id_str));
+    uuid_unparse ((const unsigned char *) ((uuid_t *) id), id_str + strlen (id_str));
 
     ref = xenc_tag_create (XENC_URI, ":DataReference");
     xenc_tag_add_att (ref, "URI", id_str);
@@ -5672,7 +5671,7 @@ xenc_make_error (char *buf, long maxlen, xenc_err_code_t c, const char *err)
 }
 
 void
-xenc_report_error (xenc_try_block_t * t, long buflen, xenc_err_code_t c, char *errbuf, ...)
+xenc_report_error (xenc_try_block_t * t, long buflen, xenc_err_code_t c, const char *errbuf, ...)
 {
   if (t)
     {
@@ -6326,7 +6325,7 @@ bif_xenc_sha1_digest (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   caddr_t res = NULL;
   session_buffered_write (ses, text, box_length (text) - 1);
   dsig_sha1_digest (ses, strses_length (ses), &res);
-  dk_free_box (ses);
+  dk_free_box ((caddr_t) ses);
   return res;
 }
 
@@ -6339,7 +6338,7 @@ bif_xenc_sha256_digest (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   caddr_t res = NULL;
   session_buffered_write (ses, text, box_length (text) - 1);
   dsig_sha256_digest (ses, strses_length (ses), &res);
-  dk_free_box (ses);
+  dk_free_box ((caddr_t) ses);
   return res;
 }
 
@@ -6355,7 +6354,7 @@ bif_xenc_hmac_sha256_digest (caddr_t * qst, caddr_t * err_ret, state_slot_t ** a
 
   SES_PRINT (ses, text);
   rc = dsig_hmac_sha256_digest (ses, strses_length (ses), key, &res);
-  dk_free_box (ses);
+  dk_free_box ((caddr_t) ses);
   if (0 == rc)
     sqlr_new_error ("42000", "XENC36", "Could not make HMAC-SHA256 digest");
 
@@ -6366,7 +6365,7 @@ bif_xenc_hmac_sha256_digest (caddr_t * qst, caddr_t * err_ret, state_slot_t ** a
 static caddr_t
 bif_xenc_rsa_sha1_digest (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "xenc_rsa_sha1_digest";
+  const char *me = "xenc_rsa_sha1_digest";
   char *text = bif_string_arg (qst, args, 0, me);
   caddr_t name = bif_string_arg (qst, args, 1, me);
   xenc_key_t *key = xenc_get_key_by_name (name, 1);
@@ -6374,14 +6373,14 @@ bif_xenc_rsa_sha1_digest (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args
   caddr_t res = NULL;
   session_buffered_write (ses, text, box_length (text) - 1);
   dsig_rsa_sha1_digest (ses, strses_length (ses), key, &res);
-  dk_free_box (ses);
+  dk_free_box ((caddr_t) ses);
   return res;
 }
 
 static caddr_t
 bif_xenc_dsig_signature (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "xenc_dsig_signature";
+  const char *me = "xenc_dsig_signature";
   caddr_t text = bif_string_arg (qst, args, 0, me);
   caddr_t name = bif_string_arg (qst, args, 1, me);
   caddr_t signature_method = bif_string_arg (qst, args, 2, me);
@@ -6393,14 +6392,14 @@ bif_xenc_dsig_signature (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   session_buffered_write (ses, text, box_length (text) - 1);
   if (!sign_f || !(sign_f) (ses, strses_length (ses), key, &signval))
     signval = NEW_DB_NULL;
-  dk_free_box (ses);
+  dk_free_box ((caddr_t) ses);
   return signval;
 }
 
 static caddr_t
 bif_xenc_dsig_verify (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "xenc_dsig_verify";
+  const char *me = "xenc_dsig_verify";
   caddr_t text = bif_string_arg (qst, args, 0, me);
   caddr_t name = bif_string_arg (qst, args, 1, me);
   caddr_t signature_method = bif_string_arg (qst, args, 2, me);
@@ -6416,7 +6415,7 @@ bif_xenc_dsig_verify (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     rc = box_num (0);
   else
     rc = box_num (1);
-  dk_free_box (ses);
+  dk_free_box ((caddr_t) ses);
   return rc;
 }
 
@@ -6432,7 +6431,7 @@ bif_xenc_hmac_sha1_digest (caddr_t * qst, caddr_t * err_ret, state_slot_t ** arg
 
   SES_PRINT (ses, text);
   rc = dsig_hmac_sha1_digest (ses, strses_length (ses), key, &res);
-  dk_free_box (ses);
+  dk_free_box ((caddr_t) ses);
   if (0 == rc)
     sqlr_new_error ("42000", "XENC36", "Could not make HMAC-SHA1 digest");
 
@@ -6787,7 +6786,7 @@ err:
 static caddr_t
 bif_xenc_x509_csr_generate (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  static char *me = "xenc_x509_csr_generate";
+  static const char *me = "xenc_x509_csr_generate";
   caddr_t key_name = bif_string_arg (qst, args, 0, me);
   caddr_t *subj = (caddr_t *) bif_strict_array_or_null_arg (qst, args, 1, me);
   caddr_t *exts = (caddr_t *) bif_strict_array_or_null_arg (qst, args, 2, me);
@@ -6929,7 +6928,7 @@ err:
 static caddr_t
 bif_xenc_x509_from_csr (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  static char *me = "xenc_x509_from_csr";
+  static const char *me = "xenc_x509_from_csr";
   caddr_t key_name = bif_string_arg (qst, args, 0, me);
   caddr_t cli_name = bif_string_arg (qst, args, 1, me);
   caddr_t csr_str = bif_string_arg (qst, args, 2, me);
@@ -7142,7 +7141,7 @@ bif_xenc_pkcs12_export (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 	  certs = sk_X509_new_null ();
 	  for (i = 1; i < sk_X509_num (chain); i++)
 	    sk_X509_push (certs, sk_X509_value (chain, i));
-	  sk_free (chain);
+	  sk_free ((_STACK *) chain);
 	}
       if (inf)
 	{
@@ -7165,7 +7164,7 @@ bif_xenc_pkcs12_export (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     }
   BIO_free (b);
   PKCS12_free (p12);
-  sk_free (certs);
+  sk_free ((_STACK *) certs);
   if (inf)
     sk_X509_INFO_pop_free (inf, X509_INFO_free);
   return ret;
@@ -7440,7 +7439,7 @@ xenc_ssh_encode (caddr_t dest, caddr_t src)
 static caddr_t
 xenc_rsa_pub_ssh_export (RSA * x)
 {
-  static char *ssh_header = "\x00\x00\x00\x07ssh-rsa";
+  static const char *ssh_header = "\x00\x00\x00\x07ssh-rsa";
   caddr_t ret;
   int len, pos;
   caddr_t n = BN2binbox (x->n);	/* modulus */
@@ -7536,7 +7535,7 @@ bif_xenc_SPKI_read (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 static caddr_t
 bif_xenc_x509_verify (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "x509_verify";
+  const char *me = "x509_verify";
   caddr_t cert_name = bif_string_arg (qst, args, 0, me);
   caddr_t key_name = bif_string_arg (qst, args, 1, me);
   xenc_key_t *cert = xenc_get_key_by_name (cert_name, 1);
@@ -7569,9 +7568,9 @@ x509_from_pem (caddr_t pem)
 static caddr_t
 bif_xenc_x509_verify_array (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "x509_verify_array";
+  const char *me = "x509_verify_array";
   caddr_t cert_name = bif_string_arg (qst, args, 0, me);
-  caddr_t *ca_certs = bif_arg (qst, args, 1, me);
+  caddr_t *ca_certs = (caddr_t *) bif_arg (qst, args, 1, me);
   xenc_key_t *cert = xenc_get_key_by_name (cert_name, 1);
   int rc = 0, inx;
   BIO *buf;
@@ -7606,9 +7605,9 @@ bif_xenc_x509_verify_array (caddr_t * qst, caddr_t * err_ret, state_slot_t ** ar
 static caddr_t
 bif_xenc_x509_cert_verify_array (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "x509_cert_verify_array";
+  const char *me = "x509_cert_verify_array";
   caddr_t cert_text = bif_string_arg (qst, args, 0, me);
-  caddr_t *ca_certs = bif_arg (qst, args, 1, me);
+  caddr_t *ca_certs = (caddr_t *) bif_arg (qst, args, 1, me);
   X509 *cert = x509_from_pem (cert_text);
   int rc = 0, inx;
   BIO *buf;
@@ -7644,7 +7643,7 @@ bif_xenc_x509_cert_verify_array (caddr_t * qst, caddr_t * err_ret, state_slot_t 
 static caddr_t
 bif_xenc_x509_ca_cert_add (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "x509_ca_cert_add";
+  const char *me = "x509_ca_cert_add";
   caddr_t cert_text = bif_string_arg (qst, args, 0, me);
   char err_buf[512];
   sec_check_dba ((QI *) qst, me);
@@ -7664,7 +7663,7 @@ bif_xenc_x509_ca_cert_add (caddr_t * qst, caddr_t * err_ret, state_slot_t ** arg
 static caddr_t
 bif_xenc_x509_ca_certs_remove (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "x509_ca_certs_remove";
+  const char *me = "x509_ca_certs_remove";
 
   sec_check_dba ((QI *) qst, me);
   mutex_enter (xenc_keys_mtx);
@@ -7677,7 +7676,7 @@ bif_xenc_x509_ca_certs_remove (caddr_t * qst, caddr_t * err_ret, state_slot_t **
 static caddr_t
 bif_xenc_x509_ca_certs_list (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "x509_ca_certs_list";
+  const char *me = "x509_ca_certs_list";
   STACK_OF (X509_OBJECT) * certs;
   BIO *in;
   caddr_t ret;

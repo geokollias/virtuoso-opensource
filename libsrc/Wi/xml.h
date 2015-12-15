@@ -30,16 +30,12 @@
 
 /* IvAn/ParseDTD/000721 system parser is wiped out, replaced with xmlparser.h
 #include <xmlparse.h> */
-#ifdef __cplusplus
-extern "C"
-{
-#endif
+#include "Dk.h"
+#include "langfunc.h"
 #include "xmlparser.h"
-#ifdef __cplusplus
-}
-#endif
 
-encoding_handler_t *intl_find_user_charset (const char *encname, int xml_input_is_wide);
+VIRT_API_BEGIN extern encoding_handler_t *intl_find_user_charset (const char *encname, int xml_input_is_wide);
+
 
 /* Miscellaneous definition */
 #define XML_VERSION		"1.0"
@@ -204,4 +200,6 @@ extern const char *xml_escapes[256];
 int dtd_insert_soft (dtd_t * tgt, dtd_t * src);
 void ddl_store_mapping_schema (query_instance_t * qi, caddr_t view_name, caddr_t reload_text);
 #endif /* BIF_XML */
+
+VIRT_API_END
 #endif /* _XML_H */

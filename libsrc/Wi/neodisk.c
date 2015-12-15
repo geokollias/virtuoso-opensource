@@ -46,7 +46,7 @@
 #endif
 
 extern long tc_atomic_wait_2pc;
-extern int32 enable_flush_all;
+extern long enable_flush_all;
 extern long tc_n_flush;
 long atomic_cp_msecs;
 long tc_dirty_at_cpt_start;
@@ -132,7 +132,7 @@ cpt_rb_ck ()
       {
 	du_thread_t *thr = lt->lt_thr;
 	if (thr->thr_sem->sem_entry_count || !thr->thr_sem->sem_waiting.thq_count
-	    || thr != thr->thr_sem->sem_waiting.thq_head.thr_prev)
+	    || (&(thr->thr_hdr)) != thr->thr_sem->sem_waiting.thq_head.thr_prev)
 	  log_info ("thread %x may not be stopped for cpt rb lt %p", thr, lt);
       }
   }
@@ -1441,15 +1441,7 @@ cpt_neodisk_page (const void *key, void *value)
       if (cp_remap)
 	{
 	  remhash (DP_ADDR2VOID (logical), cpt_dbs->dbs_cpt_remap);
-	  if (it_from_g->it_col_extent_maps)
-	    em = dbs_dp_to_em (it_from_g->it_storage, cp_remap);
-	  else
-	    em = it_from_g->it_extent_map;
-	  if (em)
-	    em_free_dp (em, cp_remap, EXT_REMAP);
-	  else
-	    log_error ("Column page %ld has a free cpt remap %ld or cpt remap maps to no extent", logical, cp_remap);
-	  dp_set_backup_flag (cpt_dbs, cp_remap, 0);
+	  em_free_dp (it_from_g->it_extent_map, cp_remap, EXT_REMAP);
 	}
       if (it_from_g->it_col_extent_maps)
 	em = dbs_dp_to_em (it_from_g->it_storage, logical);
@@ -1470,16 +1462,8 @@ cpt_neodisk_page (const void *key, void *value)
       dp_addr_t cp_remap = (dp_addr_t) (uptrlong) gethash (DP_ADDR2VOID (logical), cpt_dbs->dbs_cpt_remap);
       if (cp_remap)
 	{
-	  extent_map_t *em;
 	  remhash (DP_ADDR2VOID (logical), cpt_dbs->dbs_cpt_remap);
-	  if (it_from_g->it_col_extent_maps)
-	    em = dbs_dp_to_em (it_from_g->it_storage, cp_remap);
-	  else
-	    em = it_from_g->it_extent_map;
-	  if (em)
-	    em_free_dp (em, cp_remap, EXT_REMAP);
-	  else
-	    log_error ("Column page %ld has a free cpt remap %ld or cpt remap maps to no extent", logical, cp_remap);
+	  em_free_dp (it_from_g->it_extent_map, cp_remap, EXT_REMAP);
 	}
     }
   else
@@ -1500,18 +1484,12 @@ cpt_neodisk_page (const void *key, void *value)
 	{
 	  /* dirty after image will go to logical anyway.
 	   * May just as well write it to logical as to remap. */
-	  extent_map_t *em;
+
 	  remhash (DP_ADDR2VOID (logical), cpt_dbs->dbs_cpt_remap);
 	  /* remhash is allowed because the cpt remap might have been made in the sethash above */
-	  if (it_from_g->it_col_extent_maps)
-	    em = dbs_dp_to_em (it_from_g->it_storage, physical);
-	  else
-	    em = it_from_g->it_extent_map;
-	  if (em)
-	    em_free_dp (em, physical, EXT_REMAP);
-	  else
-	    log_error ("Column page %ld has a free cpt remap %ld or cpt remap maps to no extent", logical, physical);
+	  em_free_dp (it_from_g->it_extent_map, physical, EXT_REMAP);
 	  rdbg_printf (("[C Unremap L %ld R %ld ]", logical, physical));
+
 	  after_image->bd_physical_page = after_image->bd_page;
 	  TC (tc_cpt_unremap_dirty);
 	}
@@ -1610,27 +1588,6 @@ dbs_backup_check (dbe_storage_t * dbs, int flag)
 #endif
 }
 
-#ifdef PAGE_DEBUG
-void
-dbs_em_check (dbe_storage_t * dbs)
-{
-  int n;
-  for (n = 0; n < dbs->dbs_n_pages; n += EXTENT_SZ)
-    {
-      extent_map_t *em;
-      extent_t *ext;
-      em = dbs_dp_to_em (dbs, n);
-      if (!em)
-	continue;
-      ext = EM_DP_TO_EXT (em, EXT_ROUND (n));
-      if (!ext)
-	{
-	  log_error ("Inconsistent extent map %s, dp=%d", em->em_name, n);
-	}
-    }
-}
-#endif
-
 void
 dbs_cache_check (dbe_storage_t * dbs, int mode)
 {
@@ -1725,7 +1682,7 @@ dbs_cpt_recov_ems (dbe_storage_t * dbs, caddr_t * reg)
     {
       caddr_t *ent = (caddr_t *) reg[inx];
       caddr_t name = ent[0];
-      if (0 == strncmp (name, "__EM:", 5) || 0 == strncmp (name, "__EMC:", 6) || 0 == strcmp (name, "__sys_ext_map"))
+      if (0 == strncmp (name, "__EM:", 5) || 0 == strcmp (name, "__sys_ext_map"))
 	{
 	  extent_map_t *em = dbs_read_extent_map (dbs, name, atoi (ent[1]));
 	  dk_set_push (&all_ems, (void *) em);
@@ -1771,8 +1728,8 @@ dbs_cpt_recov (dbe_storage_t * dbs)
     while (DKSESSTAT_ISSET (ses, SST_OK))
       {
 	dp_addr_t logical;
-	caddr_t l = read_object (ses);
-	caddr_t obj = read_object (ses);
+	caddr_t l = (caddr_t) read_object (ses);
+	caddr_t obj = (caddr_t) read_object (ses);
 	dtp_t dtp = DV_TYPE_OF (obj);
 	if (!DKSESSTAT_ISSET (ses, SST_OK))
 	  break;
@@ -1966,7 +1923,7 @@ dbs_cpt_backup (void)
 	reg[inx] = NULL;
       }
       END_DO_BOX;
-      dk_free_tree (head);
+      dk_free_tree ((caddr_t) head);
     }
     END_WRITE_FAIL (ses);
     DO_SET (index_tree_t *, it, &dbs->dbs_trees)
@@ -2183,9 +2140,6 @@ dbs_checkpoint (char *log_name, int shutdown)
 	  log_info ("Exiting in mid checkpoint");
 	  call_exit (-1);
 	}
-#ifdef PAGE_DEBUG
-      dbs_em_check (dbs);
-#endif
       DO_SET (index_tree_t *, it, &dbs->dbs_trees)
       {
 	mcp_itc->itc_thread = THREAD_CURRENT_THREAD;

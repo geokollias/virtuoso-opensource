@@ -338,8 +338,10 @@ typedef struct ewkt_kwd_metas_s
 
 EXE_EXPORT (ewkt_kwd_metas_t *, ewkt_find_metas_by_geotype, (int geotype));
 EXE_EXPORT (geo_t *, ewkt_parse, (const char *strg, caddr_t * err_ret));
-EXE_EXPORT (geo_t *, ewkt_parse_2, (const char *strg, int dflt_srid, caddr_t * err_ret));
+EXE_EXPORT (geo_t *, ewkt_parse_2, (const char *strg, int dflt_srcode, caddr_t * err_ret));
 EXE_EXPORT (void, ewkt_print_sf12, (geo_t * g, dk_session_t * ses));
+EXE_EXPORT (geo_t *, wkb_read_ses, (dk_session_t * ses, int srid, int basic_wkb_only));
+EXE_EXPORT (void, wkb_print, (geo_t * g, dk_session_t * ses, int basic_wkb_only, char set_byte_order));
 
 EXE_EXPORT (geo_t *, bif_geo_arg, (caddr_t * qst, struct state_slot_s ** args, int inx, const char *fname, int geotype));
 

@@ -39,6 +39,7 @@
 #include <stddef.h>
 
 #include "Dk.h"
+#include "Dk/Dksesssl.h"
 #include "sqlnode.h"
 #include "eqlcomp.h"
 #include "sqlfn.h"
@@ -830,7 +831,6 @@ http_cli_get_err (http_cli_ctx * ctx)
 
 /* XXX: TODO: proxies, proxy auth, http redirect */
 #ifdef _SSL
-int ssl_client_use_pkcs12 (SSL * ssl, char *pkcs12file, char *passwd, char *ca);
 int
 ssl_client_use_db_key (SSL * ssl, char *key, caddr_t * err_ret)
 {
@@ -1351,7 +1351,7 @@ http_cli_read_resp_body (http_cli_ctx * ctx)
   {
     if (signal_error)
       {
-	dk_free_tree (content);
+	dk_free_tree ((caddr_t) content);
 	content = NULL;
 	http_cli_hook_dispatch (ctx, HC_HTTP_READ_ERR);
       }
@@ -2413,7 +2413,7 @@ bif_http_client_impl (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, ch
       else
 	{
 	  ret = strses_string (out);
-	  dk_free_box (out);
+	  dk_free_box ((caddr_t) out);
 	}
     }
 
@@ -2434,7 +2434,7 @@ bif_http_client_impl (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, ch
 caddr_t
 bif_http_client (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "http_client";
+  const char *me = "http_client";
   caddr_t url = bif_string_arg (qst, args, 0, me);
   caddr_t uid = NULL, pwd = NULL;
   caddr_t http_hdr = NULL, body = NULL, method = NULL;
@@ -2502,7 +2502,7 @@ bif_http_pipeline (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   dk_set_t reqs = NULL;		/* requests */
   dk_set_t ress = NULL;		/* responses */
-  char *me = "http_pipeline";
+  const char *me = "http_pipeline";
   caddr_t *urls = (caddr_t *) bif_array_or_null_arg (qst, args, 0, me);
   caddr_t ret = NULL;
   caddr_t _err_ret = NULL;
@@ -2694,7 +2694,7 @@ init_acl_set (char *acl_string1, dk_set_t * acl_set_ptr)
 caddr_t
 bif_http_get (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "http_get";
+  const char *me = "http_get";
   caddr_t uri = bif_string_or_uname_arg (qst, args, 0, me);
   int n_args = BOX_ELEMENTS (args), follow_redirects = 0, to_is_null = 1;
   caddr_t method = NULL;

@@ -223,6 +223,13 @@ next:;
     {
       col_ref->_.col_ref.prefix = def_ot->ot_new_prefix;
       def_ot->ot_has_cols = 1;
+      if (def_ot->ot_super && def_ot->ot_super->ot_inside_clause && def_ot->ot_table && def_ot->ot_table->tb_has_cgs)
+	{
+	  sco->sco_so->so_def_col = tb_name_to_column (def_ot->ot_table, col_ref->_.col_ref.name);
+	  sco->sco_so->so_def_ot = def_ot;
+	  if (OT_IN_WHERE == def_ot->ot_super->ot_inside_clause)
+	    t_set_pushnew (&def_ot->ot_cg_cond_cols, (void *) sco->sco_so->so_def_col);
+	}
     }
 ok:
   if (def_ot && def_ot->ot_table && IS_BOX_POINTER (col) &&
@@ -412,6 +419,7 @@ int
 sqlo_col_scope_1 (sqlo_t * so, ST * col_ref, int generate)
 {
   sql_scope_t *sco = so->so_scope;
+  so->so_def_col = so->so_def_ot = NULL;
   if (col_ref->_.col_ref.name == STAR)
     sqlc_new_error (so->so_sc->sc_cc, "42000", "SQ064", "Illegal use of '*'.");
   if (!col_ref->_.col_ref.prefix)
@@ -836,6 +844,7 @@ sqlo_with_decl (sqlo_t * so, ST * tree)
 void
 sqlo_add_table_ref (sqlo_t * so, ST ** tree_ret, dk_set_t * res)
 {
+  dk_set_t ptr;
   char tmp[10];
   ST *tree = *tree_ret;
   switch (tree->type)
@@ -2489,7 +2498,7 @@ sqlo_cols_eq (dk_set_t top_and, caddr_t col, caddr_t pref1, caddr_t pref2)
       }
   }
   END_DO_SET ();
-  if (p1 && p2 && box_equal (val1, val2))
+  if (p1 && p2 && box_equal ((cbox_t) val1, (cbox_t) val2))
     return 1;
   return 0;
 }
@@ -2627,7 +2636,7 @@ sqlo_distinct_redundant (ST * sel, ST * gb)
 	exp = exp->_.as_exp.left;
       while (ST_P (exp, CALL_STMT) && sqlo_is_unq_preserving (exp->_.call.name))
 	exp = exp->_.call.params[0];
-      if (box_equal (exp, spec))
+      if (box_equal ((cbox_t) exp, (cbox_t) spec))
 	{
 	  found = 1;
 	  break;
@@ -2653,6 +2662,52 @@ sqlo_is_const_subq (sqlo_t * so, ST * tree)
   }
   END_DO_SET ();
   return 0;
+}
+
+op_table_t *
+col_ref_ot (ST * exp)
+{
+  return (op_table_t *) unbox ((caddr_t) exp->_.col_ref.ot);
+}
+
+void
+sqlo_cg_mark_gby_oby (sqlo_t * so, op_table_t * ot, ST * texp)
+{
+  /* if col groups present, mark the oby and gby cols in the ot for sorted proj choices */
+  int inx, inx2;
+  DO_BOX (ST *, gby, inx, texp->_.table_exp.group_by_full)
+  {
+    DO_BOX (ST *, exp, inx2, gby)
+    {
+      if (ST_P (exp, ORDER_BY))
+	exp = exp->_.o_spec.col;
+      if (ST_P (exp, COL_DOTTED))
+	{
+	  int len = BOX_ELEMENTS (exp);
+	  if (len >= 5)
+	    {
+	      t_set_pushnew (&col_ref_ot (exp)->ot_cg_group_cols, unbox ((caddr_t) exp->_.col_ref.col));
+	    }
+	}
+    }
+    END_DO_BOX;
+  }
+  END_DO_BOX;
+  DO_BOX (ST *, exp, inx2, texp->_.table_exp.order_by)
+  {
+    if (ST_P (exp, ORDER_BY))
+      exp = exp->_.o_spec.col;
+    if (ST_P (exp, COL_DOTTED))
+      {
+	int len = BOX_ELEMENTS (exp);
+	if (len >= 5)
+	  {
+	    t_set_pushnew (&col_ref_ot (exp)->ot_cg_order_cols, unbox ((caddr_t) exp->_.col_ref.col));
+	  }
+      }
+  }
+  END_DO_BOX;
+
 }
 
 
@@ -2729,7 +2784,9 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
       END_DO_BOX;
       so->so_const_subqs = save_const;
       sqlo_implied_columns_of_contains (so, texp->_.table_exp.where, sqlo_select_ref_score ((ST *) tree));
+      ot->ot_inside_clause = OT_IN_WHERE;
       sqlo_scope (so, &(texp->_.table_exp.where));
+      ot->ot_inside_clause = 0;
       DO_SET (ST *, jc, &res)
       {
 	t_st_and (&texp->_.table_exp.where, jc->_.join.cond);
@@ -2758,12 +2815,15 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
       sqlo_replace_as_exps (&(texp->_.table_exp.having), so->so_scope);
       sqlo_scope (so, &(texp->_.table_exp.having));
       sqlo_replace_as_exps ((ST **) & (texp->_.table_exp.order_by), so->so_scope);
+      ot->ot_inside_clause = OT_IN_OBY;
       NO_LIT_PARS;
       sqlo_scope_array (so, texp->_.table_exp.order_by);
       RESTORE_LIT_PARS;
+      ot->ot_inside_clause = 0;
 
       sco->sco_fun_refs_allowed = 0;
       sqlo_replace_as_exps ((ST **) & (texp->_.table_exp.group_by), so->so_scope);
+      ot->ot_inside_clause = OT_IN_GBY;
       if (texp->_.table_exp.group_by_full)
 	{
 	  char old_rescope = so->so_is_rescope;
@@ -2779,7 +2839,7 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
 	}
       else
 	sqlo_scope_array (so, texp->_.table_exp.group_by);
-
+      ot->ot_inside_clause = 0;
       if (texp->_.table_exp.order_by)
 	sqlo_oby_exp_cols (so, tree, texp->_.table_exp.order_by);
       if (texp->_.table_exp.group_by)
@@ -2801,6 +2861,7 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
 	  sqlo_check_group_by_cols (so, (ST *) texp->_.table_exp.order_by, &(texp->_.table_exp.group_by), ot, is_not_one_gb);
 	}
       sqlo_oby_remove_scalar_exps (so, &texp->_.table_exp.order_by);
+      sqlo_cg_mark_gby_oby (so, ot, texp);
     }
   else
     sqlo_scope_array (so, (ST **) tree->_.select_stmt.selection);
@@ -3108,7 +3169,7 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
 	for (s = sco->sco_scalar_subqs; s; s = s->next->next)
 	  {
 	    org = (ST *) s->data;
-	    if (box_equal (org, tree))
+	    if (box_equal ((cbox_t) org, (cbox_t) tree))
 	      {
 		*ptree = (ST *) t_box_copy_tree ((caddr_t) s->next->data);
 		return;
@@ -3162,7 +3223,7 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
 	  return KS_CAST_UNDEF;
 	if (DV_RDF != DV_TYPE_OF (data))
 	  {
-	    dk_free_tree (data);
+	    dk_free_tree ((caddr_t) data);
 	    return KS_CAST_UNDEF;
 	  }
 	else
@@ -3171,7 +3232,7 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
 	    dtp_t dtp = DV_TYPE_OF (rb->rb_box);
 	    if (!IS_NUM_DTP (dtp) && !rb->rb_ro_id)
 	      {
-		dk_free_tree (data);
+		dk_free_tree ((caddr_t) data);
 		return KS_CAST_UNDEF;
 	      }
 	  }
@@ -3429,6 +3490,10 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
 	    {
 	      CHECK_OBSERVER (ptree);
 	      sqlo_col_scope (so, tree);
+	      if (so->so_def_col)
+		*ptree =
+		    t_listst (5, COL_DOTTED, tree->_.col_ref.prefix, tree->_.col_ref.name, box_num ((ptrlong) so->so_def_col),
+		    box_num ((ptrlong) so->so_def_ot));
 	      break;
 	    }
 	  case FUN_REF:

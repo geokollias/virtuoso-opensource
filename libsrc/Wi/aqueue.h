@@ -21,6 +21,10 @@
  *
  */
 
+#ifndef __AQUEUE_H
+#define __AQUEUE_H
+#include "wi.h"
+#include "sqlnode.h"
 
 typedef struct async_queue_s
 {
@@ -106,5 +110,8 @@ void aq_init ();
 typedef void (*aq_cleanup_t) (caddr_t);
 void aq_wait_all_in_qi (async_queue_t * aq, caddr_t * inst, caddr_t * err_ret, aq_cleanup_t clup);
 void aq_check_duplicate (async_queue_t * aq, caddr_t val);
+size_t aq_thr_mem_cache_total (void);
 
 #define AQ_NO_REQUEST ((caddr_t)100)
+
+#endif

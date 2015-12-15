@@ -170,7 +170,7 @@ get_compiled_regexp (id_hash_t * c_r, const char *pattern, int options, caddr_t 
 #endif
   if (!tmp.code_x)
     {
-      tmp.code_x = pcre_malloc (sizeof (pcre_extra));
+      tmp.code_x = (pcre_extra *) pcre_malloc (sizeof (pcre_extra));
       if (tmp.code_x)
 	memset (tmp.code_x, 0, sizeof (pcre_extra));
     }
@@ -646,7 +646,7 @@ idx_found:
     }
   else
     {
-      int wide_len_diff = (int) virt_mbsnrtowcs (NULL, &str, ofs - prev_ofs, 0, &mb);
+      int wide_len_diff = (int) virt_mbsnrtowcs (NULL, (const unsigned char **) (&str), ofs - prev_ofs, 0, &mb);
       prev_wide_len += wide_len_diff;
       prev_ofs = ofs;
       ret_vec[idx_to_fill] = prev_wide_len;
@@ -1047,7 +1047,7 @@ bif_regexp_init ()
   compiled_regexps->ht_rwlock = rwlock_allocate ();
 
   bif_define_ex ("regexp_match", bif_regexp_match, BMD_RET_TYPE, &bt_varchar, BMD_DONE);
-  bif_define_ex ("rdf_regex_impl", bif_rdf_regex_impl, BMD_RET_TYPE, &bt_varchar, BMD_DONE);
+  bif_define_ex ("rdf_regex_impl", bif_rdf_regex_impl, BMD_RET_TYPE, &bt_integer, BMD_DONE);
   bif_define_ex ("regexp_substr", bif_regexp_substr, BMD_RET_TYPE, &bt_varchar, BMD_DONE);
   bif_define_ex ("regexp_parse", bif_regexp_parse, BMD_RET_TYPE, &bt_any, BMD_DONE);
   bif_define_ex ("regexp_parse_list", bif_regexp_parse_list, BMD_RET_TYPE, &bt_any, BMD_DONE);

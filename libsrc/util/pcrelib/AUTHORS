@@ -1,9 +1,7 @@
-These files are derived from part of PCRE 7.9 by the Virtuoso team.
-
-In case of errors, please remember that the library was modified so any
-bugs should be reported to the Virtuoso team <vos.admin@openlinksw.com>
-just like any other errors in Virtuoso.
-
+These files are derived from part of PCRE 7.9 by OpenLink Virtuoso team.
+If you see regular expressions working fine then say thanks to original authors mentioned below.
+In case of errors, please remember that the library is altered (corrupted?) so
+bugs sould be reported to OpenLink Virtuoso team as well as any other errors in the products.
 
 THE MAIN PCRE LIBRARY
 ---------------------
@@ -19,7 +17,7 @@ Copyright (c) 1997-2009 University of Cambridge
 All rights reserved
 
 
-THE C++ WRAPPER LIBRARY (not included in the virtuoso tree)
+THE C++ WRAPPER LIBRARY (may be excluded from the OpenLink Virtuoso tree)
 -----------------------
 
 Written by:       Google Inc.

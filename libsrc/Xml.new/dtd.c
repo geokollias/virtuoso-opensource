@@ -1177,7 +1177,7 @@ int replace_entity_common (vxml_parser_t* parser, int is_ge, xml_def_4_entity_t*
       (test_class_str(parser, XML_CLASS_NMSTART)))
     {
       if (FINE_XML == parser->cfg.input_is_html)
-        test_class_str(parser, XML_CLASS_NMCHAR) ;
+        test_class_str (parser, XML_CLASS_NMCHAR);
       else
         test_class_str_noentity (parser, XML_CLASS_NMCHAR);
       if ( test_char (parser, ';') )

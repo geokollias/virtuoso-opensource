@@ -1179,7 +1179,7 @@ dvc_num_double (numeric_t num1, double d2)
       if (d2 > MIN_INT_DOUBLE && d2 < MAX_INT_DOUBLE)
 	{
 	  NUMERIC_VAR (num2);
-	  numeric_from_double (num2, d2);
+	  numeric_from_double ((numeric_t) num2, d2);
 	  return numeric_compare_dvc ((numeric_t) num1, (numeric_t) num2);
 	}
       if (num1->n_len + num1->n_scale <= 15)
@@ -1897,13 +1897,9 @@ dc_asg_64 (instruction_t * ins, caddr_t * inst)
 
 #define END_SET_LOOP_FAST  }}}
 
-
-
-typedef void (*vec_cmp_t) (int64 * l, int64 * r, int n_sets, dtp_t * set_mask, dtp_t * res_bits, char *mix_ret);
-
-
+typedef void (*vec_cmp_t) (void *l, void *r, int n_sets, dtp_t * set_mask, dtp_t * res_bits, char *mix_ret);
 #define CMP_VEC(name, dtp, op) \
-  void name  (dtp * l, dtp * r, int n_sets, dtp_t * set_mask, dtp_t * res_bits, char * mix_ret) \
+void name  (void *l, void *r, int n_sets, dtp_t * set_mask, dtp_t * res_bits, char * mix_ret) \
 { \
   int set; \
   char mix = *mix_ret; \
@@ -1911,7 +1907,7 @@ typedef void (*vec_cmp_t) (int64 * l, int64 * r, int n_sets, dtp_t * set_mask, d
     { \
       for (set = 0; set < n_sets; set++) \
 	{ \
-	  if (l[set] op r[set]) \
+	  if (((dtp *)l)[set] op ((dtp *)r)[set]) \
 	    { BIT_SET (res_bits, set); mix |= 2;}	\
 	  else mix |= 1; \
 	} \
@@ -1920,7 +1916,7 @@ typedef void (*vec_cmp_t) (int64 * l, int64 * r, int n_sets, dtp_t * set_mask, d
     { \
       SET_LOOP_FAST  (set, n_sets, set_mask) \
 	{ \
-	  if (l[set] op r[set]) \
+	  if (((dtp *)l)[set] op ((dtp *)r)[set]) \
 	    { BIT_SET (res_bits, set); mix |= 2;}	\
 	  else mix |= 1; \
 	} \
@@ -1961,6 +1957,17 @@ typedef void (*vec_cmp_t) (int64 * l, int64 * r, int n_sets, dtp_t * set_mask, d
 
 
 CMP_VEC (cmp_vec_int_eq, int64, ==) CMP_VEC (cmp_vec_int_lt, int64, <)CMP_VEC (cmp_vec_int_lte, int64, <=)
+#if 0				/* This was in feature/fx2 but not in feature/analytics before making it C++ friendly */
+    CMP_VEC (cmp_vec_sf_eq, float, ==) CMP_VEC (cmp_vec_sf_lt, float, <)
+CMP_VEC (cmp_vec_sf_lte, float, <=)
+CMP_VEC (cmp_vec_dbl_eq, double, ==) CMP_VEC (cmp_vec_dbl_lt, double, <)
+CMP_VEC (cmp_vec_dbl_lte, double, <=)
+     vec_cmp_t int_cmp_ops[] = { NULL, cmp_vec_int_eq, cmp_vec_int_lt, cmp_vec_int_lte };
+vec_cmp_t sf_cmp_ops[] = { NULL, cmp_vec_sf_eq, cmp_vec_sf_lt, cmp_vec_sf_lte };
+vec_cmp_t dbl_cmp_ops[] = { NULL, cmp_vec_dbl_eq, cmp_vec_dbl_lt, cmp_vec_dbl_lte };
+
+#endif
+
 #define CMP_VEC_OP(name, dtp, op) \
 void name  (dtp * l, dtp * r, int n_sets, dtp_t * set_mask, dtp_t * res_bits, dtp_t cmp_op, char * mix_ret) \
 { \
@@ -1987,8 +1994,9 @@ void name  (dtp * l, dtp * r, int n_sets, dtp_t * set_mask, dtp_t * res_bits, dt
     } \
   *mix_ret = mix; \
 }
-     int
-     dt_cmp_fl (db_buf_t dt1, db_buf_t dt2)
+
+int
+dt_cmp_fl (db_buf_t dt1, db_buf_t dt2)
 {
   int inx;
   for (inx = 0; inx < DT_COMPARE_LENGTH; inx++)
@@ -2001,7 +2009,6 @@ void name  (dtp * l, dtp * r, int n_sets, dtp_t * set_mask, dtp_t * res_bits, dt
     }
   return DVC_MATCH;
 }
-
 
 CMP_VEC_OP (cmp_vec_dt, dtp_t *, cmp_op & dt_cmp_fl (((db_buf_t) l) + DT_LENGTH * set, ((db_buf_t) r) + DT_LENGTH * set))
 CMP_VEC_OP (cmp_vec_any, dtp_t **, cmp_op & dv_compare (((db_buf_t *) l)[set], ((db_buf_t *) r)[set], NULL, 0))
@@ -2094,7 +2101,7 @@ cmp_vec (caddr_t * inst, instruction_t * ins, dtp_t * set_mask, dtp_t * res_bits
 	    la = ssl_artm_param (inst, l, (int64 *) & vn_temp_1.i, DV_DATETIME, inx, n, NULL, NULL);
 	  if (!inx || (SSL_VEC == r->ssl_type || SSL_REF == r->ssl_type))
 	    ra = ssl_artm_param (inst, r, (int64 *) & vn_temp_2.i, DV_DATETIME, inx, n, NULL, NULL);
-	  cmp_vec_dt ((db_buf_t) la, (db_buf_t) ra, n, set_mask ? &set_mask[inx / 8] : NULL, &res_bits[inx / 8], cmp_op, &mix);
+	  cmp_vec_dt ((dtp_t **) la, (dtp_t **) ra, n, set_mask ? &set_mask[inx / 8] : NULL, &res_bits[inx / 8], cmp_op, &mix);
 	}
       return mix - 1;
     }
@@ -2110,7 +2117,7 @@ cmp_vec (caddr_t * inst, instruction_t * ins, dtp_t * set_mask, dtp_t * res_bits
 	    la = ssl_artm_param (inst, l, (int64 *) & vn_temp_1.i, DV_ANY, inx, n, &ap, &allocd);
 	  if (!inx || (SSL_VEC == r->ssl_type || SSL_REF == r->ssl_type))
 	    ra = ssl_artm_param (inst, r, (int64 *) & vn_temp_2.i, DV_ANY, inx, n, &ap, &allocd);
-	  cmp_vec_any (la, ra, n, set_mask ? &set_mask[inx / 8] : NULL, &res_bits[inx / 8], cmp_op, &mix);
+	  cmp_vec_any ((dtp_t ***) la, (dtp_t ***) ra, n, set_mask ? &set_mask[inx / 8] : NULL, &res_bits[inx / 8], cmp_op, &mix);
 	}
       if (allocd && (allocd < ap.ap_area || allocd > ap.ap_area + ap.ap_fill))
 	dk_free_box (allocd);

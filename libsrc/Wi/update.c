@@ -886,7 +886,7 @@ update_keyset_state_restore (update_node_t * upd, caddr_t * state, int *start)
       }
       END_DO_BOX;
     }
-  dk_free_box (vht);
+  dk_free_box ((caddr_t) vht);
   dk_free_box (upd_state[0]);
   upd_state[0] = box_num (pos);
   return 1;

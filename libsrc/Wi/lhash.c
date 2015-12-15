@@ -99,6 +99,53 @@ void hash_source_chash_input_1i_n (hash_source_t * hs, caddr_t * inst, caddr_t *
 
 
 uint64
+thv (char *str, int len)
+{
+  uint64 h1 = 1;
+  MHASH_VAR (h1, str, len);
+  return h1;
+}
+
+
+uint64
+mhv (uint64 init, dtp_t * ptr, int len)
+{
+  uint64 __h = init;
+  uint64 *data = (uint64 *) ptr;
+  uint64 *end = (uint64 *) (((ptrlong) data) + (len & ~7));
+  while (data < end)
+    {
+      uint64 k = *(data++);
+      k *= MHASH_M;
+      k ^= k >> MHASH_R;
+      k *= MHASH_M;
+      __h ^= k;
+      __h *= MHASH_M;
+    }
+  if (len & 7)
+    {
+      uint64 k = *data;
+      k &= ((int64) 1 << ((len & 7) << 3)) - 1;
+      k *= MHASH_M;
+      k ^= k >> MHASH_R;
+      k *= MHASH_M;
+      __h ^= k;
+      __h *= MHASH_M;
+    }
+  init = __h;
+  return init;
+}
+
+
+uint64
+thv2 (char *str, int len)
+{
+  uint64 h1 = 1;
+  BYTE_BUFFER_HASH (h1, str, len);
+  return h1;
+}
+
+uint64
 th1 (int64 i)
 {
   uint64 h;
@@ -425,7 +472,11 @@ gb_aggregate (setp_node_t * setp, caddr_t * inst, chash_t * cha, int64 ** groups
       case AGG_C (DV_LONG_INT, AMMSC_MAX):
 	CHA_AGG_MAX (int64, <);
 
+      case AGG_C (DV_IRI_ID, AMMSC_MAX):
+	CHA_AGG_MAX (uint64, <);
 
+      case AGG_C (DV_IRI_ID, AMMSC_MIN):
+	CHA_AGG_MAX (uint64, >);
       case AGG_C (DV_SINGLE_FLOAT, AMMSC_MIN):
 	CHA_AGG_MAX (float, >);
       case AGG_C (DV_SINGLE_FLOAT, AMMSC_MAX):
@@ -8197,7 +8248,8 @@ bif_chash_in_init (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 	  break;
 	}
     }
-  QST_INT (qi, hfq->hfq_fill_fref->fnr_select->src_prev->src_out_fill) = dc->dc_n_values;
+//QN_CHECK_SETS (hfq->hfq_fill_fref->fnr_select->src_prev, ((caddr_t*)qi), dc->dc_n_values);
+//QST_INT (qi, hfq->hfq_fill_fref->fnr_select->src_prev->src_out_fill) = dc->dc_n_values;
   qi->qi_n_sets = dc->dc_n_values;
   QR_RESET_CTX
   {

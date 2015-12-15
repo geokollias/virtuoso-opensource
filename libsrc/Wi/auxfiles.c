@@ -27,8 +27,11 @@
  *
  */
 
+#include "CLI.h"
 #include "sqlnode.h"
 #include "sqlver.h"
+#include "datesupp.h"
+#include "wifn.h"
 
 /*
  *  These are the global variables that are set through the config file
@@ -140,12 +143,12 @@ int64 mp_sql_cap = ~0L;
 
 void _db_read_cfg (dbe_storage_t * dbs, char *mode);
 dk_set_t _cfg_read_storages (caddr_t ** temp_storage);
-void _dbs_read_cfg (dbe_storage_t * dbs, char *file);
+void _dbs_read_cfg (dbe_storage_t * dbs, const char *file);
 
 void (*cfg_replace_log) (char *str) = _cfg_replace_log;
 void (*cfg_set_checkpoint_interval) (int32) = _cfg_set_checkpoint_interval;
-void (*db_read_cfg) (caddr_t * it, char *mode) = (void (*)(caddr_t * it, char *mode)) _db_read_cfg;
-void (*dbs_read_cfg) (caddr_t * it, char *mode) = (void (*)(caddr_t * it, char *mode)) _dbs_read_cfg;
+void (*db_read_cfg) (caddr_t * it, const char *mode) = (void (*)(caddr_t * it, const char *mode)) _db_read_cfg;
+void (*dbs_read_cfg) (caddr_t * it, const char *file) = (void (*)(caddr_t * it, const char *file)) _dbs_read_cfg;
 dk_set_t (*dbs_read_storages) (caddr_t ** temp_file) = _cfg_read_storages;
 
 
@@ -170,8 +173,8 @@ cfg2_getlong (PCONFIG pconfig, PCONFIG pconfig_g, char *sect, char *item, int32 
 void
 srv_set_cfg (void (*replace_log) (char *str),
     void (*set_checkpoint_interval) (int32 f),
-    void (*read_cfg) (caddr_t * it, char *mode),
-    void (*s_read_cfg) (caddr_t * it, char *mode), dk_set_t (*read_storages) (caddr_t ** temp_file))
+    void (*read_cfg) (caddr_t * it, const char *mode),
+    void (*s_read_cfg) (caddr_t * it, const char *mode), dk_set_t (*read_storages) (caddr_t ** temp_file))
 {
   cfg_replace_log = replace_log;
   cfg_set_checkpoint_interval = set_checkpoint_interval;
@@ -327,7 +330,7 @@ int32 cli_utf8_execs;
 int32 cli_binary_timestamp = 1;
 int32 cli_no_system_tables = 0;
 
-caddr_t client_defaults;
+caddr_t client_defaults = NULL;
 
 caddr_t
 srv_client_defaults (void)
@@ -351,12 +354,14 @@ srv_client_defaults_init (void)
       box_string ("SQL_UTF8_EXECS"), box_num (cli_utf8_execs),
       box_string ("SQL_BINARY_TIMESTAMP"), box_num (cli_binary_timestamp),
       box_string ("SQL_TIMEZONELESS_DATETIMES"), box_num (timezoneless_datetimes));
-  dk_free_tree (old);
+
+  if (old)
+    dk_free_tree (old);
 }
 
 
 static int
-cfg_parse_disks (dbe_storage_t * dbs, char *err, int err_max, char *cfg_file)
+cfg_parse_disks (dbe_storage_t * dbs, char *err, int err_max, const char *cfg_file)
 {
   log_segment_t **last_log = &dbs->dbs_log_segments;
   long llen;
@@ -730,7 +735,7 @@ _db_read_cfg (dbe_storage_t * ignore, char *mode)
 
 
 caddr_t
-dbs_log_derived_name (dbe_storage_t * dbs, char *ext)
+dbs_log_derived_name (dbe_storage_t * dbs, const char *ext)
 {
   char *szExt, szNewName[255];
   int n, name_len;
@@ -759,7 +764,7 @@ dbs_log_derived_name (dbe_storage_t * dbs, char *ext)
 
 
 void
-_dbs_read_cfg (dbe_storage_t * dbs, char *file)
+_dbs_read_cfg (dbe_storage_t * dbs, const char *file)
 {
   long max_cp = 0;
   /* int trx_bufs; */

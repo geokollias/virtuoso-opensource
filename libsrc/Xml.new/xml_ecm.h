@@ -30,6 +30,8 @@
 #include "libutil.h"
 #include "langfunc.h"
 
+VIRT_API_BEGIN
+
 /* XML element-content model (ECM) processor */
 
 extern unsigned char ecm_utf8props[0x100];
@@ -390,5 +392,6 @@ extern ptrlong xecm_ba_get_val(struct xecm_big_array_s* array, ptrlong idx);
 extern void xecm_ba_delete(struct xecm_big_array_s* array);
 extern void xecm_ba_copy(struct xecm_big_array_s* target, struct xecm_big_array_s* source);
 
-#endif /* _XML_ECM_H */
+VIRT_API_END
 
+#endif /* _XML_ECM_H */

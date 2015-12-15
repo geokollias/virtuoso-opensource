@@ -1,30 +1,21 @@
 /*
  *  logmsg.h
  *
- *  $Id$
+ *  $Id: logmsg.h,v 1.11 2013/01/02 11:35:23 source Exp $
  *
  *  Alternate logging module
- *  
- *  This file is part of the OpenLink Software Virtuoso Open-Source (VOS)
- *  project.
- *  
- *  Copyright (C) 1998-2014 OpenLink Software
- *  
- *  This project is free software; you can redistribute it and/or modify it
- *  under the terms of the GNU General Public License as published by the
- *  Free Software Foundation; only version 2 of the License, dated June 1991.
- *  
- *  This program is distributed in the hope that it will be useful, but
- *  WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- *  General Public License for more details.
- *  
- *  You should have received a copy of the GNU General Public License along
- *  with this program; if not, write to the Free Software Foundation, Inc.,
- *  51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
- *  
- *  
-*/
+ *
+ *  Copyright (C) 1993-2013 OpenLink Software.
+ *  All Rights Reserved.
+ *
+ *  The copyright above and this notice must be preserved in all
+ *  copies of this source code.  The copyright above does not
+ *  evidence any actual or intended publication of this source code.
+ *
+ *  This is unpublished proprietary trade secret of OpenLink Software.
+ *  This source code may not be copied, disclosed, distributed, demonstrated
+ *  or licensed except as authorized by OpenLink Software.
+ */
 
 #ifndef _LOGMSG_H
 #define _LOGMSG_H
@@ -115,11 +106,11 @@ BEGIN_CPLUSPLUS
 
 int   logmsg_ap (int level, char *file, int line, int mask, char *format, va_list ap);
 int   logmsg (int level, char *file, int line, int mask, char *format, ...);
-int   log_error (char *format, ...);
-int   log_warning (char *format, ...);
-int   log_info (char *format, ...);
-int   log_debug (char *format, ...);
-int   log (int level, char *file, int line, char *format, ...);
+int   log_error (const char *format, ...);
+int   log_warning (const char *format, ...);
+int   log_info (const char *format, ...);
+int   log_debug (const char *format, ...);
+int   log (int level, const char *file, int line, const char *format, ...);
 int   log_set_limit (int rate);
 int   log_reset_limits (void);
 int   log_set_mask (LOG * logptr, int level, int mask);

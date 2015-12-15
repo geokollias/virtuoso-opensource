@@ -35,24 +35,21 @@
 
 #ifndef _WISERVIC_H
 #define _WISERVIC_H
-
+#include "Dk.h"
 #ifdef WIN32
 #include "wi.h"			/* Includes widisk.h in turn. */
 #include <windows.h>		/* Includes winsvc.h in turn. */
 #endif
 
-
+VIRT_API_BEGIN
 #define WISVC_SEND_WAIT_HINT_EVERY_N_MSEC 500
-
 #define WISVC_DEFAULT_SERVICE_NAME "Kubl"	/* For Windows NT services. */
-
 /* Added to the end of the file path of binary executable of Kubl
    by -S option, and this is then transferred in argv[0] to started
    service, so this can be used for checking whether the executable
    has been started normally at MS-DOS command prompt, or as a service.
  */
 #define WISVC_EXE_EXTENSION_FOR_SERVICE ".eXe"
-
 int main_the_rest (void);	/* Actually in chil.c */
 
 int wisvc_Handle_W_option (int argc, char **argv, char *s, int *i_ptr, int called_as_service);
@@ -107,4 +104,6 @@ void wisvc_send_service_running_status (void);
  if(called_as_service) { return(S); } else { exit(S); }
 
 int is_started_as_service (void);
+
+VIRT_API_END
 #endif /* _WISERVIC_H */

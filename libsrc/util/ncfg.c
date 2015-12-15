@@ -1,42 +1,26 @@
 /*
  *  ncfg.c
  *
- *  $Id$
+ *  $Id: ncfg.c,v 1.10 2004/01/06 11:38:35 source Exp $
  *
  *  New Configuration File Management
- *  
- *  This file is part of the OpenLink Software Virtuoso Open-Source (VOS)
- *  project.
- *  
- *  Copyright (C) 1998-2014 OpenLink Software
- *  
- *  This project is free software; you can redistribute it and/or modify it
- *  under the terms of the GNU General Public License as published by the
- *  Free Software Foundation; only version 2 of the License, dated June 1991.
- *  
- *  This program is distributed in the hope that it will be useful, but
- *  WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- *  General Public License for more details.
- *  
- *  You should have received a copy of the GNU General Public License along
- *  with this program; if not, write to the Free Software Foundation, Inc.,
- *  51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
- *  
- *  
-*/
+ *
+ *  (C)Copyright 1998 OpenLink Software.
+ *  All Rights Reserved.
+ *
+ *  The copyright above and this notice must be preserved in all
+ *  copies of this source code.  The copyright above does not
+ *  evidence any actual or intended publication of this source code.
+ *
+ *  This is unpublished proprietary trade secret of OpenLink Software.
+ *  This source code may not be copied, disclosed, distributed, demonstrated
+ *  or licensed except as authorized by OpenLink Software.
+ */
 
 #include "libutil.h"
+#include "util/md5.h"
 #include <fcntl.h>
 
-#ifdef _SSL
-#include <openssl/md5.h>
-#define MD5Init   MD5_Init
-#define MD5Update MD5_Update
-#define MD5Final  MD5_Final
-#else
-#include "util/md5.h"
-#endif /* _SSL */
 
 static PCFGENTRY _cfg_poolalloc (PCONFIG p, u_int count);
 static int _cfg_parse (PCONFIG pconfig);
@@ -44,8 +28,8 @@ static int _cfg_freeent (PCFGENTRY e);
 static int _cfg_freeimage (PCONFIG pconfig);
 static int _cfg_copyent (PCFGENTRY dst, PCFGENTRY src);
 static int _cfg_refresh (PCONFIG pconfig);
-static int _cfg_storeentry ( PCONFIG pconfig, char *section, char *id,
-    char *value, char *comment, int dynamic);
+static int _cfg_storeentry ( PCONFIG pconfig, const char *section, const char *id,
+    const char *value, const char *comment, int dynamic);
 
 /*** READ MODULE ****/
 
@@ -55,7 +39,7 @@ static int _cfg_storeentry ( PCONFIG pconfig, char *section, char *id,
 
 
 int
-cfg_init (PCONFIG *ppconf, char *filename)
+cfg_init (PCONFIG *ppconf, const char *filename)
 {
   return cfg_init2 (ppconf, filename, 0);
 }
@@ -65,7 +49,7 @@ cfg_init (PCONFIG *ppconf, char *filename)
  *  Initialize a configuration
  */
 int
-cfg_init2 (PCONFIG *ppconf, char *filename, int doCreate)
+cfg_init2 (PCONFIG *ppconf, const char *filename, int doCreate)
 {
   PCONFIG pconfig;
 
@@ -460,10 +444,10 @@ _cfg_parse (PCONFIG pconfig)
 static int
 _cfg_storeentry (
     PCONFIG pconfig,
-    char *section,
-    char *id,
-    char *value,
-    char *comment,
+    const char *section,
+    const char *id,
+    const char *value,
+    const char *comment,
     int dynamic)
 {
   TCFGENTRY newentry;
@@ -490,10 +474,10 @@ _cfg_storeentry (
 int
 cfg_storeentry (
     PCONFIG pconfig,
-    char *section,
-    char *id,
-    char *value,
-    char *comment,
+    const char *section,
+    const char *id,
+    const char *value,
+    const char *comment,
     int dynamic)
 {
   int rc;
@@ -632,7 +616,7 @@ cfg_nextentry (PCONFIG pconfig)
 
 
 static int
-_cfg_find (PCONFIG pconfig, char *section, char *id)
+_cfg_find (PCONFIG pconfig, const char *section, const char *id)
 {
   int atsection;
 
@@ -659,7 +643,7 @@ _cfg_find (PCONFIG pconfig, char *section, char *id)
 
 
 int
-cfg_find (PCONFIG pconfig, char *section, char *id)
+cfg_find (PCONFIG pconfig, const char *section, const char *id)
 {
   int rc;
 
@@ -811,7 +795,7 @@ cfg_merge (PCONFIG pconfig, PCONFIG src)
  *   value  NULL  NULL		delete section <section>
  */
 static int
-_cfg_write (PCONFIG pconfig, char *section, char *id, char *value)
+_cfg_write (PCONFIG pconfig, const char *section, const char *id, const char *value)
 {
   PCFGENTRY e, e2, eSect;
   size_t idx;
@@ -968,7 +952,7 @@ _cfg_write (PCONFIG pconfig, char *section, char *id, char *value)
 
 
 int
-cfg_write (PCONFIG pconfig, char *section, char *id, char *value)
+cfg_write (PCONFIG pconfig, const char *section, const char *id, const char *value)
 {
   int rc;
 
@@ -984,7 +968,7 @@ cfg_write (PCONFIG pconfig, char *section, char *id, char *value)
 
 
 static int
-_cfg_digestprintf (MD5_CTX *pMd5, FILE *fd, char *fmt, ...)
+_cfg_digestprintf (MD5_CTX *pMd5, FILE *fd, const char *fmt, ...)
 {
   char buf[4096];
   va_list ap;
@@ -1152,4 +1136,3 @@ cfg_commit (PCONFIG pconfig)
 
   return 0;
 }
-

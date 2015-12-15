@@ -309,7 +309,7 @@ bh_string_output_w ( /* this was before 3.0: index_space_t * isp, */ lock_trx_t 
   while (start)
     {
       long char_len, byte_len, next;
-      unsigned char *mbc;
+      const unsigned char *mbc;
       if (NULL == string_output)
 	string_output = strses_allocate ();
       memset (&state, 0, sizeof (state));
@@ -376,7 +376,7 @@ bh_string_list_w ( /* this was before 3.0: index_space_t * isp, */ lock_trx_t * 
   while (start)
     {
       long char_len, byte_len, next;
-      unsigned char *mbc;
+      const unsigned char *mbc;
       uint32 timestamp;
       int type;
 
@@ -855,7 +855,8 @@ box_utf8_string_as_narrow (ccaddr_t _str, caddr_t narrow, long max_len, wcharset
 {
   virt_mbstate_t state;
   long len, inx;
-  const unsigned char *str = (const unsigned char *) _str, *src = (const unsigned char *) _str;
+  const unsigned char *str = (const unsigned char *) _str;
+  const unsigned char *src = str;
   caddr_t box;
   if (!charset)
     {
@@ -867,7 +868,7 @@ box_utf8_string_as_narrow (ccaddr_t _str, caddr_t narrow, long max_len, wcharset
     charset = default_charset;
 
   memset (&state, 0, sizeof (virt_mbstate_t));
-  len = (long) virt_mbsnrtowcs (NULL, (unsigned char **) &src, box_length (str), 0, &state);
+  len = (long) virt_mbsnrtowcs (NULL, &src, box_length (str), 0, &state);
   if (max_len > 0 && len > max_len)
     len = max_len;
   if (len < 0)			/* there was <= 0 - bug */
@@ -898,7 +899,8 @@ t_box_utf8_string_as_narrow (ccaddr_t _str, caddr_t narrow, long max_len, wchars
 {
   virt_mbstate_t state;
   long len, inx;
-  const unsigned char *str = (const unsigned char *) _str, *src = (const unsigned char *) _str;
+  const unsigned char *str = (const unsigned char *) _str;
+  const unsigned char *src = str;
   caddr_t box;
   if (!charset)
     {
@@ -910,7 +912,7 @@ t_box_utf8_string_as_narrow (ccaddr_t _str, caddr_t narrow, long max_len, wchars
     charset = default_charset;
 
   memset (&state, 0, sizeof (virt_mbstate_t));
-  len = (long) virt_mbsnrtowcs (NULL, (unsigned char **) &src, strlen ((char *) str), 0, &state);
+  len = (long) virt_mbsnrtowcs (NULL, &src, strlen ((char *) str), 0, &state);
   if (max_len > 0 && len > max_len)
     len = max_len;
   if (len < 0)			/* there was <= 0 - bug */
@@ -963,7 +965,7 @@ caddr_t
 t_box_utf8_as_wide_char (ccaddr_t _utf8, caddr_t _wide_dest, size_t utf8_len, size_t max_wide_len)
 {
   unsigned char *utf8 = (unsigned char *) _utf8;
-  unsigned char *utf8work;
+  const unsigned char *utf8work;
   size_t wide_len;
   virt_mbstate_t state;
   caddr_t dest;

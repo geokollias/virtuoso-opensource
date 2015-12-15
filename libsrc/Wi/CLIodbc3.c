@@ -1260,8 +1260,8 @@ get_rdf_literal_prop (cli_connection_t * con, SQLSMALLINT ftype, short key)
 
   if (!ret)			/* not in cache */
     {
-      static char *qr_lang = "select RL_ID from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = ?";
-      static char *qr_type = "select RDT_QNAME from DB.DBA.RDF_DATATYPE where RDT_TWOBYTE = ?";
+      static const char *qr_lang = "select RL_ID from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = ?";
+      static const char *qr_type = "select RDT_QNAME from DB.DBA.RDF_DATATYPE where RDT_TWOBYTE = ?";
       char *qr = ((ftype == SQL_DESC_COL_LITERAL_LANG) ? qr_lang : qr_type);
       char buf[1000];
       SQLHSTMT hstmt;

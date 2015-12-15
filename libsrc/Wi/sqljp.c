@@ -414,7 +414,7 @@ jp_fanout (join_plan_t * jp)
 	{
 	  if (DFE_BOP_PRED == is_o->dfe_type && 1 == is_o->_.bin.is_in_list)
 	    {
-	      ST **in_list = sqlo_in_list (is_o, NULL, NULL);
+	      df_elt_t **in_list = sqlo_in_list (is_o, NULL, NULL);
 	      misc_card *= BOX_ELEMENTS (in_list) - 1;
 	    }
 	  return jp->jp_fanout = (p_stat[0] / o_card) * misc_card;
@@ -1138,10 +1138,57 @@ dfe_join_unique (sqlo_t * so, op_table_t * ot, df_elt_t * tb_dfe, dk_set_t * res
   jp.jp_prev = prev_jp;
   for (prev_jp = prev_jp; prev_jp; prev_jp = prev_jp->jp_prev)
     {
+#if 1				/* This is in feature/analytics before c++ merge from feature/fx2, rejected version from feature/fx2 is in #else */
       path_fanout *= prev_jp->jp_fanout;
       root_fanout = prev_jp->jp_fanout;
       root_jp = prev_jp;
       level++;
+#else
+      ST **from = (ST **) t_list_to_array (jp.jp_hash_fill_dfes);
+      ST *pred_tree = NULL;
+      ST *texp = t_listst (9, TABLE_EXP, from,
+	  NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+      ST *sel = t_listst (5, SELECT_STMT, NULL, t_list_to_array (hash_keys), NULL, texp);
+      op_table_t *fill_ot;
+      DO_SET (df_elt_t *, dfe, &jp.jp_hash_fill_preds) t_st_and (&pred_tree, sqlo_pred_tree (dfe));
+      END_DO_SET ();
+      texp->_.table_exp.where = pred_tree;
+      DO_BOX (df_elt_t *, dfe, inx, sel->_.select_stmt.selection)
+      {
+	ST *as;
+	char tmp[MAX_QUAL_NAME_LEN];
+	if (DFE_COLUMN == dfe->dfe_type)
+	  snprintf (tmp, sizeof (tmp), "%s.%s", dfe->dfe_tree->_.col_ref.prefix, dfe->dfe_tree->_.col_ref.name);
+	else
+	  snprintf (tmp, sizeof (tmp), "h%d", ctr++);
+	as = t_listst (5, BOP_AS, t_box_copy_tree ((caddr_t) dfe->dfe_tree), NULL, t_box_string (tmp), NULL);
+	sel->_.select_stmt.selection[inx] = (caddr_t) as;
+      }
+      END_DO_BOX;
+      DO_BOX (df_elt_t *, tb_dfe, inx, texp->_.table_exp.from)
+	  texp->_.table_exp.from[inx] =
+	  t_listst (3, TABLE_REF, t_listst (6, TABLE_DOTTED, tb_dfe->_.table.ot->ot_table->tb_name,
+	      tb_dfe->_.table.ot->ot_new_prefix, NULL, NULL, tb_dfe->_.table.ot->ot_opts), NULL);
+      END_DO_BOX;
+      sel = (ST *) t_box_copy_tree ((caddr_t) sel);
+      sqlo_scope (so, &sel);
+      fill_dfe = sqlo_df (so, sel);
+      fill_dfe->dfe_super = hash_ref_tb;
+      fill_ot = fill_dfe->_.sub.ot;
+      fill_ot->ot_work_dfe = dfe_container (so, DFE_DT, hash_ref_tb);
+      fill_ot->ot_work_dfe->_.sub.in_arity = 1;
+      fill_ot->ot_work_dfe->_.sub.hash_filler_of = hash_ref_tb;
+      fill_copy = sqlo_layout (so, fill_ot, SQLO_LAY_VALUES, hash_ref_tb);
+      fill_copy->_.sub.is_hash_filler_unique = hash_ref_tb->_.table.is_unique && !jp.jp_hash_fill_non_unq;
+      fill_copy->_.sub.hash_filler_of = hash_ref_tb;
+      fill_copy->_.sub.n_hash_fill_keys = dk_set_length (hash_keys);
+      if (so->so_cache_subqs)
+	{
+	  caddr_t k = t_box_string (sqk);
+	  df_elt_t *cp = sqlo_layout_copy (so, fill_copy, NULL);
+	  t_id_hash_set (so->so_subq_cache, (caddr_t) & k, (caddr_t) & cp);
+	}
+#endif
     }
   if (DFE_DT == tb_dfe->dfe_type)
     return 0;			/* do not go inside a dt or trans dt */

@@ -1073,13 +1073,11 @@ cl_local_deletes (delete_node_t * del, caddr_t * inst, caddr_t * part_inst)
 }
 
 
-iri_id_t del_trap_iri;
-
 void
 dbg_del_check (data_col_t * source_dc, int source_row)
 {
   caddr_t box = dc_box (source_dc, source_row);
-  if (DV_IRI_ID == DV_TYPE_OF (box) && del_trap_iri == *(long *) box)
+  if (DV_IRI_ID == DV_TYPE_OF (box) && 7000064 == *(long *) box)
     bing ();
   dk_free_tree (box);
 }
@@ -1156,8 +1154,7 @@ delete_node_vec_run (delete_node_t * del, caddr_t * inst, caddr_t * state, int i
 		dc_append_null (target_dc);
 	      else
 		{
-		  if (del_trap_iri)
-		    dbg_del_check (source_dc, source_row);
+		  /*dbg_del_check (source_dc, source_row); */
 		  if (f)
 		    {
 		      f (target_dc, source_dc, source_row, &err);

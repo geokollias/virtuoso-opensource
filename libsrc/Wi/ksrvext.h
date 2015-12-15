@@ -28,7 +28,7 @@
 #ifndef _KSRVEXT_H
 #define _KSRVEXT_H
 
-
+#include "Dk.h"
 #include "exe_export.h"
 #include <limits.h>
 #include <sys/types.h>
@@ -57,8 +57,8 @@
 #define VIRTVARCLASS extern
 #endif
 
+VIRT_API_BEGIN
 #define timer_t opl_timer_t
-
 typedef unsigned char *db_buf_t;
 
 typedef struct query_s query_t;
@@ -140,7 +140,7 @@ void bif_define_typed (const char *name, bif_t bif, bif_type_t * bt);
 
 caddr_t bif_arg (caddr_t * qst, state_slot_t ** args, int nth, const char *func);
 caddr_t bif_string_arg (caddr_t * qst, state_slot_t ** args, int nth, const char *func);
-caddr_t bif_strses_arg (caddr_t * qst, state_slot_t ** args, int nth, const char *func);
+dk_session_t *bif_strses_arg (caddr_t * qst, state_slot_t ** args, int nth, const char *func);
 struct xml_entity_s *bif_entity_arg (caddr_t * qst, state_slot_t ** args, int nth, const char *func);
 struct xml_tree_ent_s *bif_tree_ent_arg (caddr_t * qst, state_slot_t ** args, int nth, const char *func);
 caddr_t bif_bin_arg (caddr_t * qst, state_slot_t ** args, int nth, const char *func);
@@ -653,4 +653,5 @@ void qi_signal_if_trx_error (query_instance_t * qi);
 extern int http_ses_size;
 void strses_enable_paging (dk_session_t * ses, int max_bytes_in_mem);
 
+VIRT_API_END
 #endif /* _KSRVEXT_H */

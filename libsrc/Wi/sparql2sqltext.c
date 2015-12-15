@@ -61,8 +61,8 @@ quad_map_t *qm_default;
 triple_case_t *tc_default;
 quad_storage_t *rdf_sys_storage;
 
-int rdf_create_graph_keywords = 0;
-int rdf_query_graph_keywords = 0;
+long rdf_create_graph_keywords = 0;
+long rdf_query_graph_keywords = 0;
 
 void
 rdf_ds_load_all (void)
@@ -75,7 +75,7 @@ rdf_ds_load_all (void)
   for (colctr = 0; colctr < 4; colctr++)
     {
       const char *colnames[] = { "G", "S", "P", "O" };
-      qmcol = dk_alloc_box_zero (sizeof (qm_column_t), DV_ARRAY_OF_POINTER);
+      qmcol = (qm_column_t *) dk_alloc_box_zero (sizeof (qm_column_t), DV_ARRAY_OF_POINTER);
       qmcol->qmvcColumnName = box_dv_short_string (colnames[colctr]);
       qmval = qm_default_values[colctr] = (qm_value_t *) dk_alloc_box_zero (sizeof (qm_value_t), DV_ARRAY_OF_POINTER);
       box_flags (qmval) |= BF_VALID_JSO;
@@ -1330,7 +1330,7 @@ ssg_print_tmpl_phrase (struct spar_sqlgen_s *ssg, qm_format_t * qm_fmt, const ch
 	  if ((DV_ARRAY_OF_POINTER != DV_TYPE_OF (res)) || (col_idx > BOX_ELEMENTS (res)))
 	    ssg_puts_with_comment (" NULL", "failed spfinv");
 	  ssg_print_box_as_sql_atom (ssg, res[col_idx], SQL_ATOM_NARROW_OR_WIDE);
-	  dk_free_tree (res);
+	  dk_free_tree ((caddr_t) res);
 	}
 /*                         0         1         2 */
 /*                         012345678901234567890 */
@@ -1699,7 +1699,7 @@ sparp_patch_tmpl (sparp_t * sparp, ccaddr_t tmpl, dk_set_t alias_replacements)
       session_buffered_write (ses, mopen_hit, tail - mopen_hit);
     }
   res = strses_string (ses);
-  dk_free_box (ses);
+  dk_free_box ((caddr_t) ses);
   tres = t_box_dv_short_string (res);
   dk_free_box (res);
   return tres;
@@ -3680,7 +3680,7 @@ Without the special optimization it becomes iri_to_id ('graph iri string from vi
 	{
 	  min_mode = left_vmode;
 #ifndef NDEBUG
-	  right = BADBEEF_BOX;
+	  right = (SPART *) BADBEEF_BOX;
 #endif
 	  goto vmodes_found;	/* see below */
 	}
@@ -4059,12 +4059,31 @@ ssg_safe_op_valmode_for_bif_IN (sparp_t * sparp, SPART ** args, ssg_valmode_t ar
     return arg1_native;
   if (IS_BOX_POINTER (arg1_native) && !(arg1_native->qmfIsBijection))
     return arg1_native;		/* Let the expression work in native or results in compilation error but not produce wrong "true" after collision of listed and not listed native value into common converted value */
-  op_fmt = sparp_expn_native_valmode (sparp, args[1]);
-  for (argctr = BOX_ELEMENTS (args); argctr-- > 2; /* no step */ )
+  op_fmt = SSG_VALMODE_AUTO;
+  for (argctr = BOX_ELEMENTS (args); argctr-- > 1; /* no step */ )
     {
       SPART *argN = args[argctr];
-      ssg_valmode_t argN_native = sparp_expn_native_valmode (sparp, argN);
-      if (argN_native != op_fmt)
+      ssg_valmode_t argN_native;
+      if (IS_BOX_POINTER (arg1_native) /* && (arg1_native->qmfIsBijection) -- no need to check, see case above */ )
+	{
+	  switch (SPART_TYPE (argN))
+	    {
+	    case SPAR_QNAME:
+	    case SPAR_LIT:
+	      continue;
+	    case SPAR_VARIABLE:
+	    case SPAR_BLANK_NODE_LABEL:
+	      if ((SPART_VARR_ALWAYS_NULL | SPART_VARR_CONFLICT) & argN->_.var.rvr.rvrRestrictions)
+		continue;
+	      if (((SPART_VARR_FIXED | SPART_VARR_NOT_NULL) & argN->_.var.rvr.rvrRestrictions) ==
+		  (SPART_VARR_FIXED | SPART_VARR_NOT_NULL))
+		continue;
+	    }
+	}
+      argN_native = sparp_expn_native_valmode (sparp, argN);
+      if (SSG_VALMODE_AUTO == op_fmt)
+	op_fmt = argN_native;
+      else if (argN_native != op_fmt)
 	{
 	  op_fmt = ssg_smallest_union_valmode (op_fmt, argN_native, &sqlval_is_ok_and_cheap);
 	  if ((SSG_VALMODE_LONG == op_fmt) && !sqlval_is_ok_and_cheap)
@@ -4073,6 +4092,8 @@ ssg_safe_op_valmode_for_bif_IN (sparp_t * sparp, SPART ** args, ssg_valmode_t ar
 	    sqlval_is_ok_and_cheap = 0x2;
 	}
     }
+  if (SSG_VALMODE_AUTO == op_fmt)
+    op_fmt = arg1_native;
   if (sqlval_is_ok_and_cheap && (SSG_VALMODE_LONG == op_fmt)
       && ((SSG_VALMODE_SQLVAL == arg1_native) || (SSG_VALMODE_NUM == arg1_native) || (IS_BOX_POINTER (arg1_native)
 	      && arg1_native->qmfHasCheapSqlval)))
@@ -4097,11 +4118,12 @@ ssg_safe_op_valmode_for_bif_IN (sparp_t * sparp, SPART ** args, ssg_valmode_t ar
 	    if (SPART_VARR_LONG_EQ_SQL & rbits)
 	      continue;
 	  }
-	return op_fmt;
+	goto cannot_replace_long_with_sqlval;	/* see below */
       }
       END_DO_BOX_FAST;
       return SSG_VALMODE_SQLVAL;
     }
+cannot_replace_long_with_sqlval:
   return op_fmt;
 }
 

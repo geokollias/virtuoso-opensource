@@ -44,6 +44,8 @@ typedef unsigned int uint32;
 
 #include "exe_export.h"
 
+VIRT_API_BEGIN
+
 /*! \file
 \brief Functions and data structures for language-specific text processing
 
@@ -330,7 +332,7 @@ The type is almost identical to eh_encode_buffer_t, the only difference is wchar
 typedef char *eh_encode_wchar_buffer_t (const wchar_t *src_buf, const wchar_t *src_buf_end, char *tgt_buf, char *tgt_buf_end, ...);
 
 struct encoding_handler_s {
-  char ** eh_names;		/*!< list of names of the encoding, terminated by NULL member */
+  const char ** eh_names;	/*!< list of names of the encoding, terminated by NULL member */
   size_t eh_minsize;		/*!< minimum length of one unichar's encoded value */
   size_t eh_maxsize;		/*!< maximum length of one unichar's encoded value */
   int eh_byteorder;		/*!< the expected byteorder of data, if nonzero; used for 16- and 32-bit encodings */
@@ -705,5 +707,6 @@ extern int lh_count_words(encoding_handler_t *eh, lang_handler_t *lh, const char
 extern int lh_iterate_words(encoding_handler_t *eh, lang_handler_t *lh, const char *buf, size_t bufsize, lh_word_check_t *check, lh_word_callback_t *callback, void *userdata);
 extern int lh_iterate_patched_words(encoding_handler_t *eh, lang_handler_t *lh, const char *buf, size_t bufsize, lh_word_check_t *check, lh_word_patch_t *patch, lh_word_callback_t *callback, void *userdata);
 
+VIRT_API_END
 
 #endif

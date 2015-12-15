@@ -29,14 +29,7 @@
 #include "libutil.h"
 #include "xmlgen.h"
 #include "xmlnode.h"
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "langfunc.h"
-#ifdef __cplusplus
-}
-#endif
 #include "shuric.h"
 
 #define XP_UNION	(ptrlong)1000

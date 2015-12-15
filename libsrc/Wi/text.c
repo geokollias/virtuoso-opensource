@@ -3797,11 +3797,11 @@ txs_ext_fti_get (query_instance_t * qi, slice_id_t slice, caddr_t ext_fti, caddr
 	      }
 	    while (XI_AT_END != xte->_->xe_next_sibling ((xml_entity_t *) xte, doc_test));
 	  }
-	res[0] = box_num (res_ctr - 1);
+	res[0] = (caddr_t *) box_num (res_ctr - 1);
       }
   if (NULL == res)
     res = (caddr_t **) dk_alloc_list_zero (3);
-  dk_free_tree (xte);
+  dk_free_tree ((caddr_t) xte);
   dk_free_tree (tree);
   dk_free_tree (resp_text);
   return res;
@@ -3810,7 +3810,7 @@ txs_ext_fti_get (query_instance_t * qi, slice_id_t slice, caddr_t ext_fti, caddr
       list (1, box_num (10)), list (1, box_num (11)), uname__bang_exclude_result_prefixes /* as sample of garbage */ );
 #endif
 handle_err:
-  dk_free_tree (xte);
+  dk_free_tree ((caddr_t) xte);
   dk_free_tree (tree);
   dk_free_tree (resp_text);
   sqlr_resignal (err);
@@ -3868,7 +3868,7 @@ txs_ext_fti_init (text_node_t * txs, query_instance_t * qi)
       goto parse_new_tree;
     }
 parse_new_tree:
-  tree = box_copy_tree (str);
+  tree = (caddr_t *) box_copy_tree (str);
   if (NULL != err)
     {
       dk_free_tree ((caddr_t) tree);
@@ -3915,15 +3915,15 @@ txs_ext_fti_next_result (caddr_t ** results, boxint * target, int is_fixed)
       if (is_fixed && (curr_id > target[0]))
 	goto notfound;
       ctr++;
-      dk_free_box (results[2]);
-      results[2] = box_num (curr_id);
-      dk_free_box (results[1]);
-      results[1] = box_num (ctr - 3);
+      dk_free_box ((caddr_t) (results[2]));
+      results[2] = (caddr_t *) box_num (curr_id);
+      dk_free_box ((caddr_t) (results[1]));
+      results[1] = (caddr_t *) box_num (ctr - 3);
       return curr_id;
     }
 notfound:
-  dk_free_box (results[1]);
-  results[1] = box_num (ctr - 3);
+  dk_free_box ((caddr_t) (results[1]));
+  results[1] = (caddr_t *) box_num (ctr - 3);
   return -1;
 }
 

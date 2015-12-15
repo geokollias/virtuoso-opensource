@@ -47,6 +47,10 @@
 #undef __USE_MISC
 #endif
 
+#ifndef TIDY_CALL
+#define TIDY_CALL
+#endif
+
 static dk_mutex_t *tidy_mtx;
 
 #ifndef OLD_TIDY
@@ -63,13 +67,13 @@ tidy_realloc (void *buf, size_t len)
 {
   int buf_size = IS_BOX_POINTER (buf) ? box_length (buf) : 0;
   int copy_size = buf_size > len ? len : buf_size;
-  void *new;
+  void *new_t_box;
   if (len >= MAX_BOX_LENGTH)
     return NULL;
-  new = t_alloc_box (len, DV_CUSTOM);
+  new_t_box = t_alloc_box (len, DV_CUSTOM);
   if (buf && copy_size)
-    memcpy (new, buf, copy_size);
-  return new;
+    memcpy (new_t_box, buf, copy_size);
+  return new_t_box;
 }
 
 static void TIDY_CALL
@@ -144,9 +148,8 @@ tidy_parse_config (TidyDoc doc, caddr_t config_str)
       }
   }
   END_READ_FAIL (ses);
-
   ses->dks_in_buffer = NULL;
-  dk_free_box (ses);
+  dk_free_box ((caddr_t) ses);
   return 0;
 }
 #endif

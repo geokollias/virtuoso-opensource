@@ -92,11 +92,7 @@ GLOBALREF int optopt;
 
 struct option
 {
-#if	__STDC__
   const char *name;
-#else
-  char *name;
-#endif
   /* has_arg can't be an enum because some compilers complain about
      type mismatches in all the code that assumes it is an int.  */
   int has_arg;
@@ -114,26 +110,12 @@ struct option
 #define getopt _gnu_getopt
 #endif
 
-#if __STDC__
-extern int getopt (int argc, char *const *argv, const char *shortopts);
-extern int getopt_long (int argc, char *const *argv, const char *shortopts,
-		        const struct option *longopts, int *longind);
-extern int getopt_long_only (int argc, char *const *argv,
-			     const char *shortopts,
-		             const struct option *longopts, int *longind);
+extern int getopt (int argc, const char * const *argv, const char *shortopts);
+extern int getopt_long (int argc, const char *const *argv, const char *shortopts, const struct option *long_options, int *long_option_index_ret);
+extern int getopt_long_only (int argc, const char * const *argv, const char *shortopts, const struct option *long_options, int *long_option_index_ret);
 
 /* Internal only.  Users should not call this directly.  */
-extern int _getopt_internal (int argc, char *const *argv,
-			     const char *shortopts,
-		             const struct option *longopts, int *longind,
-			     int long_only);
-#else /* not __STDC__ */
-extern int getopt ();
-extern int getopt_long ();
-extern int getopt_long_only ();
-
-extern int _getopt_internal ();
-#endif /* not __STDC__ */
+extern int _getopt_internal (int argc, const char *const *argv, const char *shortopts, const struct option *long_options, int *long_option_index_ret, int long_only);
 
 #ifdef	__cplusplus
 };

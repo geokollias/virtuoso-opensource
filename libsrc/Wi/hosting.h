@@ -26,10 +26,11 @@
 #ifndef __HOSTING_H__
 #define __HOSTING_H__ 1
 
-#include <plugin.h>
+#include "Dk.h"
+#include "plugin.h"
 
+VIRT_API_BEGIN
 /* hosting structs */
-
 typedef char *(*hv_http_handler_t)
     (void *cli, char *err, int max_err_len,
     const char *base_uri, const char *content,
@@ -66,4 +67,5 @@ void virtuoso_restore_sig_handlers (void);
 # define HOSTING_CLIENT_FREE "virtm_client_free"
 # define HOSTING_CLIENT_CLONE "virtm_client_clone"
 
+VIRT_API_END
 #endif

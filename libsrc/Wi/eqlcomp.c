@@ -51,12 +51,6 @@
 #include "xmltree.h"
 #include "arith.h"
 #include "rdfinf.h"
-
-
-
-
-
-
 #include "ssl.c"
 /* #define USE_SYS_CONSTANT */
 
@@ -450,11 +444,11 @@ qr_free (query_t * qr)
     }
   qr_drop_dependencies (qr);
   while (NULL != qr->qr_used_tables)
-    dk_free_tree (dk_set_pop (&(qr->qr_used_tables)));
+    dk_free_tree ((caddr_t) dk_set_pop (&(qr->qr_used_tables)));
   while (NULL != qr->qr_used_udts)
-    dk_free_tree (dk_set_pop (&(qr->qr_used_udts)));
+    dk_free_tree ((caddr_t) dk_set_pop (&(qr->qr_used_udts)));
   while (NULL != qr->qr_used_jsos)
-    dk_free_tree (dk_set_pop (&(qr->qr_used_jsos)));
+    dk_free_tree ((caddr_t) dk_set_pop (&(qr->qr_used_jsos)));
   dk_free_tree (qr->qr_parse_tree);
   DO_SET (data_source_t *, sr, &qr->qr_nodes)
   {
@@ -1303,7 +1297,7 @@ key_free_trail_specs (search_spec_t * sp)
 void
 clb_free (cl_buffer_t * clb)
 {
-  dk_free_box (clb->clb_save);
+  dk_free_box ((caddr_t) (clb->clb_save));
 }
 
 
@@ -2355,7 +2349,7 @@ typedef void (*eql_comp_func_t) (comp_context_t * cc, caddr_t * stmt, data_sourc
 
 typedef struct _eqlcfgstruct
 {
-  char *cf_name;
+  const char *cf_name;
   eql_comp_func_t cf_func;
 }
 eql_comp_fn_ent_t;

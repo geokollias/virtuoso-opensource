@@ -397,7 +397,7 @@ extern box_tmp_copy_f box_tmp_copier[256];
 #define BOX_SSE_MARGIN 16
 
 #ifdef LACERATED_POOL
-#define MP_BYTES(x, mp, len)  			{ (x) = (void *)mp_alloc_box (mp, len, DV_NON_BOX); }
+#define MP_BYTES(x, mp, len)		do { ((void **)(&(x)))[0] = (void *)mp_alloc_box (mp, len, DV_NON_BOX); } while (0)
 #else
 #define MP_BYTES(x, mp, len2) \
   { \
@@ -405,8 +405,8 @@ extern box_tmp_copy_f box_tmp_copier[256];
     mem_block_t * f = mp->mp_first; \
     if (f && f->mb_fill + __len <= f->mb_size) \
       { \
-	*(void**)&(x) = (void *)(((char*)f) + f->mb_fill);	\
-	f->mb_fill += __len; \
+        *(void**)&(x) = (void *)(((char*)f) + f->mb_fill);	\
+        f->mb_fill += __len; \
       } \
     else \
       *(void**)&(x) = (void *)mp_alloc_box (mp, len2, DV_NON_BOX);	\
@@ -510,7 +510,7 @@ if (map && map->bits[((uint32)__ptr) >> 15] & (1 << (((((uint32)__ptr) >> 12) & 
 
 int mp_reuse_large (mem_pool_t * mp, void * ptr);
 int mp_reserve (mem_pool_t * mp, size_t inc);
-void mp_comment (mem_pool_t * mp, char * str1, char * str2);
+void mp_comment (mem_pool_t * mp, const char * str1, const char * str2);
 size_t  mp_block_size_sc (size_t sz);
 void * mp_mmap (size_t sz);
 

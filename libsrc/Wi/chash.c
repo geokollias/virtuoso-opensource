@@ -1031,7 +1031,7 @@ cha_new_hj_row (setp_node_t * setp, caddr_t * inst, db_buf_t ** key_vecs, chash_
 	{
 	  if (DCT_BOXES & dc->dc_type)
 	    {
-	      caddr_t cp = box_copy_tree (((db_buf_t *) dc->dc_values)[set_no]);
+	      caddr_t cp = box_copy_tree ((caddr_t) (((db_buf_t *) dc->dc_values)[set_no]));
 	      row[fill++] = (int64) cp;
 	      /* XXX: causes double free
 	         mutex_enter (&cha_alloc_mtx);

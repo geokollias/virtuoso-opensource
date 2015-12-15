@@ -1593,12 +1593,14 @@ bif_st_ewkt_read (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   caddr_t err = NULL;
   if (1 < BOX_ELEMENTS (args))
     srid = bif_long_arg (qst, args, 1, "st_ewkt_read");
-  res = ewkt_parse_2 (strg, srid, &err);
+  res = ewkt_parse_2 (strg, GEO_SRCODE_OF_SRID (srid), &err);
   if (NULL != err)
     sqlr_resignal (err);
   geo_calc_bounding (res, GEO_CALC_BOUNDING_DO_ALL);
   return (caddr_t) res;
 }
+
+
 
 caddr_t
 bif_http_st_ewkt (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
@@ -1607,6 +1609,58 @@ bif_http_st_ewkt (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   dk_session_t *ses = bif_strses_or_http_ses_arg (qst, args, 1, "http_st_ewkt");
   ewkt_print_sf12 (g, ses);
   return (caddr_t) NULL;
+}
+
+caddr_t
+bif_st_wkb_read (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+#ifdef DISABLE_WKB
+  sqlr_new_error ("41000", "GEO16", "Function st_wkb_read() is disabled in this build of Virtuoso");
+#else
+  geo_t *res;
+  caddr_t strg = bif_arg (qst, args, 0, "st_wkb_read");
+  int srid = SRID_DEFAULT;
+  if (1 < BOX_ELEMENTS (args))
+    srid = bif_long_arg (qst, args, 1, "st_wkb_read");
+  switch (DV_TYPE_OF (strg))
+    {
+    case DV_STRING_SESSION:
+      {
+	dk_session_t *ses = (dk_session_t *) strg;
+	CATCH_READ_FAIL_S (ses)
+	{
+	  res = wkb_read_ses (ses, GEO_SRCODE_OF_SRID (srid), 0);
+	}
+	FAILED
+	{
+	  THROW_READ_FAIL_S (ses);
+	}
+	END_READ_FAIL_S (ses);
+	break;
+      }
+    default:
+      sqlr_new_error ("22023", "GEO16",
+	  "Function st_wkb_read needs a string or string output as argument 0, not an arg of type %s (%d)",
+	  dv_type_title (DV_TYPE_OF (strg)), DV_TYPE_OF (strg));
+      return NULL;		/* never reached */
+    }
+  geo_calc_bounding (res, GEO_CALC_BOUNDING_DO_ALL);
+  return (caddr_t) res;
+#endif
+}
+
+
+caddr_t
+bif_http_st_wkb (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+#ifdef DISABLE_WKB
+  sqlr_new_error ("41000", "GEO16", "Function http_st_wkb() is disabled in this build of Virtuoso");
+#else
+  geo_t *g = bif_geo_arg (qst, args, 0, "http_st_wkb", GEO_ARG_ANY_NONNULL);
+  dk_session_t *ses = bif_strses_or_http_ses_arg (qst, args, 1, "http_st_wkb");
+  wkb_print (g, ses, 1, 0);
+  return (caddr_t) NULL;
+#endif
 }
 
 caddr_t
@@ -1630,7 +1684,7 @@ bif_st_get_bounding_box (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   if (NULL == g)
     {
 #if 0
-      res = geo_alloc (GEO_BOX, 0, SRID_DEFAULT);
+      res = geo_alloc (GEO_BOX, 0, GEO_SRCODE_DEFAULT);
       GEO_XYBOX_SET_EMPTY (res->XYbox);
       return (caddr_t) res;
 #else
@@ -2017,6 +2071,9 @@ bif_geo_init ()
       "ST_GeometryFromText", BMD_ALIAS, "ST_GeomFromEWKT", BMD_ALIAS, "ST_WKTToSQL", BMD_RET_TYPE, &bt_any_box, BMD_MIN_ARGCOUNT, 1,
       BMD_MAX_ARGCOUNT, 2, BMD_IS_PURE, BMD_DONE);
   bif_define_ex ("http_st_ewkt", bif_http_st_ewkt, BMD_DONE);
+  bif_define_ex ("st_wkb_read", bif_st_wkb_read, BMD_RET_TYPE, &bt_any_box, BMD_MIN_ARGCOUNT, 1, BMD_MAX_ARGCOUNT, 2, BMD_IS_PURE,
+      BMD_DONE);
+  bif_define_ex ("http_st_wkb", bif_http_st_wkb, BMD_DONE);
   bif_define_ex ("http_st_dxf_entity", bif_http_st_dxf_entity, BMD_DONE);
   bif_define_ex ("st_get_bounding_box", bif_st_get_bounding_box, BMD_IS_PURE, BMD_DONE);
   bif_define_ex ("st_get_chainbox", bif_st_get_chainbox, BMD_IS_PURE, BMD_DONE);

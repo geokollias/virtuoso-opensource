@@ -162,7 +162,7 @@ stn_divide_bulk_input (stage_node_t * stn, caddr_t * inst)
     cm_record_dfg_deliv (cm, CM_DFGD_SELF);
     dfg_slice_set_thread (inst, cm);
     stn_in_batch (target_stn, inst, cm, NULL, 0, 0);
-    dk_free_box (cm->cm_cl_stack);
+    dk_free_box ((caddr_t) (cm->cm_cl_stack));
     CM_FREE_TRACE (cm, __FILE__, __LINE__);
     dk_free ((caddr_t) cm, sizeof (cl_message_t));
   }
@@ -660,7 +660,7 @@ clib_dfg_cm (cll_in_box_t * clib, int is_reply, int is_first_stn, stage_node_t *
     clo_serialize (clib, clib->clib_vec_clo);
   bytes = strses_length (clib->clib_req_strses);
   /*NEW_VARZ (cl_message_t, cm); */
-  cm = dk_alloc (sizeof (cl_message_t));
+  cm = (cl_message_t *) dk_alloc (sizeof (cl_message_t));
   memset (cm, 0, sizeof (cl_message_t));
   cm->cm_bytes = bytes;
   slice = clib->clib_slice;
@@ -683,7 +683,7 @@ clib_dfg_cm (cll_in_box_t * clib, int is_reply, int is_first_stn, stage_node_t *
 	{
 	  cl_call_stack_t *clst = clib->clib_group->clrg_lt->lt_client->cli_cl_stack;
 	  int len = box_length (clst) - sizeof (cl_call_stack_t);
-	  cm->cm_cl_stack = dk_alloc_box (len, DV_BIN);
+	  cm->cm_cl_stack = (cl_call_stack_t *) dk_alloc_box (len, DV_BIN);
 	  memcpy (cm->cm_cl_stack, clst, len);
 	}
     }
@@ -1153,7 +1153,7 @@ dfg_feed_short (stage_node_t * stn, caddr_t * inst, cl_queue_t * bsk,
   int new_rbe_read = rbe->rbe_read, rbe_inx;
   for (rbe_inx = rbe->rbe_read; ctr; rbe_inx = RBE_NEXT (rbe, rbe_inx))
     {
-      cl_message_t *cm = rbe->rbe_data[rbe_inx];
+      cl_message_t *cm = (cl_message_t *) (rbe->rbe_data[rbe_inx]);
       if (!cm)
 	continue;
       ctr--;

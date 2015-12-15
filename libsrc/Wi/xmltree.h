@@ -26,29 +26,21 @@
 #ifndef _XMLTREE_H
 #define _XMLTREE_H
 
+#include "Dk.h"
 #include "uname_const_decl.h"
 #include "xpath.h"
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "langfunc.h"
 #include "xmlparser.h"
-#ifdef __cplusplus
-}
-#endif
 
+VIRT_API_BEGIN
 /*
 #ifdef DEBUG
 #define XPATH_DEBUG
 #endif
 */
-
 #define MAX_XML_LNAME_LENGTH 500	/* for local names, namespace prefixes and namespace URIs */
 #define MAX_XML_QNAME_LENGTH (2*MAX_XML_LNAME_LENGTH + 1)	/* for qualified names (that have semicolons) */
-
 #define XP_TRANSLATE_HOST 1
-
 void bx_out_value (caddr_t * qst, dk_session_t * out, db_buf_t val, wcharset_t * tgt_charset, wcharset_t * src_charset,
     int dks_esc_mode);
 
@@ -950,9 +942,6 @@ extern void dtd_load_from_buffer (dtd_t * res, caddr_t dtd_string);
 extern void xe_insert_external_dtd (xml_entity_t * xe);
 extern caddr_t xte_sum64 (caddr_t * curr);
 
-extern caddr_t xml_make_tree (query_instance_t * qi, caddr_t text, caddr_t * err_ret,
-    const char *enc, lang_handler_t * lh, struct dtd_s **ret_dtd);
-
 extern int xe_strses_serialize_utf8 (xml_entity_t * xe, dk_session_t * strses, int set_encoding);
 extern void xe_serialize (xml_entity_t * xe, dk_session_t * ses);
 
@@ -1145,4 +1134,6 @@ extern xml_lazy_ent_t *DBG_NAME (xlazye_from_cache_key) (DBG_PARAMS xml_doc_cach
 #endif
 
 extern caddr_t xe_make_copy (caddr_t box);
+
+VIRT_API_END
 #endif /* _XMLTREE_H */

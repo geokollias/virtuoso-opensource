@@ -31,7 +31,7 @@
 
 
 #ifdef _SSL
-
+#include "datesupp.h"
 #include "wi.h"
 #include "sqlnode.h"
 #include "sqlbif.h"
@@ -118,8 +118,8 @@
 
 struct wsse_error_templ_s
 {
-  char *code;
-  char *templ;
+  const char *code;
+  const char *templ;
 } wsse_error_templs[] =
 {
   {
@@ -242,7 +242,7 @@ int xenc_decode_base64 (char *src, char *end);
 
 
 static void
-__dbg_wsse_assert (char *file, long line)
+__dbg_wsse_assert (const char *file, long line)
 {
   char buf[1024];
   snprintf (buf, sizeof (buf), "WSSE Assert failed at %s:%ld", file, line);
@@ -331,7 +331,7 @@ typedef void (*wsse_callback_f) (char *uri, char *name, caddr_t * curr, wsse_ctx
 
 typedef struct wsse_callback_item_s
 {
-  char *wsse_c_name;
+  const char *wsse_c_name;
   wsse_callback_f wsse_c_callback;
 } wsse_callback_item_t;
 
@@ -1911,7 +1911,7 @@ bif_xmlenc_decrypt_soap (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 }
 
 void
-wsse_report_error (struct wsse_ctx_s *ctx, char *code, int buflen, ...)
+wsse_report_error (struct wsse_ctx_s *ctx, const char *code, int buflen, ...)
 {
   ptrlong erridx;
   buflen += 512;

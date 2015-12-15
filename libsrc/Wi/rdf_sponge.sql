@@ -166,7 +166,7 @@ create function DB.DBA.RDF_GRAB_SINGLE (in val any, inout grabbed any, inout env
   declare url, get_method, recov varchar;
   declare dest varchar;
   declare opts, err any;
-  -- dbg_obj_princ ('DB.DBA.RDF_GRAB_SINGLE (', coalesce (id_to_iri_nosignal (val), val), ',,... , ', env, ')');
+  dbg_obj_princ ('DB.DBA.RDF_GRAB_SINGLE (', coalesce (id_to_iri_nosignal (val), val), ',,... , ', env, ')');
   {
   whenever sqlstate '*' goto end_of_sponge;
   if (val is null)
@@ -346,7 +346,7 @@ DB.DBA.RDF_GRAB (
   declare rctr, rcount, colcount, iter_ctr, doc_limit integer;
   declare stat, msg varchar;
   declare sa_graphs, sa_preds, all_params any;
-  declare grabbed, metas, rset, aq any;
+  declare grabbed, metas, rset, aq any array;
   -- dbg_obj_princ ('DB.DBA.RDF_GRAB (', app_params, grab_params, ',..., ', ret_limit, const_iris, depth, doc_limit, plain_ret, uid, ')');
   sa_preds := get_keyword ('sa_preds', grab_params);
   doc_limit := get_keyword ('doc_limit', grab_params, 0hex1000000);
@@ -2060,7 +2060,7 @@ create function DB.DBA.RDF_SPONGE_UP_1 (in graph_iri varchar, in options any, in
 {
   declare dest, get_soft, local_iri, immg, res_graph_iri, cookie, get_private, get_enforce_acls varchar;
   declare perms, log_mode integer;
-  -- dbg_obj_princ ('DB.DBA.RDF_SPONGE_UP_1 (', graph_iri, options, ')');
+  dbg_obj_princ ('DB.DBA.RDF_SPONGE_UP_1 (', graph_iri, options, ')');
   graph_iri := cast (graph_iri as varchar);
   --set_user_id ('dba', 1);
 

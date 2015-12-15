@@ -91,8 +91,8 @@
 #define WSSE_URI(sctx) (sctx ? wsse_uris[(sctx)->wsc_wsse] : WSS_WSS_URI)
 #define WSU_URI(sctx)  (sctx ? wsu_uris[(sctx)->wsc_wsu] : WSS_WSU_URI)
 
-extern char *wsse_uris[];	/* defined in xmlenc.c */
-extern char *wsu_uris[];
+extern const char *wsse_uris[];	/* defined in xmlenc.c */
+extern const char *wsu_uris[];
 
 typedef enum
 {
@@ -568,8 +568,8 @@ caddr_t *signature_serialize_1 (dsig_signature_t * dsig, wsse_ser_ctx_t * sctx);
 
 void xenc_make_error (char *buf, long maxlen, xenc_err_code_t c, const char *err);
 
-void wsse_report_error (wsse_ctx_t * ctx, char *code, int buflen, ...);
-void xenc_report_error (xenc_try_block_t * t, long buflen, xenc_err_code_t c, char *errbuf, ...);
+void wsse_report_error (wsse_ctx_t * ctx, const char *code, int buflen, ...);
+void xenc_report_error (xenc_try_block_t * t, long buflen, xenc_err_code_t c, const char *errbuf, ...);
 
 xenc_err_code_t xenc_decrypt_xml (query_instance_t * qi, xenc_dec_t * enc, caddr_t in_xml, caddr_t encode,
     lang_handler_t * lh, dk_session_t * out_xml, xenc_err_code_t * c, char **err);

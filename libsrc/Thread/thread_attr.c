@@ -162,8 +162,31 @@ thread_set_default_affinity (dk_cpu_set_t * cpu_set)
 }
 
 
-void
-longjmp_brk (jmp_buf b, int rc)
+#ifdef JMP_CKSUM
+uint32
+j_cksum (jmp_buf j)
 {
-  longjmp (b, rc);
+  uint32 h = 0;
+  char * ptr = (char*)j;
+  BYTE_BUFFER_HASH (h, ptr, sizeof (jmp_buf));
+  return h;
+}
+
+int 
+j_set_cksum (jmp_buf_splice * j, int rc)
+{
+  if (!rc)
+    j->j_cksum = j_cksum (j->buf);
+  return rc;
+}
+#endif
+
+void
+longjmp_brk (jmp_buf_splice * b, int rc)
+{
+#ifdef JMP_CKSUM
+  if (b->j_cksum != j_cksum (b->buf))
+    GPF_T1 ("uninited jmp buffer");
+#endif
+  longjmp (b->buf, rc);
 }

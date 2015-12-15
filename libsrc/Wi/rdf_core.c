@@ -944,12 +944,12 @@ ttlp_qname_prefix_is_explicit_and_valid (ttlp_t * ttlp_arg, caddr_t qname)
   if (ttlp_arg[0].ttlp_in_trig_graph)
     {
       ns_dict = ttlp_arg[0].ttlp_inner_namespaces_prefix2iri;
-      ns_uri_ptr = ((NULL == ns_dict) ? NULL : (caddr_t *) id_hash_get (ns_dict, (caddr_t) (&ns_pref)));
+      ns_uri_ptr = ((NULL == ns_dict) ? NULL : (caddr_t **) id_hash_get (ns_dict, (caddr_t) (&ns_pref)));
       if (NULL != ns_uri_ptr)
 	goto ns_found;		/* see below */
     }
   ns_dict = ttlp_arg[0].ttlp_namespaces_prefix2iri;
-  ns_uri_ptr = ((NULL == ns_dict) ? NULL : (caddr_t *) id_hash_get (ns_dict, (caddr_t) (&ns_pref)));
+  ns_uri_ptr = ((NULL == ns_dict) ? NULL : (caddr_t **) id_hash_get (ns_dict, (caddr_t) (&ns_pref)));
   if (NULL != ns_uri_ptr)
     goto ns_found;		/* see below */
   if (!strcmp (ns_pref, "rdf:"))
@@ -1404,8 +1404,8 @@ nic_set_n_ways (name_id_cache_t * nic, int n_ways)
   nic->nic_id_to_name = NULL;
   nic->nic_in_array = (dk_hash_64_t **) dk_alloc_box (sizeof (caddr_t) * n_ways, DV_BIN);
   nic->nic_ni_array = (id_hash_t **) dk_alloc_box (sizeof (caddr_t) * n_ways, DV_BIN);
-  nic->nic_ni_mtx = dk_alloc_box (sizeof (dk_mutex_t) * n_ways, DV_BIN);
-  nic->nic_in_mtx = dk_alloc_box (sizeof (dk_mutex_t) * n_ways, DV_BIN);
+  nic->nic_ni_mtx = (dk_mutex_t *) dk_alloc_box (sizeof (dk_mutex_t) * n_ways, DV_BIN);
+  nic->nic_in_mtx = (dk_mutex_t *) dk_alloc_box (sizeof (dk_mutex_t) * n_ways, DV_BIN);
   for (inx = 0; inx < n_ways; inx++)
     {
       nic->nic_in_array[inx] = hash_table_allocate_64 (sz);
@@ -3831,10 +3831,8 @@ rdf_obj_ft_rule_check_if_configured (caddr_t * qst, state_slot_t ** args, int g_
   mutex_enter (rdf_obj_ft_rules_mtx);
   if (NULL != id_hash_get (rdf_obj_ft_rules_by_iids, (caddr_t) (&iid_hkey)))
     goto hit;			/* see_below */
-  mutex_leave (rdf_obj_ft_rules_mtx);
   g_id = bif_iri_id_or_null_arg (qst, args, g_arg_idx, fname);
   p = bif_arg (qst, args, g_arg_idx + 1, fname);
-  mutex_enter (rdf_obj_ft_rules_mtx);
   p_dtp = DV_TYPE_OF (p);
   switch (p_dtp)
     {
@@ -4354,8 +4352,8 @@ rdf_core_init (void)
   bif_set_uses_index (bif_rdf_obj_set_is_text_if_ft_rule_check);
   bif_define ("__rdf_obj_ft_rule_count_in_graph", bif_rdf_obj_ft_rule_count_in_graph);
   {
-    char *inv1[] = { "__id2in", "__i2idn", "__ID2IN", "__I2IDN" };
-    char *inv2[] = { "__i2idn", "__id2in", "__I2IDN", "__ID2IN" };
+    const char *inv1[] = { "__id2in", "__i2idn", "__ID2IN", "__I2IDN" };
+    const char *inv2[] = { "__i2idn", "__id2in", "__I2IDN", "__ID2IN" };
     int flags[] = { 0, 0, 0, 0 };
     sinv_builtin_inverse (inv1, inv2, flags, 4);
   }

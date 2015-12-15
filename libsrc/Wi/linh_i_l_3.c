@@ -37,8 +37,8 @@ if (stat_3 != 9)
     for (inx = 0; inx < cha_p_3->cha_exception_fill; inx++)
       {
 	w_3 = (int64) cha_p_3->cha_exceptions[inx];
-	if (HIGH_16 (w_3) != hash_3)
-	  continue;
+	if (!w_3 || HIGH_16 (w_3) != hash_3)
+	  continue;		/* an exception entry can be null if reset by a top k on group by key */
 	w_3 = LOW_48 (w_3);
 	if (HIT_N_E (3, w_3))
 	  {

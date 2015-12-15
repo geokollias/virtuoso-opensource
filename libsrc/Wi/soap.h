@@ -72,7 +72,7 @@
 		     (x) == 12 ? SOAP_ENC_SCHEMA12 : NULL)
 
 caddr_t *xml_find_child (caddr_t * entity, const char *szSearchName, const char *szURI, int nth, int *start_inx);
-caddr_t *xml_find_one_child (caddr_t * entity, char *szSearchName, char **szURIs, int nth, int *start_inx);
+caddr_t *xml_find_one_child (caddr_t * entity, const char *szSearchName, const char **szURIs, int nth, int *start_inx);
 int is_in_urls (char **szURIs, const char *uri, int *idx);
 
 #define WS_ENC_NONE 0

@@ -29,14 +29,7 @@
 #include "sqlpar.h"
 #include "xmltree.h"
 #include "bif_text.h"
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "langfunc.h"
-#ifdef __cplusplus
-}
-#endif
 #include "multibyte.h"
 
 #define XPD_NEW		0
@@ -91,6 +84,5 @@ void write_escaped_attvalue (dk_session_t * ses, unsigned char *ptr, int len, wc
 void xp_string_value (xml_entity_t * xe, caddr_t * ret, dtp_t dtp);
 void xp_log_update (xml_entity_t * xe, dk_session_t * log);
 void bif_xper_init (void);
-void dtd_serialize (dtd_t * dtd, dk_session_t * ses);
 
 #endif /* _BIF_XPER_H */

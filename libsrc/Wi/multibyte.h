@@ -70,7 +70,7 @@ extern caddr_t mp_box_wide_as_utf8_char (mem_pool_t * mp, ccaddr_t _wide, size_t
 wchar_t CHAR_TO_WCHAR (unsigned char uchar, wcharset_t * charset);
 unsigned char WCHAR_TO_CHAR (wchar_t wchar, wcharset_t * charset);
 
-int wide_serialize (caddr_t wide_data, dk_session_t * ses);
+int wide_serialize (ccaddr_t wide_data, dk_session_t * ses);
 void *box_read_wide_string (dk_session_t * ses, dtp_t macro);
 void *box_read_long_wide_string (dk_session_t * ses, dtp_t macro);
 int wide_atoi (caddr_t data);
@@ -102,7 +102,7 @@ size_t cli_narrow_to_utf8 (wcharset_t * charset, const unsigned char *_str, size
     size_t max_utf8);
 wcharset_t *sch_name_to_charset (const char *name);
 
-size_t wide_as_utf8_len (caddr_t _wide);
+size_t wide_as_utf8_len (ccaddr_t _wide);
 caddr_t box_wide_string (const wchar_t * wstr);
 caddr_t box_wide_nchars (const wchar_t * wstr, size_t len);
 

@@ -198,11 +198,11 @@ extern long tws_bad_request;
 #define PATH_ELT_MAX_CHARS 512
 
 long ws_content_length (caddr_t * head);
-char *ws_header_field (caddr_t * head, const char *f, char *deflt);
-caddr_t ws_mime_header_field (caddr_t * head, char *f, char *subf, int initial_mode);
+extern const char *ws_header_field (caddr_t * head, const char *f, const char *deflt);
+caddr_t ws_mime_header_field (caddr_t * head, const char *f, const char *subf, int initial_mode);
 void ws_keep_alive_ready (dk_session_t * ses);
-int http_method_id (char *method);
-char *http_get_method_string (int id);
+int http_method_id (const char *method);
+const char *http_get_method_string (int id);
 
 
 
@@ -413,5 +413,6 @@ void ws_http_body_read (ws_connection_t * ws, dk_session_t ** out);
 #define WS_CE_GZIP 3
 
 
+size_t http_threads_mem_report (void);
 
 #endif /* _HTTP_H */

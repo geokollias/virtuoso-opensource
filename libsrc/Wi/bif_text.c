@@ -33,14 +33,7 @@
 #include "bif_xper.h"
 #include "srvmultibyte.h"
 #include "security.h"
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "langfunc.h"
-#ifdef __cplusplus
-}
-#endif
 #include "arith.h"
 
 #define VT_BATCH_SIZE_MIN	31
@@ -48,7 +41,7 @@ extern "C"
 #define VT_BATCH_SIZE_DEFAULT	1001
 
 lang_handler_t *server_default_lh = &lh__xany;
-char *server_default_language_name = NULL;
+const char *server_default_language_name = NULL;
 
 
 /* The last error number used is FT038 */

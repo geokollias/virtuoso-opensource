@@ -36,16 +36,9 @@
 #include "bif_text.h"
 #include "xpf.h"
 /*#include "xpathp.h"*/
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "langfunc.h"
 #include "xmlparser_impl.h"
 #include "schema.h"
-#ifdef __cplusplus
-}
-#endif
 
 /*mapping schema*/
 #define XS_NAME_DELIMETER '#'

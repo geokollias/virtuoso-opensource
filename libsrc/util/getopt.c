@@ -344,7 +344,7 @@ exchange (char **argv)
    long-named options.  */
 
 int
-_getopt_internal (int argc, char *const *argv, const char *optstring, const struct option *longopts, int *longind, int long_only)
+_getopt_internal (int argc, const char *const *argv, const char *shortopts, const struct option *long_options, int *long_option_index_ret, int long_only)
 {
   int option_index;
 
@@ -363,15 +363,15 @@ _getopt_internal (int argc, char *const *argv, const char *optstring, const stru
 
       /* Determine how to handle the ordering of options and nonoptions.  */
 
-      if (optstring[0] == '-')
+      if (shortopts[0] == '-')
 	{
 	  ordering = RETURN_IN_ORDER;
-	  ++optstring;
+	  ++shortopts;
 	}
-      else if (optstring[0] == '+')
+      else if (shortopts[0] == '+')
 	{
 	  ordering = REQUIRE_ORDER;
-	  ++optstring;
+	  ++shortopts;
 	}
       else if (getenv ("POSIXLY_CORRECT") != NULL)
 	ordering = REQUIRE_ORDER;
@@ -397,7 +397,7 @@ _getopt_internal (int argc, char *const *argv, const char *optstring, const stru
 	  while (optind < argc
 		 && (argv[optind][0] != '-' || argv[optind][1] == '\0')
 #ifdef GETOPT_COMPAT
-		 && (longopts == NULL
+		 && (long_options == NULL
 		     || argv[optind][0] != '+' || argv[optind][1] == '\0')
 #endif				/* GETOPT_COMPAT */
 		 )
@@ -440,7 +440,7 @@ _getopt_internal (int argc, char *const *argv, const char *optstring, const stru
 
       if ((argv[optind][0] != '-' || argv[optind][1] == '\0')
 #ifdef GETOPT_COMPAT
-	  && (longopts == NULL
+	  && (long_options == NULL
 	      || argv[optind][0] != '+' || argv[optind][1] == '\0')
 #endif				/* GETOPT_COMPAT */
 	  )
@@ -455,10 +455,10 @@ _getopt_internal (int argc, char *const *argv, const char *optstring, const stru
 	 Start decoding its characters.  */
 
       nextchar = (argv[optind] + 1
-		  + (longopts != NULL && argv[optind][1] == '-'));
+		  + (long_options != NULL && argv[optind][1] == '-'));
     }
 
-  if (longopts != NULL
+  if (long_options != NULL
       && ((argv[optind][0] == '-'
 	   && (argv[optind][1] == '-' || long_only))
 #ifdef GETOPT_COMPAT
@@ -477,7 +477,7 @@ _getopt_internal (int argc, char *const *argv, const char *optstring, const stru
 	s++;
 
       /* Test all options for either exact match or abbreviated matches.  */
-      for (p = longopts, option_index = 0; p->name;
+      for (p = long_options, option_index = 0; p->name;
 	   p++, option_index++)
 	if (!strncmp (p->name, nextchar, (int)(s - nextchar)))
 	  {
@@ -549,12 +549,12 @@ _getopt_internal (int argc, char *const *argv, const char *optstring, const stru
 		    fprintf (stderr, "%s: option `%s' requires an argument\n",
 			     argv[0], argv[optind - 1]);
 		  nextchar += strlen (nextchar);
-		  return optstring[0] == ':' ? ':' : '?';
+		  return shortopts[0] == ':' ? ':' : '?';
 		}
 	    }
 	  nextchar += strlen (nextchar);
-	  if (longind != NULL)
-	    *longind = option_index;
+	  if (long_option_index_ret != NULL)
+	    *long_option_index_ret = option_index;
 	  if (pfound->flag)
 	    {
 	      *(pfound->flag) = pfound->val;
@@ -570,7 +570,7 @@ _getopt_internal (int argc, char *const *argv, const char *optstring, const stru
 #ifdef GETOPT_COMPAT
 	  || argv[optind][0] == '+'
 #endif				/* GETOPT_COMPAT */
-	  || my_index (optstring, *nextchar) == NULL)
+	  || my_index (shortopts, *nextchar) == NULL)
 	{
 	  if (opterr)
 	    {
@@ -593,7 +593,7 @@ _getopt_internal (int argc, char *const *argv, const char *optstring, const stru
 
   {
     char c = *nextchar++;
-    char *temp = my_index (optstring, c);
+    char *temp = my_index (shortopts, c);
 
     /* Increment `optind' when we start to process its last character.  */
     if (*nextchar == '\0')
@@ -655,7 +655,7 @@ _getopt_internal (int argc, char *const *argv, const char *optstring, const stru
 #endif
 		  }
 		optopt = c;
-		if (optstring[0] == ':')
+		if (shortopts[0] == ':')
 		  c = ':';
 		else
 		  c = '?';
@@ -672,9 +672,9 @@ _getopt_internal (int argc, char *const *argv, const char *optstring, const stru
 }
 
 int
-getopt (int argc, char *const *argv, const char *optstring)
+getopt (int argc, const char * const *argv, const char *shortopts)
 {
-  return _getopt_internal (argc, argv, optstring,
+  return _getopt_internal (argc, argv, shortopts,
 			   (const struct option *) 0,
 			   (int *) 0,
 			   0);

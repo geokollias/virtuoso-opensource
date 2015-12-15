@@ -145,6 +145,7 @@ struct dbe_table_s
   char tb_any_blobs;
   char tb_is_rdf_quad;
   char tb_is_counted;
+  char tb_has_cgs;		/* true if col groups present */
   struct remote_ds_s *tb_remote_ds;
   caddr_t tb_remote_name;
   struct file_ds_s *tb_file;
@@ -309,6 +310,7 @@ struct dbe_column_s
   char *col_check;
   dk_hash_t *col_grants;
   char col_is_key_part;
+  char col_is_pk_part;
   int col_is_autoincrement;
   dbe_table_t *col_defined_in;
   sql_type_t col_sqt;
@@ -471,6 +473,7 @@ struct dbe_key_s
   char key_no_pk_ref;		/* the key does not ref the main row */
   char key_distinct;		/* if no pk ref, do not put duplicates */
   char key_not_null;		/* if a significant key part is nullable and null, do not make an index entry */
+  char key_is_col_group;	/* start with pk parts, then extra columns, in pk order */
   char key_no_compression;	/* no key part is compressed in any version of key */
   char key_is_dropped;
   char key_is_elastic;		/* key_storage->dbs_type == DBS_ELASTIC */

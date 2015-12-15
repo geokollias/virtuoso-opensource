@@ -33,10 +33,10 @@ EXE_EXPORT (void *	, dbg_calloc, (const char *file, u_int line, size_t num, size
 EXE_EXPORT (void	, dbg_free, (const char *file, u_int line, void *data));
 EXE_EXPORT (char *	, dbg_strdup, (const char *file, u_int line, const char *str));
 EXE_EXPORT (void *	, dbg_realloc, (const char *file, u_int line, void *old, size_t size));
-EXE_EXPORT (int		, log_error, (char *format, ...));
-EXE_EXPORT (int		, log_warning, (char *format, ...));
-EXE_EXPORT (int		, log_info, (char *format, ...));
-EXE_EXPORT (int		, log_debug, (char *format, ...));
+EXE_EXPORT (int		, log_error, (const char *format, ...));
+EXE_EXPORT (int		, log_warning, (const char *format, ...));
+EXE_EXPORT (int		, log_info, (const char *format, ...));
+EXE_EXPORT (int		, log_debug, (const char *format, ...));
 
 #define wi_inst (wi_instance_get()[0])
 #define bootstrap_cli (get_bootstrap_cli())

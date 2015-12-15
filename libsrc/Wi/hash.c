@@ -43,6 +43,7 @@ b *  hash.c
 #include "date.h"
 #include "xmltree.h"
 #include "mhash.h"
+#include "datesupp.h"
 
 #if !defined (NEW_HASH) && !defined (USE_OLD_HASH)
 #define USE_OLD_HASH
@@ -330,7 +331,7 @@ hi_free (hash_index_t * hi)
 		  dk_free_tree ((box_t) dep);
 		  dep = next_dep;
 		}
-	      dk_free_tree (dep);
+	      dk_free_tree ((caddr_t) dep);
 	    }
 	  id_hash_clear (hi->hi_memcache);
 	  id_hash_free (hi->hi_memcache);
@@ -1443,7 +1444,7 @@ memcache_read_input (table_source_t * ts, caddr_t * inst, caddr_t * state)
     {
       QST_INT (inst, ts->clb.clb_nth_set) = 0;
       last_set = QST_INT (inst, ts->clb.clb_nth_set) = 0;
-      hit = dk_alloc_box (sizeof (id_hash_iterator_t), DV_BIN);
+      hit = (id_hash_iterator_t *) dk_alloc_box (sizeof (id_hash_iterator_t), DV_BIN);
       qst_set (inst, ks->ks_proc_set_ctr, (caddr_t) hit);
       id_hash_iterator (hit, hi->hi_memcache);
     }
@@ -1622,7 +1623,7 @@ ha_rehash (caddr_t * inst, hash_area_t * ha, index_tree_t * it)
   key_source_t ks;
   setp_node_t setp;
   hash_index_t *hi = it->it_hi;
-  caddr_t *save = dk_alloc_box (sizeof (caddr_t) * ha->ha_n_keys, DV_ARRAY_OF_POINTER);
+  caddr_t *save = dk_alloc_list (ha->ha_n_keys);
   int inx, n_pages;
   it_cursor_t *insert_itc = (it_cursor_t *) QST_GET_V (inst, ha->ha_insert_itc);
   dp_addr_t last_dp = insert_itc->itc_hash_buf->bd_page;
@@ -1649,7 +1650,7 @@ ha_rehash (caddr_t * inst, hash_area_t * ha, index_tree_t * it)
 	}
     }
   hi->hi_size = HI_NEXT_SIZE (hi);
-  dk_free_box (hi->hi_buckets);
+  dk_free_box ((caddr_t) (hi->hi_buckets));
   n_pages = (hi->hi_size / HE_BPTR_PER_PAGE) + 1;
   hi->hi_buckets = (dp_addr_t *) dk_alloc_box_zero (n_pages * sizeof (dp_addr_t), DV_CUSTOM);
 
@@ -1702,8 +1703,6 @@ ha_rehash (caddr_t * inst, hash_area_t * ha, index_tree_t * it)
   BOX_DONE (tmp_ssl, tmp_ssl_buf);
   dk_free_box ((caddr_t) save);
   dk_set_free (ks.ks_out_slots);
-  dk_free_box (ks.ks_out_map);
-  itc_free (itc);
   ITC_IN_KNOWN_MAP (insert_itc, last_dp);
   page_wait_access (insert_itc, last_dp, NULL, &insert_itc->itc_hash_buf, PA_WRITE, RWG_WAIT_ANY);
   ITC_LEAVE_MAPS (insert_itc);
@@ -1988,7 +1987,7 @@ go_ua_start (caddr_t * inst, gb_op_t * go, index_tree_t * tree, caddr_t * dep_pt
       qst_set (inst, go->go_old_val, box2);
       return box2;
     }
-  box2 = box_deserialize_reusing (*dep_ptr, box);
+  box2 = box_deserialize_reusing ((db_buf_t) (*dep_ptr), box);
   if (box2 != box)
     QST_GET_V (inst, go->go_old_val) = box2;	/* box freed in deserialize reusing */
   return box2;
@@ -2028,7 +2027,7 @@ go_ua_store (caddr_t * inst, gb_op_t * go, index_tree_t * tree, chash_t * cha, c
 	  mutex_enter (&tlsf->tlsf_mtx);
 	  if (place)
 	    free_ex (place, tlsf);
-	  place = malloc_ex (any_len, tlsf);
+	  place = (caddr_t) malloc_ex (any_len, tlsf);
 	  mutex_leave (&tlsf->tlsf_mtx);
 	  *dep_ptr = place;
 	}

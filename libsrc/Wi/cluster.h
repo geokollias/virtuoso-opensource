@@ -26,11 +26,11 @@
 #ifndef _CLUSTER_H
 #define _CLUSTER_H
 
+#include "Dk.h"
 #include "../Dk/Dkhash64.h"
 #include "clq.h"
 
-
-typedef struct cl_message_s cl_message_t;
+VIRT_API_BEGIN typedef struct cl_message_s cl_message_t;
 
 #ifdef MTX_METER
 #endif
@@ -234,7 +234,7 @@ typedef struct cl_op_s
     {
       row_delta_t *rd;		/* key and key parts for finding the key to delete, must be first, same as insert  */
       slice_id_t *slices;
-    } delete;
+    } delete_op;
     struct
     {
       query_frag_t *qf;
@@ -1050,7 +1050,7 @@ void clo_local_copy (cl_op_t * clo, cl_req_group_t * clrg);
 int clo_destroy (cl_op_t * clop);
 cl_op_t *clib_first (cll_in_box_t * clib);
 cl_message_t *cl_deserialize_cl_message_t (dk_session_t * in);
-cl_host_t *cl_name_to_host (char *name);
+cl_host_t *cl_name_to_host (const char *name);
 itc_cluster_t *itcl_allocate (lock_trx_t * lt, caddr_t * qst);
 
 extern int32 cl_req_batch_size;
@@ -1099,7 +1099,7 @@ void cm_send_reply (cl_message_t * cm, cl_op_t * reply, caddr_t err);
 extern du_thread_t *cl_listener_thr;
 void cls_rollback (dk_session_t * ses, cl_message_t * cm);
 cl_host_t *cl_id_to_host (int id);
-cluster_map_t *cl_name_to_clm (char *name);
+cluster_map_t *cl_name_to_clm (const char *name);
 void cl_itc_free (it_cursor_t * itc);
 void itc_cl_row (it_cursor_t * itc, buffer_desc_t * buf);
 dk_session_t *ch_get_connection (cl_host_t * ch, int op, caddr_t * err_ret);
@@ -1177,7 +1177,6 @@ int clrg_dfg_send_g (cl_req_group_t * clrg, int coord_host, int64 * bytes_ret, i
 
 extern timeout_t boot_time;
 void clses_set_mctr (cl_ses_t * clses, msg_ctr_t * mctr);
-int tcpses_write (session_t * ses, char *buf, int n_out);
 extern int enable_clrel;
 void clrel_send_ses (dk_session_t ** ses_ret, dk_session_t * ses, cl_message_t * cm, int flush);
 int clrel_buf_full (session_t * ses, char *bytes, int n_bytes);
@@ -1298,7 +1297,7 @@ void clib_vec_read_into_slots (cll_in_box_t * clib, caddr_t * inst, dk_set_t slo
 int qf_param_dcs (query_t * qr, caddr_t * inst, mem_pool_t * mp, caddr_t * params);
 void dc_serialize (data_col_t * dc, dk_session_t * ses);
 void sslr_dc_serialize (dk_session_t * ses, caddr_t * inst, state_slot_t * sslr, int n_rows, int dbg_qfs, int dbg_col);
-int dc_serialize_sliced (dk_session_t * ses, data_col_t * dc, slice_id_t * slices, slice_id_t target_slice);
+int dc_serialize_sliced (dk_session_t * ses, const data_col_t * dc, slice_id_t * slices, slice_id_t target_slice);
 
 data_col_t *dc_deserialize (dk_session_t * ses, dtp_t dtp);
 
@@ -1392,7 +1391,7 @@ void cl_send_db_activity (dk_session_t * ses);
 
 
 caddr_t cl_ddl (query_instance_t * qi, lock_trx_t * lt, caddr_t name, int type, caddr_t trig_table);
-caddr_t cl_start_atomic (query_instance_t * qi, caddr_t name, int type);
+caddr_t cl_start_atomic (query_instance_t * qi, const char *name, int type);
 void cl_local_atomic_over ();
 caddr_t cl_read_partition (query_instance_t * qi, caddr_t tb_name);
 caddr_t cl_read_cluster (query_instance_t * qi, caddr_t name, int create);
@@ -1571,7 +1570,7 @@ void itc_cl_sample_init (it_cursor_t * itc, cl_req_group_t ** clrg_ret);
 int64 itc_cl_sample_result (it_cursor_t * itc, cl_req_group_t * clrg);
 
 void cu_free (cucurbit_t * cu);
-void dpipe_define (caddr_t name, dbe_key_t * key, caddr_t fn, cu_op_func_t fn_disp, int l);
+void dpipe_define (const char *name, dbe_key_t * key, const char *fn, cu_op_func_t fn_disp, int l);
 void dpipe_drop (caddr_t name);
 /* dpipe define flags */
 #define CF_UPDATE 1
@@ -1595,7 +1594,7 @@ void dpipe_node_input (dpipe_node_t * dp, caddr_t * inst, caddr_t * state);
 void dpipe_node_local_input (dpipe_node_t * dp, caddr_t * inst, caddr_t * stat);
 void dpipe_node_free (dpipe_node_t * dp);
 #define IS_DP(xx) ((qn_input_fn)dpipe_node_input == ((data_source_t*)(xx))->src_input)
-cu_func_t *cu_func (caddr_t name, int must_find);
+cu_func_t *cu_func (const char *name, int must_find);
 void cu_ssl_row (cucurbit_t * cu, caddr_t * qst, state_slot_t ** args, int first_ssl);
 void cl_fref_result (fun_ref_node_t * fref, caddr_t * inst, cl_op_t ** clo_ret);
 int cl_partitioned_fref_start (dk_set_t nodes, caddr_t * inst);
@@ -1613,7 +1612,7 @@ extern int qf_trace;
 int cls_autocommit (cl_thread_t * clt, cl_op_t * clo, caddr_t err, int recov_deadlock);
 void cl_local_insert (caddr_t * inst, cl_op_t * clo);
 void cl_local_delete (caddr_t * inst, cl_op_t * clo);
-cl_req_group_t *dpipe_allocate (query_instance_t * qi, int flags, int n_ops, char **ops);
+cl_req_group_t *dpipe_allocate (query_instance_t * qi, int flags, int n_ops, const char **ops);
 void cu_row (cucurbit_t * cu, caddr_t * args);
 caddr_t *cu_next (cucurbit_t * cu, query_instance_t * qi, int is_flush);
 caddr_t cl_iri_to_id (query_instance_t * qi, caddr_t str, int make_new);
@@ -1800,5 +1799,5 @@ void dpipe_signature (caddr_t name, int n_args, ...);
 void qi_free_dfg_queue_nodes (query_instance_t * qi, dk_set_t nodes);
 void qf_set_cost (query_frag_t * qf);
 
-
+VIRT_API_END
 #endif

@@ -23,14 +23,13 @@
  *  
  *  
 */
-
 #ifndef _LIBUTIL_H
 #define _LIBUTIL_H
 
 #include "Dk.h"
 
 #include "util/oplthr.h"
-#include "util/ncfg.h"
+#include "wiutil/ncfg.h"
 #include "util/getopt.h"
 #include "util/logmsg.h"
 #include "util/setext.h"
@@ -52,10 +51,10 @@ void StartNTApplication (void);
 #include "util/win32/syslog.h"
 #endif
 
-BEGIN_CPLUSPLUS
+VIRT_API_BEGIN
 
 void sec_login_digest (char *ses_name, char *user, char *pwd, unsigned char *digest);
 
-END_CPLUSPLUS
+VIRT_API_END
 
 #endif

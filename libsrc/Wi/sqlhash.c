@@ -238,7 +238,7 @@ setp_distinct_hash (sql_comp_t * sc, setp_node_t * setp, uint64 n_rows, int op)
 	  "user defined data types not allowed for distinct, order, " "group or join condition columns (%s)", ssl->ssl_name);
   }
   END_DO_SET ();
-  ha = dk_alloc (sizeof (hash_area_t));
+  ha = (hash_area_t *) dk_alloc (sizeof (hash_area_t));
   memset (ha, 0, sizeof (hash_area_t));
   ha->ha_row_size = 0;
   ha->ha_key = setp_temp_key (setp, &ha->ha_row_size, quietcast, op);
@@ -366,5 +366,5 @@ setp_after_deserialize (setp_node_t * setp)
   if (setp->setp_loc_ts)
     setp->setp_loc_ts->ts_order_ks->ks_key = ha->ha_key;
   if (setp->setp_ha && HA_ORDER == setp->setp_ha->ha_op)
-    setp->setp_org_slots = (state_slot_t **) box_concat (setp->setp_keys_box, setp->setp_dependent_box);
+    setp->setp_org_slots = (state_slot_t **) box_concat ((caddr_t) (setp->setp_keys_box), (caddr_t) (setp->setp_dependent_box));
 }

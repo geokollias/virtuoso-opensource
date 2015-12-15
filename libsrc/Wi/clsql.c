@@ -36,7 +36,7 @@
 #include "sqlo.h"
 #include "rdfinf.h"
 #include "xmlnode.h"
-
+#include "xmltree.h"
 
 int enable_hash_colocate = 1;
 int enable_reader_colocate = 1;
@@ -126,17 +126,17 @@ clb_init (comp_context_t * cc, cl_buffer_t * clb, int is_select)
     }
 }
 
-
-void
+#if 0				/* This was in feature/fx2 but not in feature/analytics before makint it C++ friendly */
 qn_dl_from_qr (sql_comp_t * sc, data_source_t * qn)
 {
   /* when putting a qn into a qf, it is no longer in its qr.  The qr can be union branch in which case its super will have the qn instead, so go through supers */
-  query_t *qr;
+      .
+      query_t * qr;
   for (qr = qn->src_query; qr; qr = qr->qr_super)
     dk_set_delete (&qr->qr_nodes, (void *) qn);
   dk_set_delete (&sc->sc_cc->cc_query->qr_nodes, qn);
 }
-
+#endif
 
 void
 sqlg_cl_insert (sql_comp_t * sc, comp_context_t * cc, insert_node_t * ins, ST * tree, dk_set_t * code)
@@ -651,7 +651,7 @@ sqlg_qf_ctx (sql_comp_t * sc, query_frag_t * qf, dk_hash_t * local_refs, dk_hash
       DO_SET (caddr_t *, elt, &qf_order)
       {
 	clo_comp_t *org_clo = (clo_comp_t *) elt[0];
-	qfo[inx] = dk_alloc (sizeof (clo_comp_t));
+	qfo[inx] = (clo_comp_t *) dk_alloc (sizeof (clo_comp_t));
 	qfo[inx]->nth = dk_set_position (outputs, (void *) elt[1]);
 	qfo[inx]->is_desc = org_clo->is_desc;
 	qfo[inx]->col = org_clo->col;
@@ -1622,7 +1622,7 @@ sqlg_cl_multistate_group (sql_comp_t * sc)
 void
 sc_ssl_add_eq (sql_comp_t * sc, state_slot_t * ssl1, state_slot_t * ssl2)
 {
-  dk_set_t eqs = gethash ((void *) ssl1, sc->sc_ssl_eqs);
+  dk_set_t eqs = (dk_set_t) gethash ((void *) ssl1, sc->sc_ssl_eqs);
   if (eqs && !dk_set_member (eqs, (void *) ssl2))
     dk_set_conc (eqs, dk_set_cons ((void *) ssl2, NULL));
   else

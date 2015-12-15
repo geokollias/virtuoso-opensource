@@ -101,7 +101,7 @@ rb_serial_complete_len (caddr_t x)
       dk_session_t *s = strses_allocate ();
       xe_serialize ((xml_entity_t *) rb->rb_box, s);
       len += strses_length (s);
-      dk_free_box (s);
+      dk_free_box ((caddr_t) s);
     }
   else
     len += box_serial_length (rb->rb_box, 0);
@@ -286,7 +286,7 @@ dc_rb_id (data_col_t * dc, int inx)
     return INT64_REF_NA (place + 1);
   else if (DV_RDF == place[0])
     {
-      rdf_box_t *rb = (rdf_box_t *) box_deserialize_string (place, INT32_MAX, 0);
+      rdf_box_t *rb = (rdf_box_t *) box_deserialize_string ((ccaddr_t) place, INT32_MAX, 0);
       int64 id = rb->rb_ro_id;
       dk_free_box ((caddr_t) rb);
       return id;
@@ -848,14 +848,14 @@ bif_str_vec (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, state_slot_
 	  rbs_string_range (&dv, &len, &is_string);
 	  if (!is_string)
 	    {
-	      rdf_box_t *rb = box_deserialize_string (dv, INT32_MAX, 0);
+	      rdf_box_t *rb = (rdf_box_t *) box_deserialize_string ((ccaddr_t) dv, INT32_MAX, 0);
 	      if ((rb_type__xsd_boolean == rb->rb_type) && (DV_LONG_INT == DV_TYPE_OF (rb->rb_box)))
 		{
 		  int save = dc->dc_n_values;
 		  dc->dc_n_values = set;
 		  dc_append_box (dc, box_dv_short_string (unbox (rb->rb_box) ? uname_true : uname_false));
 		  dc->dc_n_values = save;
-		  dk_free_box (rb);
+		  dk_free_box ((caddr_t) rb);
 		  break;
 		}
 	      if (DV_DATETIME == DV_TYPE_OF (rb->rb_box))
@@ -867,10 +867,10 @@ bif_str_vec (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, state_slot_
 		  dt_to_iso8601_string_ext (rb->rb_box, temp, sizeof (temp), mode);
 		  dc_append_box (dc, box_dv_short_string (temp));
 		  dc->dc_n_values = save;
-		  dk_free_box (rb);
+		  dk_free_box ((caddr_t) rb);
 		  break;
 		}
-	      dk_free_box (rb);
+	      dk_free_box ((caddr_t) rb);
 	      goto general;
 	    }
 	  if (len < 256)
@@ -927,8 +927,8 @@ void cu_rl_local_exec (cucurbit_t * cu);
 void
 bif_iri_to_id_vec (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, state_slot_t * ret)
 {
-  static char *cl_op_name = "IRI_TO_ID_1";
-  static char *op_name = "L_IRI_TO_ID";
+  static const char *cl_op_name = "IRI_TO_ID_1";
+  static const char *op_name = "L_IRI_TO_ID";
   QNCAST (QI, qi, qst);
   db_buf_t set_mask = qi->qi_set_mask;
   int set, n_sets = qi->qi_n_sets, first_set = 0;

@@ -65,7 +65,7 @@ cpt_write_registry (dbe_storage_t * dbs, dk_session_t * ses)
 	}
       else
 	prev_size = strses_length (strses);
-      dk_free_box (strses);
+      dk_free_box ((caddr_t) strses);
     }
   n_prev_pages = _RNDUP (prev_size, PAGE_DATA_SZ) / PAGE_DATA_SZ;
   if (n_pages > n_prev_pages)
@@ -198,11 +198,12 @@ sequences = id_hash_allocate  (101, sizeof (void *), sizeof (boxint), \
 
 
 caddr_t
-box_deserialize_string (caddr_t text, int opt_len, int64 offset)
+box_deserialize_string (ccaddr_t text, int opt_len, int64 offset)
 {
   dtp_t dvrdf_temp[50];
   scheduler_io_data_t iod;
-  caddr_t reg, buf = (caddr_t) dvrdf_temp;
+  caddr_t reg;
+  char *buf = (caddr_t) dvrdf_temp;
 
   dk_session_t ses;
   /* read_object will not box top level numbers */
@@ -242,7 +243,7 @@ box_deserialize_string (caddr_t text, int opt_len, int64 offset)
       if (!opt_len)
 	opt_len = box_length (text);
       if (offset && opt_len > sizeof (dvrdf_temp))
-	buf = dk_alloc (opt_len);
+	buf = (char *) dk_alloc (opt_len);
       if (offset)
 	{
 	  int last;
@@ -256,7 +257,7 @@ box_deserialize_string (caddr_t text, int opt_len, int64 offset)
     }
   memset (&ses, 0, sizeof (ses));
   memset (&iod, 0, sizeof (iod));
-  ses.dks_in_buffer = text;
+  ses.dks_in_buffer = (char *) text;
   if (opt_len)
     ses.dks_in_fill = opt_len;
   else
@@ -280,7 +281,7 @@ mp_rbb_from_id (mem_pool_t * mp, int64 n)
 
 
 caddr_t
-mp_box_deserialize_string (mem_pool_t * mp, caddr_t text, int opt_len, int64 offset)
+mp_box_deserialize_string (mem_pool_t * mp, ccaddr_t text, int opt_len, int64 offset)
 {
   dtp_t dvrdf_temp[50];
   db_buf_t tmp = NULL;
@@ -328,7 +329,7 @@ mp_box_deserialize_string (mem_pool_t * mp, caddr_t text, int opt_len, int64 off
 	{
 	  int last;
 	  if (opt_len > sizeof (dvrdf_temp))
-	    tmp = dk_alloc_box (opt_len + 1, DV_STRING);
+	    tmp = (db_buf_t) dk_alloc_box (opt_len + 1, DV_STRING);
 	  else
 	    tmp = dvrdf_temp;
 	  memcpy (tmp, text, opt_len);
@@ -341,7 +342,7 @@ mp_box_deserialize_string (mem_pool_t * mp, caddr_t text, int opt_len, int64 off
     }
   memset (&ses, 0, sizeof (ses));
   memset (&iod, 0, sizeof (iod));
-  ses.dks_in_buffer = text;
+  ses.dks_in_buffer = (char *) text;
   if (opt_len)
     ses.dks_in_fill = opt_len;
   else
@@ -471,7 +472,7 @@ registry_exec ()
 }
 
 void
-registry_set_sequence (caddr_t name, boxint value, caddr_t * err_ret)
+registry_set_sequence (ccaddr_t name, boxint value, caddr_t * err_ret)
 {
   char temp[2000];
   caddr_t the_id = box_sprintf_escaped (name, 0);
@@ -723,7 +724,7 @@ registry_get (const char *name)
 
 
 boxint
-sequence_next_inc_1 (char *name, int in_map, boxint inc_by, caddr_t * err_ret)
+sequence_next_inc_1 (ccaddr_t name, int in_map, boxint inc_by, caddr_t * err_ret)
 {
   boxint res;
   if (INSIDE_MAP != in_map)
@@ -752,7 +753,7 @@ sequence_next_inc_1 (char *name, int in_map, boxint inc_by, caddr_t * err_ret)
 
 
 caddr_t
-registry_remove (char *name)
+registry_remove (const char *name)
 {
   caddr_t *place;
   ASSERT_IN_TXN;
@@ -769,14 +770,14 @@ registry_remove (char *name)
 
 
 boxint
-sequence_next (char *name, int in_map)
+sequence_next (const char *name, int in_map)
 {
   return sequence_next_inc (name, in_map, 1);
 }
 
 
 boxint
-sequence_set_1 (char *name, boxint value, int mode, int in_map, caddr_t * err_ret)
+sequence_set_1 (const char *name, boxint value, int mode, int in_map, caddr_t * err_ret)
 {
   boxint res;
   if (INSIDE_MAP != in_map)
@@ -838,7 +839,7 @@ registry_get_all (void)
 
 
 int
-sequence_remove (char *name, int in_map)
+sequence_remove (const char *name, int in_map)
 {
   int res;
   if (INSIDE_MAP != in_map)

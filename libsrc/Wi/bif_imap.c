@@ -570,7 +570,7 @@ if (!stricmp ("select", mode) || !stricmp ("expunge", mode))
 		{
 		  dk_session_t *out;
 		  out = strses_subseq (msg2, 0, strses_length (msg2) - 3);
-		  dk_free_box (msg2);
+		  dk_free_box ((caddr_t) msg2);
 		  msg2 = out;
 		}
 	      if (!STRSES_CAN_BE_STRING (msg2))
@@ -826,7 +826,7 @@ if (!stricmp ("fetch", mode) || !stricmp ("message_delete", mode) || !stricmp ("
 			{
 			  dk_session_t *out;
 			  out = strses_subseq (msg, 0, strses_length (msg) - 3);
-			  dk_free_box (msg);
+			  dk_free_box ((caddr_t) msg);
 			  msg = out;
 			}
 		      if (!STRSES_CAN_BE_STRING (msg))
@@ -894,7 +894,7 @@ caddr_t bif_session_arg (caddr_t * qst, state_slot_t ** args, int nth, char *fun
 static caddr_t
 bif_imap_login (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "imap_login";
+  const char *me = "imap_login";
   caddr_t *conn = (caddr_t *) bif_session_arg (qst, args, 0, me);
   caddr_t user = bif_string_arg (qst, args, 1, me);
   caddr_t pass = bif_string_arg (qst, args, 2, me);
@@ -940,7 +940,7 @@ error_end:
 static caddr_t
 bif_imap_logout (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "imap_logout";
+  const char *me = "imap_logout";
   caddr_t *conn = (caddr_t *) bif_session_arg (qst, args, 0, me);
   int rc;
   long id;
@@ -978,7 +978,7 @@ error_end:
 static caddr_t
 bif_imap_command (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "imap4_command";
+  const char *me = "imap4_command";
   caddr_t *in_uidl = NULL;
   caddr_t folder_id = NULL;
   caddr_t *conn = (caddr_t *) bif_session_arg (qst, args, 0, me);

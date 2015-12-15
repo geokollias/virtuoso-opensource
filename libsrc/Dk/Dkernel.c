@@ -1002,7 +1002,7 @@ sr_check_and_set_args (future_request_t * future, caddr_t * arguments, int argco
 {
   service_desc_t *desc = (service_desc_t *) future->rq_service->sr_client_data;
   int inx;
-  char *reason = "";
+  const char *reason = "";
   char buffer[256];
 
   if (argcount != desc->sd_arg_count)
@@ -3714,7 +3714,7 @@ log_queue_add_msg (LOG * log, int level, char *buf)
 
 
 void
-log_thread_initialize ()
+log_thread_initialize (void)
 {
   if (!virtuoso_log || !stderr_log || (log_file_line & 0x1) == 0)	/*if no logs then do not use a thread */
     return;

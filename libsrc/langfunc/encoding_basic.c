@@ -358,7 +358,7 @@ encode_next_char:
 }
 
 
-char * eh_names__UTF8_QR[] = {"UTF-8-QR", NULL};
+const char * eh_names__UTF8_QR[] = {"UTF-8-QR", NULL};
 
 encoding_handler_t eh__UTF8_QR = {
   eh_names__UTF8_QR,
@@ -371,7 +371,8 @@ encoding_handler_t eh__UTF8_QR = {
   eh_encode_wchar_buffer__UTF8
 };
 
-char * eh_names__UTF8[] = {"UTF-8", "UTF8", NULL};
+
+const char * eh_names__UTF8[] = {"UTF-8", "UTF8", NULL};
 
 encoding_handler_t eh__UTF8 = {
   eh_names__UTF8,
@@ -536,7 +537,7 @@ char *eh_encode_wchar_buffer__UTF16BE (const wchar_t *src_buf, const wchar_t *sr
 }
 
 
-char * eh_names__UTF16BE[] = {"UTF-16BE", "UTF16BE", NULL};
+const char * eh_names__UTF16BE[] = {"UTF-16BE", "UTF16BE", NULL};
 
 encoding_handler_t eh__UTF16BE = {
   eh_names__UTF16BE,
@@ -700,7 +701,7 @@ char *eh_encode_wchar_buffer__UTF16LE (const wchar_t *src_buf, const wchar_t *sr
 }
 
 
-char * eh_names__UTF16LE[] = {"UTF-16LE", "UTF16LE", NULL};
+const char * eh_names__UTF16LE[] = {"UTF-16LE", "UTF16LE", NULL};
 
 encoding_handler_t eh__UTF16LE = {
   eh_names__UTF16LE,
@@ -714,7 +715,7 @@ encoding_handler_t eh__UTF16LE = {
 };
 
 
-char * eh_names__UTF16[] = {"UTF-16", "UTF16", NULL};
+const char * eh_names__UTF16[] = {"UTF-16", "UTF16", NULL};
 
 encoding_handler_t eh__UTF16 = {
   eh_names__UTF16,
@@ -817,7 +818,7 @@ char *eh_encode_wchar_buffer__ASCII (const wchar_t *src_buf, const wchar_t *src_
 }
 
 
-char * eh_names__ASCII[] = {"ASCII", "US-ASCII", NULL};
+const char * eh_names__ASCII[] = {"ASCII", "US-ASCII", NULL};
 
 encoding_handler_t eh__ASCII = {
   eh_names__ASCII,
@@ -908,7 +909,7 @@ char *eh_encode_wchar_buffer__ISO8859_1 (const wchar_t *src_buf, const wchar_t *
 }
 
 
-char * eh_names__ISO8859_1[] = {
+const char * eh_names__ISO8859_1[] = {
 "ISO8859-1", "ISO-8859-1", "ISO_8859-1", "ISO_8859-1:1987", "8859-1", "ISO", "LATIN-1", "LATIN 1", "LATIN_1", "LATIN1", "ISO-IR-100", "L1", "IBM819", "CP819", "819", "CSISOLATIN1", NULL};
 
 encoding_handler_t eh__ISO8859_1 = {
@@ -1012,7 +1013,7 @@ char *eh_encode_wchar_buffer__WIDE_121 (const wchar_t *src_buf, const wchar_t *s
 }
 
 
-char * eh_names__WIDE_121[] = {
+const char * eh_names__WIDE_121[] = {
   "WIDE identity", NULL};
 
 encoding_handler_t eh__WIDE_121 = {
@@ -1130,7 +1131,7 @@ char *eh_encode_wchar_buffer__UCS4BE (const wchar_t *src_buf, const wchar_t *src
 }
 
 
-char * eh_names__UCS4BE[] = {
+const char * eh_names__UCS4BE[] = {
   "ISO-10646-UCS-4BE", "UCS4BE", "UCS-4BE", NULL};
 
 encoding_handler_t eh__UCS4BE = {
@@ -1248,7 +1249,7 @@ char *eh_encode_wchar_buffer__UCS4LE (const wchar_t *src_buf, const wchar_t *src
 }
 
 
-char * eh_names__UCS4LE[] = {
+const char * eh_names__UCS4LE[] = {
   "ISO-10646-UCS-4LE", "UCS4LE", "UCS-4LE", NULL};
 
 encoding_handler_t eh__UCS4LE = {
@@ -1262,7 +1263,8 @@ encoding_handler_t eh__UCS4LE = {
   eh_encode_wchar_buffer__UCS4LE
 };
 
-char * eh_names__UCS4[] = {
+
+const char * eh_names__UCS4[] = {
   "ISO-10646-UCS-4", "UCS4", "UCS-4", NULL};
 
 encoding_handler_t eh__UCS4 = {

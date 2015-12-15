@@ -27,14 +27,7 @@
 #define _BIF_TEXT_H
 
 #include "text.h"		/* IvAn/TextXperIndex/000815 */
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "langfunc.h"
-#ifdef __cplusplus
-}
-#endif
 
 #if 0
 char *asciiword_start_0 (char *str);
@@ -63,7 +56,7 @@ void str_asciiupc_copy (char *to, const char *from, int len);
 #endif
 
 extern lang_handler_t *server_default_lh;
-extern char *server_default_language_name;
+extern const char *server_default_language_name;
 
 #ifndef FREETEXT_PORTABILITY_TEST
 #define FIRST_MAIN_WORD_POS	((wpos_t)(0x00000000L))
@@ -129,7 +122,6 @@ extern lh_word_callback_t push_string_into_set_callback;
 
 void ddl_text_init (void);
 void ddl_text_index_upgrade (void);
-void log_thread_initialize (void);
 vt_batch_t *bif_vtb_arg (caddr_t * qst, state_slot_t ** args, int n, const char *f);
 
 #endif /* _BIF_TEXT_H */

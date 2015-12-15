@@ -110,7 +110,7 @@ aqt_other_aq (aq_thread_t * aqt)
     {
       aqt->aqt_aq = best;
       best->aq_n_threads++;
-      return basket_get (&best->aq_queue);
+      return (aq_request_t *) basket_get (&best->aq_queue);
     }
   return NULL;
 }
@@ -147,7 +147,7 @@ aq_thread_func (aq_thread_t * aqt)
       if (aqt->aqt_cli->cli_trx->lt_vdb_threads)
 	GPF_T1 ("at lt not supposed to in io sect");
       if (IS_BOX_POINTER (aqt->aqt_cli->cli_trx->lt_replicate))
-	dk_free_tree (aqt->aqt_cli->cli_trx->lt_replicate);
+	dk_free_tree ((caddr_t) (aqt->aqt_cli->cli_trx->lt_replicate));
       aqt->aqt_cli->cli_trx->lt_replicate = (caddr_t *) aq->aq_replicate;
       aqt->aqt_cli->cli_row_autocommit = aq->aq_row_autocommit;
       aqt->aqt_cli->cli_non_txn_insert = aq->aq_non_txn_insert;
@@ -178,7 +178,7 @@ aq_thread_func (aq_thread_t * aqt)
       if (aqt->aqt_cli->cli_clt)
 	GPF_T1 ("aq thread returning is not supposed to have a clt, not even if served rec dfg, would been clrd");
       aqr->aqr_args = NULL;
-      dk_free_box (aqt->aqt_cli->cli_cl_stack);
+      dk_free_box ((caddr_t) (aqt->aqt_cli->cli_cl_stack));
       aqt->aqt_cli->cli_cl_stack = NULL;
       if (QI_NO_SLICE != aqt->aqt_cli->cli_slice)
 	cli_set_slice (aqt->aqt_cli, NULL, QI_NO_SLICE, NULL);
@@ -199,7 +199,7 @@ aq_thread_func (aq_thread_t * aqt)
 	semaphore_leave (aq->aq_waiting->thr_sem);
       else if (aqr->aqr_waiting)
 	semaphore_leave (aqr->aqr_waiting->thr_sem);
-      aqt->aqt_aqr = aqr = basket_get (&aq->aq_queue);
+      aqt->aqt_aqr = aqr = (aq_request_t *) basket_get (&aq->aq_queue);
       if (aqr)
 	{
 	  mutex_leave (aq->aq_mtx);
@@ -210,7 +210,7 @@ aq_thread_func (aq_thread_t * aqt)
       if (aq->aq_deleted && !aq->aq_n_threads)
 	{
 	  mutex_leave (aq->aq_mtx);
-	  dk_free_box (aq);
+	  dk_free_box ((caddr_t) aq);
 	  IN_AQ;
 	}
 
@@ -396,7 +396,7 @@ aq_do_self (async_queue_t * aq, caddr_t * err_ret)
   if (!aq->aq_wait_qi && !aq->aq_no_lt_enter)
     return 0;
   cli = sqlc_client ();
-  aqr = basket_get (&aq->aq_queue);
+  aqr = (aq_request_t *) basket_get (&aq->aq_queue);
   mutex_leave (aq->aq_mtx);
   ts = rdtsc ();
   if (aq->aq_no_lt_enter)
@@ -452,7 +452,7 @@ aq_wait (async_queue_t * aq, int req_no, caddr_t * err, int wait)
   aq_request_t *aqr;
   mutex_enter (aq->aq_mtx);
 check_wait:
-  aqr = gethash ((void *) (ptrlong) req_no, aq->aq_requests);
+  aqr = (aq_request_t *) gethash ((void *) (ptrlong) req_no, aq->aq_requests);
   if (!aqr)
     {
       mutex_leave (aq->aq_mtx);
@@ -572,7 +572,7 @@ aq_wait_all_1 (async_queue_t * aq, caddr_t * err_ret)
   mutex_enter (aq->aq_mtx);
   if (aq_wait_last_first && aq->aq_queue.bsk_data.longval)
     {
-      aq_request_t *last = aq->aq_queue.bsk_prev->bsk_data.ptrval;
+      aq_request_t *last = (aq_request_t *) (aq->aq_queue.bsk_prev->bsk_data.ptrval);
       if (last && AQR_DONE != last->aqr_state)
 	{
 	  int last_req = last->aqr_req_no;
@@ -668,7 +668,7 @@ aq_wait_all (async_queue_t * aq, caddr_t * err_ret)
   IN_AQ;
   if (aq_wait_last_first && aq->aq_queue.bsk_data.longval)
     {
-      aq_request_t *last = aq->aq_queue.bsk_prev->bsk_data.ptrval;
+      aq_request_t *last = (aq_request_t *) (aq->aq_queue.bsk_prev->bsk_data.ptrval);
       if (last && AQR_DONE != last->aqr_state)
 	{
 	  int last_req = last->aqr_req_no;
@@ -940,7 +940,7 @@ aq_sql_func (caddr_t * av, caddr_t * err_ret)
   caddr_t full_name = sch_full_proc_name (wi_inst.wi_schema, fn,
       cli_qual (cli), CLI_OWNER (cli));
   query_t *proc = full_name ? sch_proc_def (wi_inst.wi_schema, full_name) : NULL;
-  dk_free_box (av);
+  dk_free_box ((caddr_t) av);
   dk_free_box (fn);
   if (!proc)
     {
@@ -1103,7 +1103,7 @@ aq_wait_all_in_qi (async_queue_t * aq, caddr_t * inst, caddr_t * err_ret, aq_cle
     {
       aq_request_t *aqr;
       IN_AQ;
-      while ((aqr = basket_get (&aq->aq_queue)))
+      while ((aqr = (aq_request_t *) basket_get (&aq->aq_queue)))
 	{
 	  if (clup)
 	    clup (aqr->aqr_args);
@@ -1165,11 +1165,8 @@ aq_serialize (caddr_t x, dk_session_t * ses)
   print_int (0, ses);
 }
 
-size_t dk_alloc_cache_total (void *cache);
-void thr_alloc_cache_clear (thread_t * thr);
-
 size_t
-aq_thr_mem_cache_total ()
+aq_thr_mem_cache_total (void)
 {
   int i;
   size_t n = 0;
@@ -1179,7 +1176,7 @@ aq_thr_mem_cache_total ()
   mutex_enter (rc->rc_mtx);
   for (i = 0; i < rc->rc_fill; i++)
     {
-      aq_thread_t *aqt = rc->rc_items[i];
+      aq_thread_t *aqt = (aq_thread_t *) (rc->rc_items[i]);
       n += dk_alloc_cache_total (aqt->aqt_thread->thr_alloc_cache);
     }
   mutex_leave (rc->rc_mtx);
@@ -1196,7 +1193,7 @@ aq_thr_mem_cache_clear ()
   mutex_enter (rc->rc_mtx);
   for (i = 0; i < rc->rc_fill; i++)
     {
-      aq_thread_t *aqt = rc->rc_items[i];
+      aq_thread_t *aqt = (aq_thread_t *) (rc->rc_items[i]);
       thr_alloc_cache_clear (aqt->aqt_thread);
     }
   mutex_leave (rc->rc_mtx);

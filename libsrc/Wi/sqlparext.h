@@ -545,6 +545,8 @@ typedef struct sql_tree_s
     {
       caddr_t prefix;
       caddr_t name;
+      caddr_t col;		/* filled in when scoping col groups, not allocd in the default col ref tree */
+      caddr_t ot;
     } col_ref;
     struct
     {

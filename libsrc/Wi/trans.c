@@ -202,7 +202,7 @@ qr_multistate_lc (query_t * qr, query_instance_t * caller, int n_sets)
 {
   caddr_t *inst = (caddr_t *) qi_alloc (qr, NULL, NULL, 0, 0);
   query_instance_t *qi = (query_instance_t *) inst;
-  srv_stmt_t *lc = dk_alloc_box_zero (sizeof (srv_stmt_t), DV_PL_CURSOR);
+  srv_stmt_t *lc = (srv_stmt_t *) dk_alloc_box_zero (sizeof (srv_stmt_t), DV_PL_CURSOR);
   qi->qi_query = qr;
   qi_vec_init (qi, n_sets);
   qi->qi_no_cast_error = qr->qr_no_cast_error;
@@ -541,7 +541,7 @@ tn_fetch (trans_node_t * tn, caddr_t * inst)
       srv_stmt_t *lc = (srv_stmt_t *) qst_get (inst, tn->tn_lc);
       int batch_size = dc_batch_sz;
       int fill = 0;
-      caddr_t *arr = dk_alloc_box (sizeof (caddr_t) * batch_size, DV_BIN);
+      caddr_t *arr = (caddr_t *) dk_alloc_box (sizeof (caddr_t) * batch_size, DV_BIN);
       caddr_t any = dk_alloc_box_zero (batch_size, DV_BIN);
       query_instance_t *lc_qi;
       id_hash_iterator (&hit, to_fetch);
@@ -616,7 +616,7 @@ tn_fetch (trans_node_t * tn, caddr_t * inst)
       QNCAST (query_instance_t, qi, inst);
       int batch_size = dc_batch_sz;
       int fill = 0, is_started = 0;
-      caddr_t *arr = dk_alloc_box (sizeof (caddr_t) * batch_size, DV_BIN);
+      caddr_t *arr = (caddr_t *) dk_alloc_box (sizeof (caddr_t) * batch_size, DV_BIN);
       caddr_t any = dk_alloc_box_zero (batch_size, DV_BIN);
       id_hash_iterator (&hit, to_fetch);
       subq_init (qr, inst);
@@ -1343,7 +1343,7 @@ tn_cache_results (trans_node_t * tn, caddr_t * inst)
 	{
 	  DO_SET (trans_state_t *, tst, &ts->ts_result)
 	  {
-	    arr = dk_alloc_box (BOX_ELEMENTS (tn->tn_output) * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
+	    arr = dk_alloc_list (BOX_ELEMENTS (tn->tn_output));
 	    DO_BOX_0 (state_slot_t *, out, inx, tn->tn_output)
 	    {
 	      caddr_t v = ((caddr_t *) tst->tst_value)[inx];

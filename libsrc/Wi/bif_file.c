@@ -81,7 +81,7 @@
 
 #include "datesupp.h"
 #include "langfunc.h"
-
+#include "uuid_generator.h"
 
 int i18n_wide_file_names = 0;
 encoding_handler_t *i18n_volume_encoding = NULL;
@@ -664,7 +664,7 @@ caddr_t
 bif_server_root (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   static char abs_path[PATH_MAX + 1], *p_abs_path = abs_path;
-  char *path = "";
+  const char *path = "";
 
   abs_path[0] = 0;
   if (!rel_to_abs_path (p_abs_path, path, sizeof (abs_path)))
@@ -1231,7 +1231,7 @@ bif_sys_dirlist (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 		    {
 		      int buflen = (box_length (raw_name) - 1) / i18n_volume_encoding->eh_minsize;
 		      int state = 0;
-		      wchar_t *buf = dk_alloc_box ((buflen + 1) * sizeof (wchar_t), DV_WIDE);
+		      wchar_t *buf = (wchar_t *) dk_alloc_box ((buflen + 1) * sizeof (wchar_t), DV_WIDE);
 		      wchar_t *wide_name;
 		      const char *raw_tail = raw_name;
 		      int res =
@@ -1245,9 +1245,9 @@ bif_sys_dirlist (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 			}
 		      if (res < buflen - 1)
 			{
-			  wide_name = dk_alloc_box ((res + 1) * sizeof (wchar_t), DV_WIDE);
+			  wide_name = (wchar_t *) dk_alloc_box ((res + 1) * sizeof (wchar_t), DV_WIDE);
 			  memcpy (wide_name, buf, res * sizeof (wchar_t));
-			  dk_free_box (buf);
+			  dk_free_box ((caddr_t) buf);
 			}
 		      else
 			wide_name = buf;
@@ -1422,7 +1422,7 @@ sys_dirlist (caddr_t fname, int files)
 		    {
 		      int buflen = (box_length (raw_name) - 1) / i18n_volume_encoding->eh_minsize;
 		      int state = 0;
-		      wchar_t *buf = dk_alloc_box ((buflen + 1) * sizeof (wchar_t), DV_WIDE);
+		      wchar_t *buf = (wchar_t *) dk_alloc_box ((buflen + 1) * sizeof (wchar_t), DV_WIDE);
 		      wchar_t *wide_name;
 		      const char *raw_tail = raw_name;
 		      int res =
@@ -1436,9 +1436,9 @@ sys_dirlist (caddr_t fname, int files)
 			}
 		      if (res < buflen - 1)
 			{
-			  wide_name = dk_alloc_box ((res + 1) * sizeof (wchar_t), DV_WIDE);
+			  wide_name = (wchar_t *) dk_alloc_box ((res + 1) * sizeof (wchar_t), DV_WIDE);
 			  memcpy (wide_name, buf, res * sizeof (wchar_t));
-			  dk_free_box (buf);
+			  dk_free_box ((caddr_t) buf);
 			}
 		      else
 			wide_name = buf;
@@ -2120,275 +2120,6 @@ bif_cfg_write (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   return 0;
 }
 
-/* UUIDs generator */
-#define UUIDS_PER_TICK 1024
-
-/*  64 bit data type */
-#ifdef WIN32
-#define unsigned64_t unsigned __int64
-#elif SIZEOF_LONG_LONG == 8
-#define unsigned64_t unsigned long long
-#elif SIZEOF_LONG == 8
-#define unsigned64_t unsigned long
-#endif
-
-#define UUID_STATE "uuid_state"
-
-typedef unsigned64_t uuid_time_t;
-
-typedef struct
-{
-  char nodeID[6];
-} uuid_node_t;
-
-#undef uuid_t
-typedef struct _uuid_t
-{
-  uint32 time_low;
-  uint16 time_mid;
-  uint16 time_hi_and_version;
-  unsigned char clock_seq_hi_and_reserved;
-  unsigned char clock_seq_low;
-  unsigned char node[6];
-} detailed_uuid_t;
-#define uuid_t detailed_uuid_t
-
-
-/* data type for UUID generator persistent state */
-
-typedef struct
-{
-  uuid_node_t node;		/* saved node ID */
-  unsigned short cs;		/* saved clock sequence */
-} uuid_state;
-
-static void get_system_time (uuid_time_t * uuid_time);
-static void get_random_info (unsigned char seed[16]);
-
-/* format_uuid_v1 -- make a UUID from the timestamp, clockseq, and node ID */
-static void
-format_uuid_v1 (uuid_t * uuid, unsigned short clock_seq, uuid_time_t timestamp, uuid_node_t node)
-{
-  uuid->time_low = (unsigned long) (timestamp & 0xFFFFFFFF);
-  uuid->time_mid = (unsigned short) ((timestamp >> 32) & 0xFFFF);
-  uuid->time_hi_and_version = (unsigned short) ((timestamp >> 48) & 0x0FFF);
-  uuid->time_hi_and_version |= (1 << 12);
-  uuid->clock_seq_low = clock_seq & 0xFF;
-  uuid->clock_seq_hi_and_reserved = (clock_seq & 0x3F00) >> 8;
-  uuid->clock_seq_hi_and_reserved |= 0x80;
-  memcpy (&uuid->node, &node, sizeof uuid->node);
-}
-
-static void
-get_current_time (uuid_time_t * timestamp)
-{
-  uuid_time_t time_now;
-  static uuid_time_t time_last;
-  static unsigned short uuids_this_tick;
-  static int inited = 0;
-
-  if (!inited)
-    {
-      get_system_time (&time_last);
-      uuids_this_tick = 0;
-      inited = 1;
-    }
-  while (1)
-    {
-      get_system_time (&time_now);
-
-      /* if clock reading changed since last UUID generated... */
-      if (time_last != time_now)
-	{
-	  /* reset count of uuids gen'd with this clock reading */
-	  time_last = time_now;
-	  uuids_this_tick = 0;
-	  break;
-	};
-      if (uuids_this_tick < UUIDS_PER_TICK)
-	{
-	  uuids_this_tick++;
-	  break;
-	};			/* going too fast for our clock; spin */
-    };				/* add the count of uuids to low order bits of the clock reading */
-
-  *timestamp = time_now + uuids_this_tick;
-}
-
-static unsigned short
-true_random (void)
-{
-  uuid_time_t time_now;
-
-  get_system_time (&time_now);
-  time_now = time_now / UUIDS_PER_TICK;
-  srand ((unsigned int) (((time_now >> 32) ^ time_now) & 0xffffffff));
-  return rand ();
-}
-
-static void
-get_pseudo_node_identifier (uuid_node_t * node)
-{
-  unsigned char seed[16];
-  get_random_info (seed);
-  seed[0] |= 0x80;
-  memcpy (node, seed, sizeof (*node));
-}
-
-/* system dependent call to get the current system time.
-   Returned as 100ns ticks since Oct 15, 1582, but resolution may be
-   less than 100ns.  */
-#ifdef WIN32
-static void
-get_system_time (uuid_time_t * uuid_time)
-{
-  ULARGE_INTEGER time;
-  GetSystemTimeAsFileTime ((FILETIME *) & time);
-  /* NT keeps time in FILETIME format which is 100ns ticks since
-     Jan 1, 1601.  UUIDs use time in 100ns ticks since Oct 15, 1582.
-     The difference is 17 Days in Oct + 30 (Nov) + 31 (Dec)
-     + 18 years and 5 leap days.        */
-  time.QuadPart += (unsigned __int64) (1000 * 1000 * 10)	/* seconds */
-      * (unsigned __int64) (60 * 60 * 24)	/* days */
-      * (unsigned __int64) (17 + 30 + 31 + 365 * 18 + 5);	/* # of days */
-  *uuid_time = time.QuadPart;
-}
-
-static void
-get_random_info (unsigned char seed[16])
-{
-  MD5_CTX c;
-  struct
-  {
-    MEMORYSTATUS m;
-    SYSTEM_INFO s;
-    FILETIME t;
-    LARGE_INTEGER pc;
-    DWORD tc;
-    DWORD l;
-    char hostname[MAX_COMPUTERNAME_LENGTH + 1];
-  } r;
-
-  memset (&c, 0, sizeof (MD5_CTX));
-  MD5Init (&c);			/* memory usage stats */
-  GlobalMemoryStatus (&r.m);	/* random system stats */
-  GetSystemInfo (&r.s);		/* 100ns resolution (nominally) time of day */
-  GetSystemTimeAsFileTime (&r.t);	/* high resolution performance counter */
-  QueryPerformanceCounter (&r.pc);	/* milliseconds since last boot */
-  r.tc = GetTickCount ();
-  r.l = MAX_COMPUTERNAME_LENGTH + 1;
-
-  GetComputerName (r.hostname, &r.l);
-  MD5Update (&c, (unsigned char *) &r, sizeof (r));
-  MD5Final (seed, &c);
-}
-
-#else /* UNIX */
-static void
-get_system_time (uuid_time_t * uuid_time)
-{
-  struct timeval tp;
-  gettimeofday (&tp, (struct timezone *) 0);
-  /* Offset between UUID formatted times and Unix formatted times.
-     UUID UTC base time is October 15, 1582.
-     Unix base time is January 1, 1970.   */
-  *uuid_time = ((uuid_time_t) (tp.tv_sec) * 10000000) + ((uuid_time_t) (tp.tv_usec) * 10) + 0x01B21DD213814000LL;
-}
-
-static void
-get_random_info (unsigned char seed[16])
-{
-  MD5_CTX c;
-
-  struct
-  {
-    pid_t pid;
-    struct timeval t;
-    char hostname[257];
-  } r;
-
-  memset (&c, 0, sizeof (MD5_CTX));
-  MD5Init (&c);
-  r.pid = getpid ();
-  gettimeofday (&r.t, (struct timezone *) 0);
-  gethostname (r.hostname, 256);
-  MD5Update (&c, (unsigned char *) &r, sizeof (r));
-  MD5Final (seed, &c);
-}
-#endif /* end system specific routines */
-/* end UUIDs generator */
-
-static uuid_state *ustate = NULL;
-
-void
-uuid_set (uuid_t * u)
-{
-  uuid_time_t timestamp;
-  char p[200];
-
-  if (!ustate)
-    {
-#if 1
-      caddr_t saved_state;
-      unsigned char node[sizeof (uuid_node_t)];
-      ustate = (uuid_state *) dk_alloc (sizeof (uuid_state));
-      IN_TXN;
-      saved_state = registry_get (UUID_STATE);
-      if (!saved_state)
-	{
-	  ustate->cs = true_random ();
-	  get_pseudo_node_identifier (&ustate->node);
-#ifdef VALGRIND
-	  memset (node, 0, sizeof (node));
-#endif
-	  memcpy (node, &ustate->node, sizeof (uuid_node_t));
-	  snprintf (p, sizeof (p), "%d %02X%02X%02X%02X%02X%02X", ustate->cs,
-	      (unsigned) (node[0]), (unsigned) (node[1]), (unsigned) (node[2]),
-	      (unsigned) (node[3]), (unsigned) (node[4]), (unsigned) (node[5]));
-	  registry_set (UUID_STATE, p);
-	}
-      else
-	{
-	  int cs;
-	  unsigned n1[sizeof (uuid_node_t)];
-	  sscanf (saved_state, "%d %02X%02X%02X%02X%02X%02X", &cs, &n1[0], &n1[1], &n1[2], &n1[3], &n1[4], &n1[5]);
-	  node[0] = n1[0];
-	  node[1] = n1[1];
-	  node[2] = n1[2];
-	  node[3] = n1[3];
-	  node[4] = n1[4];
-	  node[5] = n1[5];
-	  ustate->cs = cs;
-	  memcpy (&ustate->node, node, sizeof (uuid_node_t));
-	  dk_free_box (saved_state);
-	}
-      LEAVE_TXN;
-#else
-      ustate = dk_alloc (sizeof (uuid_state));
-      ustate->cs = true_random ();
-      get_pseudo_node_identifier (&ustate->node);
-#endif
-    }
-
-  get_current_time (&timestamp);
-  format_uuid_v1 (u, ustate->cs, timestamp, ustate->node);
-
-  return;
-}
-
-void
-uuid_str (char *p, int len)
-{
-  uuid_t u;
-
-  memset (&u, 0, sizeof (uuid_t));
-  uuid_set (&u);
-
-  snprintf (p, len, "%08lX-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X",
-      (unsigned long) u.time_low, u.time_mid, u.time_hi_and_version,
-      u.clock_seq_hi_and_reserved, u.clock_seq_low, u.node[0], u.node[1], u.node[2], u.node[3], u.node[4], u.node[5]);
-}
-
 static caddr_t
 bif_uuid (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
@@ -2504,7 +2235,7 @@ bif_md5_update (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   if (DV_STRING == dtp || DV_RDF == dtp)
     str = bif_string_arg (qst, args, 1, "md5_update");
   else
-    str = bif_strses_arg (qst, args, 1, "md5_update");
+    str = (caddr_t) bif_strses_arg (qst, args, 1, "md5_update");
 
   string_to_md5ctx (&ctx, sctx);
   if (DV_STRING == dtp || DV_RDF == dtp)
@@ -3943,7 +3674,7 @@ bif_mime_header (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 static caddr_t
 bif_mime_tree_ses (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  dk_session_t *ses = (dk_session_t *) bif_strses_arg (qst, args, 0, "mime_tree");
+  dk_session_t *ses = bif_strses_arg (qst, args, 0, "mime_tree");
   int rfc822 = 1;
   caddr_t result = NULL;
 
@@ -3984,7 +3715,7 @@ zlib_box_compress (caddr_t src, caddr_t * err_ret)
   uLongf dest_size_ret;
   caddr_t dest;
   caddr_t dest_tmp = (caddr_t) dk_alloc ((uint32) dest_size);
-  char *err_msg;
+  const char *err_msg;
   int rc;
   if (src_size & 0xff000000 || dest_size & 0xff000000)	/* sign error causes overflow */
     {
@@ -4004,7 +3735,7 @@ zlib_box_compress (caddr_t src, caddr_t * err_ret)
   dk_free (dest_tmp, dest_size);
   if (err_ret)
     {
-      char *state = "22000";
+      const char *state = "22000";
       switch (rc)
 	{
 	case Z_MEM_ERROR:
@@ -4378,7 +4109,7 @@ error:
 static caddr_t
 bif_gz_compress (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  static char *szMe = "gz_compress";
+  static const char *szMe = "gz_compress";
   caddr_t src = bif_string_arg (qst, args, 0, szMe);
   return zlib_box_compress (src, err_ret);
 }
@@ -4387,7 +4118,7 @@ bif_gz_compress (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 static caddr_t
 bif_string_output_gz_compress (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  static char *szMe = "string_output_gz_compress";
+  static const char *szMe = "string_output_gz_compress";
   dk_session_t *ses = (dk_session_t *) bif_arg (qst, args, 0, szMe);
   dk_session_t *out = (dk_session_t *) bif_arg (qst, args, 1, szMe);
   dtp_t ses_dtp = DV_TYPE_OF (ses), out_dtp = DV_TYPE_OF (out);
@@ -4405,7 +4136,7 @@ bif_string_output_gz_compress (caddr_t * qst, caddr_t * err_ret, state_slot_t **
 static caddr_t
 bif_gz_uncompress (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  static char *szMe = "gz_uncompress";
+  static const char *szMe = "gz_uncompress";
   caddr_t src = bif_string_arg (qst, args, 0, szMe);
   dk_session_t *out = (dk_session_t *) bif_arg (qst, args, 1, szMe);
 
@@ -4424,7 +4155,7 @@ extern int http_ses_size;
 static caddr_t
 bif_gzip_uncompress (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  static char *szMe = "gzip_uncompress";
+  static const char *szMe = "gzip_uncompress";
   caddr_t src = bif_arg (qst, args, 0, szMe);
   dk_session_t *out;
   dtp_t dtp = DV_TYPE_OF (src);
@@ -4446,7 +4177,7 @@ bif_gzip_uncompress (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 static caddr_t
 bif_gz_compress_file (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  static char *szMe = "gz_compress_file";
+  static const char *szMe = "gz_compress_file";
   caddr_t fname = bif_string_arg (qst, args, 0, szMe);
   caddr_t dname = bif_string_arg (qst, args, 1, szMe);
   gzFile gz_fd = NULL;
@@ -4505,7 +4236,7 @@ bif_gz_compress_file (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 static caddr_t
 bif_gz_uncompress_file (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  static char *szMe = "gz_uncompress_file";
+  static const char *szMe = "gz_uncompress_file";
   caddr_t dname = bif_string_arg (qst, args, 0, szMe);
   caddr_t fname = bif_string_arg (qst, args, 1, szMe);
   gzFile gz_fd = NULL;
@@ -4646,7 +4377,8 @@ ws_file_ctype (char *name)
 static caddr_t
 bif_http_mime_type_add (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *szMe = "http_mime_type_add", *ptr;
+  const char *szMe = "http_mime_type_add";
+  char *ptr;
   caddr_t ext = bif_string_arg (qst, args, 0, szMe);
   caddr_t mime_type = bif_string_or_null_arg (qst, args, 1, szMe);
 
@@ -4671,7 +4403,7 @@ bif_http_mime_type_add (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 static caddr_t
 bif_http_mime_type (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *szMe = "http_mime_type";
+  const char *szMe = "http_mime_type";
   caddr_t ext = bif_string_arg (qst, args, 0, szMe);
   char *mime_type = ws_file_ctype (ext);
 
@@ -6179,7 +5911,7 @@ signal_error:
 caddr_t
 bif_read_object (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  dk_session_t *ses = (dk_session_t *) bif_strses_arg (qst, args, 0, "read_object");
+  dk_session_t *ses = bif_strses_arg (qst, args, 0, "read_object");
   return PrpcReadObject (ses);
 }
 
@@ -6629,7 +6361,7 @@ signal_error:
 static caddr_t
 bif_unzip_file (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  static char *szMe = "unzip_file";
+  static const char *szMe = "unzip_file";
   caddr_t fname = bif_string_arg (qst, args, 0, szMe);
   caddr_t zname = bif_string_arg (qst, args, 1, szMe);
   caddr_t fname_cvt;
@@ -6694,7 +6426,7 @@ err_end:
 static caddr_t
 bif_unzip_list (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  static char *szMe = "unzip_list";
+  static const char *szMe = "unzip_list";
   caddr_t fname = bif_string_arg (qst, args, 0, szMe);
   unzFile uf;
   uint32 i;
@@ -6878,7 +6610,7 @@ int csv_field_escapes = 1;
 caddr_t
 bif_get_csv_row (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  dk_session_t *in = (dk_session_t *) bif_strses_arg (qst, args, 0, "get_csv_row");
+  dk_session_t *in = bif_strses_arg (qst, args, 0, "get_csv_row");
   dk_set_t row = NULL;
   dk_session_t *fl;
   caddr_t res = NULL;
@@ -7104,14 +6836,14 @@ end:
       if (signal_error)
 	*err_ret = srv_make_new_error ("37000", "CSV04", "Error parsing CSV row, error code: %d", error);
     }
-  dk_free_box (fl);
+  dk_free_box ((caddr_t) fl);
   return res;
 }
 
 caddr_t
 bif_get_plaintext_row (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  dk_session_t *ses = (dk_session_t *) bif_strses_arg (qst, args, 0, "get_plaintext_row");
+  dk_session_t *ses = bif_strses_arg (qst, args, 0, "get_plaintext_row");
   char buf_on_stack[4096];
   char *buf = buf_on_stack;
   int buf_size = sizeof (buf_on_stack);

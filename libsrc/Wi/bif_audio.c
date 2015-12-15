@@ -1146,7 +1146,7 @@ static void
 ogg_comment_packet (stream * out, const byte * dp, const byte * ep)
 {
   char *k, *v;
-  char *nm;
+  const char *nm;
   word numentries;
   word strlength;
 

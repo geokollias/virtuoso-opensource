@@ -29,6 +29,7 @@
 #define _CLI_H
 
 #include "Dk.h"
+#include "CLI.h"
 #include "odbcinc.h"
 #include "virtext.h"		/* virtuoso odbc extensions */
 #include "sqlcomp.h"
@@ -38,12 +39,12 @@
 #include "date.h"
 #include "datesupp.h"
 
+VIRT_API_BEGIN
 #ifndef UNALIGNED
 #define UNALIGNED
 #endif
-
 #define VARCHAR_UNSPEC_SIZE "4070"
-typedef struct sql_error_rec_s
+    typedef struct sql_error_rec_s
 {
   char *sql_state;
   char *sql_error_msg;
@@ -888,5 +889,5 @@ SQLLEN _##len = ((len) < 0 ? strlen ((char *) wide) : (len)) ; \
 	    *ret_len = 0; \
 	}
 
-
+VIRT_API_END
 #endif /* _CLI_H */

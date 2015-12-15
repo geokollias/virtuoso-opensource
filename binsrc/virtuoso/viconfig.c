@@ -41,6 +41,7 @@
 #ifdef _RENDEZVOUS
 #include "rendezvous.h"
 #endif
+#include "wifn.h"
 
 #define s_strdup(X) strdup(X)
 #define log   logit
@@ -170,8 +171,6 @@ extern long http_max_keep_alives;
 extern long http_max_cached_proxy_connections;
 extern long http_proxy_connection_cache_timeout;
 extern char * http_server_id_string;
-extern char * http_client_id_string;
-extern char * http_soap_client_id_string;
 extern long http_ses_trap;
 extern int http_check_rdf_accept;
 extern int32 http_limited;
@@ -202,8 +201,6 @@ extern int32 ric_samples_sz;
 extern int32 enable_p_stat;
 extern int aq_max_threads;
 extern int32 c_compress_mode;
-
-char * http_log_file_check (struct tm *now); /* http log name checking */
 
 int32 c_txn_after_image_limit;
 int32 c_n_fds_per_file;
@@ -390,7 +387,6 @@ int32 c_cli_encryption_on_password;
 extern long cli_encryption_on_password;
 
 extern caddr_t client_defaults;
-void srv_client_defaults_init ();
 extern void srv_plugins_init (void);
 
 /* externals for duplicated functions */
@@ -994,7 +990,7 @@ cfg_setup (void)
     c_future_thread_sz = 140000;
 
   if (cfg_getlong (pconfig, section, "ThreadCleanupInterval", &long_helper) == -1)
-    c_cfg_thread_live_period = 2;
+    c_cfg_thread_live_period = 0;
   else
     c_cfg_thread_live_period = (unsigned long) long_helper;
 
@@ -1004,7 +1000,7 @@ cfg_setup (void)
     c_cfg_thread_threshold = (unsigned long) long_helper;
 
   if (cfg_getlong (pconfig, section, "ResourcesCleanupInterval", &long_helper) == -1)
-    c_cfg_resources_clear_interval = 5;
+    c_cfg_resources_clear_interval = 0;
   else
     c_cfg_resources_clear_interval = (unsigned long) long_helper;
 
@@ -1697,7 +1693,6 @@ cfg_setup (void)
 	log_error ("Can't open HTTP log file (%s)", http_log_file);
     }
 
-  srv_client_defaults_init ();
 
   /*
    *  VDB related parameters
@@ -1915,7 +1910,7 @@ new_cfg_set_checkpoint_interval (int32 f)
  *  Simply passes all configuration to the dbs.
  */
 void
-new_db_read_cfg (dbe_storage_t * ignore, char *mode)
+new_db_read_cfg (dbe_storage_t * ignore, const char *mode)
 {
   main_bufs = c_number_of_buffers;
   cf_lock_in_mem = c_lock_in_mem;
@@ -2199,8 +2194,8 @@ new_dbs_read_cfg (dbe_storage_t * dbs, char *ignore_file_name)
   char temp_string[2048];
   char *section = dbs->dbs_name;
   char *c_database_file;
-  char *s_db = "db";
-  char *s_trx = "trx";
+  const char *s_db = "db";
+  const char *s_trx = "trx";
 
   if (dbs->dbs_type == DBS_PRIMARY)
     section = "Database";

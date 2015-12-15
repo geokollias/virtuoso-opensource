@@ -213,23 +213,23 @@ for "<xsl:value-of select="$class" />"
 <xsl:variable name="outhdr" select="$oper/output/header/@message"/>
 <xsl:for-each select="/wsdl:definitions/wsdl:message[@name = $inmsg or @name = $outmsg or @name = $inhdr or @name = $outhdr]/part" >
     <xsl:variable name="myname" select="@name"/>
-<xsl:choose>
-<xsl:when test="parent::wsdl:message[@name = $inmsg or @name = $inhdr]">
-    <xsl:variable name="partname" select="''"/>
     <xsl:choose>
-	<xsl:when test="/wsdl:definitions/wsdl:message[@name = $outmsg or @name = $outhdr]/part[@name=$myname]">
-    <xsl:variable name="partty" select="'inout'"/>
-    </xsl:when>
-    <xsl:otherwise>
-    <xsl:variable name="partty" select="'in'"/>
-    </xsl:otherwise>
+	<xsl:when test="parent::wsdl:message[@name = $inmsg or @name = $inhdr]">
+	    <xsl:variable name="partname" select="''"/>
+	    <xsl:choose>
+		<xsl:when test="/wsdl:definitions/wsdl:message[@name = $outmsg or @name = $outhdr]/part[@name=$myname]">
+		    <xsl:variable name="partty" select="'inout'"/>
+		</xsl:when>
+		<xsl:otherwise>
+		    <xsl:variable name="partty" select="'in'"/>
+		</xsl:otherwise>
+	    </xsl:choose>
+	</xsl:when>
+	<xsl:otherwise>
+	    <xsl:variable name="partname" select="@name"/>
+	    <xsl:variable name="partty" select="'out'"/>
+	</xsl:otherwise>
     </xsl:choose>
-</xsl:when>
-<xsl:otherwise>
-<xsl:variable name="partname" select="@name"/>
-    <xsl:variable name="partty" select="'out'"/>
-</xsl:otherwise>
-</xsl:choose>
 <xsl:if test="not(/wsdl:definitions/wsdl:message[@name = $inmsg]/part[@name=$partname])">
     <xsl:text>        </xsl:text><xsl:value-of select="$partty"/><xsl:text> "</xsl:text>
     <xsl:value-of select="@name" /><xsl:text>" any </xsl:text>

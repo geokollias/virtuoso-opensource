@@ -177,7 +177,7 @@ extern int ttlp_NUMBER_int (YYSTYPE *yylval_param, ttlp_t *ttlp_arg, struct yygu
 extern int ttlp_NUMBER_decimal (YYSTYPE *yylval_param, ttlp_t *ttlp_arg, struct yyguts_t * yyg);
 extern int ttlp_NUMBER_double (YYSTYPE *yylval_param, ttlp_t *ttlp_arg, struct yyguts_t * yyg);
 
-extern int ttlyylex (YYSTYPE *yylval_param, ttlp_t *ttlp_arg, yyscan_t yyscanner);
+extern VIRT_C_LINKAGE int ttlyylex (YYSTYPE *yylval_param, ttlp_t *ttlp_arg, yyscan_t yyscanner);
 #define YY_DECL int ttlyylex (YYSTYPE *yylval_param, ttlp_t *ttlp_arg, yyscan_t yyscanner)
 
 extern int ttlyydebug;
@@ -780,7 +780,7 @@ resume_sniffing:
       thr_set_error_code (self, NULL);
       if ((flags & TTLP_SNIFFER) && (NULL == strstr (ERR_MESSAGE (err), "nternal error")))
         {
-          dk_free_tree (err);
+          dk_free_tree ((caddr_t)err);
           yy_pop_state (scanner);
           ttlp_reset_stacks (ttlp);
           if (!(ttlp->ttlp_flags & TTLP_SNIFFER_COMPLETE)) /* Note that \c ttlp->ttlp_flags might differ from \c flags in this bit. */
@@ -789,7 +789,7 @@ resume_sniffing:
       else
         {
           /* ttlyydebug = 0; */
-          ttlp->ttlp_catched_error = err;
+          ttlp->ttlp_catched_error = (caddr_t)err;
         }
       /*no POP_QR_RESET*/;
     }
@@ -1163,7 +1163,7 @@ bif_turtle_lex_test (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 		}
 	      GPF_T;
 end_of_test:
-	      dk_free_tree (lexems);
+	      dk_free_tree ((caddr_t)lexems);
 	      break;
 	    default: GPF_T;
 	    }

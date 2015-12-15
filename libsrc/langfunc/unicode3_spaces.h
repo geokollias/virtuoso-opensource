@@ -22,21 +22,4 @@
  *  
  */
 UNICODE3_HEADER
-UNICODE3_REC( 0x000C	, "Cc"	, 0	, "WS"	, -1	, -1	, -1.0   	, 0x0000	, 0x0000	, 0x0000	, 0	, NULL, ""	, "FORM FEED"	, "<control>")
-UNICODE3_REC( 0x0020	, "Zs"	, 0	, "WS"	, -1	, -1	, -1.0   	, 0x0000	, 0x0000	, 0x0000	, 0	, NULL, ""	, ""	, "SPACE")
-UNICODE3_REC( 0x1680	, "Zs"	, 0	, "WS"	, -1	, -1	, -1.0   	, 0x0000	, 0x0000	, 0x0000	, 0	, NULL, ""	, ""	, "OGHAM SPACE MARK")
-UNICODE3_REC( 0x2000	, "Zs"	, 0	, "WS"	, -1	, -1	, -1.0   	, 0x0000	, 0x0000	, 0x0000	, 0	, UNICODE3_S1(UNICODE3_exact, 0x2002), ""	, ""	, "EN QUAD")
-UNICODE3_REC( 0x2001	, "Zs"	, 0	, "WS"	, -1	, -1	, -1.0   	, 0x0000	, 0x0000	, 0x0000	, 0	, UNICODE3_S1(UNICODE3_exact, 0x2003), ""	, ""	, "EM QUAD")
-UNICODE3_REC( 0x2002	, "Zs"	, 0	, "WS"	, -1	, -1	, -1.0   	, 0x0000	, 0x0000	, 0x0000	, 0	, UNICODE3_S1(UNICODE3_compat, 0x0020), ""	, ""	, "EN SPACE")
-UNICODE3_REC( 0x2003	, "Zs"	, 0	, "WS"	, -1	, -1	, -1.0   	, 0x0000	, 0x0000	, 0x0000	, 0	, UNICODE3_S1(UNICODE3_compat, 0x0020), ""	, ""	, "EM SPACE")
-UNICODE3_REC( 0x2004	, "Zs"	, 0	, "WS"	, -1	, -1	, -1.0   	, 0x0000	, 0x0000	, 0x0000	, 0	, UNICODE3_S1(UNICODE3_compat, 0x0020), ""	, ""	, "THREE-PER-EM SPACE")
-UNICODE3_REC( 0x2005	, "Zs"	, 0	, "WS"	, -1	, -1	, -1.0   	, 0x0000	, 0x0000	, 0x0000	, 0	, UNICODE3_S1(UNICODE3_compat, 0x0020), ""	, ""	, "FOUR-PER-EM SPACE")
-UNICODE3_REC( 0x2006	, "Zs"	, 0	, "WS"	, -1	, -1	, -1.0   	, 0x0000	, 0x0000	, 0x0000	, 0	, UNICODE3_S1(UNICODE3_compat, 0x0020), ""	, ""	, "SIX-PER-EM SPACE")
-UNICODE3_REC( 0x2007	, "Zs"	, 0	, "WS"	, -1	, -1	, -1.0   	, 0x0000	, 0x0000	, 0x0000	, 0	, UNICODE3_S1(UNICODE3_noBreak, 0x0020), ""	, ""	, "FIGURE SPACE")
-UNICODE3_REC( 0x2008	, "Zs"	, 0	, "WS"	, -1	, -1	, -1.0   	, 0x0000	, 0x0000	, 0x0000	, 0	, UNICODE3_S1(UNICODE3_compat, 0x0020), ""	, ""	, "PUNCTUATION SPACE")
-UNICODE3_REC( 0x2009	, "Zs"	, 0	, "WS"	, -1	, -1	, -1.0   	, 0x0000	, 0x0000	, 0x0000	, 0	, UNICODE3_S1(UNICODE3_compat, 0x0020), ""	, ""	, "THIN SPACE")
-UNICODE3_REC( 0x200A	, "Zs"	, 0	, "WS"	, -1	, -1	, -1.0   	, 0x0000	, 0x0000	, 0x0000	, 0	, UNICODE3_S1(UNICODE3_compat, 0x0020), ""	, ""	, "HAIR SPACE")
-UNICODE3_REC( 0x2028	, "Zl"	, 0	, "WS"	, -1	, -1	, -1.0   	, 0x0000	, 0x0000	, 0x0000	, 0	, NULL, ""	, ""	, "LINE SEPARATOR")
-UNICODE3_REC( 0x202F	, "Zs"	, 0	, "WS"	, -1	, -1	, -1.0   	, 0x0000	, 0x0000	, 0x0000	, 0	, UNICODE3_S1(UNICODE3_noBreak, 0x0020), ""	, ""	, "NARROW NO-BREAK SPACE")
-UNICODE3_REC( 0x3000	, "Zs"	, 0	, "WS"	, -1	, -1	, -1.0   	, 0x0000	, 0x0000	, 0x0000	, 0	, UNICODE3_S1(UNICODE3_wide, 0x0020), ""	, ""	, "IDEOGRAPHIC SPACE")
 UNICODE3_FOOTER

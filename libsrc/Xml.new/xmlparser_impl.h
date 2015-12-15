@@ -52,6 +52,8 @@
 /*#include "encodings.h"*/
 #include "html_mode.h"
 
+VIRT_API_BEGIN
+
 /* Types of errors (severity levels) */
 #define XCFG_FATAL	0	/*!< Fatal error, which will abort processing immediately */
 #define XCFG_ERROR	1	/*!< Error, which will abort processing after check completion */
@@ -471,6 +473,8 @@ extern char *xmlparser_log_section_to_string (dk_set_t top, dk_set_t pastbottom,
 #define OUTER_HANDLERS ((NULL != parser->cfg.dtd_config) ? &(parser->slaves) : &(parser->masters))
 
 char *xecm_print_fsm (xecm_el_idx_t el_idx, schema_parsed_t * schema, int use_raw);
+
+VIRT_API_END
 
 #endif /* _XML_PARSER_IMPL_H */
 

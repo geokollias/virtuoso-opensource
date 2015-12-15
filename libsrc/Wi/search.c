@@ -482,7 +482,7 @@ itc_free_owned_params (it_cursor_t * itc)
       for (inx = 0; inx < itc->itc_anify_fill; inx += 2)
 	dk_free_box (itc->itc_anify_cache[inx + 1]);
       itc->itc_anify_fill = 0;
-      dk_free_box (itc->itc_anify_cache);
+      dk_free_box ((caddr_t) (itc->itc_anify_cache));
       itc->itc_anify_cache = NULL;
     }
 }
@@ -751,7 +751,7 @@ itc_like_compare (it_cursor_t * itc, buffer_desc_t * buf, caddr_t pattern, searc
 	bh = bh_from_dv (dv1, itc);
 	blob_check (bh);
 	temp_str = blob_to_string (itc->itc_ltrx, (caddr_t) bh);
-	dk_free_box (bh);
+	dk_free_box ((caddr_t) bh);
 	res = cmp_like (temp_str, pattern, collation, spec->sp_like_escape, st, pt);
 	dk_free_box (temp_str);
 	return res;
@@ -846,7 +846,7 @@ ce_like_filter (col_pos_t * cpo, int row, dtp_t flags, db_buf_t val, int len, in
 	bh = bh_from_dv (dv1, itc);
 	blob_check (bh);
 	temp_str = blob_to_string (itc->itc_ltrx, (caddr_t) bh);
-	dk_free_box (bh);
+	dk_free_box ((caddr_t) bh);
 	res = cmp_like (temp_str, pattern, collation, spec->sp_like_escape, st, pt);
 	dk_free_box (temp_str);
 	return res;
@@ -3205,7 +3205,7 @@ col_min_max_trunc (caddr_t val)
       len = box_length (val);
       if (len > 30)
 	{
-	  ret = box_n_chars (val, 30);
+	  ret = box_n_chars ((dtp_t *) val, 30);
 	  dk_free_tree (val);
 	  return ret;
 	}
@@ -3473,7 +3473,7 @@ cs_new_page (dk_hash_t * cols)
     int64 *place;
     caddr_t *p_value;
     id_hash_iterator (&hit, cs->cs_distinct);
-    while (hit_next (&hit, &p_value, (caddr_t *) & place))
+    while (hit_next (&hit, (caddr_t *) & p_value, (caddr_t *) & place))
       {
 	*place &= ~CS_IN_SAMPLE;
       }
@@ -4519,7 +4519,7 @@ key_rdf_lang_id (caddr_t name)
   int id = 0;
   dbe_table_t *tb = sch_name_to_table (wi_inst.wi_schema, "DB.DBA.RDF_LANGUAGE");
   dbe_key_t *key = tb ? tb->tb_primary_key : NULL;
-  dbe_column_t *twobyte_col = key && key->key_parts && key->key_parts->next ? key->key_parts->next->data : NULL;
+  dbe_column_t *twobyte_col = key && key->key_parts && key->key_parts->next ? (dbe_column_t *) (key->key_parts->next->data) : NULL;
   it_cursor_t itc_auto;
   it_cursor_t *itc = &itc_auto;
   buffer_desc_t *buf;

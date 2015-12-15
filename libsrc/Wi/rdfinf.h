@@ -223,7 +223,7 @@ void sqlg_outer_with_iters (df_elt_t * tb_dfe, data_source_t * ts, data_source_t
 void sqlg_leading_multistate_same_as (sqlo_t * so, data_source_t ** q_head, data_source_t * ts,
     df_elt_t * g_dfe, df_elt_t * s_dfe, df_elt_t * p_dfe, df_elt_t * o_dfe, int mode,
     rdf_inf_ctx_t * ctx, df_elt_t * tb_dfe, int inxop_inx, rdf_inf_pre_node_t ** ri_ret);
-void sqlg_rdf_ts_replace_ssl (table_source_t * ts, state_slot_t * old, state_slot_t * new, int col_id, int inxop_inx);
+void sqlg_rdf_ts_replace_ssl (table_source_t * ts, state_slot_t * old_ssl, state_slot_t * new_ssl, int col_id, int inxop_inx);
 rdf_inf_ctx_t *sqlg_rdf_inf_same_as_opt (df_elt_t * tb_dfe);
 char *ssl_inf_name (df_elt_t * dfe);
 void tn_free (trans_node_t * tn);

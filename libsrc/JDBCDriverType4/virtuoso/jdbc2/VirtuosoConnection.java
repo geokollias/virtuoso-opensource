@@ -137,6 +137,10 @@ public class VirtuosoConnection implements Connection
    // utf8_encoding for statements
    protected boolean utf8_execs = false;
 
+   // timezoneless datetimes setting
+   protected int timezoneless_datetimes = 0;
+  
+
    // set if the connection is managed through VirtuosoPooledConnection;
 #if JDK_VER >= 14
    protected VirtuosoPooledConnection pooled_connection = null;
@@ -575,7 +579,7 @@ public class VirtuosoConnection implements Connection
 	     Object [] caller_id_args = new Object[1];
 	     caller_id_args[0] = null;
 	     VirtuosoFuture future = getFuture(VirtuosoFuture.callerid,caller_id_args, timeout);
-	     openlink.util.Vector result_future = (openlink.util.Vector)future.nextResult(false).firstElement();
+	     openlink.util.Vector result_future = (openlink.util.Vector)future.nextResult().firstElement();
 	     peer_name = (String)(result_future.elementAt(1));
 
 	     if (result_future.size() > 2)
@@ -616,7 +620,7 @@ public class VirtuosoConnection implements Connection
 
 	     args[2] = VirtuosoTypes.version;
 	     future = getFuture(VirtuosoFuture.scon,args, this.timeout);
-	     result_future = (openlink.util.Vector)future.nextResult(false);
+	     result_future = (openlink.util.Vector)future.nextResult();
 	     // Check if it's a login answer
 	     if(!(result_future.firstElement() instanceof Short))
 	       {
@@ -708,6 +712,9 @@ public class VirtuosoConnection implements Connection
 			 //System.err.println ("version=[" + version + " ver=" + version.substring (6, 10));
 			 //if ((new Integer (version.substring (6, 10))).intValue() > 2143)
 			 //  utf8_execs = true;
+
+			 timezoneless_datetimes = (int) cdef_param (client_defaults, "SQL_TIMEZONELESS_DATETIMES", 0);
+			 //System.err.println ("timezoneless_datetimes = " + timezoneless_datetimes);
 
 			 break;
 		     case VirtuosoTypes.QA_ERROR:
@@ -902,7 +909,7 @@ public class VirtuosoConnection implements Connection
     * @exception java.io.IOException	A stream error occurred.
     * @exception virtuoso.jdbc2.VirtuosoException An internal error occurred.
     */
-   protected boolean read_request(boolean sparql_executed) throws IOException, VirtuosoException
+   protected boolean read_request() throws IOException, VirtuosoException
    {
      if (futures == null)
        throw new VirtuosoException ("Activity on a closed connection", "IM001", VirtuosoException.SQLERROR);
@@ -910,7 +917,7 @@ public class VirtuosoConnection implements Connection
      Object _result;
 #if JDK_VER >= 14
      try {
-        _result = in.read_object(sparql_executed);
+        _result = in.read_object();
      } catch (IOException ex) {
         if (pooled_connection != null) {
             VirtuosoException vex =
@@ -933,7 +940,7 @@ public class VirtuosoConnection implements Connection
         throw ex;
      }
 #else
-    _result = in.read_object(sparql_executed);
+    _result = in.read_object();
 #endif
      //System.out.println ("req end");
      if (VirtuosoFuture.rpc_log != null)
@@ -1126,7 +1133,7 @@ public class VirtuosoConnection implements Connection
 	args[0] = new Long(VirtuosoTypes.SQL_COMMIT);
 	args[1] = null;
 	VirtuosoFuture fut = getFuture(VirtuosoFuture.transaction,args, this.timeout);
-	openlink.util.Vector trsres = fut.nextResult(false);
+	openlink.util.Vector trsres = fut.nextResult();
 	//System.err.println ("commit returned " + trsres.toString());
 	Object _err = (trsres == null) ? null: ((openlink.util.Vector)trsres).firstElement();
 	if (_err instanceof openlink.util.Vector)
@@ -1307,7 +1314,7 @@ public class VirtuosoConnection implements Connection
          args[0] = new Long(VirtuosoTypes.SQL_ROLLBACK);
          args[1] = null;
          VirtuosoFuture fut = getFuture(VirtuosoFuture.transaction,args, this.timeout);
-         openlink.util.Vector trsres = fut.nextResult(false);
+         openlink.util.Vector trsres = fut.nextResult();
 	 //System.err.println ("rollback returned " + trsres.toString());
 	 Object _err = (trsres == null) ? null: ((openlink.util.Vector)trsres).firstElement();
 	 if (_err instanceof openlink.util.Vector)

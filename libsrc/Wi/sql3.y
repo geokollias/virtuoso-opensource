@@ -60,21 +60,30 @@
  */
 #define obe_keyword_to_bif_fun_name(X) ((X))
 
-#ifdef DEBUG
-#define yyerror(scanner,strg) yyerror_1(/* no scanner */ yystate, yyssa, yyssp, strg)
-#define yyfatalerror(strg) yyfatalerror_1(/* no scanner */ yyssa, yyssp, strg)
-#endif
+extern void scn3yyerror (const char *strg);
+extern void yyerror_4 (int yystate, short *yyssa, short *yyssp, const char *strg);
+extern void yyfatalerror_4 (int yystate, short *yyssa, short *yyssp, const char *strg);
 
+#ifdef DEBUG
+#define yyerror(scanner,strg) yyerror_4(/* no scanner */ yystate, yyssa, yyssp, strg)
+#define yyfatalerror(strg) yyfatalerror_4(/* no scanner */ yyssa, yyssp, strg)
+#else
+#define yyerror(scanner,strg) scn3yyerror(/* no scanner */ strg)
+#endif
 #define assert_ms_compat(text)
 
+extern VIRT_C_LINKAGE int scn3yylex (void *void_yylval, yyscan_t yyscanner);
+#define YY_DECL int scn3yylex (void *void_yylval, yyscan_t yyscanner)
 
 %}
 
 /* symbolic tokens */
 %union {
   long intval;
-  char *strval;
+  const char *const_strval;
+  caddr_t strval;
   sql_tree_t *tree;
+  sql_tree_t **tree_array;
   caddr_t box;
   dk_set_t list;
   long subtok;
@@ -471,7 +480,7 @@
 %type <list> opt_arg_commalist
 %type <list> sql_option
 %type <list> sql_opt_commalist
-%type <tree> opt_sql_opt
+%type <tree_array> opt_sql_opt
 %type <tree> opt_table_opt
 
 
@@ -579,7 +588,7 @@
 %token CASCADE CHARACTER CHECK CLOSE COMMIT CONSTRAINT CONTINUE CREATE CUBE CURRENT
 %token CURSOR DECIMAL_L DECLARE DEFAULT DELETE_L DESC DISTINCT DOUBLE_L
 %token DROP ESCAPE EXISTS FETCH FLOAT_L FOREIGN FOUND FROM GOTO GO
-%token GRANT GROUP GROUPING HAVING IN_L INDEX INDEX_NO_FILL INDEX_ONLY INDICATOR INSERT INTEGER INTO
+%token GRANT GROUP GROUPING_L3 HAVING IN_L INDEX INDEX_NO_FILL INDEX_ONLY INDICATOR INSERT INTEGER INTO
 %token IS KEY LANGUAGE ENCODING LIKE NULLX NUMERIC OF ON OPEN OPTION
 %token PRECISION PRIMARY PRIVILEGES PROCEDURE
 %token PUBLIC REAL REFERENCES RESTRICT ROLLBACK ROLLUP SCHEMA SELECT SET
@@ -1776,7 +1785,7 @@ sql_opt_commalist
 
 opt_sql_opt
 	: { $$ = NULL; }
-	| OPTION '(' sql_opt_commalist ')' { $$ = (ST*) t_list_to_array ($3); }
+	| OPTION '(' sql_opt_commalist ')' { $$ = (ST**) t_list_to_array ($3); }
 	;
 
 opt_table_opt
@@ -1819,7 +1828,7 @@ with_opt_cursor_options_list
 selectinto_statement
 	: SELECT opt_top selection
 		INTO target_commalist table_exp with_opt_cursor_options_list
-		{ char *tmp_cr = "temp_cr";
+		{ const char *tmp_cr = "temp_cr";
 		  ST *qspec = t_listst (5,
 		      SELECT_STMT,
 		      $2,
@@ -2267,7 +2276,7 @@ opt_group_by_clause
 		{
 			$$ = (ST*) t_list_to_array(t_CONS (t_list_to_array ($3), NULL));
 		}
-	| GROUP BY GROUPING SETS '(' grouping_set_list ')'
+	| GROUP BY GROUPING_L3 SETS '(' grouping_set_list ')'
 		{
 			$$ = (ST *) t_list_to_array ($6);
  		}
@@ -2777,7 +2786,7 @@ function_call
 		{
 		  $$ = t_listst (3, CALL_STMT, t_sqlp_box_id_upcase ("curdatetime"), t_list (1, $3));
 		}
-	| GROUPING '(' column_ref ')'
+	| GROUPING_L3 '(' column_ref ')'
 		{
 		  caddr_t bit = t_box_num (0);
 		  caddr_t bit_index = t_box_num (0);

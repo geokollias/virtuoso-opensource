@@ -571,7 +571,7 @@ jmp:
   outer = global_scs->scs_scn3c.include_stack + global_scs->scs_scn3c.include_depth;
   if (outer->_.sif_skipped_part)
     {
-      dk_free_box (outer->_.sif_skipped_part);
+      dk_free_box ((caddr_t) (outer->_.sif_skipped_part));
       outer->_.sif_skipped_part = NULL;
     }
   longjmp_splice (&(global_scs->parse_reset), 1);
@@ -597,7 +597,7 @@ jmp:
 }
 
 void
-yyerror_1 (int yystate, short *yyssa, short *yyssp, const char *strg)
+yyerror_4 (int yystate, short *yyssa, short *yyssp, const char *strg)
 {
   char buf[2000];
   int this_lineno = global_scs->scs_scn3c.lineno;
@@ -630,6 +630,34 @@ jmp:
   longjmp_splice (&(global_scs->parse_reset), 1);
 }
 
+#if 0				/* version from c++ -ed feature/fx2 */
+void
+yyerror_4 (int yystate, short *yyssa, short *yyssp, const char *strg)
+{
+  char buf[2000];
+  int this_lineno = global_scs->scs_scn3c.lineno;
+  char buf_for_next[2000];
+#ifdef DEBUG
+  int sm2, sm1, sp1;
+  sp1 = yyssp[1];
+  sm1 = yyssp[-1];
+  sm2 = ((sm1 > 0) ? yyssp[-2] : 0);
+  snprintf (buf, sizeof (buf), ": %s [%d-%d-(%d)-%d]", strg, sm2, sm1, yystate,
+      ((sp1 & ~0x7FF) ? -1 : sp1) /* stub to avoid printing random garbage in logs */ );
+#else
+  snprintf (buf, sizeof (buf), ": %s", strg);
+#endif
+  if (global_scs->scs_scn3c.inside_error_reporter)
+    goto jmp;			/* see below */
+  scn3_sprint_curr_line_loc (sql_err_text, sizeof (sql_err_text));
+  strcat_ck (sql_err_text, buf);
+  global_scs->scs_scn3c.inside_error_reporter++;
+
+jmp:
+  longjmp_splice (&(global_scs->parse_reset), 1);
+}
+#endif
+
 
 void
 yyfatalerror_1 (yyscan_t scanner, int yystate, short *yyssa, short *yyssp, const char *strg)
@@ -657,7 +685,7 @@ jmp:
 void
 scn3yyerror (const char *strg)
 {
-  yyerror_1 (-1, "lexical error", "", strg);
+  yyerror_4 (-1, "lexical error", "", strg);
 }
 
 int
@@ -1008,6 +1036,7 @@ sc_free (sql_comp_t * sc)
       END_DO_HT;
       hash_table_free (sc->sc_ssl_eqs);
     }
+#if 0
   if (sc->sc_sample_cache)
     {
       id_hash_iterator_t hit;
@@ -1021,6 +1050,7 @@ sc_free (sql_comp_t * sc)
 	}
       id_hash_free (sc->sc_sample_cache);
     }
+#endif
   if (NULL != sc->sc_big_ssl_consts)
     {
 #ifndef NDEBUG
@@ -1032,7 +1062,7 @@ sc_free (sql_comp_t * sc)
       }
       END_DO_BOX_FAST;
 #endif
-      dk_free_tree (sc->sc_big_ssl_consts);
+      dk_free_tree ((caddr_t) (sc->sc_big_ssl_consts));
     }
   if (sc->sc_qn_to_dfe)
     hash_table_free (sc->sc_qn_to_dfe);
@@ -1695,7 +1725,7 @@ query_t *DBG_NAME (sql_compile_1) (DBG_PARAMS const char *string2, client_connec
 	    {
 	      if (qr->qr_aggregate)
 		{
-		  static char *ua_header = "--#pragma bootstrap user-aggregate\n";
+		  static const char *ua_header = "--#pragma bootstrap user-aggregate\n";
 		  caddr_t string3 = dk_alloc_box (strlen (ua_header) + strlen (string2) + 1, DV_STRING);
 		  snprintf (string3, box_length (string3), "%s%s", ua_header, string2);
 		  qr = sqlc_make_proc_store_qr (cli, qr, string3);
@@ -1743,7 +1773,7 @@ dbg_sql_compile_static (const char *file, int line, const char *string2, client_
       cr_type = SQLC_DEFAULT;
     }
   qr = DBG_NAME (sql_compile_1) (DBG_ARGS string2, cli, err, cr_type, tree, NULL);
-  dk_free_tree ((caddr_t *) tree);
+  dk_free_tree ((caddr_t) tree);
   if (NULL != err)
     err[0] = my_err;
   if (NULL == qr)
@@ -1845,7 +1875,7 @@ sql_compile_static (const char *string2, client_connection_t * cli, caddr_t * er
       cr_type = SQLC_DEFAULT;
     }
   qr = DBG_NAME (sql_compile_1) (DBG_ARGS string2, cli, err, cr_type, tree, NULL);
-  dk_free_tree ((caddr_t *) tree);
+  dk_free_tree ((caddr_t) tree);
   return qr;
 }
 #endif
@@ -1912,7 +1942,7 @@ query_t *DBG_NAME (sql_proc_to_recompile) (DBG_PARAMS const char *string2, clien
   if (!sql_proc_use_recompile)
     return NULL;
 
-  lexems = (caddr_t **) sql_lex_analyze (string2, NULL, 0, 1, BEGINX);
+  lexems = sql_lex_analyze (string2, NULL, 0, 1, BEGINX);
   n_lexems = BOX_ELEMENTS (lexems);
   if (!proc_name)
     {				/* have to find out one using the parser */
@@ -2108,7 +2138,10 @@ sqlc_subquery_1 (sql_comp_t * super_sc, predicate_t * super_pred, ST ** ptree, i
 	    qr->qr_select_node->sel_ext_set_no = ext_sets;
 	  }
 	if (qr->qr_proc_vectored && !sc.sc_check_view_sec)
-	  sqlg_vector_subq (&sc);
+	  {
+	    sqlg_vector_subq (&sc);
+	    super_sc->sc_qr_size += sc.sc_qr_size;
+	  }
 	tree = *ptree;
       }
     subq_comp->sqc_tree = tree;

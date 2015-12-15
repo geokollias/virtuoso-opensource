@@ -2194,16 +2194,16 @@ spar_add_propvariable (sparp_t * sparp, SPART * lvar, int opcode, SPART * verb_q
       uname_virtrdf_ns_uri_isSpecialPredicate);
   if (0 != BOX_ELEMENTS (spec_pred_names))
     {
-      dk_free_tree (spec_pred_names);
+      dk_free_tree ((caddr_t) spec_pred_names);
       spar_error (sparp, "?%.200s %s ?%.200s is not allowed because it uses special predicate name", lvar->_.var.vname, optext,
 	  verb_lexem_text);
     }
   if (NULL == sparp->sparp_env->spare_propvar_sets)
     {
-      dk_free_tree (spec_pred_names);
+      dk_free_tree ((caddr_t) spec_pred_names);
       spar_error (sparp, "?%.200s %s ?%.200s is used in illegal context", lvar->_.var.vname, optext, verb_lexem_text);
     }
-  dk_free_tree (spec_pred_names);
+  dk_free_tree ((caddr_t) spec_pred_names);
 
   lvar_blen = box_length (lvar->_.var.vname);
   verb_qname_blen = box_length (verb_qname->_.lit.val);
@@ -3241,30 +3241,6 @@ spar_gp_add_ppath_leaf (sparp_t * sparp, SPART ** parts, int part_count, int pp_
 }
 
 SPART *
-sparp_find_first_transitive_step_in_path (SPART * pp)
-{
-  SPART **parts = pp->_.ppath.parts;
-  int part_ctr, part_count = BOX_ELEMENTS (parts);
-  switch (pp->_.ppath.subtype)
-    {
-    case '/':
-    case '|':
-    case 'D':
-      for (part_ctr = 0; part_ctr < part_count; part_ctr++)
-	{
-	  SPART *hit = sparp_find_first_transitive_step_in_path (parts[part_ctr]);
-	  if (NULL != hit)
-	    return hit;
-	}
-    case '*':
-      return pp;
-    default:
-      break;
-    }
-  return NULL;
-}
-
-SPART *
 spar_gp_add_ppath_triples (sparp_t * sparp, SPART * graph, SPART * subject, SPART * pp, SPART * object, SPART ** qm_iri_or_pair,
     int banned_tricks)
 {
@@ -3546,15 +3522,8 @@ spar_gp_add_triplelike (sparp_t * sparp, SPART * graph, SPART * subject, SPART *
       if (NULL != sparp->sparp_env->spare_context_sinvs)
 	{
 	  SPART *sinv = (SPART *) (sparp->sparp_env->spare_context_sinvs->data);
-	  boxint status = unbox (sinv->_.sinv.syntax);
-	  if (status & SSG_SD_SPARQL11_MORE)
+	  if (unbox (sinv->_.sinv.syntax) & SSG_SD_SPARQL11_MORE)
 	    expand_ppath_to_triples = 0;
-	  else if (!(status & SSG_SD_TRANSIT))
-	    {
-	      int path_has_trans = (NULL != sparp_find_first_transitive_step_in_path (predicate));
-	      if (path_has_trans)
-		expand_ppath_to_triples = 0;
-	    }
 	}
       if (expand_ppath_to_triples)
 	return spar_gp_add_ppath_triples (sparp, graph, subject, predicate, object, qm_iri_or_pair,
@@ -4927,9 +4896,9 @@ const sparp_bif_desc_t sparp_bif_descs[] = {
 	      SSG_VALMODE_SQLVAL}, SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL},
   {"remove_unicode3_accents", SPAR_BIF_REMOVE_UNICODE3_ACCENTS, 'B', SSG_SD_BI, 1, 1, SSG_VALMODE_LONG, {SSG_VALMODE_LONG, NULL,
 	      NULL}, SPART_VARR_IS_LIT},
-  {"round", SPAR_BIF_ROUND, 'B', SSG_SD_SPARQL11_DRAFT, 1, 1, SSG_VALMODE_NUM, {SSG_VALMODE_NUM, NULL, NULL},
-      SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL},
   {"rollup", SPAR_BIF__ROLLUP, '-', SSG_SD_VIRTSPECIFIC, 2, 0xFFF, SSG_VALMODE_SQLVAL, {NULL, NULL, NULL},
+      SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL},
+  {"round", SPAR_BIF_ROUND, 'B', SSG_SD_SPARQL11_DRAFT, 1, 1, SSG_VALMODE_NUM, {SSG_VALMODE_NUM, NULL, NULL},
       SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL},
   {"sameterm", SPAR_BIF_SAMETERM, '-', 0, 2, 2, SSG_VALMODE_BOOL, {SSG_VALMODE_LONG, SSG_VALMODE_LONG, NULL},
       SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL | SPART_VARR_IS_BOOL},
@@ -6708,7 +6677,7 @@ bif_sparql_lex_test (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 		}
 	      GPF_T;
 	    end_of_test:
-	      dk_free_tree (lexems);
+	      dk_free_tree ((caddr_t) lexems);
 	      break;
 	    default:
 	      GPF_T;
@@ -6719,8 +6688,6 @@ bif_sparql_lex_test (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 }
 #endif
 
-extern caddr_t bif_sparql_rdb2rdf_codegen (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args);
-extern caddr_t bif_sparql_rdb2rdf_list_tables (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args);
 extern bif_t bif_isnotnull;
 
 extern void sparql_init_bif_optimizers (void);

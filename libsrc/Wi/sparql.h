@@ -26,14 +26,7 @@
 /* $Id$ */
 
 #include "libutil.h"
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "langfunc.h"
-#ifdef __cplusplus
-}
-#endif
 #include "shuric.h"
 #include "sqlbif.h"
 #include "rdf_mapping_jso.h"
@@ -854,7 +847,7 @@ spar_error (sparp_t * sparp, const char *format, ...)
 #endif
 
      extern sparp_t *sparp_query_parse (const char *str, spar_query_env_t * sparqre, int rewrite_all);
-     extern int sparyyparse (sparp_t * sparp_arg);
+     extern VIRT_C_LINKAGE int sparyyparse (sparp_t * sparp_arg);
 /*! Finds storage by name and sets it, it also finds associated macro library (it it is set of the storage) and copies macro defs from the library
 The search for associated macro lib is disabled if the statement contains CREATE MACRO LIBRARY clause */
      extern void sparp_configure_storage_and_macro_libs (sparp_t * sparp);
@@ -1167,5 +1160,8 @@ The function should be pure, at least for the given arguments (but there is no c
      extern SPART *spar_make_topmost_qm_sql (sparp_t * sparp);
      extern SPART *spar_qm_make_empty_mapping (sparp_t * sparp, caddr_t qm_id, SPART ** options);
      extern SPART *spar_qm_make_real_mapping (sparp_t * sparp, caddr_t qm_id, SPART ** options);
+
+     extern caddr_t bif_sparql_rdb2rdf_codegen (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, const char *fname);
+     extern caddr_t bif_sparql_rdb2rdf_list_tables (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args, const char *fname);
 
 #endif

@@ -1528,7 +1528,7 @@ node_print_0 (data_source_t * node)
   else if (in == (qn_input_fn) rdf_inf_pre_input)
     {
       rdf_inf_pre_node_t *ri = (rdf_inf_pre_node_t *) node;
-      char *mode = "";
+      const char *mode = "";
       switch (ri->ri_mode)
 	{
 	case RI_SUBCLASS:
@@ -2237,7 +2237,7 @@ node_print (data_source_t * node)
   else if (in == (qn_input_fn) rdf_inf_pre_input)
     {
       rdf_inf_pre_node_t *ri = (rdf_inf_pre_node_t *) node;
-      char *mode = "";
+      const char *mode = "";
       switch (ri->ri_mode)
 	{
 	case RI_SUBCLASS:
@@ -3384,7 +3384,7 @@ node_print_xml (QI * qi, dk_session_t * s, data_source_t * qn)
   else if (IS_QN (qn, rdf_inf_pre_input))
     {
       QNCAST (rdf_inf_pre_node_t, ri, qn);
-      char *mode = "";
+      const char *mode = "";
       switch (ri->ri_mode)
 	{
 	case RI_SUBCLASS:
@@ -3943,7 +3943,7 @@ st_print (ST * tree)
   CC_INIT (cc, cli);
   sc.sc_cc = &cc;
   sc.sc_client = cli;
-  cc.cc_query = &qr;
+  cc.cc_query = /* No & here, obviously */ qr;
   sc.sc_exp_print_hook = xsql_print_stmt;
   WITHOUT_TMP_POOL
   {

@@ -702,7 +702,7 @@ ddl_key_options (query_instance_t * qi, char *tb_name, key_id_t key_id, caddr_t 
   if (!key_bitmap_qr)
     key_bitmap_qr = sql_compile_static ("DB.DBA.ddl_bitmap_inx (?, ?, ?)", bootstrap_cli, &err, SQLC_DEFAULT);
   AS_DBA (qi, err = qr_rec_exec (key_bitmap_qr, qi->qi_client, NULL, qi, NULL, 3,
-	  ":0", tb_name, QRP_STR, ":1", (ptrlong) key_id, QRP_INT, ":2", box_copy_tree (opts), QRP_RAW));
+	  ":0", tb_name, QRP_STR, ":1", (ptrlong) key_id, QRP_INT, ":2", box_copy_tree ((caddr_t) opts), QRP_RAW));
   if (err != (caddr_t) SQL_SUCCESS)
     {
       QI_POISON_TRX (qi);
@@ -960,8 +960,11 @@ ddl_col_set_identity_start (char *table, char *check, caddr_t * col_options, cha
       char q[MAX_NAME_LEN], o[MAX_NAME_LEN], n[MAX_NAME_LEN];
       int start = 1;
       caddr_t id_start;
+      int is_null = 0;
 
-      if (NULL != (id_start = col_options ? get_keyword_int (col_options, "identity_start", NULL) : NULL))
+      id_start = col_options ? get_keyword_int_zero (col_options, "identity_start", NULL, &is_null) : NULL;
+
+      if (col_options && !is_null)
 	{
 	  if (DV_TYPE_OF (id_start) == DV_LONG_INT)
 	    start = (int) unbox (id_start);
@@ -1109,9 +1112,22 @@ ddl_commit_trx (query_instance_t * qi)
 }
 
 
+int
+ddl_has_col_groups (caddr_t * cols)
+{
+  int inx;
+  for (inx = 1; inx < BOX_ELEMENTS (cols); inx += 2)
+    {
+      if (ST_P (((ST *) cols[inx]), COLUMN_GROUP))
+	return 1;
+    }
+  return 0;
+}
+
+
 void
 ddl_create_primary_key (query_instance_t * qi,
-    char *name, char *table, caddr_t * parts, int cluster_on_id, int is_object_id, caddr_t * opts)
+    char *name, char *table, caddr_t * parts, int cluster_on_id, int is_object_id, caddr_t * opts, caddr_t * cols)
 {
   client_connection_t *cli = qi->qi_client;
   int inx = (int) BOX_ELEMENTS (parts);
@@ -1121,6 +1137,28 @@ ddl_create_primary_key (query_instance_t * qi,
 
   ddl_first_key_parts (qi, table, name, parts, inx, cluster_on_id, 1, &id, is_object_id, 1);
 
+  if (ddl_has_col_groups (cols))
+    {
+      caddr_t err = NULL;
+#ifdef COLGROUP
+      static query_t *ddl_cg_stmt;
+      if (!ddl_cg_stmt)
+	ddl_cg_stmt = sql_compile_static ("ddl_cg_create (?, ?, ?, ?, ?)", qi->qi_client, &err, SQLC_DEFAULT);
+      err = qr_rec_exec (ddl_cg_stmt, cli, NULL, qi, NULL, 5,
+	  ":0", name, QRP_STR,
+	  ":1", table, QRP_STR,
+	  ":2", box_copy_tree (parts), QRP_RAW,
+	  ":3", box_copy_tree ((caddr_t) opts), QRP_RAW, ":4", box_copy_tree ((caddr_t) cols), QRP_RAW);
+#else
+      err = srv_make_new_error ("42000", "NOCGS", "Column groups not supported in Virtuoso open source");
+#endif
+      if (err)
+	{
+	  QI_POISON_TRX (qi);
+	  sqlr_resignal (err);
+	}
+      return;
+    }
   /* Now tag every other column in there as dependent part */
   qr_rec_exec (cols_stmt, cli, &lc_cols, qi, NULL, 1, ":TB", table, QRP_STR);
   while (lc_next (lc_cols))
@@ -1135,8 +1173,6 @@ ddl_create_primary_key (query_instance_t * qi,
 	  if (0 == CASEMODESTRCMP (parts[ci], col))
 	    goto next_in;
 	}
-      if (inx >= TB_MAX_COLS)
-	SQL_DDL_ERROR (qi, ("37000", "SQ007", "Column count too large"));
       col_id = (oid_t) unbox (lc_get_col (lc_cols, "C.COL_ID"));
       qr_rec_exec (add_key_part_stmt, cli, NULL, qi, NULL, 3,
 	  ":0", (ptrlong) id, QRP_INT, ":1", (ptrlong) inx, QRP_INT, ":2", (ptrlong) col_id, QRP_INT);
@@ -2867,7 +2903,7 @@ ddl_rename_table (query_instance_t * qi, char *old, char *new_name)
 
 
 int
-err_is_state (caddr_t err, char *state)
+err_is_state (caddr_t err, const char *state)
 {
   if (IS_BOX_POINTER (err) && 0 == strncmp (((caddr_t *) err)[1], state, strlen (state)))
     return 1;
@@ -3630,6 +3666,8 @@ sql_ddl_node_input_1 (ddl_node_t * ddl, caddr_t * inst, caddr_t * state)
 		      sqlr_new_error ("42S11", "SQ027", "Only one PRIMARY KEY clause allowed");
 		    prime = (ST *) constr;
 		    break;
+		  case COLUMN_GROUP:
+		    break;
 		  case FOREIGN_KEY:
 		    break;
 		  case UNIQUE_DEF:
@@ -3678,7 +3716,8 @@ sql_ddl_node_input_1 (ddl_node_t * ddl, caddr_t * inst, caddr_t * state)
 	    caddr_t *opts = prime->_.index.opts;
 	    ddl_create_table (qi, tree->_.table_def.name, (caddr_t *) tree->_.table_def.cols);
 	    ddl_create_primary_key (qi, tree->_.table_def.name,
-		tree->_.table_def.name, (caddr_t *) prime->_.index.cols, KO_CLUSTER (opts), KO_OID (opts), opts);
+		tree->_.table_def.name, (caddr_t *) prime->_.index.cols,
+		KO_CLUSTER (opts), KO_OID (opts), opts, tree->_.table_def.cols);
 	  }
 	QR_RESET_CTX
 	{
@@ -3801,7 +3840,7 @@ sql_ddl_node_input (ddl_node_t * ddl, caddr_t * inst, caddr_t * state)
 {
   query_instance_t *qi = (query_instance_t *) inst;
   caddr_t repl = box_copy_tree ((box_t) qi->qi_trx->lt_replicate);
-  qi->qi_trx->lt_replicate = box_copy_tree ((box_t) qi->qi_client->cli_replicate);
+  qi->qi_trx->lt_replicate = (caddr_t *) box_copy_tree ((box_t) qi->qi_client->cli_replicate);
 
   QR_RESET_CTX
   {
@@ -4194,8 +4233,8 @@ find_repl_account_in_src_text (char **src_text_ptr)
   char *repl = NULL;
   if (0 == strncmp (src_text_ptr[0], "__repl", 6))
     {
-      static char *marks[] = { "create ", "#line", "#pragma", "--", "/*", NULL };
-      char **mark_ptr;
+      const static char *marks[] = { "create ", "#line", "#pragma", "--", "/*", NULL };
+      const char **mark_ptr;
       char *best_hit = NULL;
       repl = src_text_ptr[0] + 7 /* = strlen ("__repl") + space */ ;
       for (mark_ptr = marks; NULL != mark_ptr[0]; mark_ptr++)
@@ -4303,7 +4342,7 @@ ddl_read_constraints (char *spec_tb_name, caddr_t * qst)
 dk_set_t triggers_to_redo = NULL;
 
 void
-ddl_redo_undefined_triggers ()
+ddl_redo_undefined_triggers (void)
 {
   caddr_t *trigs;
   user_t *org_user = bootstrap_cli->cli_user;
@@ -4394,7 +4433,7 @@ ddl_redo_undefined_triggers ()
   qr_free (rdproc);
 
 end:;
-  dk_free_box (trigs);
+  dk_free_box ((caddr_t) trigs);
   bootstrap_cli->cli_user = org_user;
   CLI_RESTORE_QUAL (bootstrap_cli, org_qual);
   local_commit (bootstrap_cli);
@@ -6196,7 +6235,7 @@ const char *univ_dd_pt_text =
 
 const char *upd_sys_ds_table_text =
     "update SYS_COLS set COL_DTP = 125 where \"TABLE\" = 'DB.DBA.SYS_DATA_SOURCE' and \"COLUMN\" = 'DS_CONN_STR'";
-char *upd_sys_ds_table_text_2 = "__ddl_changed ('DB.DBA.SYS_DATA_SOURCE')";
+const char *upd_sys_ds_table_text_2 = "__ddl_changed ('DB.DBA.SYS_DATA_SOURCE')";
 
 void
 ddl_ensure_univ_tables (void)

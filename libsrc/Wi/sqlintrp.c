@@ -103,7 +103,7 @@ ins_call_kwds (caddr_t * qst, query_t * proc, instruction_t * ins, caddr_t * par
   int deflt_ctr = 0;
   int is_vec_call = proc->qr_proc_vectored;
   int n_param_box = BOX_ELEMENTS (params);
-  caddr_t *kwds = ins->_.call.kwds, *copy = (caddr_t *) box_copy (params);
+  caddr_t *kwds = ins->_.call.kwds, *copy = (caddr_t *) box_copy ((caddr_t) params);
   state_slot_t *param_ssl = NULL;
   int param_inx;
   int inx;
@@ -215,10 +215,10 @@ ins_call_kwds (caddr_t * qst, query_t * proc, instruction_t * ins, caddr_t * par
     inx++;
   }
   END_DO_SET ();
-  dk_free_box (copy);
+  dk_free_box ((caddr_t) copy);
   return;
 err_end:
-  dk_free_tree (copy);
+  dk_free_tree ((caddr_t) copy);
   sqlr_resignal (err);
 }
 
@@ -361,7 +361,7 @@ ins_call_bif_vec (instruction_t * ins, caddr_t * qst, code_vec_t code_vec, int *
 
 
 void
-complete_proc_name (char *proc_name, char *complete, char *def_qual, char *def_owner)
+complete_proc_name (char *proc_name, char *ret_complete, const char *def_qual, const char *def_owner)
 {
   char q[MAX_NAME_LEN];
   char o[MAX_NAME_LEN];
@@ -372,7 +372,7 @@ complete_proc_name (char *proc_name, char *complete, char *def_qual, char *def_o
   sch_split_name (def_qual, proc_name, q, o, n);
   if (0 == o[0])
     strcpy_ck (o, def_owner);
-  snprintf (complete, MAX_QUAL_NAME_LEN, "%s.%s.%s", q, o, n);
+  snprintf (ret_complete, MAX_QUAL_NAME_LEN, "%s.%s.%s", q, o, n);
 }
 
 #ifdef ROLLBACK_XQ
@@ -625,15 +625,10 @@ ins_call (instruction_t * ins, caddr_t * qst, code_vec_t code_vec)
 	  /* for vectored call of non vectored proc filling proc table temp, do not drop the fill itc until there is termination from eerror of having done the last set */
 	  hash_area_t *ha = (hash_area_t *) cli->cli_result_ts;
 	  caddr_t *result_qst = (caddr_t *) cli->cli_result_qi;
-	  if (result_qst)
-	    {
-	      it_cursor_t *ins_itc = (it_cursor_t *) result_qst[ha->ha_insert_itc->ssl_index];
-	      if (ins_itc)
-		itc_free (ins_itc);
-	      result_qst[ha->ha_insert_itc->ssl_index] = NULL;
-	    }
-	  else
-	    log_error ("result_qst is null");
+	  it_cursor_t *ins_itc = (it_cursor_t *) result_qst[ha->ha_insert_itc->ssl_index];
+	  if (ins_itc)
+	    itc_free (ins_itc);
+	  result_qst[ha->ha_insert_itc->ssl_index] = NULL;
 	}
       PROC_RESTORE_SAVED;
     }
@@ -876,7 +871,7 @@ general:
     int set;
     db_buf_t set_mask = qi->qi_set_mask;
     if (CALLER_CLIENT == qi->qi_caller && !ins->_.call.ret && !qi->qi_query->qr_select_node)
-      rets = dk_alloc_box_zero (sizeof (caddr_t) * n_sets, DV_ARRAY_OF_POINTER);
+      rets = (caddr_t *) dk_alloc_box_zero (sizeof (caddr_t) * n_sets, DV_ARRAY_OF_POINTER);
     SET_LOOP
     {
       qi->qi_proc_ret = (caddr_t) rets;
@@ -885,7 +880,7 @@ general:
 	rets[set] = qi->qi_proc_ret;
     }
     END_SET_LOOP;
-    qi->qi_proc_ret = rets;
+    qi->qi_proc_ret = (caddr_t) rets;
   }
 }
 

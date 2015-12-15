@@ -865,7 +865,7 @@ dlopen (char *path, int mode)
   i = NSCreateObjectFileImageFromFile (path, &image);
   if (i != NSObjectFileImageSuccess)
     {
-      static char *ErrorStrings[] = {
+      static const char *ErrorStrings[] = {
 	"%s(%d): Object Image Load Failure\n",
 	"%s(%d): Object Image Load Success\n",
 	"%s(%d): Not an recognizable object file\n",

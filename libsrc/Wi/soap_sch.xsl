@@ -247,15 +247,15 @@
             </xsl:choose> 		
 	  <xsl:choose>
 	      <xsl:when test="$ext//xs:element or xs:sequence/xs:element">
-	  <restriction base="enc:Struct">
-	      <sequence>
-		  <xsl:apply-templates select="$ext//xs:element">
-		      <xsl:with-param name="namespace" select="concat($ext/*/@targetNamespace,':',$ext/*/@name)"/>
-		  </xsl:apply-templates>
-		  <xsl:apply-templates select="xs:sequence/*"/>
-	      </sequence>
-	  </restriction>
-      </xsl:when>
+		  <restriction base="enc:Struct">
+		      <sequence>
+			  <xsl:apply-templates select="$ext//xs:element">
+			      <xsl:with-param name="namespace" select="concat($ext/*/@targetNamespace,':',$ext/*/@name)"/>
+			  </xsl:apply-templates>
+			  <xsl:apply-templates select="xs:sequence/*"/>
+		      </sequence>
+		  </restriction>
+	      </xsl:when>
 	      <xsl:when test="$ext//xs:simpleContent">
 		  <restriction base="enc:Struct">
 		      <xsl:apply-templates select="$ext//xs:simpleContent/xs:attribute"/>

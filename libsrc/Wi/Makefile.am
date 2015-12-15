@@ -470,6 +470,7 @@ libwi_la_SOURCES += \
 	subseq.c \
 	text.c \
 	uname_const_decl.c \
+	uuid_generator.c \
 	xmlenc-dec.c \
 	xmlenc.c \
 	xmlenc_algos.c \
@@ -770,10 +771,11 @@ json_l.c: $(srcdir)/json.l json_p.h Makefile.am
 
 sqlwords.h: $(srcdir)/sqlwords.gperf
 	@${GEN} --stdout ${GPERF} \
-		-o sqlwords.h \
-		-aCDGptr -Kkeiiyword -L ANSI-C -k1,2,3,6,9,$$ \
+		-o $@.tmp \
+		-aCDGptr -Kkwd -L ANSI-C -k1,2,3,6,9,$$ \
 		-Nlex_hash_kw \
-		$(srcdir)/sqlwords.gperf
+		$(srcdir)/sqlwords.gperf 
+		cat $@.tmp | sed 's/__inline//g' | sed 's/__attribute__ [(][(]__gnu_inline__[)][)]//g' > $@
 
 sql3.c sql3.h: sql3.y
 	@$(GEN) $(YACC) -o sql3.c -vd -pscn3yy $(srcdir)/sql3.y

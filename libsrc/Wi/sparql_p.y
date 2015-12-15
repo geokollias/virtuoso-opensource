@@ -825,7 +825,7 @@ spar_dm_patitem_o	/* [Virt]	PatternItemO	 ::=  VAR1 | VAR2 | IRIref	*/
 			/*... | RDFLiteral | ( '-' | '+' )? NumericLiteral | BooleanLiteral | NIL	*/
 	: QD_VARNAME { $$ = spar_make_param_or_variable (sparp_arg, $1); }
 	| spar_optsigned_numeric_literal
-	| NIL_L				{ $$ = (SPART *)t_box_dv_uname_string ("http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"); }
+	| NIL_L				{ $$ = spartlist (sparp_arg, 2, SPAR_QNAME, uname_rdf_ns_uri_nil); }
 	| spar_rdf_literal
 	| spar_boolean_literal
 	| spar_iriref
@@ -1463,7 +1463,7 @@ spar_inline_data_value
 	| spar_optsigned_numeric_literal
 	| spar_rdf_literal
 	| spar_boolean_literal
-	| spar_blank_node
+	| spar_blank_node	{ sparyyerror (sparp_arg, "The use of blank nodes in VALUES is not allowed by SPARQL 1.1 specification"); $$ = NULL; }
 	| UNBOUND_L		{ sparyyerror (sparp_arg, "UNBOUND in VALUES is deprecated, use UNDEF instead"); $$ = NULL; }
 	| UNDEF_L		{$$ = NULL; }
 	;
@@ -2045,7 +2045,7 @@ spar_graph_term		/* [42]*	GraphTerm	 ::=  IRIref | RDFLiteral | ( '-' | '+' )? N
 	| spar_optsigned_numeric_literal
 	| spar_boolean_literal
 	| spar_blank_node
-	| NIL_L				{ $$ = (SPART *)t_box_dv_uname_string ("http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"); }
+	| NIL_L				{ $$ = spartlist (sparp_arg, 2, SPAR_QNAME, uname_rdf_ns_uri_nil); }
 	| spar_backquoted
 	;
 
@@ -2098,6 +2098,7 @@ spar_expn		/* [43]	Expn		 ::=  ConditionalOrExpn	( 'AS' ( VAR1 | VAR2 ) ) */
 		    }
 		  else
 		    {
+		      args = dk_set_nreverse (args);
 		      t_set_push (&args, $1);
 		      $$ = sparp_make_builtin_call (sparp_arg, IN_L,
 		        (SPART **)t_list_to_array (args) /* NOT t_revlist_to_array (args), note special first element pushed */ );

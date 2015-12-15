@@ -33,15 +33,8 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "xmlparser.h"
 #include "xmlparser_impl.h"
-#ifdef __cplusplus
-}
-#endif
 #include "xml_ecm.h"
 
 /* The name becomes misleading because "limofs" subquery can now be used for CONSTRUCT {...} WHERE {...} GROUP BY..., not only for LIMIT...OFFSET... */
@@ -840,7 +833,7 @@ spar_emulate_ctor_field (sparp_t * sparp, SPART * opcode, SPART * oparg, SPART *
 	      (SPART *) box_copy_tree ((caddr_t) spartlist (sparp, 8 + (sizeof (rdf_val_range_t) / sizeof (caddr_t)),
 		  SPAR_BLANK_NODE_LABEL, NULL, NULL, NULL, NULL, NULL, SPART_RVR_LIST_OF_NULLS, (ptrlong) (0x0), NULL));
 #else
-	  bnode_emulation = box_copy_tree (spartlist (sparp, 1, SPAR_BLANK_NODE_LABEL));
+	  bnode_emulation = (SPART *) box_copy_tree ((caddr_t) (spartlist (sparp, 1, SPAR_BLANK_NODE_LABEL)));
 #endif
 	return bnode_emulation;
       }

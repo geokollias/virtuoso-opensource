@@ -8289,7 +8289,7 @@ xn_xe_from_text (xpath_node_t * xn, query_instance_t * qi)
 	  if (!rbb->rbb_base.rb_is_complete)
 	    rb_complete (&(rbb->rbb_base), qi->qi_trx, qi);
 	  if (DV_XML_ENTITY == DV_TYPE_OF (rbb->rbb_base.rb_box))
-	    return box_copy_tree (rbb->rbb_base.rb_box);
+	    return (xml_entity_t *) box_copy_tree (rbb->rbb_base.rb_box);
 	  val = rbb->rbb_base.rb_box;
 	  dtp = DV_TYPE_OF (val);
 	  goto val_is_xpack_serialization;	/* see below */
@@ -10126,7 +10126,7 @@ xml_deserialize_packed (caddr_t * qst, caddr_t strg)
       tmp_ses = blob_to_string_output (((query_instance_t *) qst)->qi_trx, (caddr_t) bh);
       DKS_QI_DATA (tmp_ses) = (query_instance_t *) qst;
       xte_deserialize_packed (tmp_ses, &res, NULL);
-      dk_free_box (tmp_ses);
+      dk_free_box ((caddr_t) tmp_ses);
     }
   if (NULL == res)
     return NEW_DB_NULL;

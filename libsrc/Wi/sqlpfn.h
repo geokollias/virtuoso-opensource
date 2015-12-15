@@ -28,6 +28,12 @@
 #ifndef _SQLPFN_H
 #define _SQLPFN_H
 
+typedef struct
+{
+  int natural;
+  long type;
+} sqlp_join_t;
+
 caddr_t sym_string (const char *string);
 caddr_t t_sym_string (const char *string);
 
@@ -113,13 +119,6 @@ ST **sqlp_stars (ST ** selection, ST ** from);
 
 dk_set_t sqlp_process_col_options (caddr_t table_name, dk_set_t table_opts);
 
-typedef struct
-{
-  int natural;
-  long type;
-} sqlp_join_t;
-
-
 ST *sqlp_numeric (caddr_t prec, caddr_t scale);
 
 caddr_t sqlp_known_function_name (caddr_t name);
@@ -191,7 +190,7 @@ void sqlp_pragma_line (char *text);
 caddr_t sqlp_hex_literal (char *yytxt, int unprocess_chars_at_end);
 caddr_t sqlp_bit_literal (char *yytxt, int unprocess_chars_at_end);
 
-caddr_t sql_lex_analyze (const char *str2, caddr_t * qst, int max_lexems, int use_strval, int find_lextype);
+caddr_t **sql_lex_analyze (const char *str2, caddr_t * qst, int max_lexems, int use_strval, int find_lextype);
 
 ST *sqlp_udt_create_external_proc (ptrlong routine_head, caddr_t proc_name,
     caddr_t parms, ST * opt_return, caddr_t alt_type, ptrlong language_name, caddr_t external_name, ST ** opts);
@@ -203,23 +202,26 @@ int sqlp_tree_has_fun_ref (ST * tree);
 /*! Nonzero if graph-level security bans the read from graphs by default so raw access to data should be prohibited */
 extern int rdf_raw_access_control;
 
+#define SQL_SPLIT_TEXT_DEFAULT 0x0
+#define SQL_SPLIT_TEXT_KEEP_SEMICOLON 0x1
+#define SQL_SPLIT_TEXT_KEEP_EMPTY_STATEMENTS 0x2
+#define SQL_SPLIT_TEXT_VERBOSE 0x4
+
 extern int scn3_get_lineno (void);
 extern char *scn3_get_file_name (void);
+extern dk_session_t *scn3split_ses_code;
+extern dk_session_t *scn3split_ses_tail;
 #ifndef YY_TYPEDEF_YY_SCANNER_T
 #define YY_TYPEDEF_YY_SCANNER_T
 typedef void *yyscan_t;
 #endif
-#if 0
-#ifndef YY_DECL
-extern int scn3yylex (YYSTYPE * yylval, yyscan_t yyscanner);
-extern int scn3splityylex (YYSTYPE * yylval, yyscan_t yyscanner);
-#define YY_DECL int scn3yylex (YYSTYPE *yylval, yyscan_t yyscanner)
-#endif
-#endif
 extern int scn3yylex_init (yyscan_t * scanner);
 extern int scn3yylex_destroy (yyscan_t yyscanner);
+extern int scn3splityylex_destroy (yyscan_t yyscanner);
 /* No need as soon as thing is reentrant: void scn3yyrestart (FILE * in, yyscan_t yyscanner); */
 /* No need as soon as thing is reentrant: void scn3splityyrestart (FILE * in, yyscan_t yyscanner); */
+extern caddr_t **sql_lex_analyze (const char *str2, caddr_t * qst, int max_lexems, int use_strval, int find_lextype);
+extern caddr_t sql_split_text (const char *str2, caddr_t * qst, int flags);
 extern void sql_yy_reset (yyscan_t yyscanner);
 extern void scn3split_yy_reset (yyscan_t yyscanner);
 extern void sql_pop_all_buffers (yyscan_t yyscanner);

@@ -101,7 +101,7 @@ smtp_connect (char *host1, caddr_t * err_ret, caddr_t sender, caddr_t recipient,
   if (SER_SUCC != rc)
     {
       PrpcSessionFree (ses);
-      *err_ret = srv_make_new_error ("2E000", "SM002", "Cannot resolve host in smtp_send");
+      *err_ret = srv_make_new_error ("2E000", "SM002", "Cannot resolve host: %s in smtp_send", host1);
       return NULL;
     }
   rc = session_connect (ses->dks_session);
@@ -391,7 +391,7 @@ bif_ses_connect (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     }
   if (*err_ret)
     {
-      dk_free_tree (res);
+      dk_free_tree ((caddr_t) res);
       res = NULL;
     }
   return (caddr_t) res;
@@ -447,7 +447,7 @@ bif_ses_accept (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   res[0] = (caddr_t) new_ses;
   if (*err_ret)
     {
-      dk_free_tree (res);
+      dk_free_tree ((caddr_t) res);
       res = NULL;
     }
   return (caddr_t) res;

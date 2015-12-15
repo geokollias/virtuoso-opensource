@@ -25,13 +25,6 @@
  *
  */
 
-#include "sqlnode.h"
-#include "sqlver.h"
-#include "sqlparext.h"
-#include "sqlbif.h"
-#include "security.h"
-#include "log.h"
-
 #ifdef unix
 #include <sys/resource.h>
 #include <netdb.h>
@@ -40,6 +33,14 @@
 #include <arpa/inet.h>
 
 #endif
+
+#include "datesupp.h"
+#include "sqlnode.h"
+#include "sqlver.h"
+#include "sqlparext.h"
+#include "sqlbif.h"
+#include "security.h"
+#include "log.h"
 
 cl_listener_t local_cll;
 du_thread_t *cl_listener_thr;
@@ -342,10 +343,10 @@ partition_def_bif_define (void)
 }
 
 
-caddr_t
+inline caddr_t
 cl_buf_str_alloc ()
 {
-  return dk_alloc (DKSES_OUT_BUFFER_LENGTH);
+  return (caddr_t) dk_alloc (DKSES_OUT_BUFFER_LENGTH);
 }
 
 
@@ -441,7 +442,7 @@ clm_single_extra_slices (cluster_map_t * clm)
 }
 
 cl_host_t *
-cl_name_to_host (char *name)
+cl_name_to_host (const char *name)
 {
   return NULL;
 }
@@ -452,6 +453,32 @@ cl_id_to_host (int id)
   return local_cll.cll_local;
 }
 
+#if 0				/* This is in feature/fx2 but not in feature/analytics before meking it C++ friendly */
+inline caddr_t
+cl_buf_str_alloc ()
+{
+  return (caddr_t) dk_alloc (DKSES_OUT_BUFFER_LENGTH);
+}
+
+void
+cl_buf_str_free (caddr_t str)
+{
+  dk_free (str, DKSES_OUT_BUFFER_LENGTH);
+}
+
+
+void
+cluster_init ()
+{
+  local_cll.cll_mtx = mutex_allocate ();
+  dk_mem_hooks (DV_CLOP, box_non_copiable, (box_destr_f) clo_destroy, 0);
+  cl_strses_rc =
+      resource_allocate (30, (rc_constr_t) cl_strses_allocate, (rc_destr_t) cl_strses_free, (rc_destr_t) strses_flush, NULL);
+  clib_rc_init ();
+  dk_mem_hooks (DV_CLRG, (box_copy_f) clrg_copy, (box_destr_f) clrg_destroy, 0);
+  PrpcSetWriter (DV_CLRG, (ses_write_func) null_serialize);
+}
+#endif
 
 char *
 cl_thr_stat ()

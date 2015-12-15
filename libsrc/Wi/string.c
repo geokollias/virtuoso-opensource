@@ -27,14 +27,7 @@
 
 #include "wi.h"
 #include "strlike.h"
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "langfunc.h"
-#ifdef __cplusplus
-}
-#endif
 #include "multibyte.h"
 
 #define GROUP_BEG_CHAR      ((unsigned char)'[')

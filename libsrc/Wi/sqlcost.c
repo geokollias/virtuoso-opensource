@@ -380,9 +380,6 @@ dfe_prev_tb (df_elt_t * dfe, float *card_between_ret, int stop_on_new_order)
   return NULL;
 }
 
-int pred_const_rhs (df_elt_t * pred);
-
-
 int
 dfe_lead_const (df_elt_t * dfe)
 {
@@ -1346,6 +1343,8 @@ int
 col_may_use_hist (dbe_column_t * col, df_elt_t * lower, df_elt_t * upper)
 {
   caddr_t cnst = NULL, cnst2 = NULL;
+  if (tb_is_rdf_quad (col->col_defined_in))
+    return 0;
   if (!col->col_hist)
     return 0;
   if (lower && upper && IS_LOWER_CONST (lower, &cnst) && IS_UPPER_CONST (upper, &cnst2))
@@ -1493,18 +1492,47 @@ col_hist_card (df_elt_t * col_dfe, df_elt_t * lower, df_elt_t * upper)
 	{
 	  uint64 n_rows = hist_rows (hist, lower_pos, lower_pos + 1);
 	  double frac = (upper_dist - lower_dist) / lower_width;
+	  if (0 == lower_width || 0 == upper_dist || 0 == lower_dist)
+	    frac = 0.5;
 	  rows = n_rows * frac + lower_closed + upper_closed;
 	}
       else
-	rows = hist_rows (hist, lower_pos + 1, upper_pos)
-	    + hist_rows (hist, lower_pos, lower_pos + 1) * (1 - (lower_dist / lower_width))
-	    + hist_rows (hist, upper_pos, upper_pos + 1) * (upper_dist / upper_width) + lower_closed + upper_closed;
+	{
+	  if (0 == lower_dist || lower_dist > lower_width)
+	    {
+	      lower_dist = 0.5;
+	      lower_width = 1;
+	    }
+	  if (0 == upper_dist || upper_dist > upper_width)
+	    {
+	      upper_dist = 0.5;
+	      upper_width = 1;
+	    }
+	  rows = hist_rows (hist, lower_pos + 1, upper_pos)
+	      + hist_rows (hist, lower_pos, lower_pos + 1) * (1 - (lower_dist / lower_width))
+	      + hist_rows (hist, upper_pos, upper_pos + 1) * (upper_dist / upper_width) + lower_closed + upper_closed;
+	}
     }
   else if (lower)
-    rows = hist_rows (hist, lower_pos + 1, len - 1) + hist_rows (hist, lower_pos, lower_pos + 1) * (1 - (lower_dist / lower_width));
+    {
+      if (0 == lower_width || lower_dist > lower_width)
+	{
+	  lower_dist = 0.5;
+	  lower_width = 1;
+	}
+      rows = hist_rows (hist, lower_pos + 1, len - 1)
+	  + hist_rows (hist, lower_pos, lower_pos + 1) * (1 - (lower_dist / lower_width));
+    }
   else
-    rows = hist_rows (hist, 0, upper_pos - 1)
-	+ hist_rows (hist, upper_pos, upper_pos + 1) * (upper_dist / upper_width) + upper_closed;
+    {
+      if (0 == upper_dist || upper_dist > upper_width)
+	{
+	  upper_dist = 0.5;
+	  upper_width = 1;
+	}
+      rows = hist_rows (hist, 0, upper_pos - 1)
+	  + hist_rows (hist, upper_pos, upper_pos + 1) * (upper_dist / upper_width) + upper_closed;
+    }
   return mpy * rows / tb_card;
 empty:
   return 1e-3;
@@ -1930,6 +1958,7 @@ sqlo_p_stat_query (dbe_table_t * tb, caddr_t p)
   static query_t *o_qr = NULL;
   client_connection_t *cli = sqlc_client ();
   lock_trx_t *lt = cli->cli_trx;
+  int save_vdb = lt->lt_vdb_threads;
   user_t *usr = cli->cli_user;
   int at_start = cli->cli_anytime_started;
   local_cursor_t *lc = NULL;
@@ -1945,18 +1974,19 @@ sqlo_p_stat_query (dbe_table_t * tb, caddr_t p)
 	  return -1;
 	}
     }
+  lt->lt_vdb_threads = 0;
   cli->cli_anytime_started = 0;
   if (!s_qr || !o_qr)
     {
       AS_DBA_CLI (cli, s_qr =
 	  sql_compile
-	  ("select count (*), count (distinct s option (order)) from rdf_quad table option (index rdf_quad, isolation read uncommitted) where p = ?",
+	  ("select count (*), count (distinct s option (order)) from rdf_quad table option (index rdf_quad, final, isolation read uncommitted) where p = ?",
 	      cli, &err, SQLC_DEFAULT));
       if (err)
 	goto err;
       AS_DBA_CLI (cli, o_qr =
 	  sql_compile
-	  ("select count (*), count (distinct o option (order)) from rdf_quad table option (index rdf_quad_pogs, isolation read uncommitted) where p = ?",
+	  ("select count (*), count (distinct o option (order)) from rdf_quad table option (index rdf_quad_pogs, final, isolation read uncommitted) where p = ?",
 	      cli, &err, SQLC_DEFAULT));
       if (err)
 	goto err;
@@ -1975,6 +2005,7 @@ sqlo_p_stat_query (dbe_table_t * tb, caddr_t p)
   o_cnt = unbox (lc_nth_col (lc, 1));
   lc_free (lc);
 err:
+  lt->lt_vdb_threads = save_vdb;
   if (entered)
     {
       IN_TXN;
@@ -3189,7 +3220,7 @@ sqlo_inx_sample_1 (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_el
     place = (tb_sample_t *) id_hash_get (so->so_sc->sc_sample_cache, (caddr_t) & sc_key);
   else
     {
-      so->so_sc->sc_sample_cache = id_hash_allocate (61, sizeof (caddr_t), sizeof (tb_sample_t), treehash, treehashcmp);
+      so->so_sc->sc_sample_cache = t_id_hash_allocate (61, sizeof (caddr_t), sizeof (tb_sample_t), treehash, treehashcmp);
       place = NULL;
     }
   if (place)
@@ -3225,12 +3256,14 @@ sqlo_inx_sample_1 (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_el
   if ((!sop || sop->sop_ric || sop->sop_use_sc_cache) && !ic_is_insufficient_slices (ic))
     {
       tb_sample_t smp;
+      caddr_t t_sc_key = t_full_box_copy_tree (sc_key);
+      dk_free_tree (sc_key);
       memset (&smp, 0, sizeof (tb_sample_t));
       smp.smp_card = res * row_sel;
       smp.smp_inx_card = res;
       smp_set_cols (&smp, itc, 1);
       if (so->so_sc->sc_sample_cache)
-	id_hash_set (so->so_sc->sc_sample_cache, (caddr_t) & sc_key, (caddr_t) & smp);
+	id_hash_set (so->so_sc->sc_sample_cache, (caddr_t) & t_sc_key, (caddr_t) & smp);
     }
   c = res * row_sel;
   ic->ic_inx_card = res;
@@ -3421,7 +3454,7 @@ sqlo_record_rdf_p (sample_opt_t * sop, dbe_key_t * key, caddr_t p_const, int64 e
   distincts[0] = est;
   DO_SET (dbe_column_t *, col, &key->key_parts->next)
   {
-    cs = gethash ((void *) col, sop->sop_cols);
+    cs = (col_stat_t *) gethash ((void *) col, sop->sop_cols);
     if (!cs)
       goto end;
     distincts[fill++] = (float) cs->cs_distinct->ht_count * (float) est / sop->sop_n_sample_rows;
@@ -3434,7 +3467,7 @@ sqlo_record_rdf_p (sample_opt_t * sop, dbe_key_t * key, caddr_t p_const, int64 e
   }
   END_DO_SET ();
   /* free stats on P */
-  cs = gethash (key->key_parts->data, sop->sop_cols);
+  cs = (col_stat_t *) gethash (key->key_parts->data, sop->sop_cols);
   if (!cs)
     goto end;
   DO_IDHASH (caddr_t, k, caddr_t, ign, cs->cs_distinct) dk_free_box (k);
@@ -3963,7 +3996,7 @@ dfe_col_n_distinct (df_elt_t * dfe)
 {
   if (dfe->dfe_tables)
     {
-      op_table_t *ot = dfe->dfe_tables->data;
+      op_table_t *ot = (op_table_t *) (dfe->dfe_tables->data);
       if (dfe_is_quad (ot->ot_dfe))
 	{
 	  /* fill in code to get constant p and card for this */
@@ -4419,9 +4452,9 @@ dfe_init_p_stat (df_elt_t * dfe, df_elt_t * lower)
   rq.rq_p.rqp_lower = lower;
   ic.ic_set_sample_key = 1;
   ic.ic_key = tb_px_key (rq.rq_table, rq.rq_s_col);
-  dfe_p_card (dfe, &rq, &p_stat, &ic, SO_S);
+  dfe_p_card (dfe, &rq, p_stat, &ic, SO_S);
   ic.ic_key = tb_px_key (rq.rq_table, rq.rq_o_col);
-  dfe_p_card (dfe, &rq, &p_stat, &ic, SO_O);
+  dfe_p_card (dfe, &rq, p_stat, &ic, SO_O);
   return 1;
 }
 
@@ -4520,8 +4553,8 @@ sqlo_use_p_stat_2 (df_elt_t * dfe, float *inx_card, float *col_card, index_choic
     }
   if (RQ_BOUND_RANGE == rq.rq_s.rqp_op)
     return 0;
-  col2 = rq_rqp (&rq, key->key_parts->next->data);
-  col3 = rq_rqp (&rq, key->key_parts->next->next->data);
+  col2 = rq_rqp (&rq, (dbe_column_t *) (key->key_parts->next->data));
+  col3 = rq_rqp (&rq, (dbe_column_t *) (key->key_parts->next->next->data));
   if (RQ_UNBOUND == col2->rqp_op && RQ_UNBOUND == col3->rqp_op)
     {
       *inx_card = p_card;
@@ -4681,6 +4714,7 @@ sqlo_use_p_stat (df_elt_t * dfe, df_elt_t ** lowers, int inx_const_fill, int64 e
   dk_free_box (p);
   if (!found)
     return 0;
+  sqlo_p_stat_default (est, place);
   *inx_arity = est / place[1];
   if (lower3 || upper3)
     {

@@ -50,6 +50,8 @@
 #include "virtpwd.h"
 #include "xmltree.h"
 #include "aqueue.h"
+#include "sqlcomp.h"
+#include "sqlo.h"
 
 #define SQL_NO_TOTAL			(-4)
 

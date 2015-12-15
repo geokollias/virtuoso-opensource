@@ -1082,20 +1082,13 @@ create procedure DB.DBA.SPARQL_RESULTS_XML_WRITE_ROW (inout ses any, in mdta any
 		    _name), ses);
 	    }
 	  sql_val := __rdf_sqlval_of_obj (_val, 1);
-	  if (__tag of rdf_box = __tag (_val) and __tag of datetime = rdf_box_data_tag (_val))
-	    {
-	      __rdf_long_to_ttl (_val, ses);
-	    }
-	  else
-	    {
-	      if (isentity (sql_val))
-		is_xml_lit := 1;
-	      if (__tag (sql_val) = __tag of varchar) -- UTF-8 value kept in a DV_STRING box
-		sql_val := charset_recode (sql_val, 'UTF-8', '_WIDE_');
-	      if (is_xml_lit) http ('<![CDATA[', ses);
-	      http_value (__rdf_strsqlval (sql_val), 0, ses);
-	      if (is_xml_lit) http (']]>', ses);
-	    }
+	  if (isentity (sql_val))
+	    is_xml_lit := 1;
+	  if (__tag (sql_val) = __tag of varchar) -- UTF-8 value kept in a DV_STRING box
+	    sql_val := charset_recode (sql_val, 'UTF-8', '_WIDE_');
+	  if (is_xml_lit) http ('<![CDATA[', ses);
+	  http_value (__rdf_strsqlval (sql_val), 0, ses);
+	  if (is_xml_lit) http (']]>', ses);
           http ('</literal></binding>', ses);
         }
 end_of_binding: ;
@@ -1501,10 +1494,7 @@ create procedure DB.DBA.SPARQL_RESULTS_JSON_WRITE_BINDING (inout ses any, in col
         }
       else
         http ('"type": "literal", "value": "', ses);
-      if (__tag of datetime = rdf_box_data_tag (val))
-	__rdf_long_to_ttl (val, ses);
-      else
-	http_escape (dat, 14, ses, 1, 1);
+      http_escape (dat, 14, ses, 1, 1);
     }
   else if (__tag of varchar = __tag (val))
     {
@@ -2495,7 +2485,7 @@ create procedure WS.WS.SPARQL_ENDPOINT_JAVASCRIPT (in can_cxml integer, in can_q
     http('		var query = query_obg.value; \n');
     http('		var format = query_obg.form.format;\n');
     http('		var ctr = 0;\n');
-    http('		var query_is_construct = (query.match(/\\bconstruct\\b/i) || query.match(/\\bdescribe\\b/i));\n');
+    http('		var query_is_construct = (query.match(/\\bconstruct\\b/i) || query.match(/\\bdescribe\\b\\s/i));\n');
     http('\n');
     http('		if (query_is_construct && last_format != 2) {\n');
     http('			for(ctr = format.options.length; ctr > 0; ctr--)\n');

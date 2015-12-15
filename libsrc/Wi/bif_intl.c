@@ -40,16 +40,10 @@
 #include "srvmultibyte.h"
 #include "xml.h"
 #include "security.h"
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "xmlparser.h"
+#include "xmltree.h"
 /*#include "xmlparser_impl.h"*/
 #include "langfunc.h"
-#ifdef __cplusplus
-}
-#endif
 
 int
 collation_define_memonly (caddr_t name, caddr_t table, int is_utf8_if_narrow)
@@ -794,8 +788,6 @@ bif_uname (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   return box_dv_uname_nchars (narrow, box_length (narrow) - 1);
 }
 
-extern caddr_t box_cast_to_UTF8_uname (caddr_t * qst, caddr_t raw_name);
-
 caddr_t
 bif_quick_uname (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
@@ -1111,7 +1103,7 @@ intl_find_user_charset (const char *encname, int xml_input_is_wide)
       eh->eh_encode_char = eh_encode_char__wcharset_wide;
       eh->eh_encode_buffer = eh_encode_buffer__wcharset_wide;
       inx1 = BOX_ELEMENTS (charset[0]->chrs_aliases);
-      eh->eh_names = (char **) dk_alloc ((inx1 + 2) * sizeof (char *));
+      eh->eh_names = (const char **) dk_alloc ((inx1 + 2) * sizeof (char *));
       eh->eh_names[inx1 + 1] = NULL;
       while (inx1--)
 	{
@@ -1138,7 +1130,7 @@ intl_find_user_charset (const char *encname, int xml_input_is_wide)
       eh->eh_encode_char = eh_encode_char__wcharset_narrow;
       eh->eh_encode_buffer = eh_encode_buffer__wcharset_narrow;
       inx1 = BOX_ELEMENTS (charset[0]->chrs_aliases);
-      eh->eh_names = (char **) dk_alloc ((inx1 + 2) * sizeof (char *));
+      eh->eh_names = (const char **) dk_alloc ((inx1 + 2) * sizeof (char *));
       eh->eh_names[inx1 + 1] = NULL;
       while (inx1--)
 	{

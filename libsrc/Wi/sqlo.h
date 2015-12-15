@@ -28,7 +28,7 @@
 
 #ifndef _SQLO_H
 #define _SQLO_H
-
+#include "sqlcmps.h"
 typedef struct df_elt_s df_elt_t;
 typedef struct dfe_reuse_s dfe_reuse_t;
 typedef struct sqlo_s sqlo_t;
@@ -57,7 +57,17 @@ typedef struct op_table_s
 #endif
   ST *ot_dt;
   ST *ot_left_sel;
+  ST **ot_dt_oj_ref;		/* if this ot is right of left outer, then this is the place in the parse tree that refs the table_ref */
+  struct op_table_s *ot_top_ot;
+  dbe_key_t *ot_cg_pk;		/* if a single cg has all dep cols with conditions */
+  dk_set_t ot_cg_cond_cols;	/* list of columns participating in coditions */
+  dk_set_t ot_cg_group_cols;
+  dk_set_t ot_cg_order_cols;
+  dk_set_t ot_col_conds;	/* predicates that are direct on a col of this ot, use for checking if sorted proj has range or/order/grouping */
   ST *ot_join_cond;
+  char ot_inside_clause;	/* for a dt ot, set if doing scope for its where/gby/oby.  Use for cgs.  Distinguish col refs in where  */
+  char ot_is_cg;		/* if table with many col groups */
+  char ot_cg_first_placed;
   char ot_is_outer;
   char ot_inside_outer;
   ST *ot_enclosing_where_cond;	/* optional or other ot can add a condition to the top level where of the enclosing dt */
@@ -129,13 +139,17 @@ typedef struct op_table_s
   dk_set_t ot_all_dts;		/* all currently placed dts,scalar subqs.  Can look for intermediate reuse. In top ot only */
   dk_set_t ot_lp_cols;		/* late projection cols, to fetch after gby or top oby */
   float ot_initial_cost;	/* cost of initial plan with this ot in first position */
-  float ot_joined_card;
-  char ot_is_rdf;
   char ot_any_plan;		/* true if there is at least one full plan with this ot in first position */
   char ot_is_right_oj;		/* for a dt ot, set if trying a right hash oj plan.  Only hash join is considered */
   char ot_has_top_test;
   char ot_invariant_placed;
 } op_table_t;
+
+/* ot_inside_clause */
+#define OT_IN_WHERE 1
+#define OT_IN_GBY 2
+#define OT_IN_OBY 3
+
 #define OT_RIGHT_OJ_REJECTED 2
 
 
@@ -292,6 +306,7 @@ struct df_elt_s
       bitf_t is_late_proj:1;
       bitf_t cl_colocated:1;	/* always same partition as previous table in cluster */
       bitf_t no_in_on_index:1;
+      bitf_t is_cg_first:1;
       bitf_t joins_pk:2;
       /* XPATH & FT members */
       df_elt_t *text_pred;
@@ -602,9 +617,13 @@ struct sqlo_s
   char so_mark_gb_dep;
   char so_placed_outside_dt;
   char so_no_dt_cache;
+  char so_org_tree_copied;
   char so_ret_flag;		/* aux, used for misc status return */
 
   st_lit_state_t *so_stl;	/* if gathering literals for use as params */
+  op_table_t *so_def_ot;	/* temp for the ot and table of a col ref during scope */
+  dbe_column_t *so_def_col;
+  ST *so_org_tree;		/* tree unmodified by col group expansion */
 };
 
 typedef struct lp_col_s
@@ -853,6 +872,11 @@ df_elt_t *sqlo_layout_copy_1 (sqlo_t * so, df_elt_t * dfe, df_elt_t * parent);
 
 void sqlo_dt_unplace (sqlo_t * so, df_elt_t * tb_dfe);
 void sqlo_dfe_unplace (sqlo_t * so, df_elt_t * dfe);
+float itc_row_selectivity (it_cursor_t * itc, int64 inx_est);
+int pred_const_rhs (df_elt_t * pred);
+caddr_t sqlo_iri_constant_name (ST * tree);
+float arity_scale (float ar);
+int dfe_range_card (df_elt_t * tb_dfe, df_elt_t * lower, df_elt_t * upper, float *card);
 float sqlo_score (df_elt_t * dfe, float in_arity);
 int dfe_try_ordered_key (df_elt_t * prev_tb, df_elt_t * dfe);
 df_elt_t *dfe_prev_tb (df_elt_t * dfe, float *card_between_ret, int stop_on_new_order);
@@ -1129,6 +1153,14 @@ int ic_is_insufficient_slices (index_choice_t * ic);
 float arity_scale (float ar);
 caddr_t sqlo_rdf_lit_const (ST * tree);
 caddr_t sqlo_rdf_obj_const_value (ST * tree, caddr_t * val_ret, caddr_t * lang_ret);
+
+/* col groups */
+void sqlo_cg_expand (sqlo_t * so, op_table_t * sel_ot, ST * tree);
+df_elt_t *dfe_col_def_dfe_cg (sqlo_t * so, df_elt_t * col_dfe);
+df_elt_t *dfe_skip_to_min_card (df_elt_t * place, df_elt_t * super, df_elt_t * dfe);
+dbe_key_t *tb_col_group (dbe_table_t * tb, dbe_column_t * col);
+
+
 
 /* qrc */
 

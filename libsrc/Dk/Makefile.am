@@ -51,6 +51,7 @@ libdksrv_la_SOURCES = \
 	Dksesstr.c \
 	Dksestcp.c \
 	Dksets.c \
+	Dksesssl.c \
 	Dkpool.c \
 	Dkutil.c \
 	Dkstubs.c \
@@ -84,7 +85,8 @@ libdk1t_la_SOURCES = \
 	Dkpool.c \
 	Dkutil.c \
 	Dkstubs.c \
-	Dkstkern.c
+	Dkstkern.c \
+	Dksesssl.c
 		     
 libdk1t_la_CFLAGS   = @VIRT_AM_CFLAGS@
 libdk1t_la_CFLAGS  += -I$(top_srcdir)/libsrc
@@ -114,7 +116,8 @@ libdk1t_nc_la_SOURCES = \
 	Dkpool.c \
 	Dkutil.c \
 	Dkstubs.c \
-	Dkstkern.c
+	Dkstkern.c \
+	Dksesssl.c
 		     
 libdk1t_nc_la_CFLAGS  = @VIRT_AM_CFLAGS@
 libdk1t_nc_la_CFLAGS  += -I$(top_srcdir)/libsrc

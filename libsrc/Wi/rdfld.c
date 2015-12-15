@@ -170,7 +170,7 @@ cu_rl_local_exec (cucurbit_t * cu)
 		if (rb->rb_is_text_index && cu->cu_rdf_load_mode != RDF_LD_MULTIGRAPH)
 		  {
 		    client_connection_t *cli = qi->qi_client;
-		    char *g_dict_name = "g_dict";
+		    const char *g_dict_name = "g_dict";
 		    id_hash_iterator_t **dict_place =
 			(id_hash_iterator_t **) id_hash_get (cli->cli_globals, (caddr_t) & g_dict_name);
 		    id_hash_t *ht;
@@ -186,7 +186,7 @@ cu_rl_local_exec (cucurbit_t * cu)
 		  }
 		cu_set_value (cu, vs, box_copy_tree ((caddr_t) rb));
 	      }
-	    else if (DV_STRING == DV_TYPE_OF (vs->vs_org_value) || IS_WIDE_STRING_DTP (DV_TYPE_OF (vs->vs_org_value)))
+	    else if (DV_STRING == DV_TYPE_OF (vs->vs_org_value))
 	      {
 		rdf_box_t *rb = rb_allocate ();
 		rb->rb_ro_id = id;
@@ -195,7 +195,7 @@ cu_rl_local_exec (cucurbit_t * cu)
 		if (cu->cu_rdf_load_mode != RDF_LD_MULTIGRAPH)
 		  {
 		    client_connection_t *cli = qi->qi_client;
-		    char *g_dict_name = "g_dict";
+		    const char *g_dict_name = "g_dict";
 		    id_hash_iterator_t **dict_place =
 			(id_hash_iterator_t **) id_hash_get (cli->cli_globals, (caddr_t) & g_dict_name);
 		    id_hash_t *ht;
@@ -334,7 +334,7 @@ cu_rl_graph_words (cucurbit_t * cu, caddr_t g_iid)
   QNCAST (query_instance_t, qi, cu->cu_qst);
   caddr_t err;
   client_connection_t *cli = GET_IMMEDIATE_CLIENT_OR_NULL;
-  char *g_dict_name = "g_dict";
+  const char *g_dict_name = "g_dict";
   caddr_t *pars, *save_repl;
   int save_ac;
   id_hash_iterator_t *hit;
@@ -343,7 +343,7 @@ cu_rl_graph_words (cucurbit_t * cu, caddr_t g_iid)
     return;
   hit = *dict_place;
   pars = (caddr_t *) list (2, box_copy_tree (g_iid), box_copy_tree ((caddr_t) hit));
-  save_repl = box_copy_tree (qi->qi_trx->lt_replicate);
+  save_repl = (caddr_t *) box_copy_tree ((caddr_t) (qi->qi_trx->lt_replicate));
   save_ac = qi->qi_client->cli_row_autocommit;
   err = qr_exec (cli, rl_graph_words_qr, CALLER_LOCAL, "", NULL, NULL, pars, NULL, 0);
   qi->qi_trx->lt_replicate = save_repl;
@@ -422,7 +422,7 @@ cu_rl_cols (cucurbit_t * cu, caddr_t g_iid)
 	  caddr_t x = row[5];
 	  QNCAST (rdf_box_t, rb, x);
 	  int is_rb = DV_RDF == DV_TYPE_OF (x) && rb->rb_is_complete && rb->rb_ro_id;
-	  if (DV_DB_NULL == DV_TYPE_OF (x) || DV_STRING == DV_TYPE_OF (x) || IS_WIDE_STRING_DTP (DV_TYPE_OF (x)))
+	  if (DV_DB_NULL == DV_TYPE_OF (x) || DV_STRING == DV_TYPE_OF (x))
 	    sqlr_new_error ("42000", "CL...", "NULL and string not allowed for O column value");
 	  if (is_rb)
 	    rb->rb_is_complete = 0;
@@ -437,7 +437,7 @@ cu_rl_cols (cucurbit_t * cu, caddr_t g_iid)
 	  quad[3] = row[4];
 	}
       if (rdf_graph_is_in_enabled_repl ((caddr_t *) qi, unbox_iri_id (quad[0]), &allg))
-	dk_set_push (&set, box_copy_tree (quad));
+	dk_set_push (&set, box_copy_tree ((caddr_t) quad));
     }
   BOX_DONE (quad, tmp);
   if (set)
@@ -533,12 +533,6 @@ l_make_ro_disp (cucurbit_t * cu, caddr_t * args, value_state_t * vs)
     {
       l_null = dk_alloc_box (0, DV_DB_NULL);
       cf = cu_func ("L_O_LOOK", 1);
-    }
-  if (IS_WIDE_STRING_DTP (dtp))
-    {
-      mem_pool_t *pool = cu->cu_clrg->clrg_pool;
-      box = mp_box_wide_as_utf8_char (pool, box, box_length (box) / sizeof (wchar_t) - 1, DV_SHORT_STRING);
-      dtp = DV_TYPE_OF (box);
     }
   if (DV_RDF == dtp)
     {

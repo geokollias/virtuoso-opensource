@@ -30,6 +30,7 @@
 
 #include "Dk.h"
 #include "Dk/Dksestcp.h"
+#include "Dk/Dksesssl.h"
 #include "sqlnode.h"
 #include "eqlcomp.h"
 #include "sqlfn.h"
@@ -86,7 +87,7 @@ static int soap_ports[MAX_SOAP_PORTS] = { 0, SOAP_MSG_LITERAL, SOAP_MSG_HTTP };	
 #define SOAP_XML_TYPE  "__XML__"
 
 
-static char *uddi_errors[] = {
+static const char *uddi_errors[] = {
   "10500", "E_fatalError",
   "10110", "E_authTokenExpired",
   "10120", "E_authTokenRequired",
@@ -198,7 +199,7 @@ static id_hash_t *ht_soap_attr;
 static id_hash_t *ht_soap_udt;
 static id_hash_t *ht_soap_sup;	/* SOAP UDT Published */
 
-char *http_soap_client_id_string = "Virtuoso Soap Client";
+const char *http_soap_client_id_string = "Virtuoso Soap Client";
 
 #define HT_SOAP(i) (((i) > 0) ? ht_soap_elt : (((i) < 0) ? ht_soap_attr : ht_soap_dt))
 
@@ -465,7 +466,7 @@ soap_11_error (char *code, int strict)
 #define ES_NO_PROC 1
 #define ES_BAD_ARG 2
 
-char *soap12_errors[] = {
+const char *soap12_errors[] = {
   "Receiver",
   "VersionMismatch",		/*1XX */
   "MustUnderstand",		/*2XX */
@@ -474,7 +475,7 @@ char *soap12_errors[] = {
   "DataEncodingUnknown"		/*5XX */
 };
 
-char *soap12_sub_errors[] = {
+const char *soap12_sub_errors[] = {
   NULL,
   "rpc:ProcedureNotPresent",	/*31X */
   "rpc:BadArguments",		/*32X */
@@ -745,7 +746,7 @@ xml_find_child (caddr_t * entity, const char *szSearchName, const char *szURI, i
 }
 
 caddr_t *
-xml_find_one_child (caddr_t * entity, char *szSearchName, char **szURIs, int nth, int *start_inx)
+xml_find_one_child (caddr_t * entity, const char *szSearchName, const char **szURIs, int nth, int *start_inx)
 {
   char **urls = szURIs;
   caddr_t *rc = NULL;
@@ -3909,7 +3910,7 @@ ws_soap (ws_connection_t * ws, int soap_version, caddr_t method_fld)
 		  dk_free_box (req_xml);
 		  req_xml = dime_msgs[0][2];
 		  dime_msgs[0][2] = NULL;
-		  dk_free_tree (ws->ws_params);
+		  dk_free_tree ((caddr_t) (ws->ws_params));
 		  ws->ws_params = (caddr_t *) dk_alloc_box (0, DV_ARRAY_OF_POINTER);
 		}
 	      else
@@ -4107,7 +4108,7 @@ bif_soap_server (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 static caddr_t
 bif_soap_find_xml_attribute (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *szMe = "soap_find_xml_attribute";
+  const char *szMe = "soap_find_xml_attribute";
   caddr_t *entity = (caddr_t *) bif_array_arg (qst, args, 0, szMe);
   caddr_t name = bif_string_arg (qst, args, 1, szMe);
   caddr_t uri = NULL;
@@ -4124,7 +4125,7 @@ bif_soap_find_xml_attribute (caddr_t * qst, caddr_t * err_ret, state_slot_t ** a
 static caddr_t
 bif_soap_box_xml_entity (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *szMe = "soap_box_xml_entity";
+  const char *szMe = "soap_box_xml_entity";
   caddr_t entity1 = bif_arg (qst, args, 0, szMe);
   caddr_t value_for_type = bif_arg (qst, args, 1, szMe);
   int soap_version = 1;
@@ -4160,7 +4161,7 @@ bif_soap_box_xml_entity (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 static caddr_t
 bif_soap_box_structure (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *szMe = "soap_box_structure";
+  const char *szMe = "soap_box_structure";
   long elems = BOX_ELEMENTS (args), inx;
   caddr_t *ret;
   if ((elems % 2) > 0)
@@ -4187,7 +4188,7 @@ bif_soap_box_structure (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 static caddr_t
 bif_soap_boolean (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *szMe = "soap_boolean";
+  const char *szMe = "soap_boolean";
   ptrlong val = bif_long_arg (qst, args, 0, szMe);
 
   return list (2, dk_alloc_box (0, DV_COMPOSITE), box_num_nonull (val));
@@ -4198,7 +4199,7 @@ static caddr_t
 bif_soap_print_box (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   query_instance_t *qi = (query_instance_t *) qst;
-  char *szMe = "soap_print_box";
+  const char *szMe = "soap_print_box";
   int n_args = BOX_ELEMENTS (args);
   caddr_t object = bif_arg (qst, args, 0, szMe);
   caddr_t tag = bif_string_arg (qst, args, 1, szMe);
@@ -4264,14 +4265,10 @@ bif_soap_print_box (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   return ret;
 }
 
-#ifdef _SSL
-int ssl_client_use_pkcs12 (SSL * ssl, char *pkcs12file, char *passwd, char *ca);
-#endif
-
 static caddr_t
 bif_soap_call (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *szMe = "soap_call";
+  const char *szMe = "soap_call";
   caddr_t szHost = bif_string_arg (qst, args, 0, szMe);
   caddr_t szURL = bif_string_arg (qst, args, 1, szMe);
   caddr_t szMethodURI = bif_string_or_null_arg (qst, args, 2, szMe);
@@ -5653,7 +5650,7 @@ soap_call2xmlrpc (soap_call_ctx_t * ctx, caddr_t * err_ret)
 caddr_t
 bif_soap_call_new (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "soap_call";
+  const char *me = "soap_call";
   caddr_t err = NULL;
   int ns_contains = 0;
   ptrlong one_way = 0, send_only_req = 0;
@@ -6012,7 +6009,7 @@ bif_soap_call_new (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 caddr_t
 bif_soap_receive (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "soap_receive";
+  const char *me = "soap_receive";
   caddr_t err = NULL, skeys = NULL;
   caddr_t ret = NULL;
   query_instance_t *qi = (query_instance_t *) qst;
@@ -9231,7 +9228,7 @@ soap_wsdl_print_extensions (query_t * proc, char *operation_name, dk_session_t *
 
 		static caddr_t bif_soap_box_xml_entity_validating (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 		{
-		  char *szMe = "soap_box_xml_entity_validating";
+		  const char *szMe = "soap_box_xml_entity_validating";
 		  caddr_t *entity_1 = (caddr_t *) bif_arg (qst, args, 0, szMe);
 		  caddr_t type_name = bif_string_arg (qst, args, 1, szMe);
 		  char *ret = NULL;
@@ -10770,7 +10767,7 @@ soap_wsdl_print_extensions (query_t * proc, char *operation_name, dk_session_t *
 				long n_min = 0, n_max = check_sqt->sqt_precision, inx = 0;
 				caddr_t elem_entity;
 				sql_type_t sqt;
-				char *a_name = "item";
+				const char *a_name = "item";
 				caddr_t a_type = NULL;
 				int elem_qual = qualified & (ctx->literal ? 1 : 0);
 				char dim[256] = { 0 };
@@ -10948,7 +10945,7 @@ soap_wsdl_print_extensions (query_t * proc, char *operation_name, dk_session_t *
 
 			static caddr_t bif_soap_print_box_validating (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 			{
-			  char *szMe = "soap_print_box_validating";
+			  const char *szMe = "soap_print_box_validating";
 			  caddr_t box = bif_arg (qst, args, 0, szMe);
 			  caddr_t tag = bif_string_arg (qst, args, 1, szMe);
 			  caddr_t type_name = bif_string_arg (qst, args, 2, szMe);
@@ -11507,7 +11504,7 @@ soap_wsdl_print_extensions (query_t * proc, char *operation_name, dk_session_t *
 
 			static caddr_t bif_soap_udt_publish (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 			{
-			  static char *szMe = "soap_udt_publish";
+			  static const char *szMe = "soap_udt_publish";
 			  sql_class_t *udt = bif_udt_arg (qst, args, 3, szMe);
 			  caddr_t vh = http_host_normalize (bif_string_arg (qst, args, 0, szMe), 0);
 			  caddr_t lhost = http_host_normalize (bif_string_arg (qst, args, 1, szMe), 1);
@@ -11553,7 +11550,7 @@ soap_wsdl_print_extensions (query_t * proc, char *operation_name, dk_session_t *
 
 			static caddr_t bif_soap_udt_unpublish (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 			{
-			  static char *szMe = "soap_udt_unpublish";
+			  static const char *szMe = "soap_udt_unpublish";
 			  caddr_t vh = http_host_normalize (bif_string_arg (qst, args, 0, szMe), 0);
 			  caddr_t lhost = http_host_normalize (bif_string_arg (qst, args, 1, szMe), 1);
 			  caddr_t lpath = bif_string_arg (qst, args, 2, szMe);

@@ -205,7 +205,7 @@ caddr_t dc_mp_box_for_rd (mem_pool_t * mp, data_col_t * dc, int inx)
     case DV_ANY:
       {
 	db_buf_t dv = ((db_buf_t *) dc->dc_values)[inx];
-	return mp_box_deserialize_string (mp, (caddr_t) dv, INT32_MAX, 0);
+	return mp_box_deserialize_string (mp, (ccaddr_t) dv, INT32_MAX, 0);
       }
     case DV_SHORT_INT:
     case DV_LONG_INT:
@@ -501,7 +501,7 @@ dc_append_null (data_col_t * dc)
 void
 dc_append_chars (data_col_t * dc, char *field, int field_len)
 {
-  dtp_t head[5];
+  char head[5];
   int head_len;
   if (field_len < 256)
     {
@@ -515,7 +515,7 @@ dc_append_chars (data_col_t * dc, char *field, int field_len)
       LONG_SET_NA (&head[1], field_len);
       head_len = 5;
     }
-  dc_append_bytes (dc, (db_buf_t) field, field_len, head, head_len);
+  dc_append_bytes (dc, (db_buf_t) field, field_len, (db_buf_t) head, head_len);
 }
 
 caddr_t
@@ -588,7 +588,7 @@ box_deserialize_reusing (db_buf_t string, caddr_t box)
 	rdf_box_t *x = (rdf_box_t *) box_deserialize_string ((caddr_t) string, INT32_MAX, 0);
 	if (old_dtp == DV_RDF && NULL != x && 0 != x->rb_ro_id && x->rb_ro_id == ((rdf_box_t *) box)->rb_ro_id)
 	  {
-	    dk_free_box (x);
+	    dk_free_box ((caddr_t) x);
 	    return box;
 	  }
 	dk_free_tree (box);
@@ -1256,7 +1256,7 @@ dc_append_float (data_col_t * dc, float n)
 
 
 int
-dc_elt_size (data_col_t * dc)
+dc_elt_size (const data_col_t * dc)
 {
   if (DV_DATETIME == dc->dc_dtp)
     return DT_LENGTH;
@@ -2645,9 +2645,9 @@ box_mt_copy_tree (caddr_t box)
 	for (inx = 0; inx < len; inx++)
 	  cp[inx] = box_mt_copy_tree (((caddr_t *) box)[inx]);
 	return (caddr_t) cp;
-    default:
-	return box_copy (box);
       }
+    default:
+      return box_copy (box);
     }
 }
 
@@ -3273,57 +3273,6 @@ dcp_find (data_col_t * dc, int64 x)
     }
   printf ("first %d last %d n %d \n", first, last, n);
 }
-
-
-char *
-strnstrdv (char *str1, int len1, char *str2, int len2)
-{
-  int start;
-  for (start = 0; start <= len1 - len2; start++)
-    if (!strncmp (str1 + start, str2, len2))
-      return str1 + start;
-  return NULL;
-}
-
-
-void
-dcp_str_find (data_col_t * dc, char *str)
-{
-  int inx, first = -1, last = -1, n = 0, len = strlen (str);
-  for (inx = 0; inx < dc->dc_n_values; inx++)
-    {
-      long l, hl;
-      db_buf_t dv = ((db_buf_t *) dc->dc_values)[inx];
-      db_buf_length (dv, &hl, &l);
-      if (strnstrdv (dv + hl, l, str, len))
-	{
-	  if (-1 == first)
-	    first = inx;
-	  last = inx;
-	  n++;
-	}
-    }
-  printf ("first %d last %d n %d \n", first, last, n);
-}
-
-
-void
-int_find (int *arr, int len, int val)
-{
-  int inx, first = -1, last = -1, n = 0;
-  for (inx = 0; inx < len; inx++)
-    {
-      if (arr[inx] == val)
-	{
-	  if (-1 == first)
-	    first = inx;
-	  last = inx;
-	  n++;
-	}
-    }
-  printf ("first %d last %d n %d \n", first, last, n);
-}
-
 
 void
 anyp (db_buf_t a)

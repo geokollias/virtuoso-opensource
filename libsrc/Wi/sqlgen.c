@@ -87,7 +87,8 @@ sqlg_ks_out_cols (sqlo_t * so, df_elt_t * tb_dfe, key_source_t * ks)
 	if (dk_set_member (ks->ks_key->key_parts, (void *) out->_.col.col)
 	    && (0 == strcmp (out->dfe_tree->_.col_ref.prefix, tb_dfe->_.table.ot->ot_new_prefix)
 		|| (tb_dfe->_.table.late_proj_of
-		    && 0 == strcmp (out->dfe_tree->_.col_ref.prefix, tb_dfe->_.table.late_proj_of->ot_new_prefix))))
+		    && 0 == strcmp (out->dfe_tree->_.col_ref.prefix, tb_dfe->_.table.late_proj_of->ot_new_prefix))
+		|| tb_dfe->_.table.ot->ot_cg_pk))
 	  {
 	    /* test also that the out col is actually from this table since out cols can be overlapped in case of inxop between tables, all mentioned on the top table */
 	    out->dfe_is_placed = DFE_GEN;
@@ -132,7 +133,7 @@ sqlg_dfe_ssl (sqlo_t * so, df_elt_t * dfe)
     }
   if (DFE_CALL == dfe->dfe_type)
     {
-      char *fname = "fnpass";
+      const char *fname = "fnpass";
       bif_type_t *bt = bif_type (dfe->dfe_tree->_.call.name);
       dfe->dfe_ssl = ssl_new_variable (so->so_sc->sc_cc, fname, DV_UNKNOWN);
       if (bt)
@@ -175,7 +176,7 @@ sqlg_dfe_ssl (sqlo_t * so, df_elt_t * dfe)
     }
   else
     {
-      char *fname = "aggregate";
+      const char *fname = "aggregate";
       dfe->dfe_ssl = ssl_new_variable (so->so_sc->sc_cc, fname, DV_UNKNOWN);
     }
 done:
@@ -867,7 +868,7 @@ sqlg_geo_index_table (dbe_key_t * text_key, ST ** geo_args)
       ST *arg = geo_args[inx];
       if (DV_STRINGP (arg) && !stricmp ((caddr_t) arg, "index") && inx + 1 < n && DV_STRINGP (geo_args[inx + 1]))
 	{
-	  caddr_t inx_name = (caddr_t) geo_args[inx + 1];
+	  caddr_t inx_name = (caddr_t) (geo_args[inx + 1]);
 	  dbe_table_t *tb = sch_name_to_table (wi_inst.wi_schema, inx_name);
 	  if (!tb)
 	    sqlc_new_error (top_sc->sc_cc, "28008", "GEOTB", "No geo index table %s", inx_name);
@@ -2049,13 +2050,13 @@ setp_ha_find_col_ref (setp_node_t * setp, char *cname, dbe_col_loc_t * ret_loc, 
 void
 box_set_nth (caddr_t ** box_ret, int inx, caddr_t elt)
 {
+  caddr_t *n = (caddr_t *) dk_alloc_box_zero (sizeof (caddr_t) * (inx + 1), DV_BIN);
   if (!*box_ret)
-    *box_ret = dk_alloc_box_zero (sizeof (caddr_t) * (inx + 1), DV_BIN);
+    *box_ret = n;
   else if (BOX_ELEMENTS (*box_ret) <= inx)
     {
-      caddr_t *n = (caddr_t *) dk_alloc_box_zero (sizeof (caddr_t) * (inx + 1), DV_BIN);
       memcpy (n, *box_ret, BOX_ELEMENTS (*box_ret) * sizeof (caddr_t));
-      dk_free_box (*box_ret);
+      dk_free_box ((caddr_t) (*box_ret));
       *box_ret = n;
     }
   (*box_ret)[inx] = elt;
@@ -2189,7 +2190,7 @@ sqlg_hash_source (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t * pre_code)
       {
 	state_slot_t *ssl = sqlg_dfe_ssl (so, out);
 	dk_set_push (&out_slots, (void *) ssl);
-	dk_set_push (&col_refs, col_ref_func (ha->ha_key, out->_.col.col, ssl));
+	dk_set_push (&col_refs, (void *) col_ref_func (ha->ha_key, out->_.col.col, ssl));
 	if (is_fill_dt)
 	  {
 	    snprintf (ref_name, sizeof (ref_name), "%s.%s", out->dfe_tree->_.col_ref.prefix, out->dfe_tree->_.col_ref.name);
@@ -4041,7 +4042,6 @@ setp_copy_if_constant (sql_comp_t * sc, setp_node_t * setp, state_slot_t * ssl)
       dk_set_push (&setp->setp_const_gb_values, (void *) ssl);
       return ssl2;
     }
-  ssl->ssl_always_vec = 1;
   return ssl;
 }
 
@@ -5353,8 +5353,8 @@ sqlg_make_sort_nodes (sqlo_t * so, data_source_t ** head, ST ** order_by,
 		}
 	      else
 		{
-		  dk_free_box (ua_arglist);
-		  dk_free_box (acc_args);
+		  dk_free_box ((caddr_t) ua_arglist);
+		  dk_free_box ((caddr_t) acc_args);
 		}
 	    }
 	    END_DO_SET ();
@@ -6306,7 +6306,7 @@ sqlg_add_breakup_node (sql_comp_t * sc, data_source_t ** head, state_slot_t *** 
       brk->src_gen.src_pre_code = code_to_cv (sc, *code);
       *code = NULL;
     }
-  brk->brk_output = dk_alloc_box (sizeof (caddr_t) * n_per_set, DV_BIN);
+  brk->brk_output = (state_slot_t **) dk_alloc_box (sizeof (state_slot_t *) * n_per_set, DV_BIN);
   brk->brk_current_slot = cc_new_instance_slot (sc->sc_cc);
   for (inx = 0; inx < n_per_set; inx++)
     {
@@ -6569,7 +6569,7 @@ dfe_loc_ensure_out_cols (df_elt_t * dfe)
   {
     DO_SET (locus_result_t *, lr, &dfe->dfe_locus->loc_results)
     {
-      if (box_equal (lr->lr_required->dfe_tree, out->dfe_tree))
+      if (box_equal ((cbox_t) (lr->lr_required->dfe_tree), (cbox_t) (out->dfe_tree)))
 	goto found;
     }
     END_DO_SET ();

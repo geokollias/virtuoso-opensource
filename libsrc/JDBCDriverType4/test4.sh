@@ -21,18 +21,10 @@
 #  51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 #
 
-JAVA_HOME=$JDK4
-CLASSPATH=$JAVA_HOME/lib/jre/rt.jar
-CLASSPATHSSL=$JAVA_HOME/lib/jre/rt.jar
-export JAVA_HOME CLASSPATH CLASSPATHSSL
-
-MACOSX=`grep Darwin ../../Makeconfig`
-if [ z != "z$MACOSX" ]
-then
-    JAVA=$JAVA_HOME/Commands/java
-else
-    JAVA=$JAVA_HOME/bin/java
-fi
+CLASSPATH=.
+CLASSPATHSSL=.
+JAVA=$JDK4/bin/java
+export JAVA CLASSPATH CLASSPATHSSL
 
 echo "............. Test the JDBC 4.0 driver without SSL"
 $JAVA -classpath $CLASSPATH:virtjdbc4ssl.jar:testsuite4.jar testsuite.TestClean $1
@@ -61,3 +53,5 @@ $JAVA -classpath $CLASSPATH:virtjdbc4ssl.jar:testsuite4.jar testsuite.SPRgetColu
 $JAVA -classpath $CLASSPATH:virtjdbc4ssl.jar:testsuite4.jar testsuite.TestMoreRes $1
 #GK: not for now : no params passing
 # $JAVA -classpath $CLASSPATH:virtjdbc4ssl.jar:testsuite4.jar testsuite.TestDataSource $1
+
+$JAVA -classpath $CLASSPATH:virtjdbc4ssl.jar:testsuite4.jar testsuite.TestDateTime $1

@@ -27,6 +27,7 @@
 
 #include "wi.h"
 #include "lisprdr.h"
+#include "sqlfn.h"
 
 
 mcfunc_t macro_chars[256];
@@ -288,9 +289,6 @@ lisp_stream_init (lisp_stream_t * ls, const char *buf)
 
 caddr_t tree_map[TREE_MAX];
 int tree_fill;
-
-void dbg_print_box (caddr_t object, FILE * out);
-
 
 int
 box_tree_check_1 (caddr_t tree, int print)

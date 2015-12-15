@@ -26,7 +26,10 @@
 #ifndef _XML_SCHEMA_H
 #define _XML_SCHEMA_H
 
+#include "Dk.h"
 #include "schema_ecm.h"
+
+VIRT_API_BEGIN
 
 #define XS_TRUE	"true"
 #define XS_FALSE	"false"
@@ -836,6 +839,8 @@ int is_attr_boolean (const char * attr_val, int is_true);
 
 extern void VXmlSetElementSchemaHandler (vxml_parser_t* parser, VXmlStartElementHandler sh, VXmlEndElementHandler eh);
 extern void VXmlSetCharacterSchemaDataHandler (vxml_parser_t* parser, VXmlCharacterDataHandler h);
+
+VIRT_API_END
 
 #endif	/* _XML_SCHEMA_H */
 

@@ -1139,7 +1139,7 @@ bif_rdf_inf_ifp_list (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   ctx = bif_ctx_arg (qst, args, 0, "rdf_inf_ifp_list", 0);
   if (NULL == ctx->ric_ifp_list)
     return list (0);
-  return box_copy_tree (ctx->ric_ifp_list);
+  return box_copy_tree ((caddr_t) (ctx->ric_ifp_list));
 }
 
 caddr_t
@@ -1150,7 +1150,7 @@ bif_rdf_inf_ifp_rel_list (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args
   if (NULL == ctx->ric_ifp_rel_list)
     return NULL;
   if (1 == BOX_ELEMENTS (args))
-    return box_copy_tree (ctx->ric_ifp_rel_list);
+    return box_copy_tree ((caddr_t) (ctx->ric_ifp_rel_list));
   else
     {
       caddr_t arg = bif_arg (qst, args, 1, "rdf_inf_ifp_rel_list");
@@ -1165,7 +1165,7 @@ bif_rdf_inf_ifp_rel_list (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args
       rels = rels_ptr[0];
       rels_count = box_length (rels) / sizeof (iri_id_t);
       arg_iid = unbox_iri_int64 (arg);
-      res_boxes = dk_alloc_box ((rels_count - 1) * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
+      res_boxes = dk_alloc_list (rels_count - 1);
       for (rel_ctr = res_boxes_ctr = 0; rel_ctr < rels_count; rel_ctr++)
 	{
 	  if (rels[rel_ctr] != arg_iid)
@@ -1191,8 +1191,8 @@ bif_rdf_inf_set_ifp_list (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args
   caddr_t *grps;
   dk_set_t ifp_rel_acc = NULL;
   sec_check_dba ((query_instance_t *) qst, "rdf_inf_set_ifp_list");
-  grps = box_copy /*_tree*/ (arr);
-  ctx->ric_ifp_list = box_copy_tree ((caddr_t) arr);
+  grps = (caddr_t *) box_copy /*_tree*/ ((caddr_t) arr);
+  ctx->ric_ifp_list = (caddr_t *) box_copy_tree ((caddr_t) arr);
   ifp_count = BOX_ELEMENTS_0 (arr);
   if (ctx->ric_iid_to_rel_ifp->ht_inserts != ctx->ric_iid_to_rel_ifp->ht_deletes)
     {
@@ -1295,10 +1295,10 @@ bif_rdf_inf_set_ifp_list (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args
 	  dk_set_pop (&acc);
 	  continue;
 	}
-      val = dk_alloc_box (grpsize * sizeof (iri_id_t), DV_ARRAY_OF_LONG);
+      val = (iri_id_t *) dk_alloc_box (grpsize * sizeof (iri_id_t), DV_ARRAY_OF_LONG);
       for (ctr = 0; ctr < grpsize; ctr++)
 	{
-	  caddr_t member_boxed_iid = box_copy_tree (dk_set_pop (&acc));
+	  caddr_t member_boxed_iid = box_copy_tree ((caddr_t) dk_set_pop (&acc));
 	  dk_set_push (&ifp_rel_acc, member_boxed_iid);
 	  val[ctr] = unbox_iri_int64 (member_boxed_iid);
 	  id_hash_set (ctx->ric_iid_to_rel_ifp, (caddr_t) (&member_boxed_iid), (caddr_t) (&val));
@@ -1314,7 +1314,7 @@ bif_rdf_inf_ifp_exclude_list (caddr_t * qst, caddr_t * err_ret, state_slot_t ** 
   rdf_inf_ctx_t *ctx = bif_ctx_arg (qst, args, 0, "rdf_inf_ifp_exclude_list", 0);
   iri_id_t ifp = bif_iri_id_arg (qst, args, 1, "rdf_inf_ifp_exclude_list");
   caddr_t box = box_iri_id (ifp);
-  caddr_t *place = (caddr_t *) id_hash_get (ctx->ric_ifp_exclude, (void *) (&box));
+  caddr_t *place = (caddr_t *) id_hash_get (ctx->ric_ifp_exclude, (caddr_t) ((void *) (&box)));
   dk_free_tree (box);
   if (NULL == place)
     return list (0);
@@ -1331,7 +1331,7 @@ bif_rdf_inf_set_ifp_exclude_list (caddr_t * qst, caddr_t * err_ret, state_slot_t
   caddr_t box, copy;
   sec_check_dba ((query_instance_t *) qst, "rdf_inf_set_ifp_exclude_list");
   box = box_iri_id (ifp);
-  copy = box_copy_tree (arr);
+  copy = box_copy_tree ((caddr_t) arr);
   id_hash_set (ctx->ric_ifp_exclude, (caddr_t) & box, (caddr_t) & copy);
   return NULL;
 }
@@ -1849,16 +1849,16 @@ sqlg_rdf_inf_node (sql_comp_t * sc)
 
 
 void
-sp_list_replace_ssl (search_spec_t * sp, state_slot_t * old, state_slot_t * new, int col_id)
+sp_list_replace_ssl (search_spec_t * sp, state_slot_t * old_ssl, state_slot_t * new_ssl, int col_id)
 {
   for (sp = sp; sp; sp = sp->sp_next)
-    if (CMP_EQ == sp->sp_min_op && sp->sp_min_ssl == old && (!col_id || sp->sp_cl.cl_col_id == col_id))
-      sp->sp_min_ssl = new;
+    if (CMP_EQ == sp->sp_min_op && sp->sp_min_ssl == old_ssl && (!col_id || sp->sp_cl.cl_col_id == col_id))
+      sp->sp_min_ssl = new_ssl;
 }
 
 
 void
-sqlg_rdf_ts_replace_ssl (table_source_t * ts, state_slot_t * old, state_slot_t * new, int col_id, int inxop_inx)
+sqlg_rdf_ts_replace_ssl (table_source_t * ts, state_slot_t * old_ssl, state_slot_t * new_ssl, int col_id, int inxop_inx)
 {
   if (IS_TS (ts))
     {
@@ -1866,19 +1866,19 @@ sqlg_rdf_ts_replace_ssl (table_source_t * ts, state_slot_t * old, state_slot_t *
       if (ts->ts_inx_op)
 	{
 	  inx_op_t *iop = ts->ts_inx_op->iop_terms[inxop_inx];
-	  sp_list_replace_ssl (iop->iop_ks_start_spec.ksp_spec_array, old, new, col_id);
-	  sp_list_replace_ssl (iop->iop_ks_full_spec.ksp_spec_array, old, new, col_id);
-	  sp_list_replace_ssl (iop->iop_ks_row_spec, old, new, col_id);
+	  sp_list_replace_ssl (iop->iop_ks_start_spec.ksp_spec_array, old_ssl, new_ssl, col_id);
+	  sp_list_replace_ssl (iop->iop_ks_full_spec.ksp_spec_array, old_ssl, new_ssl, col_id);
+	  sp_list_replace_ssl (iop->iop_ks_row_spec, old_ssl, new_ssl, col_id);
 	}
       else
 	{
-	  sp_list_replace_ssl (ks->ks_spec.ksp_spec_array, old, new, col_id);
-	  sp_list_replace_ssl (ks->ks_row_spec, old, new, col_id);
+	  sp_list_replace_ssl (ks->ks_spec.ksp_spec_array, old_ssl, new_ssl, col_id);
+	  sp_list_replace_ssl (ks->ks_row_spec, old_ssl, new_ssl, col_id);
 	  if (ks->ks_key->key_no_pk_ref)
 	    {
 	      table_source_t *next = (table_source_t *) qn_next ((data_source_t *) ts);
 	      if (next && IS_TS (next))
-		sqlg_rdf_ts_replace_ssl (next, old, new, col_id, inxop_inx);
+		sqlg_rdf_ts_replace_ssl (next, old_ssl, new_ssl, col_id, inxop_inx);
 	    }
 	}
     }
@@ -1888,8 +1888,8 @@ sqlg_rdf_ts_replace_ssl (table_source_t * ts, state_slot_t * old, state_slot_t *
       int inx;
       DO_BOX (state_slot_t *, ref, inx, hs->hs_ref_slots)
       {
-	if (ref == old)
-	  hs->hs_ref_slots[inx] = new;
+	if (ref == old_ssl)
+	  hs->hs_ref_slots[inx] = new_ssl;
       }
       END_DO_BOX;
     }

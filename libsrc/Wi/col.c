@@ -3913,7 +3913,7 @@ cs_reset_check (compress_state_t * cs)
     {
       while (ready)
 	{
-	  db_buf_t ce = ready->data;
+	  db_buf_t ce = (db_buf_t) (ready->data);
 	  if (ready == cs->cs_prev_ready_ces)
 	    break;
 	  n_values += ce_string_n_values (ce, box_length (ce) - 1);
@@ -4500,7 +4500,7 @@ bif_cs_string (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     len += box_length (ce) - 1;
   }
   END_DO_SET ();
-  best = dk_alloc_box (len + 1, DV_STRING);
+  best = (dtp_t *) dk_alloc_box (len + 1, DV_STRING);
   best[len] = 0;
   DO_SET (caddr_t, ce, &cs->cs_ready_ces)
   {
@@ -4556,7 +4556,7 @@ bif_cs_values (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 
   DO_SET (db_buf_t *, r, &cs->cs_org_values)
   {
-    DO_BOX (db_buf_t, v, inx, r)
+    DO_BOX (caddr_t, v, inx, r)
     {
       res[fill++] = box_copy (v);
     }

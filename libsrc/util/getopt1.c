@@ -63,9 +63,9 @@ char *getenv ();
 #endif
 
 int
-getopt_long (int argc, char* const *argv, const char *options, const struct option *long_options, int *opt_index)
+getopt_long (int argc, const char *const *argv, const char *shortopts, const struct option *long_options, int *long_option_index_ret)
 {
-  return _getopt_internal (argc, argv, options, long_options, opt_index, 0);
+  return _getopt_internal (argc, argv, shortopts, long_options, long_option_index_ret, 0);
 }
 
 /* Like getopt_long, but '-' as well as '--' can indicate a long option.
@@ -74,9 +74,9 @@ getopt_long (int argc, char* const *argv, const char *options, const struct opti
    instead.  */
 
 int
-getopt_long_only (int argc, char *const *argv, const char *options, const struct option *long_options, int *opt_index)
+getopt_long_only (int argc, const char * const *argv, const char *shortopts, const struct option *long_options, int *long_option_index_ret)
 {
-  return _getopt_internal (argc, argv, options, long_options, opt_index, 1);
+  return _getopt_internal (argc, argv, shortopts, long_options, long_option_index_ret, 1);
 }
 
 
