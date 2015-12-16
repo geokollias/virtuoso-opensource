@@ -29,7 +29,7 @@
 #define _DKERNEL_H
 
 typedef struct buffer_elt_s buffer_elt_t;
-typedef struct buffer_elt_s
+struct buffer_elt_s
 {
   char *		data;
   int 			fill;
