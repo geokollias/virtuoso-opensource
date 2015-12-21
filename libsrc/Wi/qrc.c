@@ -1,3 +1,29 @@
+/*
+ *  qrc.c
+ *
+ *  $Id$
+ *
+ *  Query compilation cache
+ *
+ *  This file is part of the OpenLink Software Virtuoso Open-Source (VOS)
+ *  project.
+ *
+ *  Copyright (C) 1998-2014 OpenLink Software
+ *
+ *  This project is free software; you can redistribute it and/or modify it
+ *  under the terms of the GNU General Public License as published by the
+ *  Free Software Foundation; only version 2 of the License, dated June 1991.
+ *
+ *  This program is distributed in the hope that it will be useful, but
+ *  WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ *  General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
+ *
+ */
 
 
 #include "libutil.h"
@@ -323,14 +349,14 @@ dfe_key_from_sck (df_elt_t * tb_dfe, dtp_t ops, caddr_t * sc_key, df_elt_t ** lo
   dtp_t min = ops & 0xf;
   dtp_t max = ops >> 4;
   dbe_key_t *key = tb_dfe->_.table.key;
-  if (CMP_NONE != min)
-    {
-      lower[inx] = dfe_col_const_cmp (so, dk_set_nth (key->key_parts, inx), min, sc_key[*param_ctr + 1]);
-      (*param_ctr)++;
-    }
   if (CMP_NONE != max)
     {
       upper[inx] = dfe_col_const_cmp (so, dk_set_nth (key->key_parts, inx), max, sc_key[*param_ctr + 1]);
+      (*param_ctr)++;
+    }
+  if (CMP_NONE != min)
+    {
+      lower[inx] = dfe_col_const_cmp (so, dk_set_nth (key->key_parts, inx), min, sc_key[*param_ctr + 1]);
       (*param_ctr)++;
     }
   if (!lower[inx] && upper[inx])
@@ -639,9 +665,8 @@ qcd_add_if_new (qc_data_t * qcd, query_t * new_qr, qce_sample_t ** samples, st_l
     qcd->qcd_queries = (query_t **) box_append_1 ((caddr_t) qcd->qcd_queries, (caddr_t) new_qr);
   else
     dk_set_push (&qcd->qcd_to_add, (void *) new_qr);
-  qcd_unref (qcd, 1);
   qrc_fill += new_qr->qr_size;
-  mutex_leave (&qrc_mtx);
+  qcd_unref (qcd, 1);
   return 1;
 }
 

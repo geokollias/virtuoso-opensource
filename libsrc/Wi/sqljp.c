@@ -1671,7 +1671,7 @@ sqlo_jp_build_init (sqlo_t * so, df_elt_t * hash_ref_tb, dk_set_t * all_jps, dk_
       DO_SET (df_elt_t *, dfe, &hash_ref_tb->_.sub.ot->ot_from_dfes)
       {
 	op_table_t *save = so->so_this_dt;
-	so->so_this_dt = dfe->dfe_super->_.sub.ot;
+	so->so_this_dt = dfe->_.table.ot->ot_super;
 	sqlo_jp_build_init (so, dfe, all_jps, org_preds, hash_keys, hash_set);
 	so->so_this_dt = save;
       }

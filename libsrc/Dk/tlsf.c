@@ -557,7 +557,8 @@ tlsf_free(void *ptr)
 
 }
 
-#if defined(MALLOC_DEBUG) && defined(USE_TLSF)
+#if 0 /*defined(MALLOC_DEBUG) && defined(USE_TLSF) */
+/* defined earlier */
 void *
 dbg_malloc(const char *file, u_int line, size_t size)
 {

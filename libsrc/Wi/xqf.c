@@ -1530,7 +1530,10 @@ __xqf_compare (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe, int do_wha
 	caddr_t wide_box = box_utf8_as_wide_char (str1, NULL, strlen (str1), 0), utf8_box;
 
 	if (!wide_box)
-	  XQI_SET (xqi, tree->_.xp_func.res, (caddr_t) 0L);
+	  {
+	    XQI_SET (xqi, tree->_.xp_func.res, (caddr_t) 0L);
+	    return;
+	  }
 
 	wide_len = box_length (wide_box) / sizeof (wchar_t) - 1;
 	n = utf8_strlen ((utf8char *) str2);

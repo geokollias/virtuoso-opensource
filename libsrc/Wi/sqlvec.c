@@ -856,7 +856,7 @@ sqlg_vec_ssl_ref (sql_comp_t * sc, state_slot_t * ssl, int test_only)
     if (!sqlg_vec_debug && IS_QN (qn, chash_read_input) && ((table_source_t *) qn)->ts_part_gby_reader)
       {
 	QNCAST (table_source_t, ts, qn);
-	if (-1 == sslr_box_position (ts->ts_sdfg_params, ssl))
+	if (!sc->sc_after_first_sliced_reader && -1 == sslr_box_position (ts->ts_sdfg_params, ssl))
 	  sqlc_new_error (sc->sc_cc, "VEC..", "CLSSA",
 	      "a ssl reference would go past a partitioned group by reader, meaning bad plan.  Support case.");
       }
@@ -3793,6 +3793,15 @@ qn_vec_slots (sql_comp_t * sc, data_source_t * qn, dk_hash_t * res, dk_hash_t * 
 	  ts->ts_sdfg_param_refs = (state_slot_t **) box_copy ((caddr_t) ts->ts_sdfg_params);
 	  ref_ssls (res, ts->ts_sdfg_param_refs);
 	  sc->sc_vec_current = (data_source_t *) sc->sc_vec_pred->data;
+	  if (sc->sc_after_first_sliced_reader && CL_RUN_LOCAL == cl_run_local_only)
+	    {
+	      dk_free_box ((caddr_t) ts->ts_sdfg_params);
+	      dk_free_box ((caddr_t) ts->ts_sdfg_param_refs);
+	      ts->ts_sdfg_params = NULL;
+	      ts->ts_sdfg_param_refs = NULL;
+	    }
+	  else
+	    sc->sc_after_first_sliced_reader = 1;
 	  DO_BOX (state_slot_t *, ssl, inx, ts->ts_sdfg_params)
 	  {
 	    state_slot_t *sh = ssl_new_shadow (sc, ssl, sc->sc_vec_current);
@@ -3853,6 +3862,7 @@ qn_vec_slots (sql_comp_t * sc, data_source_t * qn, dk_hash_t * res, dk_hash_t * 
   else if ((qn_input_fn) subq_node_input == qn->src_input)
     {
       QNCAST (subq_source_t, sqs, qn);
+      char save_first_sliced = sc->sc_after_first_sliced_reader;
       dk_set_t save = sc->sc_vec_pred;
       int sets_save = qn->src_sets;
       data_source_t *cur_save = sc->sc_vec_current;
@@ -3876,6 +3886,7 @@ qn_vec_slots (sql_comp_t * sc, data_source_t * qn, dk_hash_t * res, dk_hash_t * 
       }
       END_DO_BOX;
       sqlg_sqs_qr_pred (sc, sqs->sqs_query, NULL);
+      sc->sc_after_first_sliced_reader = save_first_sliced;
     }
   else if (IS_QN (qn, union_node_input))
     {

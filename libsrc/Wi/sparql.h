@@ -395,6 +395,7 @@ typedef struct sparp_s
 #endif
   ccaddr_t sparp_text;
   int sparp_permitted_syntax;	/*!< Bitmask of permitted syntax extensions, 0 for default */
+  int sparp_syntax_exceptions;	/*!< Bitmask of syntax exceptions, 0 for default, can be nonzero for remote endpoints or for testing etc. */
   int sparp_inner_permitted_syntax;	/*!< The value of last define lang:dialect, it will be assigned to sparp_permitted_syntax for the subquery, -1 before set */
   int sparp_unictr;		/*!< Unique counter for objects */
 /* Environment of yacc */
@@ -773,6 +774,7 @@ spar_error (sparp_t * sparp, const char *format, ...)
 	   SPART *endpoint;	/*!< An IRI of web service endpoint without static parameters */
 	   SPART **iri_params;	/*!< A get_keyword style array of parameters to pass in the IRI, like maxrows */
 	   caddr_t syntax;	/*!< Boxed bitmask of SSG_SD_xxx flags of allowed query serialization features */
+	   caddr_t syntax_exceptions;	/*!< Boxed bitmask of SSG_SD_NO_xxx flags of exceptions from standard syntax that breaks the standard compliance of the service */
 	   caddr_t *param_varnames;	/*!< Names of variables that are passed as parameters */
 	   ptrlong in_list_implicit;	/*!< Flags if IN variables were specified using '*' or not specified at all */
 	   caddr_t *rset_varnames;	/*!< Names of variables that are returned in the result set from the endpoint, in the order in the rset */
@@ -1018,7 +1020,7 @@ If sparp->sparp_gs_app_callback is set then the "nobody" user is used, because t
 Use spar_add_service_inv_to_sg() to assign sinv.own_idx and store it in sparp->sparp_sg->sg_sinvs .
 Also make sure that sparp->sparp_query_uses_sinvs++ is made somewhere before the creation for the current sparp. */
      extern SPART *spar_make_service_inv (sparp_t * sparp, SPART * endpoint, dk_set_t all_options, ptrlong permitted_syntax,
-    SPART ** sources, caddr_t sinv_storage_uri, int silent);
+    ptrlong syntax_exceptions, SPART ** sources, caddr_t sinv_storage_uri, int silent);
 /*! Returns string like "SERVICE <iri> at line NNN" or "SERVICE ?var at line NNN" (for error reporting) */
      extern caddr_t spar_sinv_naming (sparp_t * sparp, SPART * sinv);
 /*! Assigns sinv->_.sinv.own_idx and store the pointer to invocation in sparp->sparp_sg->sg_sinvs. After that it is legal to refer to quad maps inside the sinv and to try optimizations */

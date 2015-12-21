@@ -32,14 +32,14 @@
 VIRT_API_BEGIN
 
 /* Control parameters for a session */
-//typedef struct control_s control_t;
+typedef struct control_s control_t;
 
-typedef struct control_s
+struct control_s
 {
   int 			ctrl_blocking;		/* 1 if read/write blocking */
   timeout_t *		ctrl_timeout;		/* s+us value for read/write */
   int 			ctrl_msg_length;	/* max length of single message */
-} control_t;
+};
 
 typedef struct strsestmpfile_s strsestmpfile_t;
 

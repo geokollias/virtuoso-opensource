@@ -299,6 +299,7 @@ typedef struct sql_comp_s
   dk_set_t sc_dfe_reuses;	/* list of allocd for freeing at end */
   struct st_lit_state_s *sc_stl;
   int sc_qr_size;
+  char sc_after_first_sliced_reader;	/* sdfg with many consecutive group bys  will do sdfg params only on first sliced reader, the others will have the stuff since they run on the slice qi's from the start */
   char sc_no_lit_param;		/* a lit in this place will not be a param even if the same lit is so elsewhere */
   char sc_is_rdf_type_p;
   qf_level_t *sc_qfl;

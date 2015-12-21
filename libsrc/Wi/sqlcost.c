@@ -1510,7 +1510,8 @@ col_hist_card (df_elt_t * col_dfe, df_elt_t * lower, df_elt_t * upper)
 	    }
 	  rows = hist_rows (hist, lower_pos + 1, upper_pos)
 	      + hist_rows (hist, lower_pos, lower_pos + 1) * (1 - (lower_dist / lower_width))
-	      + hist_rows (hist, upper_pos, upper_pos + 1) * (upper_dist / upper_width) + lower_closed + upper_closed;
+	      + (upper_pos < len - 1 ? hist_rows (hist, upper_pos, upper_pos + 1) * (upper_dist / upper_width) : 0)
+	      + lower_closed + upper_closed;
 	}
     }
   else if (lower)
@@ -1531,7 +1532,7 @@ col_hist_card (df_elt_t * col_dfe, df_elt_t * lower, df_elt_t * upper)
 	  upper_width = 1;
 	}
       rows = hist_rows (hist, 0, upper_pos - 1)
-	  + hist_rows (hist, upper_pos, upper_pos + 1) * (upper_dist / upper_width) + upper_closed;
+	  + (upper_pos < len - 1 ? hist_rows (hist, upper_pos, upper_pos + 1) * (upper_dist / upper_width) + upper_closed : 0);
     }
   return mpy * rows / tb_card;
 empty:
