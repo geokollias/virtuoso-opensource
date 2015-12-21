@@ -1,0 +1,29 @@
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix virtrdf: <http://www.openlinksw.com/schemas/virtrdf#> .
+@prefix rdfdf: <http://www.openlinksw.com/virtrdf-data-formats#> .
+@prefix atom: <http://atomowl.org/ontologies/atomrdf#> .
+
+virtrdf:DefaultQuadStorage
+  rdf:type virtrdf:QuadStorage ;
+  virtrdf:qsUserMaps virtrdf:DefaultQuadStorage-UserMaps ;
+  virtrdf:qsDefaultMap virtrdf:DefaultQuadMap ;
+  virtrdf:qsMatchingFlags virtrdf:SPART_QS_NO_IMPLICIT_USER_QM .
+virtrdf:DefaultQuadStorage-UserMaps
+      rdf:type virtrdf:array-of-QuadMap .
+
+virtrdf:DefaultServiceStorage
+  rdf:type virtrdf:QuadStorage ;
+  virtrdf:qsUserMaps virtrdf:DefaultServiceStorage-UserMaps ;
+  virtrdf:qsDefaultMap virtrdf:DefaultServiceMap ;
+  virtrdf:qsMatchingFlags virtrdf:SPART_QS_NO_IMPLICIT_USER_QM .
+virtrdf:DefaultServiceStorage-UserMaps
+  rdf:type virtrdf:array-of-QuadMap .
+
+virtrdf:SyncToQuads
+  rdf:type virtrdf:QuadStorage ;
+  virtrdf:qsUserMaps virtrdf:SyncToQuads-UserMaps .
+virtrdf:SyncToQuads-UserMaps
+  rdf:type virtrdf:array-of-QuadMap .
