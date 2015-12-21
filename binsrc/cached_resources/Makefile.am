@@ -48,6 +48,7 @@ EXTRA_DIST = \
 	cached_resources.c \
 	cache_gen.sh \
 	openlinksw-sparql/virtrdf-data-formats.ttl \
+	openlinksw-sparql/virtrdf-quad-storages.ttl \
 	res_to_c.awk \
 	w3-1999-xhtml/vocab \
 	w3-2000-01/README.txt \
