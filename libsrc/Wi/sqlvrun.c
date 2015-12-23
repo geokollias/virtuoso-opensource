@@ -2965,6 +2965,7 @@ itc_angle (it_cursor_t * itc, buffer_desc_t ** buf_ret, int angle, placeholder_t
 	    }
 	  if (cost < tsp->tsp_n_parts * qp_thread_min_usec)
 	    tsp->tsp_n_parts = MAX (2, (int) (cost / qp_thread_min_usec));
+	  tsp->tsp_n_parts = MIN (tsp->tsp_n_parts, enable_qp);
 	  tsp->tsp_n_parts = 1 + qi_inc_branch_count (qi, enable_qp, tsp->tsp_n_parts - 1);
 	}
     }
@@ -3505,7 +3506,7 @@ qi_assign_root_id (query_instance_t * qi)
 int
 qi_inc_branch_count (query_instance_t * qi, int max, int n)
 {
-  volatile uint32 br, ret = 0;
+  volatile int32 br, ret = 0;
   void *brp;
   mutex_enter (qi_ref_mtx);
   GETHASH ((void *) (ptrlong) qi->qi_root_id, qi_branch_count, brp, no_root);
@@ -3515,11 +3516,16 @@ qi_inc_branch_count (query_instance_t * qi, int max, int n)
   else if (!n)
     ret = br;
   else if (n < 0)
-    sethash ((void *) (ptrlong) qi->qi_root_id, qi_branch_count, (void *) (ptrlong) (br + n));
+    sethash ((void *) (ptrlong) qi->qi_root_id, qi_branch_count, (void *) (ptrlong) (MAX (br + n, 1)));
   else
     {
       if (br + n > max)
 	n = max - br;
+      if (br + n <= 0)
+	{
+	  br = 1;
+	  n = 0;
+	}
       sethash ((void *) (ptrlong) qi->qi_root_id, qi_branch_count, (void *) (ptrlong) (br + n));
       ret = n;
     }

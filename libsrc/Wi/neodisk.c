@@ -2299,7 +2299,7 @@ srv_global_unlock (client_connection_t * cli, lock_trx_t * lt)
 
 
 int32 cl_retry_seed;
-int32 dbf_no_atomic;
+int32 dbf_no_atomic = 1;
 
 void
 srv_global_lock (query_instance_t * qi, int flag)
