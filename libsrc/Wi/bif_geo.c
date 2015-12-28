@@ -785,7 +785,9 @@ bif_st_may_intersect (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 caddr_t
 bif_st_astext (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  geo_t *g = bif_geo_arg (qst, args, 0, "st_wkt", GEO_ARG_ANY_NONNULL);
+  geo_t *g = bif_geo_arg (qst, args, 0, "st_wkt", GEO_ARG_ANY_NULLABLE);
+  if (NULL == g)
+    return box_dv_short_string ("EMPTY");
   return geo_wkt ((caddr_t) g);
 }
 

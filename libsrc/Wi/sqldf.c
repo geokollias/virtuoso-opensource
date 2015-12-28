@@ -2636,6 +2636,8 @@ sqlo_import (ST * tree, df_elt_t * tb_dfe, df_elt_t * target_dfe)
   dtp_t dtp = DV_TYPE_OF (tree);
   if (DV_ARRAY_OF_POINTER != dtp)
     return tree;
+  if (ST_P (tree, SCALAR_SUBQ) && sqlo_is_const_subq (tb_dfe->dfe_sqlo, tree->_.bin_exp.left))
+    return tree;
   if (ST_COLUMN (tree, COL_DOTTED))
     {
       if (!ST_P (tb_dfe->_.sub.ot->ot_dt, PROC_TABLE) &&

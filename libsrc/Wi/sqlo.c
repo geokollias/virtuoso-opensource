@@ -2651,13 +2651,63 @@ sqlo_distinct_redundant (ST * sel, ST * gb)
 }
 
 int
+st_is_bin_exp_serial (const caddr_t copy)
+{
+  return BIN_EXP_P ((ST *) copy) && !IS_ARITM_BOP (((ST *) copy)->type) && !ST_P ((ST *) copy, BOP_AS) && BOX_ELEMENTS (copy) > 4;
+}
+
+
+int
+st_equal_csq (const caddr_t b1, const caddr_t b2)
+{
+  /* compare subqs for equality, ignore the serial in bin exps.  */
+  dtp_t dtp1;
+  int l1, inx;
+  if (b1 == b2)
+    return 1;
+  if (!IS_BOX_POINTER (b1))
+    {
+      if (!IS_BOX_POINTER (b2) || DV_LONG_INT != box_tag (b2))
+	return 0;
+      return (boxint) (uptrlong) b1 == *(boxint *) b2;
+    }
+  dtp1 = box_tag (b1);
+  if (!IS_BOX_POINTER (b2))
+    {
+      return DV_LONG_INT == dtp1 && *(boxint *) b1 == (boxint) (uptrlong) b2;
+    }
+  if (((uint32 *) b1)[-1] != ((uint32 *) b2)[-1])
+    return 0;
+  l1 = box_length (b1);
+  if (DV_ARRAY_OF_POINTER == dtp1)
+    {
+      l1 /= sizeof (caddr_t);
+      if (st_is_bin_exp_serial (b1) && st_is_bin_exp_serial (b2))
+	l1 = 4;			/* compare 4 first elements, leave out the bin_exp.serial which is set when moving preds between dts */
+      for (inx = 0; inx < l1; inx++)
+	{
+	  if (!st_equal_csq (((caddr_t *) b1)[inx], ((caddr_t *) b2)[inx]))
+	    return 0;
+	}
+      return 1;
+    }
+  if (DV_NUMERIC == dtp1)
+    return 0 == numeric_compare ((numeric_t) b1, (numeric_t) b2);
+  memcmp_8 (b1, b2, l1, neq);
+  return 1;
+neq:
+  return 0;
+}
+
+
+int
 sqlo_is_const_subq (sqlo_t * so, ST * tree)
 {
   /* if a query contains uncorrelated scalar subqueries, these may get placed multiple times when generating variations on hash fill side joins etc.  To avoid this, once the
    * uncorrelated subq is seen once and scoe-renamed, it is not renamed again so that it stays equal to itself across rescoping */
   DO_SET (df_elt_t *, dfe, &so->so_const_subqs)
   {
-    if (box_equal (tree, dfe->dfe_tree))
+    if (st_equal_csq (tree, dfe->dfe_tree))
       return 1;
   }
   END_DO_SET ();

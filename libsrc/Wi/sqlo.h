@@ -1113,6 +1113,8 @@ int sqlo_is_unq_preserving (caddr_t name);
 typedef int (*tree_cb_t) (ST * tree, void *cd);
 void sqlo_map_st (ST * tree, tree_cb_t cb, void *cd);
 int box_is_subtree (caddr_t box, caddr_t subtree);
+int st_equal_csq (const caddr_t b1, const caddr_t b2);
+int sqlo_is_const_subq (sqlo_t * so, ST * tree);
 void sqlg_unplace_ssl (sqlo_t * so, ST * tree);
 char sqlc_geo_op (sql_comp_t * sc, ST * op);
 dbe_table_t *sqlg_geo_index_table (dbe_key_t * id_key, ST ** geo_args);

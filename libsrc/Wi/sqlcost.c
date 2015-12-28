@@ -5454,7 +5454,7 @@ sqlo_set_cost (df_elt_t * dfe, float *u1, float *a1, float *overhead_ret)
     case UNION_ALL_ST:
       break;
     default:
-      csum += (float) (asum * (log (asum) / log (2)));
+      csum += (float) (asum * sqlo_hash_mem_cost (asum));
     }
   switch (dfe->_.qexp.op)
     {
@@ -5802,11 +5802,10 @@ dfe_unit_cost (df_elt_t * dfe, float input_arity, float *u1, float *a1, float *o
 	    n_ins = MIN (n_ins, dc_batch_sz);
 	  n_lookup = input_arity - n_ins;
 	  mem_cost = sqlo_hash_mem_cost (n_ins);
-	  *u1 = (mem_cost * 1.2 * n_ins + mem_cost * n_lookup) / input_arity;
+	  *u1 = (mem_cost * 1.2 * n_ins + mem_cost * n_lookup) / MAX (input_arity, 1);
 	  *a1 = input_arity < 1 ? 1 : dfe->_.setp.gb_card > input_arity ? 0.5 : dfe->_.setp.gb_card / input_arity;
 	}
       break;
-
     case DFE_CALL:
       sqlo_proc_cost (dfe, u1, a1);
       break;
