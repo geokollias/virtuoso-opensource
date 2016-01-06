@@ -333,9 +333,9 @@ log_fsync (dk_session_t * ses)
 }
 
 void
-log_merge_commit (lock_trx_t * lt)
+log_merge_commit (lock_trx_t * lt, dk_set_t merges)
 {
-  DO_SET (log_merge_t *, lm, &lt->lt_log_merge)
+  DO_SET (log_merge_t *, lm, &merges)
   {
     strses_write_out (lm->lm_log, lt->lt_log);
     lt->lt_blob_log = dk_set_conc (lt->lt_blob_log, lm->lm_blob_log);
@@ -3059,9 +3059,9 @@ log_remember_replay (caddr_t trx_id)
   id = INT64_REF_NA (trx_id + 1);
   if (id && local_cll.cll_replayed_w_ids)
     {
-      IN_CLL;
+      IN_CL_CFG;
       sethash_64 (id, local_cll.cll_replayed_w_ids, 1);
-      LEAVE_CLL;
+      LEAVE_CL_CFG;
     }
 }
 
@@ -3074,10 +3074,10 @@ log_is_replayed (caddr_t trx_id)
   id = INT64_REF_NA (trx_id + 1);
   if (!id)
     return 0;
-  IN_CLL;
+  IN_TXN;
   if (local_cll.cll_replayed_w_ids)
     gethash_64 (f, id, local_cll.cll_replayed_w_ids);
-  LEAVE_CLL;
+  LEAVE_TXN;
   return (int) f;
 }
 
@@ -3840,9 +3840,21 @@ log_init (dbe_storage_t * dbs)
 	}
       in_log_replay = 1;
       log_replay_file (log_fd);
-      in_log_replay = 0;
       if (enter_bsc)
 	lt_enter_anyway (bootstrap_cli->cli_trx);
+      IN_TXN;
+      in_log_replay = 0;
+      /* aq threads etc may have lt's with a low w id that would be seen as cancelled by a cluster peer if not updated to be above the rolled forward ones */
+      DO_SET (lock_trx_t *, lt, &all_trxs)
+      {
+	if (!lt->lt_branch_of)
+	  lt_new_w_id (lt);
+      }
+      END_DO_SET ();
+      if (CL_RUN_LOCAL != cl_run_local_only)
+	log_info ("Txn w ids start at %d", lt_w_counter);
+      LEAVE_TXN;
+
       mutex_enter (log_write_mtx);
       /* the replay file becomes the log session unless a log session was made during replay for logging cluster config changes deliverdd as control messages */
       if (!dbs->dbs_log_session)

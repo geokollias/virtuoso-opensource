@@ -1384,7 +1384,7 @@ sqlo_restr_as_exists (sqlo_t * so, dk_set_t path)
   DO_BOX (join_plan_t *, jp, inx, from)
   {
     df_elt_t *tb_dfe = jp->jp_tb_dfe;
-    caddr_t opts = t_list (2, OPT_JOIN_RESTR, jp->jp_join_flags);
+    caddr_t opts = (caddr_t) t_list (2, OPT_JOIN_RESTR, jp->jp_join_flags);
     from[inx] =
 	t_listst (3, TABLE_REF, t_listst (6, TABLE_DOTTED, tb_dfe->_.table.ot->ot_table->tb_name, tb_dfe->_.table.ot->ot_new_prefix,
 	    NULL, NULL, opts), NULL);
@@ -1770,7 +1770,7 @@ sqlo_hdt_dt_map (dk_set_t as_mapping, caddr_t name)
 }
 
 
-ST *
+ST **
 sqlo_dt_hash_selection (sqlo_t * so, df_elt_t * hash_ref_tb, ST * sel, dk_set_t hash_keys)
 {
   dk_set_t as_mapping = NULL;
@@ -1887,7 +1887,7 @@ sqlo_hash_fill_join (sqlo_t * so, df_elt_t * hash_ref_tb, df_elt_t ** fill_ret, 
 
       }
       END_DO_BOX;
-      sel = t_box_copy_tree ((caddr_t) sel);
+      sel = (ST *) t_box_copy_tree ((caddr_t) sel);
       NO_LIT_PARS;
       sqlo_scope (so, &sel);
       RESTORE_LIT_PARS;
@@ -2217,7 +2217,7 @@ sqlo_hdt_aggs (ST * tree, dk_set_t * res)
       caddr_t alias_box;
       snprintf (alias, sizeof (alias), "a%d", top_sc->sc_so->so_name_ctr++);
       alias_box = t_box_string (alias);
-      tree = t_box_copy_tree (tree);	/*cc */
+      tree = (ST *) t_box_copy_tree ((caddr_t) tree);	/*cc */
       tree->_.fn_ref.fn_name = alias_box;
       t_set_push (res, (void *) t_list (6, BOP_AS, tree, NULL, alias_box, NULL, NULL));
       return 1;
@@ -2287,7 +2287,7 @@ sqlo_gby_hf_sel (sqlo_t * so, ST ** sel, dk_set_t hash_keys, dk_set_t * as_mappi
 
 
 void
-sqlo_dt_gby_result (sqlo_t * so, df_elt_t * ref_dfe, df_elt_t * fill_dfe, ST *** sel_place, ST ** sel_save)
+sqlo_dt_gby_result (sqlo_t * so, df_elt_t * ref_dfe, df_elt_t * fill_dfe, ST **** sel_place, ST *** sel_save)
 {
   /* if a dt is joined by hash and has gby aggs as result and there is in the dt an exp on the aggs then this exp must be placed after the hash ref */
   int old_mode = so->so_place_code_forr_cond, inx;
@@ -2297,9 +2297,9 @@ sqlo_dt_gby_result (sqlo_t * so, df_elt_t * ref_dfe, df_elt_t * fill_dfe, ST ***
   caddr_t prefix = ref_dfe->_.sub.ot->ot_new_prefix;
   int n_keys = dk_set_length (ref_dfe->_.sub.hash_keys);
   ST **sel = (ST **) ref_dfe->_.sub.ot->ot_dt->_.select_stmt.selection;
-  *sel_place = (ST **) & ref_dfe->_.sub.ot->ot_dt->_.select_stmt.selection;
-  *sel_save = t_box_copy_tree (sel);
-  sel = t_box_copy_tree (sel);
+  *sel_place = (ST ***) (&ref_dfe->_.sub.ot->ot_dt->_.select_stmt.selection);
+  *sel_save = (ST **) t_box_copy_tree ((caddr_t) sel);
+  sel = (ST **) t_box_copy_tree ((caddr_t) sel);
   DO_BOX (ST *, fref, inx, fill_dfe->_.sub.hash_fill_org_sel)
   {
     if (inx < n_keys)
@@ -2318,7 +2318,7 @@ sqlo_dt_gby_result (sqlo_t * so, df_elt_t * ref_dfe, df_elt_t * fill_dfe, ST ***
 
 	/* the agg has fn_name set to the alias.  To match the ref in the org select it must be the dt cname of the dt with the fref */
 	st_fref->_.fn_ref.fn_name = prefix;
-	sqlo_replace_tree ((ST **) & sel, st_fref, (caddr_t) col_ref);
+	sqlo_replace_tree ((ST **) & sel, (caddr_t) st_fref, (caddr_t) col_ref);
 	st_fref->_.fn_ref.fn_name = fn_name;
       }
     else
@@ -2403,7 +2403,7 @@ sqlo_dth_need_build (df_elt_t * dt, dk_set_t hash_keys)
 	{
 	  caddr_t alias = key->dfe_tree->_.col_ref.name;
 	  ST *exp = st_col_by_alias (cols, alias);
-	  if (box_equal ((caddr_t *) exp, (caddr_t) g_spec->_.o_spec.col))
+	  if (box_equal ((cbox_t) exp, (caddr_t) g_spec->_.o_spec.col))
 	    goto found;
 	}
 	END_DO_SET ();
@@ -2437,7 +2437,7 @@ st_set_copy (dk_set_t s)
 df_elt_t *
 sqlo_dt_try_hash (sqlo_t * so, df_elt_t * dfe, op_table_t * super_ot, float *score_ret, df_elt_t * loop_dt)
 {
-  ST **sel_place = NULL, *save_sel = NULL;
+  ST ***sel_place = NULL, **save_sel = NULL;
   dk_set_t hash_pred_locus_refs = NULL;
   float size_est = 0;
   dk_set_t prev_probes = so->so_hash_probes;

@@ -2842,12 +2842,12 @@ scalar_exp_commalist
 
 opt_a_partition
 	:  { $$ = NULL;}
-	| PARTITION BY scalar_exp_commalist  { $$ = t_list_to_array ($3); }
+| PARTITION BY scalar_exp_commalist  { $$ = (ST*)t_list_to_array ($3); }
 	;
 
 opt_a_order
 	: { $$ = NULL; }
-	| ORDER BY ordering_spec_commalist { $$ = t_list_to_array ($3); }
+| ORDER BY ordering_spec_commalist { $$ = (ST*)t_list_to_array ($3); }
 	;
 
 opt_a_window
@@ -3021,9 +3021,9 @@ new_table_name
 	;
 
 table
-	: q_table_name opt_table_opt			{ $$ = sqlp_new_table_dotted ($1, NULL, $2); }
-	| q_table_name AS identifier opt_table_opt	{ $$ = sqlp_new_table_dotted ($1, $3, $4); }
-	| q_table_name identifier opt_table_opt		{ $$ = sqlp_new_table_dotted ($1, $2, $3); }
+: q_table_name opt_table_opt			{ $$ = (caddr_t)sqlp_new_table_dotted ($1, NULL, $2); }
+| q_table_name AS identifier opt_table_opt	{ $$ = (caddr_t)sqlp_new_table_dotted ($1, $3, $4); }
+| q_table_name identifier opt_table_opt		{ $$ = (caddr_t)sqlp_new_table_dotted ($1, $2, $3); }
 	;
 
 column_ref

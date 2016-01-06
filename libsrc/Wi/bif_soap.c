@@ -47,6 +47,7 @@
 #include "http_client.h"
 #include "sqltype.h"
 #include "datesupp.h"
+#include "uuid_generator.h"
 
 #include "soap.h"
 #ifdef _SSL
@@ -3242,8 +3243,6 @@ soap_serialize_body (dk_session_t * ses, client_connection_t * cli, query_t * pr
       SES_PRINT (ses, "Response>");
     }
 }
-
-void uuid_str (char *p, int len);
 
 void
 soap_serialize_envelope (dk_session_t * ses, client_connection_t * cli, query_t * qr, local_cursor_t * lc,

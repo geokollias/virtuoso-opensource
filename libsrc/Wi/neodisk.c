@@ -2307,7 +2307,11 @@ srv_global_lock (query_instance_t * qi, int flag)
   int retries = 0;
   lock_trx_t *lt = qi->qi_trx;
   /*GK: in roll forward this is a no-op */
-  if (in_log_replay || dbf_no_atomic)
+  if (CL_RUN_LOCAL != cl_run_local_only)
+    dbf_no_atomic = 1;
+  if (!flag && server_lock.sl_owner)
+    ;
+  else if (in_log_replay || (dbf_no_atomic && SRVL_CL_CONFIG_SRV != flag))
     return;
   if (flag)
     {

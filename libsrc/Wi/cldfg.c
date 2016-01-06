@@ -288,6 +288,7 @@ stn_continue (stage_node_t * stn, caddr_t * inst)
 {
   /* read up to full batch from the inputs where left off, send to successor, increment the count of processed for each full input consumed.  A batch is fully consumed only when there is nothing left and stn continue is called again for more, proving that subsequent steps of the pipeline have no continuable state, so it is not consumed yet when it is sent onwards   */
   QNCAST (QI, qi, inst);
+  uint32 top_req_no = qi->qi_client->cli_cl_stack[0].clst_req_no;
   dc_read_t *dre;
   cl_op_t *dfg_state;
   cll_in_box_t clib;
@@ -513,6 +514,7 @@ aq_dfg_local_func (caddr_t av, caddr_t * err_ret)
   cluster_map_t *clm = qn_loc_ts (qf->qf_head_node, 1)->ts_order_ks->ks_key->key_partition->kpd_map;
   client_connection_t *cli = cl_cli ();
   async_queue_t *aq = cli->cli_aqr->aqr_aq;
+  uint32 top_req_no = cli->cli_cl_stack[0].clst_req_no;
   if (qi->qi_dfg_running)
     GPF_T1 ("double run of dfg slice");
   qi->qi_dfg_running = 1;
@@ -584,14 +586,13 @@ caddr_t *
 qf_slice_qi (query_frag_t * qf, caddr_t * inst, int is_in_cll)
 {
   QNCAST (query_instance_t, qi, inst);
+  uint32 top_req_no = qi->qi_client->cli_cl_stack[0].clst_req_no;
   caddr_t *cp = (caddr_t *) dk_alloc_box_zero (qi->qi_query->qr_instance_length, DV_QI);
   QNCAST (query_instance_t, cpqi, cp);
   query_t *qr = qi->qi_query;
-  if (!is_in_cll)
-    IN_CLL;
+  IN_CL_QF;
   qr->qr_ref_count++;
-  if (!is_in_cll)
-    LEAVE_CLL;
+  LEAVE_CL_QF;
   cpqi->qi_is_allocated = 1;
   cpqi->qi_is_branch = 1;
   cpqi->qi_is_dfg_slice = 1;
@@ -730,7 +731,10 @@ stn_add_slice_inst (state_slot_t * slice_qis, query_frag_t * qf, caddr_t * inst,
   caddr_t *cp;
   QI **qis = QST_BOX (QI **, inst, slice_qis->ssl_index);
   if (is_in_cll)
-    ASSERT_IN_CLL;
+    {
+      uint32 top_req_no = ((QI *) inst)->qi_client->cli_cl_stack[0].clst_req_no;
+      ASSERT_IN_CLL;
+    }
   if (local_cll.cll_this_host == coordinator)
     cp = qf_slice_qi (qf, inst, is_in_cll);
   else
@@ -862,19 +866,18 @@ long tc_dfg_feed_1;
 
 
 /* pre-sorted input for dfgs with key req_no, coord, slice as 64 bit word, dep is dk_set_t of dv_bin with fill and n queued cms */
-dk_hash_t *dfg_running_queue;
 int enable_dfg_follows = 1;
 #define enable_dfg_queue_running 1
 
 #ifdef RUN_QUEUE_REUSE
 
 void
-stn_append_bulk (stage_node_t * stn, caddr_t * inst, rbuf_t * queue)
+stn_append_bulk (stage_node_t * stn, caddr_t * inst, rbuf_t * queue, uint32 top_req_no)
 {
   caddr_t *place = &inst[stn->stn_bulk_input->ssl_index];
   rbuf_t *prev = (rbuf_t *) * place;
   if (!prev)
-    prev = *place = (caddr_t) resource_get (cll_rbuf_rc);
+    prev = *place = (caddr_t) resource_get (cl_ways[CL_NTH_WAY].clw_rbuf_rc);
   if (prev->rb_count)
     GPF_T1 ("expected empty rbuf from cll rbuf rc");
   DFG_TC (tc_rbuf_append);
@@ -887,15 +890,17 @@ dfg_get_queued (caddr_t * inst, stage_node_t * stn, int coord, uint32 req_no, in
   QNCAST (QI, qi, inst);
   int64 key = req_no | (((int64) coord) << 32) | (((int64) qi->qi_slice) << 48);
   ptrlong pqueue;
+  uint32 top_req_no = req_no;
   rbuf_t *queue;
+  dk_hash_t *running_queue = &cl_ways[CL_NTH_WAY].clw_dfg_running_queue;
   if (!coord)
     GPF_T1 ("get queued without coord");
   ASSERT_IN_CLL;
-  GETHASH ((void *) key, dfg_running_queue, pqueue, not_found);
+  GETHASH ((void *) key, running_queue, pqueue, not_found);
   queue = (rbuf_t *) pqueue;
   if (free_only)
     {
-      remhash ((void *) key, dfg_running_queue);
+      remhash ((void *) key, running_queue);
 #ifdef MTX_METER
       DO_RBUF (cl_message_t *, cm, rbe, rbe_inx, queue)
       {
@@ -904,14 +909,14 @@ dfg_get_queued (caddr_t * inst, stage_node_t * stn, int coord, uint32 req_no, in
       END_DO_RBUF;
 #endif
       rbuf_delete_all (queue);
-      resource_store (cll_rbuf_rc, (void *) queue);
+      resource_store (cl_ways[CL_NTH_WAY].clw_rbuf_rc, (void *) queue);
       LEAVE_CLL;
     }
   else
     {
       if (!queue->rb_count)
 	return 0;
-      stn_append_bulk (stn, inst, queue);
+      stn_append_bulk (stn, inst, queue, top_req_no);
     }
   return 1;
 not_found:
@@ -922,7 +927,7 @@ not_found:
 #else
 
 void
-stn_append_bulk (stage_node_t * stn, caddr_t * inst, rbuf_t * queue)
+stn_append_bulk (stage_node_t * stn, caddr_t * inst, rbuf_t * queue, uint32 top_req_no)
 {
   caddr_t *place = &inst[stn->stn_bulk_input->ssl_index];
   if (!*place)
@@ -932,7 +937,7 @@ stn_append_bulk (stage_node_t * stn, caddr_t * inst, rbuf_t * queue)
       rbuf_t *prev = (rbuf_t *) * place;
       DFG_TC (tc_rbuf_append);
       rbuf_append (prev, queue);
-      resource_store (cll_rbuf_rc, (void *) queue);
+      resource_store (cl_ways[CL_NTH_WAY].clw_rbuf_rc, (void *) queue);
     }
 }
 
@@ -940,14 +945,16 @@ int
 dfg_get_queued (caddr_t * inst, stage_node_t * stn, int coord, uint32 req_no, int free_only)
 {
   QNCAST (QI, qi, inst);
+  uint32 top_req_no = req_no;
   int64 key = req_no | (((int64) coord) << 32) | (((int64) qi->qi_slice) << 48);
   ptrlong pqueue;
+  dk_hash_t *running_queue = &cl_ways[CL_NTH_WAY].clw_dfg_running_queue;
   if (!coord)
     GPF_T1 ("get queued without coord");
   ASSERT_IN_CLL;
-  GETHASH ((void *) key, dfg_running_queue, pqueue, not_found);
+  GETHASH ((void *) key, running_queue, pqueue, not_found);
 
-  remhash ((void *) key, dfg_running_queue);
+  remhash ((void *) key, running_queue);
   if (free_only)
     {
 #ifdef MTX_METER
@@ -958,11 +965,11 @@ dfg_get_queued (caddr_t * inst, stage_node_t * stn, int coord, uint32 req_no, in
       END_DO_RBUF;
 #endif
       rbuf_delete_all ((rbuf_t *) pqueue);
-      resource_store (cll_rbuf_rc, (caddr_t) pqueue);
+      resource_store (cl_ways[CL_NTH_WAY].clw_rbuf_rc, (caddr_t) pqueue);
       LEAVE_CLL;
     }
   else
-    stn_append_bulk (stn, inst, (rbuf_t *) pqueue);
+    stn_append_bulk (stn, inst, (rbuf_t *) pqueue, req_no);
   return 1;
 not_found:
   if (free_only)
@@ -981,11 +988,11 @@ cm_free_rbuf (cl_message_t * cm)
 
 
 rbuf_t *
-cm_rbuf_allocate ()
+cm_rbuf_allocate (uint32 top_req_no)
 {
   rbuf_t *rb;
   ASSERT_IN_CLL;
-  rb = (rbuf_t *) resource_get (cll_rbuf_rc);
+  rb = (rbuf_t *) resource_get (cl_ways[CL_NTH_WAY].clw_rbuf_rc);
   if (rb->rb_count)
     GPF_T1 ("expected to get empty rbuf from cll rbuf rc");
   rb->rb_free_func = (rbuf_free_t) cm_free_rbuf;
@@ -998,16 +1005,18 @@ dfg_queue_for_running (int coord, uint32 req_no, cl_message_t * cm)
   int64 key = req_no | (((int64) coord) << 32) | (((int64) cm->cm_slice) << 48);
   ptrlong pqueue;
   rbuf_t *queue;
+  uint32 top_req_no = req_no;
+  dk_hash_t *running_queue = &cl_ways[CL_NTH_WAY].clw_dfg_running_queue;
   ASSERT_IN_CLL;
-  GETHASH ((void *) key, dfg_running_queue, pqueue, not_found);
+  GETHASH ((void *) key, running_queue, pqueue, not_found);
   cm_record_dfg_deliv (cm, CM_DFGD_R_QUEUE);
   queue = (rbuf_t *) pqueue;
   rbuf_add ((rbuf_t *) pqueue, (void *) cm);
   return (rbuf_t *) pqueue;
 not_found:
-  queue = cm_rbuf_allocate ();
+  queue = cm_rbuf_allocate (req_no);
   DFG_TC (tc_run_rb_alloc);
-  sethash ((void *) key, dfg_running_queue, (void *) queue);
+  sethash ((void *) key, running_queue, (void *) queue);
   rbuf_add (queue, (void *) cm);
   return queue;
 }
@@ -1022,6 +1031,7 @@ qi_free_dfg_queue_nodes (query_instance_t * qi, dk_set_t nodes)
     if (IS_QN (stn, stage_node_input) && 1 == stn->stn_nth)
       {
 	uint32 req_no = unbox_inline (QST_GET_V (qi, stn->stn_coordinator_req_no));
+	uint32 top_req_no = req_no;
 	int coord = QST_INT (qi, stn->stn_coordinator_id);
 	rbuf_t *queue = QST_BOX (rbuf_t *, qi, stn->stn_bulk_input->ssl_index);
 	if (!req_no)
@@ -1032,7 +1042,7 @@ qi_free_dfg_queue_nodes (query_instance_t * qi, dk_set_t nodes)
 	if (queue && !queue->rb_count)
 	  {
 	    /* empty queue is put for reuse, a non-empty will be freed outsid of cll */
-	    resource_store (cll_rbuf_rc, (void *) queue);
+	    resource_store (cl_ways[CL_NTH_WAY].clw_rbuf_rc, (void *) queue);
 	    QST_BOX (rbuf_t *, qi, stn->stn_bulk_input->ssl_index) = NULL;
 	  }
 	/* in del only mode, below leave cll */
@@ -1056,11 +1066,6 @@ qi_free_dfg_queue (query_instance_t * qi, query_t * qr)
 }
 
 
-void
-dfg_after_feed ()
-{
-}
-
 int enable_feed_other_dfg;
 
 int
@@ -1082,7 +1087,7 @@ dfg_feed_other_dfg (cl_message_t * cm, dk_hash_t ** other_dfg_ret)
     }
   if (1 == (int64) queue)
     {
-      rbuf_t *queu = dfg_queue_for_running (cm->cm_dfg_coord, cm->cm_req_no, cm);
+      rbuf_t *queue = dfg_queue_for_running (cm->cm_dfg_coord, cm->cm_req_no, cm);
       sethash ((void *) k, other_dfg, (void *) queue);
       return 1;
     }
@@ -1095,12 +1100,12 @@ dfg_feed_other_dfg (cl_message_t * cm, dk_hash_t ** other_dfg_ret)
 
 
 rbuf_t *
-qi_slice_queue (caddr_t * slice_inst, stage_node_t * stn)
+qi_slice_queue (caddr_t * slice_inst, stage_node_t * stn, uint32 top_req_no)
 {
   rbuf_t *rb = QST_BOX (rbuf_t *, slice_inst, stn->stn_bulk_input->ssl_index);
   if (!rb)
     {
-      rb = QST_BOX (rbuf_t *, slice_inst, stn->stn_bulk_input->ssl_index) = cm_rbuf_allocate ();
+      rb = QST_BOX (rbuf_t *, slice_inst, stn->stn_bulk_input->ssl_index) = cm_rbuf_allocate (top_req_no);
       DFG_TC (tc_slice_rb_alloc);
     }
   return rb;
@@ -1170,7 +1175,7 @@ dfg_feed_short (stage_node_t * stn, caddr_t * inst, cl_queue_t * bsk,
 	  if (QI_NO_SLICE == slice && CLO_DFG_ARRAY == cm->cm_in_string[0] && qi->qi_is_dfg_slice)
 	    {
 	      if (!main_bulk)
-		main_bulk = qi_slice_queue (main_inst, stn);
+		main_bulk = qi_slice_queue (main_inst, stn, dfg_req_no);
 	      rbuf_add (main_bulk, (void *) cm);
 	      CLQ_DEL_INLINE;
 	      if (main_bulk->rb_count > 1000)
@@ -1179,7 +1184,7 @@ dfg_feed_short (stage_node_t * stn, caddr_t * inst, cl_queue_t * bsk,
 	    }
 	  if (slice > max_slice)
 	    {
-	      MTX_TS_SET_2 (cm->cm_dfg_skip_ts, local_cll.cll_mtx, 4);
+	      MTX_TS_SET_2 (cm->cm_dfg_skip_ts, R_CLW_MTX (cm->cm_req_no), 4);
 	      continue;
 	    }
 #if 0
@@ -1190,7 +1195,7 @@ dfg_feed_short (stage_node_t * stn, caddr_t * inst, cl_queue_t * bsk,
 	  if ((4L << 32) & cm->cm_queue_ts)
 	    bing ();
 #endif
-	  if ((CL_MORE == cm->cm_op && cm->cm_from_host == coord) || (cm->cm_cancelled && cm->cm_dfg_coord == coord))
+	  if (CL_MORE == cm->cm_op && cm->cm_from_host == coord)
 	    {
 	      if (CL_MORE == cm->cm_op)
 		TC (tc_dfg_more_while_running);
@@ -1201,12 +1206,12 @@ dfg_feed_short (stage_node_t * stn, caddr_t * inst, cl_queue_t * bsk,
 	    }
 	  if (CL_BATCH == cm->cm_op && coord != cm->cm_dfg_coord)
 	    {
-	      MTX_TS_SET_2 (cm->cm_dfg_skip_ts, local_cll.cll_mtx, 3);
+	      MTX_TS_SET_2 (cm->cm_dfg_skip_ts, R_CLW_MTX (cm->cm_req_no), 3);
 	      continue;
 	    }
 	  if (!cm->cm_dfg_stage)
 	    {
-	      MTX_TS_SET_2 (cm->cm_dfg_skip_ts, local_cll.cll_mtx, 5);
+	      MTX_TS_SET_2 (cm->cm_dfg_skip_ts, R_CLW_MTX (cm->cm_req_no), 5);
 	      goto next;
 	    }
 	  if (queues_inited && slice_queues[slice])
@@ -1242,7 +1247,7 @@ dfg_feed_short (stage_node_t * stn, caddr_t * inst, cl_queue_t * bsk,
 		      cm->cm_req_no, cm->cm_from_host));
 	      DFG_FEED_TRACE;
 	      cm_record_dfg_deliv (cm, CM_DFGD_START);
-	      queue = qi_slice_queue (slice_inst, stn);
+	      queue = qi_slice_queue (slice_inst, stn, dfg_req_no);
 	      rbuf_add (queue, (void *) cm);
 	      CLQ_DEL_INLINE;
 	      RET_CK;
@@ -1258,7 +1263,7 @@ dfg_feed_short (stage_node_t * stn, caddr_t * inst, cl_queue_t * bsk,
 		      cm->cm_req_no, cm->cm_from_host));
 	      DFG_FEED_TRACE;
 	      cm_record_dfg_deliv (cm, CM_DFGD_SELF);
-	      queue = qi_slice_queue (inst, stn);
+	      queue = qi_slice_queue (inst, stn, dfg_req_no);
 	      rbuf_add (queue, (void *) cm);
 	      CLQ_DEL_INLINE;
 	      any_for_self = 1;
@@ -1279,7 +1284,7 @@ dfg_feed_short (stage_node_t * stn, caddr_t * inst, cl_queue_t * bsk,
 			  cm->cm_dfg_coord, cm->cm_req_no, cm->cm_from_host));
 		  DFG_FEED_TRACE;
 		  cm_record_dfg_deliv (cm, CM_DFGD_START);
-		  queue = qi_slice_queue (slice_inst, stn);
+		  queue = qi_slice_queue (slice_inst, stn, dfg_req_no);
 		  rbuf_add (queue, (void *) cm);
 		  any_for_other = 1;
 		  ((QI *) slice_inst)->qi_thread = self;
@@ -1303,7 +1308,7 @@ dfg_feed_short (stage_node_t * stn, caddr_t * inst, cl_queue_t * bsk,
 		  dfg_slice_set_thread (slice_inst, cm);
 		  DFG_FEED_TRACE;
 		  cm_record_dfg_deliv (cm, CM_DFGD_OTHER);
-		  queue = qi_slice_queue (slice_inst, stn);
+		  queue = qi_slice_queue (slice_inst, stn, dfg_req_no);
 		  rbuf_add (queue, (void *) cm);
 		  CLQ_DEL_INLINE;
 		  RET_CK;
@@ -1311,7 +1316,7 @@ dfg_feed_short (stage_node_t * stn, caddr_t * inst, cl_queue_t * bsk,
 		}
 	      else
 		{
-		  MTX_TS_SET_2 (cm->cm_dfg_skip_ts, local_cll.cll_mtx, 1);
+		  MTX_TS_SET_2 (cm->cm_dfg_skip_ts, R_CLW_MTX (cm->cm_req_no), 1);
 		  goto next;
 		}
 	    }
@@ -1322,7 +1327,7 @@ dfg_feed_short (stage_node_t * stn, caddr_t * inst, cl_queue_t * bsk,
 	    {
 	      CLQ_DEL_INLINE;
 	    }
-	  MTX_TS_SET_2 (cm->cm_dfg_skip_ts, local_cll.cll_mtx, 2);
+	  MTX_TS_SET_2 (cm->cm_dfg_skip_ts, R_CLW_MTX (cm->cm_req_no), 2);
 	next:
 	  TC (tc_feed_no_action);
 	}
@@ -1359,6 +1364,7 @@ dfg_feed (stage_node_t * stn, caddr_t * inst, cl_queue_t * bsk)
   int any_for_self = 0, any_for_other = 0;
   int coord = QST_INT (inst, stn->stn_coordinator_id);
   uint32 dfg_req_no = unbox_inline (QST_GET_V (inst, stn->stn_coordinator_req_no));
+  uint32 top_req_no = dfg_req_no;
   caddr_t *main_inst = qi->qi_is_dfg_slice ? qi->qi_client->cli_claq->claq_main_inst : inst;
   caddr_t *slice_inst;
   rbuf_t *main_bulk = NULL;
@@ -1402,7 +1408,7 @@ dfg_feed (stage_node_t * stn, caddr_t * inst, cl_queue_t * bsk)
 	if (QI_NO_SLICE == slice && qi->qi_is_dfg_slice && CLO_DFG_ARRAY == cm->cm_in_string[0])
 	  {
 	    if (!main_bulk)
-	      main_bulk = qi_slice_queue (main_inst, stn);
+	      main_bulk = qi_slice_queue (main_inst, stn, dfg_req_no);
 	    rbuf_add (main_bulk, (void *) cm);
 	    clq_delete (bsk, elt, rbe_inx);
 	    if (main_bulk->rb_count > 1000)
@@ -1411,7 +1417,7 @@ dfg_feed (stage_node_t * stn, caddr_t * inst, cl_queue_t * bsk)
 	  }
 	if (slice > max_slice || BIT_IS_SET (excluded, slice))
 	  {
-	    MTX_TS_SET_2 (cm->cm_dfg_skip_ts, local_cll.cll_mtx, 4);
+	    MTX_TS_SET_2 (cm->cm_dfg_skip_ts, R_CLW_MTX (cm->cm_req_no), 4);
 	    TC (tc_dfg_skip_by_bit);
 	    clq_next (bsk, elt, rbe_inx);
 	    continue;
@@ -1422,7 +1428,7 @@ dfg_feed (stage_node_t * stn, caddr_t * inst, cl_queue_t * bsk)
 	if ((4L << 32) & cm->cm_queue_ts)
 	  bing ();
 #endif
-	if ((CL_MORE == cm->cm_op && cm->cm_from_host == coord) || (cm->cm_cancelled && cm->cm_dfg_coord == coord))
+	if (CL_MORE == cm->cm_op && cm->cm_from_host == coord)
 	  {
 	    if (CL_MORE == cm->cm_op)
 	      TC (tc_dfg_more_while_running);
@@ -1433,14 +1439,14 @@ dfg_feed (stage_node_t * stn, caddr_t * inst, cl_queue_t * bsk)
 	  }
 	if (CL_BATCH == cm->cm_op && coord != cm->cm_dfg_coord)
 	  {
-	    MTX_TS_SET_2 (cm->cm_dfg_skip_ts, local_cll.cll_mtx, 3);
+	    MTX_TS_SET_2 (cm->cm_dfg_skip_ts, R_CLW_MTX (cm->cm_req_no), 3);
 	    clq_next (clq, elt, rbe_inx);
 	    continue;
 	  }
 	stage = cm->cm_dfg_stage;
 	if (!stage)
 	  {
-	    MTX_TS_SET_2 (cm->cm_dfg_skip_ts, local_cll.cll_mtx, 5);
+	    MTX_TS_SET_2 (cm->cm_dfg_skip_ts, R_CLW_MTX (cm->cm_req_no), 5);
 	    goto next;
 	  }
 	if (slice_queues[slice])
@@ -1474,7 +1480,7 @@ dfg_feed (stage_node_t * stn, caddr_t * inst, cl_queue_t * bsk)
 		    cm->cm_req_no, cm->cm_from_host));
 	    DFG_FEED_TRACE;
 	    cm_record_dfg_deliv (cm, CM_DFGD_START);
-	    slice_queues[slice] = qi_slice_queue (slice_inst, stn);
+	    slice_queues[slice] = qi_slice_queue (slice_inst, stn, dfg_req_no);
 	    rbuf_add (slice_queues[slice], (void *) cm);
 	    clq_delete (bsk, elt, rbe_inx);
 	  }
@@ -1486,7 +1492,7 @@ dfg_feed (stage_node_t * stn, caddr_t * inst, cl_queue_t * bsk)
 		    cm->cm_req_no, cm->cm_from_host));
 	    DFG_FEED_TRACE;
 	    cm_record_dfg_deliv (cm, CM_DFGD_SELF);
-	    slice_queues[slice] = qi_slice_queue (inst, stn);
+	    slice_queues[slice] = qi_slice_queue (inst, stn, dfg_req_no);
 	    rbuf_add (slice_queues[slice], (void *) cm);
 	    clq_delete (bsk, elt, rbe_inx);
 	    any_for_self = 1;
@@ -1504,7 +1510,7 @@ dfg_feed (stage_node_t * stn, caddr_t * inst, cl_queue_t * bsk)
 			cm->cm_dfg_coord, cm->cm_req_no, cm->cm_from_host));
 		DFG_FEED_TRACE;
 		cm_record_dfg_deliv (cm, CM_DFGD_START);
-		slice_queues[slice] = qi_slice_queue (slice_inst, stn);
+		slice_queues[slice] = qi_slice_queue (slice_inst, stn, dfg_req_no);
 		rbuf_add (slice_queues[slice], (void *) cm);
 		any_for_other = 1;
 		((QI *) slice_inst)->qi_thread = self;
@@ -1524,21 +1530,21 @@ dfg_feed (stage_node_t * stn, caddr_t * inst, cl_queue_t * bsk)
 		dfg_slice_set_thread (slice_inst, cm);
 		DFG_FEED_TRACE;
 		cm_record_dfg_deliv (cm, CM_DFGD_OTHER);
-		slice_queues[slice] = qi_slice_queue (slice_inst, stn);
+		slice_queues[slice] = qi_slice_queue (slice_inst, stn, dfg_req_no);
 		rbuf_add (slice_queues[slice], (void *) cm);
 		clq_delete (bsk, elt, rbe_inx);
 	      }
 	    else
 	      {
 		BIT_SET (excluded, cm->cm_slice);
-		MTX_TS_SET_2 (cm->cm_dfg_skip_ts, local_cll.cll_mtx, 1);
+		MTX_TS_SET_2 (cm->cm_dfg_skip_ts, R_CLW_MTX (cm->cm_req_no), 1);
 		goto next;
 	      }
 	  }
       }
     else
       {
-	MTX_TS_SET_2 (cm->cm_dfg_skip_ts, local_cll.cll_mtx, 2);
+	MTX_TS_SET_2 (cm->cm_dfg_skip_ts, R_CLW_MTX (cm->cm_req_no), 2);
 	if (dfg_feed_other_dfg (cm, &other_dfg))
 	  {
 	    clq_delete (bsk, elt, rbe_inx);
@@ -1577,12 +1583,6 @@ feed_done:
 
 
 void
-cli_rec_dfg_done (client_connection_t * cli, int coord, int req_no, int in_cll, char *file, int line)
-{
-}
-
-
-void
 ks_set_dfg_queue_f (key_source_t * ks, caddr_t * inst, it_cursor_t * itc)
 {
 }
@@ -1591,10 +1591,11 @@ long tc_rec_dfg_cancel;
 int
 dfg_batch_from_queue (stage_node_t * stn, caddr_t * inst, int64 final_dfg_id)
 {
-  /* if a stage node is at end, could be more batches for this or other stages in the queue.  For coord, this is the results queue of the qf's itcl.  For non-coord, this is the clt's queue.  If find, pop one off and put it into the suitable stage's input */
+  /* if a stage node is at end, could be more batches for this or other stages in the queue.  For coord, this is the results queue of the qf's itcl.  For non-coord, this is the cloq's queue.  If find, pop one off and put it into the suitable stage's input */
   /* the idea is to prefer processing batches for later stages to continuing earlier stages */
   QNCAST (QI, qi, inst);
   caddr_t *main_inst = qi->qi_is_dfg_slice ? qi->qi_client->cli_claq->claq_main_inst : inst;
+  uint32 top_req_no = qi->qi_client->cli_cl_stack[0].clst_req_no;
   int rc = 0;
   {
     query_frag_t *qf = stn->stn_qf;
@@ -1611,7 +1612,6 @@ dfg_batch_from_queue (stage_node_t * stn, caddr_t * inst, int64 final_dfg_id)
     END_DO_SET ();
     LEAVE_CLL;
   }
-  dfg_after_feed ();
   return rc;
 }
 
@@ -1630,6 +1630,7 @@ clrg_dfg_send (cl_req_group_t * clrg, int coord_host, int64 * bytes_ret, int is_
   caddr_t *inst = clrg->clrg_inst;
   dk_mutex_t *reply_mtx = NULL;
   int is_first = 1;
+  uint32 top_req_no = clrg->clrg_cl_way;
   DO_SET (cll_in_box_t *, clib, &clrg->clrg_clibs)
   {
     cl_op_t *clo = clib->clib_vec_clo;
@@ -1645,7 +1646,7 @@ clrg_dfg_send (cl_req_group_t * clrg, int coord_host, int64 * bytes_ret, int is_
     cm->cm_dfg_stage = stn->stn_nth;
     n_bytes += cm->cm_bytes;
     IN_CLL;
-    rcv_clib = (cll_in_box_t *) gethash ((void *) (ptrlong) cm->cm_req_no, local_cll.cll_id_to_clib);
+    rcv_clib = (cll_in_box_t *) gethash ((void *) (ptrlong) cm->cm_req_no, &cl_ways[CL_NTH_WAY].clw_id_to_clib);
     if (!rcv_clib)
       {
 	LEAVE_CLL;
@@ -1960,6 +1961,7 @@ itcl_dfg_init (itc_cluster_t * itcl, query_frag_t * qf, caddr_t * inst)
    * this is also used to send more reqs.  There may be more participant nodes in the query than clibs here.
    * There is exactly one local clo that is used for continuing the local processing.  This clo is never removed, except when the whole dist frag batch is seen to be at end */
   cl_req_group_t *clrg = itcl->itcl_clrg;
+  uint32 top_req_no = clrg->clrg_cl_way;
   stage_node_t *stn = (stage_node_t *) qf->qf_head_node;
   int inx;
   cll_in_box_t *clib = (cll_in_box_t *) resource_get (clib_rc);
@@ -1991,7 +1993,7 @@ itcl_dfg_init (itc_cluster_t * itcl, query_frag_t * qf, caddr_t * inst)
   clrg_target_clm (clrg, stn->stn_loc_ts->ts_order_ks->ks_key->key_partition->kpd_map);
   clrg_top_check (clrg, qi_top_qi (qi));
   IN_CLL;
-  clib_assign_req_no (clib);
+  clib_assign_req_no (clib, top_req_no);
   LEAVE_CLL;
   itcl->itcl_clrg->clrg_is_dfg_rcv = 1;
   qst_set_long (inst, stn->stn_coordinator_req_no, clib->clib_req_no);

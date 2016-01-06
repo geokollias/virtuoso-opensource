@@ -168,7 +168,7 @@ sqlo_check_rhs_lit (sqlo_t * so, ST * tree)
 	{
 	  stl->stl_no_record = 1;
 	  sqlo_scope (so, &tree->_.bin_exp.right);
-	  if (box_equal (rdfs_type, tree->_.bin_exp.right))
+	  if (box_equal (rdfs_type, (cbox_t) (tree->_.bin_exp.right)))
 	    t_set_push (&stl->stl_type_cnos, (void *) (ptrlong) OT_NO (tree->_.bin_exp.left->_.col_ref.prefix));
 	  stl->stl_no_record = 0;
 	  return;
@@ -201,7 +201,7 @@ qces_cmp (qce_sample_t ** ps1, qce_sample_t ** ps2)
 {
   qce_sample_t *s1 = *ps1;
   qce_sample_t *s2 = *ps2;
-  return box_equal (s1->qces_sc_key, s2->qces_sc_key)
+  return box_equal ((cbox_t) (s1->qces_sc_key), (cbox_t) (s2->qces_sc_key))
       && s1->qces_n_params == s2->qces_n_params
       && 0 == memcmp (&s1->qces_params, s2->qces_params, s1->qces_n_params * sizeof (int32));
 }
@@ -427,7 +427,7 @@ int qrc_sample_compatible (sqlo_t * so, qce_sample_t * qces, caddr_t * lits)
   float smp = -1;
   int res;
   tb_sample_t *place;
-  caddr_t *sc_key = (caddr_t *) t_box_copy_tree (qces->qces_sc_key);
+  caddr_t *sc_key = (caddr_t *) t_box_copy_tree ((caddr_t) (qces->qces_sc_key));
   int inx;
   for (inx = 0; inx < qces->qces_n_params; inx++)
     {
@@ -554,7 +554,7 @@ qrc_lookup (sql_comp_t * sc, ST * tree)
   if (!place)
     {
       mutex_leave (&qrc_mtx);
-      stl->stl_tree = box_copy_tree ((caddr_t) stl->stl_tree);
+      stl->stl_tree = (ST *) box_copy_tree ((caddr_t) stl->stl_tree);
       TC (tc_qrc_miss);
       return;
     }
@@ -677,7 +677,7 @@ qces_arr_free (qce_sample_t ** qces_arr)
   int inx;
   DO_BOX (qce_sample_t *, qces, inx, qces_arr)
   {
-    dk_free_tree (qces->qces_sc_key);
+    dk_free_tree ((caddr_t) (qces->qces_sc_key));
     dk_free_box ((caddr_t) qces);
   }
   END_DO_BOX;
@@ -851,8 +851,8 @@ qrc_set (sql_comp_t * sc, query_t * qr)
   qck.qck_tree = stl->stl_tree;
   qcd = (qc_data_t *) dk_alloc (sizeof (qc_data_t));
   memzero (qcd, sizeof (qc_data_t));
-  qcd->qcd_tree = (caddr_t) qck.qck_tree;
-  qcd->qcd_queries = dk_alloc_box_zero (1 * sizeof (caddr_t), DV_BIN);
+  qcd->qcd_tree = qck.qck_tree;
+  qcd->qcd_queries = (query_t **) dk_alloc_box_zero (1 * sizeof (caddr_t), DV_BIN);
   qcd->qcd_queries[0] = qr;
   qr_set_qce (qr, qcd, samples);
   mutex_enter (&qrc_mtx);
@@ -931,8 +931,8 @@ qrc_remove (query_t * qr, int is_in_qrc)
     mutex_leave (&qrc_mtx);
   if (!any)
     {
-      dk_free_box ((caddr_t) qcd->qcd_queries);
-      dk_free_tree (qcd->qcd_tree);
+      dk_free_box ((caddr_t) (qcd->qcd_queries));
+      dk_free_tree ((caddr_t) (qcd->qcd_tree));
       dk_free ((caddr_t) qcd, sizeof (qc_data_t));
     }
 }
@@ -990,8 +990,8 @@ bif_qrc_clear (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 	mutex_leave (&qrc_mtx);
     }
     END_DO_BOX;
-    dk_free_tree (qcd->qcd_tree);
-    dk_free_box (qcd->qcd_queries);
+    dk_free_tree ((caddr_t) (qcd->qcd_tree));
+    dk_free_box ((caddr_t) (qcd->qcd_queries));
     dk_free ((caddr_t) qcd, sizeof (qc_data_t));
   }
   END_DO_SET ();

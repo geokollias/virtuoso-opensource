@@ -905,7 +905,7 @@ typedef struct fn_card_s
 
 
 
-fn_card_t fn_cards[] = { {"isiri_id", 1, 0.001},
+fn_card_t fn_cards[] = { {"isiri_id", 0.98, 0.001},
 {"rdf_is_sub", 0.8, 0.01, FN_RESTR_ABS},
 {"__rgs_ack", 0, 0, 1},		/* near always false, occurs inside a not, so sec cond always passes */
 {"__rgs_ack_cbk", 1, 0, 1},
@@ -1215,7 +1215,7 @@ sqlo_in_list_unit (df_elt_t * in_tb, df_elt_t * pred, float *u1, float *a1)
 {
   du_thread_t *thr;
   int n_items, nth;
-  df_elt_t **subr = NULL;
+  ST **subr = NULL;
   df_elt_t **in_list = sqlo_in_list_1 (pred, NULL, NULL, &subr);
   if (!in_list)
     return 0;
@@ -2643,7 +2643,7 @@ sqlo_rdf_obj_const_value (ST * tree, caddr_t * val_ret, caddr_t * lang_ret)
     {
       caddr_t val;
       int is_err = 0;
-      val = xqf_str_parse_to_rdf_box (tree->_.call.params[0], tree->_.call.params[1], &is_err);
+      val = xqf_str_parse_to_rdf_box ((caddr_t) (tree->_.call.params[0]), (caddr_t) (tree->_.call.params[1]), &is_err);
       if (val_ret && !is_err)
 	{
 	  *val_ret = val;
@@ -3684,7 +3684,7 @@ sqlo_record_lit_param_sample (df_elt_t * tb_dfe, caddr_t sc_key, index_choice_t 
   qce_sample_t *qces2;
   if (!stl)
     return;
-  qces.qces_sc_key = box_copy_tree (sc_key);
+  qces.qces_sc_key = (caddr_t *) box_copy_tree ((caddr_t) sc_key);
   qces.qces_n_params = dk_set_length (ic->ic_lit_param_nos);
   DO_SET (ptrlong, n, &ic->ic_lit_param_nos)
   {
@@ -4077,7 +4077,7 @@ dfe_rq_p_v_card (df_elt_t * tb_dfe, df_elt_t * pred, float *inx_card)
 	float p_stat[4];
 	dk_set_t parts_ret = NULL;
 	pid = unbox_iri_id (p_pred->_.bin.right->dfe_tree);
-	dfe_p_stat (tb_dfe, p_pred, pid, &parts_ret, NULL, &p_stat, NULL);
+	dfe_p_stat (tb_dfe, p_pred, pid, &parts_ret, NULL, p_stat, NULL);
 	n_ps++;
 	ps += p_stat[0];
       }

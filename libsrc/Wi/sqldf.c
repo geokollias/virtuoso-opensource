@@ -1218,7 +1218,7 @@ dfe_is_setp_key (df_elt_t * setp, df_elt_t * dfe)
   {
     if (ST_P (spec, ORDER_BY))
       spec = spec->_.o_spec.col;
-    if (box_equal (spec, dfe->dfe_tree))
+    if (box_equal ((caddr_t) spec, (caddr_t) dfe->dfe_tree))
       return 1;
   }
   END_DO_BOX;
@@ -3620,7 +3620,7 @@ sqlo_is_sec_in_list (df_elt_t ** in_list)
 int do_sqlo_in_list = 1;
 
 df_elt_t **
-sqlo_in_list_1 (df_elt_t * pred, df_elt_t * tb_dfe, caddr_t name, df_elt_t *** subrange_ret)
+sqlo_in_list_1 (df_elt_t * pred, df_elt_t * tb_dfe, caddr_t name, ST *** subrange_ret)
 {
   int is_subr = 0;
   if (subrange_ret)
@@ -3642,11 +3642,11 @@ sqlo_in_list_1 (df_elt_t * pred, df_elt_t * tb_dfe, caddr_t name, df_elt_t *** s
       df_elt_t *first = args[0];
       if (subrange_ret && (st_is_call (first->dfe_tree, "substr", 3) || st_is_call (first->dfe_tree, "substring", 3)))
 	{
-	  ST **args = first->dfe_tree->_.call.params;
+	  ST **substr_args = first->dfe_tree->_.call.params;
 	  first = first->_.call.args[0];
-	  if (unbox ((caddr_t) args[1]) > 1000 || unbox ((caddr_t) args[2]) > 1000)
+	  if (unbox ((caddr_t) (substr_args[1])) > 1000 || unbox ((caddr_t) (substr_args[2])) > 1000)
 	    return NULL;
-	  *subrange_ret = (caddr_t **) args;
+	  *subrange_ret = substr_args;
 	  is_subr = 1;
 	}
       if (first && DFE_COLUMN == first->dfe_type
@@ -4200,7 +4200,7 @@ sqlo_tb_place_contains_cols (sqlo_t * so, df_elt_t * tb_dfe, df_elt_t * pred)
 	{			/* single arg col(s) : nothing */
 	  ;
 	}
-      else if (0 == stricmp (arg, "index"))
+      else if (0 == stricmp ((caddr_t) arg, "index"))
 	{
 	  inx++;
 	  continue;
@@ -4255,7 +4255,7 @@ sqlo_top_pred (sqlo_t * so, op_table_t * ot, df_elt_t * dfe)
 	  END_DO_SET ();
 	  DO_BOX (ST *, g_spec, inx, ot->ot_group_dfe->_.setp.specs)
 	  {
-	    if (box_equal (g_spec->_.o_spec.col, oby_dfe->_.setp.specs[0]->_.o_spec.col))
+	    if (box_equal ((caddr_t) g_spec->_.o_spec.col, (caddr_t) oby_dfe->_.setp.specs[0]->_.o_spec.col))
 	      {
 		nth = inx;
 		goto fnd;
@@ -4265,7 +4265,7 @@ sqlo_top_pred (sqlo_t * so, op_table_t * ot, df_elt_t * dfe)
 	  nth = BOX_ELEMENTS (ot->ot_group_dfe->_.setp.specs) + dk_set_length (ot->ot_fun_refs);
 	  DO_SET (df_elt_t *, dep, &ot->ot_group_dfe->_.setp.gb_dependent)
 	  {
-	    if (box_equal (dep->dfe_tree, oby_dfe->_.setp.specs[0]->_.o_spec.col))
+	    if (box_equal ((caddr_t) dep->dfe_tree, (caddr_t) oby_dfe->_.setp.specs[0]->_.o_spec.col))
 	      goto fnd;
 	    nth++;
 	  }
@@ -4276,7 +4276,7 @@ sqlo_top_pred (sqlo_t * so, op_table_t * ot, df_elt_t * dfe)
       call =
 	  t_listst (3, CALL_STMT, t_sqlp_box_id_upcase ("__topk"), t_listst (7, ot->ot_first_oby->dfe_tree, nth, cmp_op,
 	      top->_.top.exp, top->_.top.skip_exp, NULL, NULL));
-      BIN_OP (tree, BOP_EQ, box_num (1), call);
+      BIN_OP (tree, BOP_EQ, (ST *) box_num (1), call);
       pred = sqlo_df (so, tree);
       dfe->_.table.top_pred = sqlo_and_list_body (so, LOC_LOCAL, dfe, t_cons (pred, NULL));
       ot->ot_top_k_used = 1;
@@ -4488,7 +4488,7 @@ int
 sqlo_not_col_pred (sqlo_t * so, df_elt_t * tb_dfe, df_elt_t * pred, dk_set_t * col_preds, dk_set_t * after_preds)
 {
   /* have pred case for not eq, not like, not in */
-  ST **in_list = NULL;
+  df_elt_t **in_list = NULL;
   pred = pred->_.bin.left;
   if (DFE_BOP_PRED == pred->dfe_type && BOP_LIKE == pred->_.bin.op
       && is_col_of_table (pred->_.bin.left, tb_dfe) && !is_col_of_table (pred->_.bin.right, tb_dfe))

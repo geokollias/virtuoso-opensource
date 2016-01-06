@@ -38,6 +38,7 @@
 #include "sqltype.h"
 #include "repl.h"
 #include "replsr.h"
+#include "rdf_core.h"
 
 
 void
@@ -1182,7 +1183,7 @@ delete_node_vec_run (delete_node_t * del, caddr_t * inst, caddr_t * state, int i
     END_DO_BOX;
   }
   END_DO_BOX;
-  if (in_update && enable_mt_txn && CL_RUN_CLUSTER == cl_run_local_only)
+  if (any_cl && in_update && enable_mt_txn && CL_RUN_CLUSTER == cl_run_local_only)
     return;
   cl_local_deletes (del, inst, clrg ? clrg->clrg_inst : inst);
   if (!in_update && qi->qi_client->cli_row_autocommit)

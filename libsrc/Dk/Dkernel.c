@@ -29,10 +29,24 @@
 
 #undef DBG_PRINTF
 
+#ifdef _SSL
+#include <openssl/rsa.h>
+#include <openssl/crypto.h>
+#include <openssl/x509.h>
+#include <openssl/pem.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include <openssl/bio.h>
+#include <openssl/asn1.h>
+#include <openssl/pkcs12.h>
+#include <openssl/rand.h>
+#endif
+
 #include "Dk.h"
 #include "Dk/Dksystem.h"
 #include "util/logmsg.h"
 #include "util/strfuns.h"
+#include "Dk/Dksesssl.h"
 
 
 #define BASKET_PEEK(b) basket_peek(b)
@@ -61,21 +75,8 @@ int LEVEL_VAR = 4;
 
 
 #ifdef _SSL
-#include <openssl/rsa.h>
-#include <openssl/crypto.h>
-#include <openssl/x509.h>
-#include <openssl/pem.h>
-#include <openssl/ssl.h>
-#include <openssl/err.h>
-#include <openssl/bio.h>
-#include <openssl/asn1.h>
-#include <openssl/pkcs12.h>
-#include <openssl/rand.h>
 
 static void ssl_server_init ();
-
-int ssl_ctx_set_cipher_list(SSL_CTX *ctx, char *cipher_list);
-int ssl_ctx_set_protocol_options(SSL_CTX *ctx, char *protocol);
 
 #ifndef NO_THREAD
 static int ssl_server_accept (dk_session_t * listen, dk_session_t * ses);

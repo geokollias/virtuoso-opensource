@@ -276,7 +276,7 @@ struct proc_name_s
 
 typedef struct qce_sample_s
 {
-  caddr_t qces_sc_key;
+  caddr_t *qces_sc_key;		/* qces_sc_key[0] is actually sample_cache_key_t * */
   struct rdf_inf_ctx_s *qces_ric;
   float qces_card;
   short qces_n_params;
@@ -292,7 +292,7 @@ typedef struct _qc_data_s
   int qcd_ref_count;
   char qcd_to_drop;		/* last reader will free when exiting */
   uint64 qcd_hash;
-  caddr_t qcd_tree;
+  struct sql_tree_s *qcd_tree;
   query_t **qcd_queries;
   dk_set_t qcd_to_add;
 } qc_data_t;
@@ -1759,7 +1759,7 @@ typedef struct user_s
   id_hash_t *usr_xenc_certificates;
   dk_set_t usr_xenc_temp_keys;
   dk_set_t usr_certs;
-  dk_hash_64_t *usr_rdf_graph_perms;	/*!< Permission on RDF Graphs (default permissions, as a value for #i0, permissions for private graphs and permissions for any individual graphs */
+  id_hash_t *usr_rdf_graph_perms;	/*!< Permission on RDF Graphs (default permissions, as a value for #i0, permissions for private graphs and permissions for any individual graphs */
 #ifdef WIN32
   caddr_t usr_sys_name;
   caddr_t usr_sys_pass;
@@ -1948,7 +1948,10 @@ typedef struct client_connection_s
   slice_id_t cli_slice;
   int cli_n_to_autocommit;
   cl_slice_t *cli_csl;
+  uint32 cli_cl_way;
+  int cli_cl_stack_ref_count;	/* on top coord, number of top qis that have this stack */
   cl_call_stack_t *cli_cl_stack;
+  struct cl_top_req_s *cli_ctop;	/* on a top coord cli */
   struct TLSF_struct *cli_tlsf;
   cl_aq_ctx_t *cli_claq;
   //caddr_t *         cli_main_inst; /* if the cli is a dfg slice branch, this is the main qi of the dfg on this host.  The main qi waits for all branches, so ref secure */

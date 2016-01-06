@@ -3296,7 +3296,7 @@ cs_set_hist (col_stat_t * cs, dbe_column_t * col, caddr_t * hist, int64 est, it_
     dk_set_push (&buckets, list (2, box_num (prev_cnt * mpy), box_copy_tree (hist[prev_inx])));
   if (hist[len - 1])
     dk_set_push (&buckets, list (2, box_num (est), box_copy (hist[len - 1])));
-  col->col_hist = list_to_array (dk_set_nreverse (buckets));
+  col->col_hist = (caddr_t *) list_to_array (dk_set_nreverse (buckets));
   if (!keep_cs)
     dk_free_tree ((caddr_t) hist);
 }

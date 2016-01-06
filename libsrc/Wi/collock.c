@@ -546,7 +546,7 @@ itc_col_lock (it_cursor_t * itc, buffer_desc_t * buf, int n_used, int may_delete
 	  n_done++;
 	}
     }
-#if defined (MTX_DEBUG) || defined (PAGE_TRACE)
+#if defined (PAGE_TRACE)
   if (!itc->itc_pl)
     GPF_T1 ("itc pl not set after setting col locks");
   pl_check_owners (itc->itc_pl);

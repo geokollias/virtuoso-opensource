@@ -205,7 +205,7 @@ setp_set_ahash (setp_node_t * setp)
     }
   if (scale > 100000)
     return;
-  setp->setp_ahash_kr = dk_alloc_box (sizeof (ha_key_range_t) * inx, DV_BIN);
+  setp->setp_ahash_kr = (ha_key_range_t *) dk_alloc_box (sizeof (ha_key_range_t) * inx, DV_BIN);
   memcpy (setp->setp_ahash_kr, &kr, box_length (setp->setp_ahash_kr));
 }
 

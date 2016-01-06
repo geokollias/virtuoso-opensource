@@ -342,7 +342,7 @@ st_cmp_n (sql_comp_t * sc, ST * st1, ST * st2)
 	  return 1;
 	}
     }
-  if (box_equal (st1, st2))
+  if (box_equal ((caddr_t) st1, (caddr_t) st2))
     return 1;
   return 0;
 }

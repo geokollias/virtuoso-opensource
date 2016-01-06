@@ -444,7 +444,7 @@ int sparyylex_from_sparp_bufs (caddr_t *yylval, sparp_t *sparp)
 %type <trees> spar_triple_inference_option
 %type <trees> spar_triple_freetext_option
 %type <trees> spar_triple_geo_option
-%type <trees> spar_triple_optionlist_tail_commalist
+%type <backstack> spar_triple_optionlist_tail_commalist
 %type <trees> spar_triple_transit_option
 %type <backstack> spar_triple_option_var_commalist
 %type <token_type> spar_same_as_option
@@ -1718,7 +1718,7 @@ spar_triple_option	/* [Virt]	TripleOption	 ::=  'TABLE_OPTION' SPARQL_STRING	*/
 	| CUSTOM_L _LPAR spar_triple_optionlist_tail_commalist _RPAR {
 		SPART *lst = spartlist (sparp_arg, 2, SPAR_LIST, t_revlist_to_array ($3));
 		SPAR_ERROR_IF_UNSUPPORTED_SYNTAX (SSG_SD_VIRTSPECIFIC, "CUSTOM option");
-		$$ = t_list (2, (ptrlong)CUSTOM_L, list); }
+		$$ = (SPART **)t_list (2, (ptrlong)CUSTOM_L, list); }
 	| spar_triple_inference_option	{
 		SPAR_ERROR_IF_UNSUPPORTED_SYNTAX (SSG_SD_VIRTSPECIFIC, "inference option");
 		$$ = $1; }

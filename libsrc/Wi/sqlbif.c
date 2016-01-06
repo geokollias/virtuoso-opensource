@@ -1055,10 +1055,10 @@ bif_proc_table_result (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args,
   int n_args = qst ? BOX_ELEMENTS (args) : n_ext_args;
   int n_slots, ha_dtp_check_done = 0;
   char autonull[10];
-  caddr_t nullptr;
+  caddr_t db_null_ptr;
   caddr_t pvals_ptr;
   state_slot_t **pvals;
-  BOX_AUTO (nullptr, autonull, 0, DV_DB_NULL);
+  BOX_AUTO (db_null_ptr, autonull, 0, DV_DB_NULL);
 
   n_slots = ha && ha->ha_slots ? BOX_ELEMENTS (ha->ha_slots) : 0;
 
@@ -1131,7 +1131,7 @@ bif_proc_table_result (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args,
     {
       state_slot_t *ssl = ha->ha_slots[inx];
       vals[inx + 1].ssl_type = SSL_CONSTANT;
-      vals[inx + 1].ssl_constant = nullptr;
+      vals[inx + 1].ssl_constant = db_null_ptr;
       if (ssl)
 	vals[inx].ssl_sqt = ssl->ssl_sqt;
       pvals[inx + 1] = &vals[inx + 1];
@@ -1160,7 +1160,7 @@ bif_proc_table_result (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args,
   }
   END_QR_RESET;
   ha->ha_slots = saved_slots;
-  BOX_DONE (nullptr, autonull);
+  BOX_DONE (db_null_ptr, autonull);
   BOX_DONE (pvals_ptr, pvals_buf);
   return NULL;
 }
@@ -14633,6 +14633,8 @@ bif_server_version_check (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args
   return NEW_DB_NULL;
 }
 
+int clflt_in_recov = 0;
+
 caddr_t
 bif_server_id_check (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
@@ -14654,7 +14656,7 @@ bif_server_id_check (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       db_id[inx] = (unsigned char) c;
     }
 
-  if (memcmp (db_id, wi_inst.wi_master->dbs_id, sizeof (db_id)))
+  if (!clflt_in_recov && memcmp (db_id, wi_inst.wi_master->dbs_id, sizeof (db_id)))
     {
       log_error ("The transaction log file has been produced by different server instance.");
       call_exit (0);

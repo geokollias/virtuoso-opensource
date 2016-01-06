@@ -433,14 +433,14 @@ qr_free (query_t * qr)
       )
     {
       /* a local qr has parallel branches.  If going, let the last of them free the qr */
-      IN_CLL;
+      IN_CL_QF;
       if (qr->qr_ref_count)
 	{
 	  qr->qr_last_qi_may_free = 1;
-	  LEAVE_CLL;
+	  LEAVE_CL_QF;
 	  return;
 	}
-      LEAVE_CLL;
+      LEAVE_CL_QF;
     }
   qr_drop_dependencies (qr);
   while (NULL != qr->qr_used_tables)

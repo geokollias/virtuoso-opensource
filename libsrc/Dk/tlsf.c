@@ -1401,13 +1401,18 @@ tlsf_mdbg_alloc (tlsf_t * tlsf, const char * file, int line, bhdr_t * b)
   size_t sz = tlsf_block_size (b->ptr.buffer);
   if (!mdbg_tlsf || tlsf == mdbg_tlsf || !mdbg_place_to_id || !mdbg_id_to_place)
     return;
-#if 1
   id = tlsf_place_id (file, line);
   place = (mdbg_stat_t*)id_hash_get (tlsf->tlsf_allocs, (caddr_t)&id);
   if (place)
     {
+#ifdef SYNC_CTR
+      mutex_enter (&tlsf->tlsf_mtx);
+#endif
       place->mds_allocs++;
       place->mds_bytes += sz;
+#ifdef SYNC_CTR
+      mutex_leave (&tlsf->tlsf_mtx);
+#endif
     }
   else
     {
@@ -1422,7 +1427,6 @@ tlsf_mdbg_alloc (tlsf_t * tlsf, const char * file, int line, bhdr_t * b)
       END_WITH_TLSF;
       mutex_leave (&tlsf->tlsf_mtx);
     }
-#endif
   b->bhdr_info = (id << 12) | (b->bhdr_info & TLSF_ID_MASK);
 }
 
@@ -1439,8 +1443,14 @@ tlsf_mdbg_free (tlsf_t * tlsf, bhdr_t * b)
   mds = (mdbg_stat_t*)id_hash_get (tlsf->tlsf_allocs, (caddr_t)&id);
   if (mds)
     {
+#ifdef SYNC_CTR
+      mutex_enter (&tlsf->tlsf_mtx);
+#endif
       mds->mds_frees++;
       mds->mds_bytes -= tlsf_block_size (b->ptr.buffer);
+#ifdef SYNC_CTR
+      mutex_leave (&tlsf->tlsf_mtx);
+#endif
     }
 }
 

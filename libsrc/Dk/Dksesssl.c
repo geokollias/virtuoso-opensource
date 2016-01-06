@@ -1,4 +1,5 @@
 #include "Dk.h"
+#include "Dkernel.h"
 #include "Dksestcp.h"
 #include "Dksestcpint.h"
 #include "Dksesssl.h"

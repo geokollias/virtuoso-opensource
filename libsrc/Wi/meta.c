@@ -2866,9 +2866,15 @@ qi_read_table_schema_old_keys (query_instance_t * qi, char *read_tb, dk_set_t ol
 
   if (!qi->qi_trx->lt_branch_of && !old_keys && !qi->qi_client->cli_in_daq)
     {
-      ddl_commit_trx (qi);
       if (!qi->qi_client->cli_is_log)
 	cl_ddl (qi, qi->qi_trx, read_tb, CLO_DDL_TABLE, NULL);
+      ddl_commit_trx (qi);
+    }
+  else if (lt->lt_branch_of)
+    {
+      IN_TXN;
+      lt_commit_schema_merge (lt);
+      LEAVE_TXN;
     }
   else
     ddl_commit_trx (qi);
@@ -3039,7 +3045,7 @@ key_ensure_visible_parts (dbe_key_t * key1)
   }
   END_DO_SET ();
 
-  arr = dk_alloc_box_zero (cols->ht_count * sizeof (caddr_t), DV_BIN);
+  arr = (dbe_column_t **) dk_alloc_box_zero (cols->ht_count * sizeof (caddr_t), DV_BIN);
   DO_HT (ptrlong, cid, dbe_column_t *, col, cols) arr[fill++] = col;
   END_DO_HT;
   qsort (arr, cols->ht_count, sizeof (caddr_t), cid_cmp);

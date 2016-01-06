@@ -57,7 +57,7 @@ typedef struct hosting_version_s
   int hv_client_using_boxes;
 } hosting_version_t;
 
-void virtuoso_restore_sig_handlers (void);
+extern void virtuoso_restore_sig_handlers (void);
 
 #define HOSTING_TITLE "Hosting"
 #define HOSTING_VERSION "Hosting"

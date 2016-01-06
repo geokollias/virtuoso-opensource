@@ -387,6 +387,7 @@ ssl_new_shadow (sql_comp_t * sc, state_slot_t * org, data_source_t * defd_in)
 {
   state_slot_t *s = ssl_new_vec (sc->sc_cc, org->ssl_name ? org->ssl_name : "unnamed", org->ssl_dtp);
   s->ssl_sqt.sqt_non_null = org->ssl_sqt.sqt_non_null;
+  s->ssl_column = org->ssl_column;
   sethash ((void *) (ptrlong) org->ssl_index, sc->sc_vec_ssl_shadow, s);
   sethash ((void *) s, sc->sc_vec_ssl_def, (void *) defd_in);
   return s;
@@ -1573,7 +1574,7 @@ sqlg_stream_gb (sql_comp_t * sc, setp_node_t * setp)
   /* if a grouping col is unique in its table and the table is the outermost loop this is a stream with no dups.  This means that results can be returned whevever the sources between the outermost and the setp are at end.
    * if the grouping col is the ordering col of the outermost but not unique in the outermost, output can be produced whenever the sources between the outermost and the setp are at end but the last value of the outermost loop must be left out
    * because a continue of the outer loop might produce more of these values */
-  query_frag_t *outer_qf = NULL;
+  /* Unused and wrong: query_frag_t * outer_qf = NULL; */
   int inx;
   table_source_t *outer = NULL;
   int non_unq = 0;
@@ -1586,7 +1587,7 @@ sqlg_stream_gb (sql_comp_t * sc, setp_node_t * setp)
       break;
     if (IS_QN (pred, query_frag_input) && dk_set_member (((query_frag_t *) pred)->qf_nodes, outer))
       {
-	outer_qf = pred;
+	/* Unused and wrong: outer_qf = pred; */
 	break;
       }
     if (pred == outer)
@@ -3396,7 +3397,7 @@ stn_add_vec_ssl (state_slot_t *** ssls_ret, state_slot_t * ssl)
   memcpy (new_ssls, ssls, (inx + 1) * sizeof (caddr_t));
   new_ssls[inx + 1] = ssl;
   memcpy (&new_ssls[inx + 2], &ssls[inx + 1], (len - inx - 1) * sizeof (caddr_t));
-  dk_free_box (ssls);
+  dk_free_box ((box_t) ssls);
   *ssls_ret = new_ssls;
 }
 
@@ -3416,21 +3417,21 @@ ssl_add_to_stn_params (sql_comp_t * sc, dk_set_t stns, state_slot_t * ssl, dk_se
       state_slot_t *next_shadow;
       key_source_t *ks = stn->stn_loc_ts->ts_order_ks;
       state_slot_t *prev_ref = prev_shadow;
-      sc->sc_vec_current = stn;
+      sc->sc_vec_current = (data_source_t *) stn;
       stn_pred = dk_set_member (vec_pred, (void *) stn);
       if (stn_pred)
 	stn_pred = stn_pred->next;
       sc->sc_vec_pred = stn_pred;
       REF_SSL (NULL, prev_ref);
-      next_shadow = ssl_new_shadow (sc, prev_shadow, stn);
-      stn_add_vec_ssl (&ks->ks_vec_source, prev_ref);
+      next_shadow = ssl_new_shadow (sc, prev_shadow, (data_source_t *) stn);
+      stn_add_vec_ssl ((state_slot_t ***) (&ks->ks_vec_source), prev_ref);
       stn_add_vec_ssl (&ks->ks_vec_cast, next_shadow);
       stn_add_vec_ssl (&stn->stn_params, prev_ref);
       stn_add_vec_ssl (&stn->stn_inner_params, next_shadow);
       dk_set_free (stn->stn_in_slots);
       stn->stn_in_slots = NULL;
       stn_set_in_slots (sc, stn);
-      sethash (ssl->ssl_index, sc->sc_vec_ssl_shadow, next_shadow);
+      sethash ((const void *) (ssl->ssl_index), sc->sc_vec_ssl_shadow, next_shadow);
       prev_shadow = next_shadow;
     }
   sc->sc_vec_pred = pred_save;
@@ -3964,7 +3965,7 @@ qn_vec_slots (sql_comp_t * sc, data_source_t * qn, dk_hash_t * res, dk_hash_t * 
 	      if (IS_QN (pred->data, stage_node_input)
 		  || (sc->sc_in_qf && (query_frag_t *) pred->data == sc->sc_in_qf)
 		  || (IS_QN (ts, chash_read_input) && ts->ts_part_gby_reader)
-		  || IS_QN (ts, query_frag_input) && qf_contains_qn ((query_frag_t *) ts, sel->sel_set_ctr))
+		  || IS_QN (ts, query_frag_input) && qf_contains_qn ((query_frag_t *) ts, (data_source_t *) (sel->sel_set_ctr)))
 		{
 		  sel->sel_subq_inlined = SEL_SUBQ_PART_READER;
 		  break;
@@ -4595,7 +4596,11 @@ sqlg_ts_qp_copy (sql_comp_t * sc, table_source_t * ts)
   {
     if (IS_QN (qn, query_frag_input) || IS_QN (qn, stage_node_input))
       break;
-    qn_ssl_ref_steps (sc, qn, &steps, NULL, &ign);
+    /* this is for copying set nos and out fills.  Must set correctly also when non-card changing node like fork for agg or hash build */
+    if (IS_QN (qn, fun_ref_node_input) || IS_QN (qn, hash_fill_node_input))
+      t_set_push (&steps, (void *) qn->src_sets);
+    else
+      qn_ssl_ref_steps (sc, qn, &steps, NULL, &ign);
   }
   END_DO_SET ();
   n_steps = dk_set_length (steps);

@@ -456,6 +456,10 @@ qi_inst_state_free (caddr_t * qi_box)
   int n = slots ? BOX_ELEMENTS (slots) : 0, inx;
   if (prof_on && qi->qi_log_stats && cli && CLI_TERMINATE != cli->cli_terminate_requested)
     qi_qn_stat (qi);
+  if (qi->qi_is_cl_root && qi->qi_client && qi->qi_client->cli_cl_stack)
+    {
+      cli_free_stack (qi->qi_client);
+    }
   if (!qi->qi_is_branch && qi->qi_root_id)
     qi_root_done (qi);
   for (inx = 0; inx < n; inx++)
@@ -3674,7 +3678,8 @@ ddl_node_input_1 (ddl_node_t * ddl, caddr_t * inst, caddr_t * state)
     {
       ddl_create_primary_key (qi, stmt[1], stmt[3],
 	  (char **) stmt[4],
-	  box_is_string (stmt, "contiguous", 5, stmt_len), box_is_string (stmt, "object_id", 5, stmt_len), NULL, list (1));
+	  box_is_string (stmt, "contiguous", 5, stmt_len),
+	  box_is_string (stmt, "object_id", 5, stmt_len), NULL, (caddr_t *) list (1));
     }
   else if (0 == strcmp (stmt[0], "create_index"))
     {
@@ -3688,7 +3693,7 @@ ddl_node_input_1 (ddl_node_t * ddl, caddr_t * inst, caddr_t * state)
   else if (0 == strcmp (stmt[0], "build_index"))
     ddl_build_index (qi, stmt[1], stmt[2], qi->qi_trx->lt_replicate);
   else if (0 == strcmp (stmt[0], "drop_index"))
-    ddl_drop_index (state, stmt[1], stmt[2], 1);
+    ddl_drop_index (state, stmt[1], stmt[2], 1, 0);
 
   else
     GPF_T;			/* No such DDL statement */

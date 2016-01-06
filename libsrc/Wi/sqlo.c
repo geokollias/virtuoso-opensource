@@ -419,7 +419,8 @@ int
 sqlo_col_scope_1 (sqlo_t * so, ST * col_ref, int generate)
 {
   sql_scope_t *sco = so->so_scope;
-  so->so_def_col = so->so_def_ot = NULL;
+  so->so_def_col = NULL;
+  so->so_def_ot = NULL;
   if (col_ref->_.col_ref.name == STAR)
     sqlc_new_error (so->so_sc->sc_cc, "42000", "SQ064", "Illegal use of '*'.");
   if (!col_ref->_.col_ref.prefix)
@@ -2707,7 +2708,7 @@ sqlo_is_const_subq (sqlo_t * so, ST * tree)
    * uncorrelated subq is seen once and scoe-renamed, it is not renamed again so that it stays equal to itself across rescoping */
   DO_SET (df_elt_t *, dfe, &so->so_const_subqs)
   {
-    if (st_equal_csq (tree, dfe->dfe_tree))
+    if (st_equal_csq ((caddr_t) tree, (caddr_t) (dfe->dfe_tree)))
       return 1;
   }
   END_DO_SET ();
@@ -3424,7 +3425,7 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
 	    sqlo_lit_param (so, (ST **) & (*ptree)->_.call.params[0]);
 	    return 1;
 	  }
-	if (!sqlo_lit_only_vector (so, (ST *) tree, &copy))
+	if (!sqlo_lit_only_vector (so, (ST *) tree, (caddr_t **) & copy))
 	  {
 	    stl->stl_no_record = 0;
 	    return 0;
@@ -3810,7 +3811,7 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
 	  {
 	    sqlo_map_st (texp->_.table_exp.where, sqlo_refd_col_cb, ht);
 	    sqlo_map_st (texp->_.table_exp.having, sqlo_refd_col_cb, ht);
-	    sqlo_map_st (texp->_.table_exp.order_by, sqlo_refd_col_cb, ht);
+	    sqlo_map_st ((ST *) texp->_.table_exp.order_by, sqlo_refd_col_cb, ht);
 	  }
       }
 
@@ -3821,7 +3822,7 @@ sqlo_select_scope (sqlo_t * so, ST ** ptree)
 	int inx;
 	if (DV_ARRAY_OF_POINTER != DV_TYPE_OF (tree))
 	  return;
-	if (box_equal (tree, old_tree))
+	if (box_equal ((caddr_t) tree, (caddr_t) old_tree))
 	  {
 	    *ptree = (ST *) t_box_copy_tree (new_tree);
 	    return;

@@ -256,7 +256,7 @@ void ddl_create_key (query_instance_t * cli, char *table, char *key,
 
 void ddl_add_col (query_instance_t * cli, const char *table, caddr_t * col);
 
-void ddl_drop_index (caddr_t * qst, const char *table, const char *name, int log_to_trx);
+void ddl_drop_index (caddr_t * qst, const char *table, const char *name, int log_to_trx, int allow_pk);
 
 void ddl_drop_trigger (query_instance_t * qi, const char *name);
 
@@ -1374,6 +1374,7 @@ void itc_assert_no_reg (it_cursor_t * itc);
 void qn_result (data_source_t * qn, caddr_t * inst, int set_no);
 void ssl_result (state_slot_t * ssl, caddr_t * inst, int set_no);
 void itc_pop_last_out (it_cursor_t * itc, caddr_t * inst, v_out_map_t * om, buffer_desc_t * buf);
+void dc_pop_last_ssl (caddr_t * inst, state_slot_t * ssl);
 void qi_vec_init (query_instance_t * qi, int n_sets);
 void itc_vec_new_results (it_cursor_t * itc);
 void ks_vec_new_results (key_source_t * ks, caddr_t * inst, it_cursor_t * itc);
@@ -1456,6 +1457,7 @@ void dc_digit_sort (data_col_t ** dcs, int n_dcs, int *sets, int n_sets);
 void dc_reset_array (caddr_t * inst, data_source_t * qn, state_slot_t ** ssls, int new_sz);
 uint64 qi_new_ht_id (query_instance_t * qi, uint64 high_bits);
 void chash_init ();
+index_tree_t *cha_allocate (setp_node_t * setp, caddr_t * inst, int64 card);
 int setp_chash_group (setp_node_t * setp, caddr_t * inst);
 int setp_chash_distinct (setp_node_t * setp, caddr_t * inst);
 void chash_to_memcache (caddr_t * inst, index_tree_t * it, hash_area_t * ha);
@@ -1714,6 +1716,11 @@ extern caddr_t rdfs_type;
 
 #define TA_QRC_LIT_PARAMS 6000
 extern int chash_block_size;
+#if defined (MALLOC_DEBUG) | defined (VALGRIND)
+#define MDBG_RC_SIZE(n) 0
+#else
+#define MDBG_RC_SIZE(n) n
+#endif
 
 VIRT_API_END
 #endif /* _SQLFN_H */

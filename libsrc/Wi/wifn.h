@@ -1210,11 +1210,11 @@ EXE_EXPORT (box_t, registry_get_all, (void));	/* returns the name,value, name,va
      typedef struct name_id_cache_s
      {
        dk_mutex_t *nic_mtx;
-       dk_hash_64_t *nic_id_to_name;
+       id_hash_t *nic_id_to_name;
        id_hash_t *nic_name_to_id;
        unsigned long nic_size;
        int nic_n_ways;
-       dk_hash_64_t **nic_in_array;
+       id_hash_t **nic_in_array;
        id_hash_t **nic_ni_array;
        dk_mutex_t *nic_ni_mtx;
        dk_mutex_t *nic_in_mtx;
@@ -1428,9 +1428,9 @@ EXE_EXPORT (box_t, registry_get_all, (void));	/* returns the name,value, name,va
      extern int32 em_ra_startup_threshold;
      extern int enable_col_by_default;
      caddr_t file_stat_int (caddr_t fname, int what);
-     void strses_set_int32 (dk_session_t * ses, int64 offset, int32 val);
 
 #define GPF_NOW_T(s) (*((long*)-1) = -1)
+
 
 VIRT_API_END
 #endif /* _WIFN_H */

@@ -748,12 +748,12 @@ scalar_exp_generate (sql_comp_t * sc, ST * tree, dk_set_t * code)
   if (sc->sc_so)
     {
       if (ST_P (tree, LIT_PARAM))
-	return scalar_exp_generate (sc, tree->_.lit_param.value, code);
+	return scalar_exp_generate (sc, (ST *) tree->_.lit_param.value, code);
       dfe = sqlo_df (sc->sc_so, tree);
       if (DFE_CONST == dfe->dfe_type && sc->sc_so->so_stl && dfe->dfe_nth_param)
 	{
 	  if (sc->sc_no_lit_param)
-	    return ssl_new_constant (sc->sc_cc, dfe->dfe_tree);
+	    return ssl_new_constant (sc->sc_cc, (caddr_t) dfe->dfe_tree);
 	  else
 	    return dfe->dfe_ssl;
 	}

@@ -274,4 +274,10 @@ EXE_EXPORT (int, boxint_hashcmp, (char *x, char *y));
 #define END_DO_IDHASH }}
 
 
+void id_sethash (void * key, id_hash_t * ht, void * data);
+void * id_gethash (void * key, id_hash_t * ht);
+int id_remhash (void * key, id_hash_t * ht);
+id_hash_t * id_hash_table_allocate (int sz);
+
+
 #endif

@@ -5957,7 +5957,7 @@ rdf_graph_specific_perms_of_user (user_t * u, iri_id_t g_iid)
   if (NULL == u->usr_rdf_graph_perms)
     return 0;
   rwlock_rdlock (u->usr_rdf_graph_perms->ht_rwlock);
-  gethash_64 (res, (boxint) g_iid, u->usr_rdf_graph_perms);
+  res = id_gethash ((boxint) g_iid, u->usr_rdf_graph_perms);
   rwlock_unlock (u->usr_rdf_graph_perms->ht_rwlock);
   return res;
 }
@@ -6012,7 +6012,7 @@ rdf_graph_configured_perms (query_instance_t * qst, caddr_t graph_boxed_iid, use
       if (check_usr_rdf_graph_perms && (NULL != u->usr_rdf_graph_perms))
 	{
 	  int p;
-	  gethash_64 (p, unbox_iri_int64 (graph_boxed_iid), u->usr_rdf_graph_perms);
+	  p = id_gethash (unbox_iri_int64 (graph_boxed_iid), u->usr_rdf_graph_perms);
 	  perms |= p;		/* No need in "0x8000 | p" because zero can not be stored here under any circumstances */
 	  if (!(req_perms & ~perms))
 	    break;
@@ -6045,10 +6045,10 @@ rdf_graph_app_cbk_perms (query_instance_t * qst, caddr_t graph_boxed_iid, user_t
   return rc;
 }
 
-static dk_hash_64_t *
+static id_hash_t *
 rgs_alloc_usr_rdf_graph_perms (user_t * u)
 {
-  dk_hash_64_t *ht = hash_table_allocate_64 (97);
+  id_hash_t *ht = id_hash_allocate (97, sizeof (boxint), sizeof (boxint), boxint_hash, boxint_hashcmp);
   ht->ht_rwlock = rwlock_allocate ();
   ht->ht_dict_refctr = 1;
   u->usr_rdf_graph_perms = ht;
@@ -6085,7 +6085,7 @@ bif_rdf_graph_specific_perms_of_user (caddr_t * qst, caddr_t * err_ret, state_sl
 	  if (NULL != u->usr_rdf_graph_perms)
 	    {
 	      rwlock_wrlock (u->usr_rdf_graph_perms->ht_rwlock);
-	      remhash_64 (g_iid, u->usr_rdf_graph_perms);
+	      id_remhash (g_iid, u->usr_rdf_graph_perms);
 	      rwlock_unlock (u->usr_rdf_graph_perms->ht_rwlock);
 	    }
 	}
@@ -6096,7 +6096,7 @@ bif_rdf_graph_specific_perms_of_user (caddr_t * qst, caddr_t * err_ret, state_sl
 	      rgs_alloc_usr_rdf_graph_perms (u);
 	    }
 	  rwlock_wrlock (u->usr_rdf_graph_perms->ht_rwlock);
-	  sethash_64 (g_iid, u->usr_rdf_graph_perms, perms);
+	  id_sethash (g_iid, u->usr_rdf_graph_perms, perms);
 	  rwlock_unlock (u->usr_rdf_graph_perms->ht_rwlock);
 	}
       return 0;

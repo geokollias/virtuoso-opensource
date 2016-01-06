@@ -722,7 +722,7 @@ sp_list_print (search_spec_t * sp)
 	stmt_printf (("col#%ld", sp->sp_cl.cl_col_id));
       if (CMP_HASH_RANGE == sp->sp_min_op)
 	{
-	  hrng_print (sp->sp_min_ssl, sp);
+	  hrng_print ((hash_range_spec_t *) (sp->sp_min_ssl), sp);
 	  goto next;
 	}
       if (sp->sp_min_op != CMP_NONE)
@@ -1746,6 +1746,11 @@ node_print (data_source_t * node)
 {
   qn_input_fn in;
   query_instance_t *qi = (query_instance_t *) THR_ATTR (THREAD_CURRENT_THREAD, TA_REPORT_QST);
+  if (!node)
+    {
+      stmt_printf (("empty qr\m"));
+      return;
+    }
   if (qi)
     QI_CHECK_STACK (qi, &node, 10000);
   in = node->src_input;
@@ -2533,8 +2538,8 @@ qr_print_params (query_t * qr)
       int inx, inx2;
       DO_BOX (qce_sample_t *, qces, inx, qr->qr_qce->qce_samples)
       {
-	caddr_t *sc_key = (caddr_t *) qces->qces_sc_key;
-	sample_cache_key_t *sck = ((caddr_t *) qces->qces_sc_key)[0];
+	caddr_t *sc_key = qces->qces_sc_key;
+	sample_cache_key_t *sck = (sample_cache_key_t *) (sc_key[0]);
 	dbe_key_t *key = sch_id_to_key (wi_inst.wi_schema, sck->sck_key);
 	stmt_printf (("sample = %s %g", key ? key->key_name : "--", qces->qces_card));
 	for (inx2 = 1; inx2 < BOX_ELEMENTS (sc_key); inx2++)

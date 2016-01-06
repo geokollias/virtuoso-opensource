@@ -5774,12 +5774,18 @@ create procedure ddl_ren_k_new_name (in kn varchar, in o varchar, in n varchar)
 ;
 
 
-create procedure DB.DBA.DDL_TABLE_RENAMED (in o varchar, in n varchar)
+create procedure DB.DBA.DDL_TABLE_RENAMED_LOG (in o varchar, in n varchar)
 {
-  __ddl_table_renamed (o, n);
   log_text ('__ddl_table_renamed (?, ?)', o, n);
 }
 ;
+
+create procedure DB.DBA.DDL_TABLE_RENAMED (in o varchar, in n varchar)
+{
+  __ddl_table_renamed (o, n);
+}
+;
+
 
 
 create procedure rename_table (in n varchar, in o varchar)
@@ -5810,7 +5816,9 @@ create procedure rename_table (in n varchar, in o varchar)
   update SYS_PARTITION set PART_TABLE = n, PART_KEY = ddl_ren_k_new_name (PART_KEY, o, n),
       PART_DATA = vector (PART_DATA[0], n, ddl_ren_k_new_name (PART_KEY, o, n), PART_DATA[3], PART_DATA[4])
     where PART_TABLE = o;
-  cl_exec ('DB.DBA.ddl_table_renamed (?, ?)', vector (o, n), txn => 1);
+  cl_exec ('DB.DBA.ddl_table_renamed_log (?, ?)', vector (o, n), txn => 1);
+  commit work;
+    cl_exec ('DB.DBA.ddl_table_renamed (?, ?)', vector (o, n), txn => 0);
 }
 ;
 

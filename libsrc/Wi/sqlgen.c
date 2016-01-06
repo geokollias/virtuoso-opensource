@@ -298,7 +298,7 @@ dfe_is_rdf_type_p (df_elt_t * dfe)
     return 0;
   DO_SET (df_elt_t *, pred, &dfe->_.table.col_preds)
       if (DFE_BOP_PRED == pred->dfe_type && BOP_EQ == dfe->_.bin.op && col_is_rdf (pred->_.bin.left->_.col.col, 'P')
-      && box_equal (rdfs_type, pred->_.bin.right->dfe_tree))
+      && box_equal (rdfs_type, (cbox_t) (pred->_.bin.right->dfe_tree)))
     return 1;
   END_DO_SET ();
   return 0;
@@ -486,7 +486,7 @@ sqlg_non_index_ins (sql_comp_t * sc, df_elt_t * tb_dfe, key_source_t * ks)
   DO_SET (df_elt_t *, cp, &tb_dfe->_.table.col_preds)
   {
     ST **subr;
-    if (DFE_GEN != cp->dfe_is_placed && sqlo_in_list_1 (cp, NULL, NULL, (ST **) & subr))
+    if (DFE_GEN != cp->dfe_is_placed && sqlo_in_list_1 (cp, NULL, NULL, &subr))
       {
 	sqlo_t *so = tb_dfe->dfe_sqlo;
 	df_elt_t **pred;
@@ -1180,7 +1180,7 @@ found:
     oby_test = 1;
   if (oby_test)
     {
-      call_dfe->_.call.args[5] = sqlo_df (so, t_box_num ((ptrlong) ts));
+      call_dfe->_.call.args[5] = sqlo_df (so, (ST *) t_box_num ((ptrlong) ts));
       if (ts->src_gen.src_after_test)
 	{
 	  SQL_NODE_INIT (end_node_t, en, end_node_input, NULL);
@@ -4068,7 +4068,7 @@ sqlg_continue_list (data_source_t * qn)
 
 
 int32 enable_qp = 8;
-int32 enable_mt_txn = 0;
+int32 enable_mt_txn = 1;
 extern int32 enable_dfg;
 
 int
@@ -4439,7 +4439,7 @@ sqlg_parallel_ts_seq (sql_comp_t * sc, df_elt_t * dt_dfe, table_source_t * ts, f
 	{
 	  if (ts->ts_in_index_path)
 	    ts_ctr--;
-	  if (ts->ts_inx_op || !ts->ts_order_ks || KI_TEMP == ts->ts_order_ks->ks_key->key_id)
+	  if (ts->ts_inx_op || !ts->ts_order_ks || KI_TEMP == ts->ts_order_ks->ks_key->key_id || ts->ts_order_ks->ks_oby_order)
 	    {
 	      ts_ctr++;
 	      continue;
@@ -5082,7 +5082,7 @@ gby_spec_dependent (df_elt_t * gby, ST * spec)
 {
   DO_SET (df_elt_t *, dep, &gby->_.setp.gb_dependent)
   {
-    if (box_equal (spec->_.o_spec.col, dep->dfe_tree))
+    if (box_equal ((cbox_t) (spec->_.o_spec.col), (cbox_t) (dep->dfe_tree)))
       return 1;
   }
   END_DO_SET ();
@@ -7235,7 +7235,7 @@ sqlg_lit_params (sql_comp_t * sc)
       ssl->ssl_is_lit_param = 1;
       ssl->ssl_qr_global = 1;
       ssl->ssl_sqt.sqt_dtp = DV_TYPE_OF (dfe->dfe_tree);
-      ssl->ssl_constant = box_copy_tree (dfe->dfe_tree);
+      ssl->ssl_constant = box_copy_tree ((cbox_t) (dfe->dfe_tree));
       dfe->dfe_ssl = ssl;
     }
 }

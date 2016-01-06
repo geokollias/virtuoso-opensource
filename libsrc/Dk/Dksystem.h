@@ -214,6 +214,9 @@ char *strtok_r ();
 #  define NORETURN		/*NOTHING*/
 #endif
 
+#ifdef __cplusplus
+#define DK_INLINE
+#else
 #ifdef __GNUC__
 # define DK_INLINE	__inline__
 #else
@@ -222,6 +225,7 @@ char *strtok_r ();
 
 #if (GCC_VERSION >= 3004) || defined (__clang__)
 #define ENABLE_GCC 1
+#endif
 #endif
 
 /*

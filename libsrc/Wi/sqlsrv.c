@@ -493,12 +493,12 @@ cli_scrap_cached_statements (client_connection_t * cli)
 	    }
 	  else
 	    {
-	      IN_CLL;
+	      IN_CL_QF;
 	      if (!sst->sst_query->qr_ref_count)
 		log_error ("Suspect to have query assigned to stmt but 0 ref count on query");
 	      else
 		sst->sst_query->qr_ref_count--;
-	      LEAVE_CLL;
+	      LEAVE_CL_QF;
 	    }
 	}
       if (client_trace_flag)

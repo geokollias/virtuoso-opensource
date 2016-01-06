@@ -723,7 +723,7 @@ tn_pv_1 (trans_set_t * ts, trans_state_t * tst, trans_state_t * from, int level,
 	}
       return;
     }
-  place = (dk_set_t) id_hash_get (ts->ts_traversed, (caddr_t) & tst->tst_value);
+  place = (dk_set_t *) id_hash_get (ts->ts_traversed, (caddr_t) & tst->tst_value);
   DO_SET (trans_state_t *, prev, place)
   {
     trans_state_t link = *prev;
@@ -853,7 +853,7 @@ ts_check_target (trans_node_t * tn, caddr_t * inst, trans_set_t * ts, trans_stat
 	      else
 		{
 		  dk_set_t c_variants = ts_path_variants (ts->ts_target_ts, complement);
-		  DO_SET (dk_set_t, c, &c_variants)
+		  DO_SET (trans_state_t *, c, &c_variants)
 		  {
 		    if (tn->tn_is_primary)
 		      tn_merge_path (tn, inst, ts, c, v);
@@ -924,9 +924,9 @@ tst_next_states (trans_node_t * tn, caddr_t * inst, trans_set_t * ts, trans_stat
     caddr_t related = (!tn->tn_data && !tn->tn_end_flag) ? (caddr_t) related_tuple : related_tuple[0];
     if (tn_trace)
       {
-	pbox (tst->tst_value);
+	sqlo_box_print (tst->tst_value);
 	printf ("related to %s ", tn->tn_is_primary ? "fwd" : "bwd");
-	pbox (related);
+	sqlo_box_print (related);
       }
     if (tn->tn_distinct && id_hash_get (ts->ts_traversed, (caddr_t) & related))
       continue;

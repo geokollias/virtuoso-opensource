@@ -828,7 +828,7 @@ bif_dp_local_flush (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   cu->cu_ready_cb = NULL;	/* local exec, CBs are for clustered operation */
   cu_rl_local_exec (cu);
   cu->cu_ready_cb = save;
-  return box_copy_tree (cu->cu_rows);
+  return box_copy_tree ((caddr_t) (cu->cu_rows));
 }
 
 

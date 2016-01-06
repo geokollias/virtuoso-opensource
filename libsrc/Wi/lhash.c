@@ -7884,7 +7884,7 @@ cl_chash_fill_init (fun_ref_node_t * fref, caddr_t * inst, index_tree_t * tree)
   cl_req_group_t *clrg = (cl_req_group_t *) QST_GET_V (inst, setp->setp_chash_clrg);
   if (!clrg)
     {
-      clrg = cl_req_group (qi->qi_trx);
+      clrg = cl_req_group_qi (qi);
       clrg->clrg_inst = inst;
       clrg->clrg_pool = mem_pool_alloc ();
       clrg_top_check (clrg, NULL);
@@ -8271,7 +8271,7 @@ bif_chash_in_init (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       index_tree_t *tree = QST_BOX (index_tree_t *, qi, hfq->hfq_tree_ssl->ssl_index);
       QST_BOX (caddr_t, qi, hfq->hfq_tree_ssl->ssl_index) = NULL;
       qst_set (qst, args[1], (caddr_t) tree);
-      dk_free_box ((caddr_t *) (caddr_t) qi);
+      dk_free_box ((caddr_t) (caddr_t) qi);
     }
   else
     {

@@ -39,6 +39,9 @@
 #include "arith.h"
 #include "sqlbif.h"
 #include "mhash.h"
+#include "recovery.h"
+#include "security.h"
+#include "wifn.h"
 
 #if (GCC_VERSION >= 3004) || defined (__clang__)
 #define ENABLE_GCC_OPTS
@@ -1455,6 +1458,11 @@ ce_result (col_pos_t * cpo, int row, dtp_t flags, db_buf_t val, int len, int64 o
   int next, target;
   it_cursor_t *itc = cpo->cpo_itc;
   data_col_t *dc = cpo->cpo_dc;
+  if (ce_result_trap)
+    {
+      if (offset > ce_result_trap)
+	bing ();
+    }
 #if 0
   if (ce_result_trap)
     {
@@ -6013,9 +6021,6 @@ col_find_op (int op)
   return 0;
 }
 
-
-void strses_set_int32 (dk_session_t * ses, int64 offset, int32 val);
-
 caddr_t
 bif_dcvt (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
@@ -6035,9 +6040,6 @@ bif_dcvt (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   dk_free_box ((caddr_t) ses);
   return NULL;
 }
-
-#include "recovery.h"
-#include "security.h"
 
 int
 col_key_col_layout_pos (dbe_key_t * key, oid_t col_id)

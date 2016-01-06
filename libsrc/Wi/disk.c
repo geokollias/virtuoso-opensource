@@ -4903,6 +4903,7 @@ wi_init_globals (void)
 
   trx_rc = resource_allocate (TRX_RC_SZ, (rc_constr_t) lt_allocate, (rc_destr_t) lt_free, (rc_destr_t) lt_clear, 0);
   local_cll.cll_w_id_to_trx = hash_table_allocate_64 (101);
+  HT_REQUIRE_MTX (local_cll.cll_w_id_to_trx, wi_inst.wi_txn_mtx);
   local_cll.cll_dead_w_id = hash_table_allocate_64 (1001);
   cp_distinct_any.cp_sqt.sqt_dtp = DV_ANY;
   cp_distinct_any.cp_type = CP_WORD;

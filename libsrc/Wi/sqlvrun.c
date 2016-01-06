@@ -2284,9 +2284,9 @@ qst_copy (caddr_t * inst, state_slot_t ** copy_ssls, ssl_index_t * cp_sets)
   QNCAST (query_instance_t, cpqi, cp);
   query_t *qr = qi->qi_query;
   int sinx;
-  IN_CLL;
+  IN_CL_QF;
   qr->qr_ref_count++;
-  LEAVE_CLL;
+  LEAVE_CL_QF;
   cpqi->qi_is_allocated = 1;
   cpqi->qi_is_branch = 1;
   cpqi->qi_root_id = qi->qi_root_id;
@@ -2595,6 +2595,7 @@ aq_qr_func (caddr_t av, caddr_t * err_ret)
   caddr_t *inst = (caddr_t *) args[0];
   QNCAST (query_instance_t, qi, inst);
   client_connection_t *cli = GET_IMMEDIATE_CLIENT_OR_NULL;
+  uint32 top_req_no = cli->cli_cl_stack ? cli->cli_cl_stack[0].clst_req_no : 0;
   query_t *qr = (query_t *) (ptrlong) unbox (args[1]);
   cl_slice_t *csl = (cl_slice_t *) (ptrlong) unbox (args[3]);
   cl_aq_ctx_t *claq = BOX_ELEMENTS (args) > 4 ? (cl_aq_ctx_t *) unbox (args[4]) : NULL;
@@ -3549,9 +3550,9 @@ qi_root_done (query_instance_t * qi)
 void
 qi_qr_done (query_t * qr)
 {
-  IN_CLL;
+  IN_CL_QF;
   qr->qr_ref_count--;
-  LEAVE_CLL;
+  LEAVE_CL_QF;
 }
 
 

@@ -449,7 +449,7 @@ bif_daq (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   query_instance_t *qi = (query_instance_t *) qst;
   int is_txn = bif_long_arg (qst, args, 0, "daq");
-  cl_req_group_t *clrg = cl_req_group (qi->qi_trx);
+  cl_req_group_t *clrg = cl_req_group_qi (qi);
   clrg->clrg_timeout = qi->qi_rpc_timeout;
   clrg->clrg_pool = mem_pool_alloc ();
   clrg->clrg_keep_local_clo = 1;
@@ -924,7 +924,7 @@ bif_dpipe (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   int inx, flags, is_upd = 0;
   query_instance_t *qi = (query_instance_t *) qst;
-  cl_req_group_t *clrg = cl_req_group (qi->qi_trx);
+  cl_req_group_t *clrg = cl_req_group_qi (qi);
   NEW_VARZ (cucurbit_t, cu);
   clrg->clrg_timeout = qi->qi_rpc_timeout;
   clrg->clrg_pool = mem_pool_alloc ();
@@ -989,7 +989,7 @@ cl_req_group_t *
 dpipe_allocate (query_instance_t * qi, int flags, int n_ops, const char **ops)
 {
   int inx;
-  cl_req_group_t *clrg = cl_req_group (qi ? qi->qi_trx : NULL);
+  cl_req_group_t *clrg = qi ? cl_req_group_qi (qi) : cl_req_group (NULL);
   NEW_VARZ (cucurbit_t, cu);
   clrg->clrg_pool = mem_pool_alloc ();
   clrg->clrg_keep_local_clo = 1;
@@ -1312,6 +1312,7 @@ bif_cl_detach_thread (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     return NULL;
   dk_free_box ((caddr_t) (cli->cli_cl_stack));
   cli->cli_cl_stack = NULL;
+  cli->cli_cl_stack_ref_count = 0;
   return box_num (1);
 }
 

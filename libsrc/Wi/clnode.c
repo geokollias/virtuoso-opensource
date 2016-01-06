@@ -427,7 +427,7 @@ itc_cluster_t *
 itcl_allocate (lock_trx_t * lt, caddr_t * inst)
 {
   NEW_VARZ (itc_cluster_t, itcl);
-  itcl->itcl_clrg = cl_req_group (lt);
+  itcl->itcl_clrg = cl_req_group_qi ((QI *) inst);
   itcl->itcl_clrg->clrg_keep_local_clo = 1;
   itcl->itcl_clrg->clrg_itcl = itcl;
   itcl->itcl_clrg->clrg_inst = inst;

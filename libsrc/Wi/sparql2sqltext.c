@@ -9619,6 +9619,7 @@ ssg_print_triple_table_exp (spar_sqlgen_t * ssg, SPART * gp, SPART ** trees, int
       if (NULL != opts)
 	{
 	  SPART *val;
+	  caddr_t str_lit_val;
 	  int sav_ctr;
 	  caddr_t local_inference = (caddr_t) sparp_get_option (ssg->ssg_sparp, opts, INFERENCE_L);
 	  if (NULL != local_inference)
@@ -9629,7 +9630,7 @@ ssg_print_triple_table_exp (spar_sqlgen_t * ssg, SPART * gp, SPART ** trees, int
 	      if (NULL != val)
 		has_table_options = 1;
 	    }
-	  val = sparp_get_option (ssg->ssg_sparp, opts, TABLE_OPTION_L);
+	  str_lit_val = (caddr_t) sparp_get_option (ssg->ssg_sparp, opts, TABLE_OPTION_L);
 	  if (NULL != val)
 	    t_set_push (&tblopts, val);
 	}
@@ -11108,7 +11109,7 @@ ssg_print_tail_query_options (spar_sqlgen_t * ssg, SPART * tree, SPART * wrappin
   if (NULL != wrapping_gp)
     {
       SPART **options = sparp_get_options_of_tree (ssg->ssg_sparp, wrapping_gp);
-      SPART *table_option = sparp_get_option (ssg->ssg_sparp, options, TABLE_OPTION_L);
+      caddr_t table_option = (caddr_t) sparp_get_option (ssg->ssg_sparp, options, TABLE_OPTION_L);
       if (NULL != table_option)
 	{
 	  ssg_puts (", ");

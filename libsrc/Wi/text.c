@@ -4073,7 +4073,7 @@ txs_ext_fti_vec_input (text_node_t * txs, caddr_t * inst, caddr_t * state)
       if (err)
 	sqlr_resignal (err);
       for (inx = 0; inx < n_sets_ret; inx++)
-	qn_result (txs, inst, ((int *) sets_ret->dc_values)[inx]);
+	qn_result ((data_source_t *) txs, inst, ((int *) sets_ret->dc_values)[inx]);
       if (n_sets_ret)
 	qn_send_output ((data_source_t *) txs, inst);
       return;

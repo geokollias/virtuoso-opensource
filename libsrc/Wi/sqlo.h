@@ -940,6 +940,7 @@ void dfe_top_discount (df_elt_t * dfe, float *u1, float *a1);
 
 /* sqloinx.c */
 void sqlo_init_eqs (sqlo_t * so, op_table_t * ot, dk_set_t preds, int placed_only, dk_set_t except);
+void sqlo_dt_eqs (sqlo_t * so, df_elt_t * dfe);
 void sqlo_clear_eqs (id_hash_t * eqs);
 
 void sqlo_find_inx_intersect (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t col_preds, float best);
@@ -1055,7 +1056,7 @@ int sqlo_is_sec_in_list (df_elt_t ** in_list);
 #define INL_RDF_INF 2
 
 df_elt_t **sqlo_in_list (df_elt_t * pred, df_elt_t * tb_dfe, caddr_t name);
-df_elt_t **sqlo_in_list_1 (df_elt_t * pred, df_elt_t * tb_dfe, caddr_t name, df_elt_t *** subrange_ret);
+df_elt_t **sqlo_in_list_1 (df_elt_t * pred, df_elt_t * tb_dfe, caddr_t name, ST *** subrange_ret);
 dbe_column_t *cp_left_col (df_elt_t * cp);
 df_elt_t **sqlo_pred_body (sqlo_t * so, locus_t * loc, df_elt_t * tb_dfe, df_elt_t * pred);
 void qn_ins_before (sql_comp_t * sc, data_source_t ** head, data_source_t * ins_before, data_source_t * new_qn);
@@ -1181,6 +1182,7 @@ void sqlo_qrc_hash (sqlo_t * so, ST * tree);
 void sqlo_check_rhs_lit (sqlo_t * so, ST * tree);
 void sqlo_lit_param (sqlo_t * so, ST ** plit);
 void sqlo_init_lit_params (sql_comp_t * sc, sqlo_t * so);
+void qrc_set (sql_comp_t * sc, query_t * qr);
 void qrc_lookup (sql_comp_t * sc, ST * tree);
 #define QRC_FOUND 111
 
