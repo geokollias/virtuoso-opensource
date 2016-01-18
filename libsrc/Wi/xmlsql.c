@@ -533,7 +533,7 @@ xmlg_join_col (sql_comp_t * sc, comp_table_t * ct, ST * tree, char *text, size_t
 }
 
 
-static char *tag_indents[] = {
+static const char *tag_indents[] = {
   "",
   "\\n",
   "\\n ",
@@ -570,7 +570,7 @@ typedef struct xv_context_s
 caddr_t
 xv_get_default_namespace (xv_context_t * xvc)
 {
-/*  char * def_name = "xmlns";*/
+/*  const char * def_name = "xmlns";*/
   caddr_t ns_name = NULL;
   xml_view_nsdef_t **namespaces;
   xml_view_t *tree = xvc->xvc_tree;
@@ -3544,7 +3544,7 @@ xr_xml_explicit_dtd (xr_compilation_res_t * xrcr, char *toplev, char *res, size_
     tailprintf (res, tlen, fill, "\n<!ATTLIST %s", el->xre_element);
     DO_BOX (xre_col_t *, col, col_idx, el->xre_cols)
     {
-      char *dtdtype = "CDATA";
+      const char *dtdtype = "CDATA";
       if (XML_COL_ATTR != col->xrc_format)
 	continue;
       switch (XML_COL__SCHEMA & col->xrc_xsdtype->xsd_directives)
@@ -4260,9 +4260,9 @@ xs_fill (caddr_t * current, xmlsql_ugram_t ** xs, int where, caddr_t * err_ret, 
 }
 
 /* Templates for insert, update & delete */
-static char *szInsert = "INSERT INTO \"%s\" (%s) VALUES (%s)";
-static char *szUpdate = "UPDATE \"%s\" SET %s WHERE %s";
-static char *szDelete = "DELETE FROM \"%s\" WHERE %s";
+static const char *szInsert = "INSERT INTO \"%s\" (%s) VALUES (%s)";
+static const char *szUpdate = "UPDATE \"%s\" SET %s WHERE %s";
+static const char *szDelete = "DELETE FROM \"%s\" WHERE %s";
 
 /* get last identity value of first found column in given table */
 boxint

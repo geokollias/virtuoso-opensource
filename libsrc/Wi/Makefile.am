@@ -61,7 +61,7 @@ noinst_HEADERS = \
 	wiservic.h wi_xid.h xmlenc_algos.h xmlenc.h xmlenc_test.h xmlgen.h \
 	xml.h xmlnode.h xmlres.h xmltree.h xpath.h xpathp.h xpathp_impl.h \
 	xpf.h xqf.h xslt_impl.h aqueue.h rdf_mapping_jso.h bitmap.h jso.h \
-	json_p.h bif_audio_tags.h shcompo.h cluster.h extent.h uname_const_decl.h \
+	json_p.h bif_audio_tags.h shcompo.h cluster.h extent.h uname_const_decl.h uuid_generator.h \
 	col.h simd.h vec.h mhash.h qncache.h sparqlwords.h clq.h geo.h monitor.h
 
 
@@ -486,6 +486,7 @@ libwi_la_SOURCES += \
 	subseq.c \
 	text.c \
 	uname_const_decl.c \
+	uuid_generator.c \
 	xmlenc-dec.c \
 	xmlenc.c \
 	xmlenc_algos.c \
@@ -526,6 +527,7 @@ libwi_odbc_la_SOURCES += \
 	subseq.c \
 	text.c \
 	uname_const_decl.c \
+	uuid_generator.c \
 	xmlenc-dec.c \
 	xmlenc.c \
 	xmlenc_algos.c \
@@ -787,7 +789,7 @@ json_l.c: $(srcdir)/json.l json_p.h Makefile.am
 sqlwords.h: $(srcdir)/sqlwords.gperf
 	@${GEN} --stdout ${GPERF} \
 		-o sqlwords.h \
-		-aCDGptr -Kkeiiyword -L ANSI-C -k1,2,3,6,9,$$ \
+		-aCDGptr -Kkwd -L ANSI-C -k1,2,3,6,9,$$ \
 		-Nlex_hash_kw \
 		$(srcdir)/sqlwords.gperf
 
@@ -819,7 +821,7 @@ xpscn.c: xpscn.l xpathp.h Makefile.am
 	@$(GEN) $(LEX) -o xpscn.c -Pxpyy $(srcdir)/xpscn.l
 
 sparqlwords.h: sparqlwords.gperf Makefile.am
-	@$(GEN) --stdout $(GPERF) -o $@ \
+	@$(GEN) --stdout $(GPERF) -o $@.tmp \
 		-aCDGptr \
 		-Kkwd \
 		-L ANSI-C \
@@ -827,6 +829,7 @@ sparqlwords.h: sparqlwords.gperf Makefile.am
 		--ignore-case \
 		-Nsparql_lex_hash_kw \
 		sparqlwords.gperf
+		cat $@.tmp | sed 's/__inline//g' | sed 's/__attribute__ [(][(]__gnu_inline__[)][)]//g' > $@
 
 sparql_p.c sparql_p.h: sparql_p.y Makefile.am
 	@$(GEN) $(YACC) -o sparql_p.c -vd -psparyy $(srcdir)/sparql_p.y

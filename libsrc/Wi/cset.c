@@ -170,8 +170,8 @@ bif_cset_p_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     dk_mutex_init (&csetp->csetp_bloom_mtx, MUTEX_TYPE_SHORT);
     n_slices = CL_RUN_LOCAL == cl_run_local_only ? 1
 	: cset->cset_table->tb_primary_key->key_partition->kpd_map->clm_distinct_slices;
-    csetp->csetp_bloom = dk_alloc_box_zero (sizeof (caddr_t) * n_slices, DV_BIN);
-    csetp->csetp_n_bloom = dk_alloc_box_zero (sizeof (int) * n_slices, DV_BIN);
+    csetp->csetp_bloom = (uint64 **) dk_alloc_box_zero (sizeof (caddr_t) * n_slices, DV_BIN);
+    csetp->csetp_n_bloom = (uint32 *) dk_alloc_box_zero (sizeof (int) * n_slices, DV_BIN);
     lst = (dk_set_t) gethash ((void *) iri, &p_to_csetp_list);
     sethash ((void *) iri, &p_to_csetp_list, CONS (csetp, lst));
     sethash ((void *) iri, &rdf_iri_always_cached, (void *) 1);
@@ -444,7 +444,7 @@ bif_cset_sq_clr (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   int inx;
   for (inx = 0; inx < SQ_N_BASE; inx++)
     {
-      dk_free_box (base_squares[inx].sqls_sqs);
+      dk_free_box ((caddr_t) base_squares[inx].sqls_sqs);
       base_squares[inx].sqls_sqs = NULL;
       base_squares[inx].sqls_fill = 0;
     }
@@ -480,21 +480,22 @@ bif_cset_sq_def (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   sqs = (base_squares[nth].sqls_sqs);
   if (!sqs)
     {
-      sqs = dk_alloc_box (SQ_INIT_SZ * sizeof (square_t), DV_BIN);
+      sqs = (square_t *) dk_alloc_box (SQ_INIT_SZ * sizeof (square_t), DV_BIN);
       base_squares[nth].sqls_sqs = sqs;
       base_squares[nth].sqls_size = SQ_INIT_SZ;
       base_squares[nth].sqls_fill = 0;
     }
   else if (base_squares[nth].sqls_fill >= base_squares[nth].sqls_size)
     {
-      caddr_t new;
+      caddr_t new_sq;
       base_squares[nth].sqls_size *= 2;
-      new = dk_alloc_box (base_squares[nth].sqls_size * sizeof (square_t), DV_BIN);
-      memcpy (new, sqs, base_squares[nth].sqls_fill * sizeof (square_t));
-      dk_free_box (sqs);
-      base_squares[nth].sqls_sqs = sqs = (square_t *) new;
+      new_sq = dk_alloc_box (base_squares[nth].sqls_size * sizeof (square_t), DV_BIN);
+      memcpy (new_sq, sqs, base_squares[nth].sqls_fill * sizeof (square_t));
+      dk_free_box ((caddr_t) sqs);
+      base_squares[nth].sqls_sqs = sqs = (square_t *) new_sq;
     }
   sqs[base_squares[nth].sqls_fill++] = sq;
+
   return NULL;
 }
 
@@ -1097,15 +1098,22 @@ rdf_quad_key_labels (dbe_table_t * tb)
 void csg_init ();
 
 void
-cset_init ()
+cset_pre_init ()
 {
-  int save;
-  csg_init ();
   cscl_funcs = id_str_hash_create (11);
   hash_table_init (&p_to_csetp_list, 211);
   hash_table_init (&id_to_cset, 223);
   hash_table_init (&rdfs_type_cset, 223);
   hash_table_init (&int_seq_to_cset, 51);
+
+}
+
+
+void
+cset_init ()
+{
+  int save;
+  csg_init ();
   bif_define ("cset_def", bif_cset_def);
   bif_define ("cset_p_def", bif_cset_p_def);
   bif_define ("cset_p_exc", bif_cset_p_exc);

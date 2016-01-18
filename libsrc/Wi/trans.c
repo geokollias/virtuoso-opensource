@@ -203,7 +203,7 @@ qr_multistate_lc (query_t * qr, query_instance_t * caller, int n_sets)
 {
   caddr_t *inst = (caddr_t *) qi_alloc (qr, NULL, NULL, 0, 0);
   query_instance_t *qi = (query_instance_t *) inst;
-  srv_stmt_t *lc = dk_alloc_box_zero (sizeof (srv_stmt_t), DV_PL_CURSOR);
+  srv_stmt_t *lc = (srv_stmt_t *) dk_alloc_box_zero (sizeof (srv_stmt_t), DV_PL_CURSOR);
   qi->qi_query = qr;
   qi_vec_init (qi, n_sets);
   qi->qi_no_cast_error = qr->qr_no_cast_error;
@@ -542,7 +542,7 @@ tn_fetch (trans_node_t * tn, caddr_t * inst)
       srv_stmt_t *lc = (srv_stmt_t *) qst_get (inst, tn->tn_lc);
       int batch_size = dc_batch_sz;
       int fill = 0;
-      caddr_t *arr = dk_alloc_box (sizeof (caddr_t) * batch_size, DV_BIN);
+      caddr_t *arr = (caddr_t *) dk_alloc_box (sizeof (caddr_t) * batch_size, DV_BIN);
       caddr_t any = dk_alloc_box_zero (batch_size, DV_BIN);
       query_instance_t *lc_qi;
       id_hash_iterator (&hit, to_fetch);
@@ -617,7 +617,7 @@ tn_fetch (trans_node_t * tn, caddr_t * inst)
       QNCAST (query_instance_t, qi, inst);
       int batch_size = dc_batch_sz;
       int fill = 0, is_started = 0;
-      caddr_t *arr = dk_alloc_box (sizeof (caddr_t) * batch_size, DV_BIN);
+      caddr_t *arr = (caddr_t *) dk_alloc_box (sizeof (caddr_t) * batch_size, DV_BIN);
       caddr_t any = dk_alloc_box_zero (batch_size, DV_BIN);
       id_hash_iterator (&hit, to_fetch);
       subq_init (qr, inst);
@@ -724,7 +724,7 @@ tn_pv_1 (trans_set_t * ts, trans_state_t * tst, trans_state_t * from, int level,
 	}
       return;
     }
-  place = (dk_set_t) id_hash_get (ts->ts_traversed, (caddr_t) & tst->tst_value);
+  place = (dk_set_t *) id_hash_get (ts->ts_traversed, (caddr_t) & tst->tst_value);
   DO_SET (trans_state_t *, prev, place)
   {
     trans_state_t link = *prev;
@@ -854,7 +854,7 @@ ts_check_target (trans_node_t * tn, caddr_t * inst, trans_set_t * ts, trans_stat
 	      else
 		{
 		  dk_set_t c_variants = ts_path_variants (ts->ts_target_ts, complement);
-		  DO_SET (dk_set_t, c, &c_variants)
+		  DO_SET (trans_state_t *, c, &c_variants)
 		  {
 		    if (tn->tn_is_primary)
 		      tn_merge_path (tn, inst, ts, c, v);
@@ -925,9 +925,9 @@ tst_next_states (trans_node_t * tn, caddr_t * inst, trans_set_t * ts, trans_stat
     caddr_t related = (!tn->tn_data && !tn->tn_end_flag) ? (caddr_t) related_tuple : related_tuple[0];
     if (tn_trace)
       {
-	pbox (tst->tst_value);
+	sqlo_box_print (tst->tst_value);
 	printf ("related to %s ", tn->tn_is_primary ? "fwd" : "bwd");
-	pbox (related);
+	sqlo_box_print (related);
       }
     if (tn->tn_distinct && id_hash_get (ts->ts_traversed, (caddr_t) & related))
       continue;
@@ -1344,7 +1344,7 @@ tn_cache_results (trans_node_t * tn, caddr_t * inst)
 	{
 	  DO_SET (trans_state_t *, tst, &ts->ts_result)
 	  {
-	    arr = dk_alloc_box (BOX_ELEMENTS (tn->tn_output) * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
+	    arr = dk_alloc_list (BOX_ELEMENTS (tn->tn_output));
 	    DO_BOX_0 (state_slot_t *, out, inx, tn->tn_output)
 	    {
 	      caddr_t v = ((caddr_t *) tst->tst_value)[inx];

@@ -175,7 +175,6 @@ extern void xp_env_pop (xpp_t * xpp);
 
 void xp_reject_option_if_not_allowed (xpp_t * xpp, int type);
 
-extern shuric_vtable_t shuric_vtable__xqr;
 extern shuric_t *xqr_shuric_retrieve (query_instance_t * qi, caddr_t uri, caddr_t * err_ret, shuric_t * loaded_by);
 
 

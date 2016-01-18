@@ -4855,6 +4855,7 @@ create procedure DB.DBA.RDF_TRIPLES_TO_HTML_MICRODATA (inout triples any, inout 
 {
   declare env, prev_subj, prev_pred, nsdict, nslist any;
   declare ctr, len, tcount, tctr, status, obj_needs_br integer;
+  declare objs_of_sp any;
   tcount := length (triples);
   -- dbg_obj_princ ('DB.DBA.RDF_TRIPLES_TO_HTML_MICRODATA:'); for (tctr := 0; tctr < tcount; tctr := tctr + 1) -- dbg_obj_princ (triples[tctr]);
   -- http ('<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n', ses);
@@ -4894,6 +4895,7 @@ This time the service made zero such statements, sorry.</p></body></html>', ses)
   rowvector_subj_sort (triples, 0, 1);
   prev_subj := prev_pred := null;
   obj_needs_br := 0;
+  objs_of_sp := dict_new (20);
   for (tctr := 0; tctr < tcount; tctr := tctr + 1)
     {
       declare subj, pred, obj, split, obj_iri_split any;
@@ -4929,6 +4931,7 @@ This time the service made zero such statements, sorry.</p></body></html>', ses)
         }
       if (prev_pred is null or (pred <> prev_pred))
         {
+          dict_zap (objs_of_sp, 2);
           if (prev_pred is not null)
             http ('\n</dd>', ses);
           split := sparql_iri_split_rdfa_qname (pred, nsdict, 2);
@@ -4944,6 +4947,9 @@ This time the service made zero such statements, sorry.</p></body></html>', ses)
         }
       if (obj is null)
         signal ('RDFXX', 'DB.DBA.TRIPLES_TO_HTML_MICRODATA: object is NULL');
+      if (dict_get (objs_of_sp, obj, 0))
+        goto skip_obj;
+      dict_put (objs_of_sp, obj, 1);
       if (obj_needs_br)
         http ('\n', ses);
       else
@@ -5029,6 +5035,7 @@ This time the service made zero such statements, sorry.</p></body></html>', ses)
             }
           http ('</span>', ses);
         }
+skip_obj: ;
     }
   if (prev_subj is not null)
     http ('\n</dd></dl>', ses);
@@ -5039,8 +5046,9 @@ This time the service made zero such statements, sorry.</p></body></html>', ses)
 create procedure DB.DBA.RDF_TRIPLES_TO_HTML_NICE_MICRODATA (inout triples any, inout ses any)
 {
   declare env, prev_subj, prev_pred, nsdict, nslist any;
-  declare subj_text, val, p_itemprop, nice_host, describe_path, about_path varchar;
+  declare val, p_itemprop, nice_host, describe_path, about_path varchar;
   declare ctr, len, tcount, tctr, status, obj_needs_br integer;
+  declare objs_of_sp any;
   tcount := length (triples);
   -- dbg_obj_princ ('DB.DBA.RDF_TRIPLES_TO_HTML_NICE_MICRODATA:'); for (tctr := 0; tctr < tcount; tctr := tctr + 1) -- dbg_obj_princ (triples[tctr]);
   -- http ('<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n', ses);
@@ -5052,6 +5060,7 @@ create procedure DB.DBA.RDF_TRIPLES_TO_HTML_NICE_MICRODATA (inout triples any, i
 This time the service made zero such statements, sorry.</p></body></html>', ses);
       return;
     }
+  objs_of_sp := dict_new (20);
   nice_host := registry_get ('URIQADefaultHost');
   describe_path := about_path := null;
   if (isstring (nice_host))
@@ -5090,7 +5099,7 @@ This time the service made zero such statements, sorry.</p></body></html>', ses)
   rowvector_subj_sort (triples, 0, 1);
   prev_subj := prev_pred := null;
   obj_needs_br := 0;
-  http ('\n<table border=1><tr><th>Subject</th><th>Predicate</th><th>Object</th></tr>', ses);
+  http ('\n<table border="1"><tr><th>Subject</th><th>Predicate</th><th>Object</th></tr><tr><td>', ses);
   for (tctr := 0; tctr < tcount; tctr := tctr + 1)
     {
       declare subj, pred, obj, split, o_split any;
@@ -5111,7 +5120,7 @@ This time the service made zero such statements, sorry.</p></body></html>', ses)
       if (prev_subj is null or (subj <> prev_subj))
         {
           if (prev_subj is not null)
-            http ('\n</td></tr>', ses);
+            http ('\n</td></tr><tr><td>', ses);
           split := sparql_iri_split_rdfa_qname (subj, nsdict, 2);
           val := id_to_iri (subj);
           -- dbg_obj_princ ('Split of ', subj, ' is ', split);
@@ -5138,10 +5147,10 @@ This time the service made zero such statements, sorry.</p></body></html>', ses)
         }
       if (prev_pred is null or (pred <> prev_pred))
         {
-          if (prev_pred is not null)
-            http ('\n</td></tr>', ses);
-          http ('\n<tr>', ses);
-          http (subj_text, ses);
+          dict_zap (objs_of_sp, 2);
+--          if (prev_pred is not null)
+--            http ('\n</td></tr>', ses);
+--          http ('\n<tr>', ses);
           split := sparql_iri_split_rdfa_qname (pred, nsdict, 2);
           p_itemprop := replace (id_to_iri (pred), '"', '%22');
           -- dbg_obj_princ ('Split of ', pred, ' is ', split);
@@ -5149,11 +5158,14 @@ This time the service made zero such statements, sorry.</p></body></html>', ses)
           else if (isstring (split[0]))	http (sprintf ('\n<td><a href="%s">%V:%V</a>'	, p_itemprop, split[0], split[2])	, ses);
           else				http (sprintf ('\n<td><a href="%s">%V%V</a>'	, p_itemprop, split[1], split[2])	, ses);
           if (describe_path is not null)
-            http (sprintf (' (<a href="%s%U">/describe</a>)</td>'	, describe_path, id_to_iri (pred)), ses);
+            http (sprintf (' (<a href="%s%U">/describe</a>)'	, describe_path, id_to_iri (pred)), ses);
           http (sprintf ('</td>\n<td itemscope itemid="%U">', val), ses);
           prev_pred := pred;
           obj_needs_br := 0;
         }
+      if (dict_get (objs_of_sp, obj, 0))
+        goto skip_obj;
+      dict_put (objs_of_sp, obj, 1);
       if (obj is null)
         signal ('RDFXX', 'DB.DBA.TRIPLES_TO_HTML_NICE_MICRODATA: object is NULL');
       if (obj_needs_br)
@@ -5241,6 +5253,7 @@ This time the service made zero such statements, sorry.</p></body></html>', ses)
             }
           http ('</span>', ses);
         }
+skip_obj: ;
     }
   if (prev_subj is not null)
     http ('\n</td></tr></table>', ses);
@@ -5252,6 +5265,7 @@ create procedure DB.DBA.RDF_TRIPLES_TO_JSON_MICRODATA (inout triples any, inout 
 {
   declare env, prev_subj, prev_pred any;
   declare ctr, len, tcount, tctr, status, obj_needs_comma integer;
+  declare objs_of_sp any;
   tcount := length (triples);
   -- dbg_obj_princ ('DB.DBA.RDF_TRIPLES_TO_JSON_MICRODATA:'); for (tctr := 0; tctr < tcount; tctr := tctr + 1) -- dbg_obj_princ (triples[tctr]);
   http ('{ "items" : [', ses);
@@ -5261,6 +5275,7 @@ create procedure DB.DBA.RDF_TRIPLES_TO_JSON_MICRODATA (inout triples any, inout 
   DB.DBA.RDF_TRIPLES_BATCH_COMPLETE (triples);
   prev_subj := prev_pred := null;
   obj_needs_comma := 0;
+  objs_of_sp := dict_new (20);
   for (tctr := 0; tctr < tcount; tctr := tctr + 1)
     {
       declare subj, pred, obj, split, obj_iri_split any;
@@ -5289,6 +5304,7 @@ create procedure DB.DBA.RDF_TRIPLES_TO_JSON_MICRODATA (inout triples any, inout 
         }
       if (prev_pred is null or (pred <> prev_pred))
         {
+          dict_zap (objs_of_sp, 2);
           if (prev_pred is not null)
             http (' ] ,', ses);
           http ('\n        "', ses); http_escape (case when isstring (pred) then pred else id_to_iri (pred) end, 14, ses, 1, 1); http ('" : [ ', ses);
@@ -5297,6 +5313,9 @@ create procedure DB.DBA.RDF_TRIPLES_TO_JSON_MICRODATA (inout triples any, inout 
         }
       if (obj is null)
         signal ('RDFXX', 'DB.DBA.TRIPLES_TO_JSON_MICRODATA: object is NULL');
+      if (dict_get (objs_of_sp, obj, 0))
+        goto skip_obj;
+      dict_put (objs_of_sp, obj, 1);
       if (obj_needs_comma)
         http (',\n          ', ses);
       else
@@ -5382,6 +5401,7 @@ create procedure DB.DBA.RDF_TRIPLES_TO_JSON_MICRODATA (inout triples any, inout 
               http ('"', ses); http_escape (sqlval, 14, ses, 1, 1); http ('"', ses);
             }
         }
+skip_obj: ;
     }
   if (prev_subj is not null)
     http ('] } }', ses);
@@ -5454,7 +5474,6 @@ create procedure DB.DBA.RDF_TRIPLES_TO_ODATA_JSON (inout triples any, inout ses 
   declare entry_dict, ns_dict, ns_arr any;
   declare pred_tagname varchar;
   declare p_ns_uri, p_ns_pref varchar;
-
   dict := dict_new ();
   ns_dict := dict_new ();
   ns_ctr := 0;
@@ -6037,13 +6056,6 @@ create procedure DB.DBA.SPARQL_RESULTS_CSV_WRITE_VALUE (inout _env any, in val a
   t := __tag (val);
   if (t = __tag of rdf_box)
     {
-      if (__tag of datetime = rdf_box_data_tag (val))
-	{
-	  http ('"', _env);
-	  __rdf_long_to_ttl (val, _env);
-	  http ('"', _env);
-	  return;
-	}
       val := rdf_box_data (val);
       t := __tag (val);
     }
@@ -7119,6 +7131,8 @@ create procedure DB.DBA.RDF_INSERT_TRIPLES (in graph_iid any, inout triples any,
     return RDF_INSERT_TRIPLES_CL (graph_iid, triples, log_mode);
   if (not isiri_id (graph_iid))
     graph_iid := iri_to_id (graph_iid);
+  if (__rdf_graph_is_in_enabled_repl (graph_iid))
+    DB.DBA.RDF_REPL_INSERT_TRIPLES (id_to_iri (graph_iid), triples);
   old_log_enable := log_enable (log_mode, 1);
   declare exit handler for sqlstate '*' { log_enable (old_log_enable, 1); resignal; };
   if (0 = bit_and (old_log_enable, 2))
@@ -7172,8 +7186,6 @@ create procedure DB.DBA.RDF_INSERT_TRIPLES (in graph_iid any, inout triples any,
       log_enable (old_log_enable, 1);
       return;
     }
-  if (__rdf_graph_is_in_enabled_repl (graph_iid))
-    DB.DBA.RDF_REPL_INSERT_TRIPLES (id_to_iri (graph_iid), triples);
   ro_id_dict := null;
   for (ctr := length (triples) - 1; ctr >= 0; ctr := ctr - 1)
     {
@@ -9096,14 +9108,16 @@ describe_physical_subjects:
   g_dict := dict_new ();
   for (s_ctr := phys_s_count - 1; s_ctr >= 0; s_ctr := s_ctr - 1)
     {
-      declare subj, graph any;
+      declare subj any;
       subj := phys_subjects [s_ctr];
-      graph := coalesce ((select top 1 G as g1 from DB.DBA.RDF_QUAD where O = subj and
+      for (select G as graph from DB.DBA.RDF_QUAD where O = subj and
         0 = position (G, sorted_bad_graphs) and
         (__rgs_ack_cbk (G, uid, 1) or sys_stat ('enable_g_in_sec')) and
-        (gs_app_callback is null or bit_and (1, call (gs_app_callback) (G, gs_app_uid))) ) );
-      if (graph is not null)
-        dict_put (g_dict, graph, 0);
+        (gs_app_callback is null or bit_and (1, call (gs_app_callback) (G, gs_app_uid))) ) do
+	{
+	  if (graph is not null)
+	    dict_put (g_dict, graph, 0);
+	}
     }
   sorted_good_graphs := dict_list_keys (g_dict, 1);
   if (0 = length (sorted_good_graphs))
@@ -9111,14 +9125,16 @@ describe_physical_subjects:
       g_dict := dict_new ();
       for (s_ctr := phys_s_count - 1; s_ctr >= 0; s_ctr := s_ctr - 1)
         {
-          declare subj, graph any;
+          declare subj any;
           subj := phys_subjects [s_ctr];
-          graph := coalesce ((select top 1 G as g1 from DB.DBA.RDF_QUAD where S = subj and P = rdf_type_iid and
+          for (select G as graph from DB.DBA.RDF_QUAD where S = subj and P = rdf_type_iid and
             0 = position (G, sorted_bad_graphs) and
             (__rgs_ack_cbk (G, uid, 1) or sys_stat ('enable_g_in_sec')) and
-            (gs_app_callback is null or bit_and (1, call (gs_app_callback) (G, gs_app_uid))) ) );
-          if (graph is not null)
-            dict_put (g_dict, graph, 0);
+            (gs_app_callback is null or bit_and (1, call (gs_app_callback) (G, gs_app_uid))) ) do
+	    {
+	      if (graph is not null)
+		dict_put (g_dict, graph, 0);
+	    }
         }
       sorted_good_graphs := dict_list_keys (g_dict, 1);
     }
@@ -11575,7 +11591,7 @@ retry_reload:
         }
       else
         {
-          DB.DBA.JSO_LOAD_GRAPH (graphiri, 1, 0, 1);
+          DB.DBA.JSO_LOAD_SYS_GRAPH (graphiri, 1, 0, 1);
         }
       result ('00000', 'Metadata from system graph are cached in memory-resident JSOs (JavaScript Objects)');
       return;
@@ -15324,6 +15340,8 @@ create index RDF_GRAPH_USER_USER_ID on DB.DBA.RDF_GRAPH_USER (RGU_USER_ID, RGU_G
 create procedure DB.DBA.RDF_GRAPH_CACHE_IID (in iid IRI_ID)
 {
   declare iri any;
+  if (#i0 = iid)
+    signal ('22023', 'Invalid attempt to cache #i0 as an IRI ID of some graph');
   iri := __uname (id_to_canonicalized_iri (iid));
   dict_put (__rdf_graph_iri2id_dict(), iri, iid);
   dict_put (__rdf_graph_id2iri_dict(), iid, iri);
@@ -15886,6 +15904,33 @@ create procedure DB.DBA.RDF_DEFAULT_USER_PERMS_DEL (in uname varchar, in set_pri
 }
 ;
 
+create procedure DB.DBA.RDF_VALIDATE_GRAPH_IRI (inout graph_iri any, in check_for_security_config integer)
+{
+  declare graph_iid IRI_ID;
+  if (__tag (graph_iri) = __tag of UNAME)
+    graph_iri := cast (graph_iri as varchar);
+  else if (__tag (graph_iri) = __tag of IRI_ID)
+    {
+      declare new_graph_iri varchar;
+      new_graph_iri := id_to_iri_nosignal (graph_iri);
+      if (new_graph_iri is null)
+        signal ('22023', sprintf ('Invalid graph IRI ID #i%d, no such IRI', iri_id_num (graph_iri)));
+      graph_iri := new_graph_iri;
+    }
+  graph_iid := iri_to_id_nosignal (graph_iri);
+  if (graph_iid is null)
+    signal ('22023', sprintf ('Invalid graph IRI <%.500s>, can not convert to IRI ID', graph_iri));
+  if (graph_iid >= min_bnode_iri_id())
+    signal ('22023', sprintf ('Invalid graph reference <%.500s>, should be an IRI, not a blank node label', graph_iri));
+  if (#i0 = graph_iid)
+    signal ('22023', sprintf ('Invalid graph reference <%.500s>, #i0 is not a valid graph IRI ID', graph_iri));
+  if (graph_iri = id_to_iri_nosignal (graph_iid))
+    return;
+  if (check_for_security_config)
+    signal ('22023', sprintf ('Graph IRI <%.500s> can not be used in configuring security, because it is <%.500> if converted to IRI ID and back to IRI string', graph_iri, id_to_iri_nosignal (graph_iid)));
+}
+;
+
 create procedure DB.DBA.RDF_GRAPH_USER_PERMS_SET_MEMONLY (in graph_iri varchar, in graph_iid IRI_ID, in uid integer, in perms integer)
 {
   graph_iri := cast (graph_iri as varchar);
@@ -15904,6 +15949,7 @@ create procedure DB.DBA.RDF_GRAPH_USER_PERMS_SET (in graph_iri varchar, in uname
   declare uid, graph_is_private, common_perms integer;
   declare special_iid IRI_ID;
   -- dbg_obj_princ ('gs_hist.sql'); string_to_file ('gs_hist.sql', sprintf ('-- DB.DBA.RDF_GRAPH_USER_PERMS_SET (''%s'', ''%s'', %d);\n', graph_iri, uname, perms), -1);
+  DB.DBA.RDF_VALIDATE_GRAPH_IRI (graph_iri, 1);
   if (perms is null)
     {
       RDF_GRAPH_USER_PERMS_DEL (graph_iri, uname);
@@ -15982,6 +16028,7 @@ create procedure DB.DBA.RDF_GRAPH_USER_PERMS_DEL (in graph_iri varchar, in uname
   declare uid integer;
   declare special_iid IRI_ID;
   -- dbg_obj_princ ('gs_hist.sql'); string_to_file ('gs_hist.sql', sprintf ('-- DB.DBA.RDF_GRAPH_USER_PERMS_SET (''%s'', ''%s'', %d);\n', graph_iri, uname, perms), -1);
+  DB.DBA.RDF_VALIDATE_GRAPH_IRI (graph_iri, 1);
   graph_iid := iri_to_id (graph_iri);
   uid := (select U_ID from DB.DBA.SYS_USERS where U_NAME = uname);
   set isolation = 'serializable';
@@ -16227,12 +16274,15 @@ create procedure DB.DBA.RDF_GRAPH_SECURITY_AUDIT (in recovery integer)
               __tag of UNAME, __tag of IRI_ID ) );
           err_recoverable_count := err_recoverable_count + 1;
           if (recovery)
-            dict_remove (mem_dict, iri);
+            {
+              dict_remove (mem_dict, iri);
+              dict_remove (mem_dict_inv, iid);
+            }
         }
-      else if (iri_to_id (iri) <> iid)
+      else if (iri_to_id (iri) is null or (iri_to_id (iri) <> iid))
         {
           result ('ERROR', null, null, null, null,
-            sprintf ('Cached IRI_IDs of IRI <%.300s> is %s, actual is %s, mismatch',
+            sprintf ('Cached IRI_ID of IRI <%.300s> is %s, actual is %s, mismatch',
               cast (iri as varchar), cast (iid as varchar), cast (iri_to_id (iri) as varchar) ) );
           err_recoverable_count := err_recoverable_count + 1;
           if (recovery)
@@ -16244,8 +16294,20 @@ create procedure DB.DBA.RDF_GRAPH_SECURITY_AUDIT (in recovery integer)
                   dict_put (mem_dict_inv, iid, iri);
                 }
               else
-                dict_remove (mem_dict, iri);
+                {
+                  dict_remove (mem_dict, iri);
+                  dict_remove (mem_dict_inv, iid);
+                }
             }
+        }
+      else if (iid is not null and not (dict_contains_key (mem_dict_inv, iid)))
+        {
+          result ('ERROR', null, null, null, null,
+            sprintf ('Cached IRI_ID of IRI <%.300s> is %s, but the IRI corresponding to %s is missing in the id_to_iri cache',
+              cast (iri as varchar), cast (iid as varchar), cast (iid as varchar) ) );
+          err_recoverable_count := err_recoverable_count + 1;
+          if (recovery)
+            dict_put (mem_dict_inv, iid, iri);
         }
       if (0 = mod (mem_ctr, 100000))
         {
@@ -16270,9 +16332,12 @@ create procedure DB.DBA.RDF_GRAPH_SECURITY_AUDIT (in recovery integer)
               __tag of IRI_ID, __tag of UNAME ) );
           err_recoverable_count := err_recoverable_count + 1;
           if (recovery)
-            dict_remove (mem_dict_inv, iid);
+            {
+              dict_remove (mem_dict, iri);
+              dict_remove (mem_dict_inv, iid);
+            }
         }
-      else if (__uname (id_to_iri (iid)) <> iri)
+      else if (id_to_iri (iid) is null or __uname (id_to_iri (iid)) <> iri)
         {
           result ('ERROR', null, null, null, null,
             sprintf ('Cached IRI of IRI_ID %s is <%.300s>, actual is <%.300s>, mismatch',
@@ -16288,8 +16353,41 @@ create procedure DB.DBA.RDF_GRAPH_SECURITY_AUDIT (in recovery integer)
                   dict_put (mem_dict, iri, iid);
                 }
               else
-                dict_remove (mem_dict_inv, iid);
+                {
+                  dict_remove (mem_dict, iri);
+                  dict_remove (mem_dict_inv, iid);
+                }
             }
+        }
+      else if (iri_to_id (iri) is null or (iri_to_id (iri) <> iid))
+        {
+          result ('ERROR', null, null, null, null,
+            sprintf ('Cached IRI_ID of IRI <%.300s> is %s, actual is %s, mismatch',
+              cast (iri as varchar), cast (iid as varchar), cast (iri_to_id (iri) as varchar) ) );
+          err_recoverable_count := err_recoverable_count + 1;
+          if (recovery)
+            {
+              iid := iri_to_id_nosignal (iri);
+              if (iid is not null)
+                {
+                  dict_put (mem_dict, iri, iid);
+                  dict_put (mem_dict_inv, iid, iri);
+                }
+              else
+                {
+                  dict_remove (mem_dict, iri);
+                  dict_remove (mem_dict_inv, iid);
+                }
+            }
+        }
+      else if (iri is not null and not (dict_contains_key (mem_dict, iri)))
+        {
+          result ('ERROR', null, null, null, null,
+            sprintf ('Cached IRI of IRI_ID %s us <%.300s>, but the IRI_ID corresponding to that IRI is missing in the iri_to_id cache',
+              cast (iid as varchar), cast (iri as varchar), cast (iri as varchar) ) );
+          err_recoverable_count := err_recoverable_count + 1;
+          if (recovery)
+            dict_put (mem_dict, iri, iid);
         }
       if (0 = mod (mem_ctr, 100000))
         {
@@ -16635,7 +16733,7 @@ create procedure DB.DBA.SPARQL_RELOAD_QM_GRAPH ()
 {
   declare ver varchar;
   declare inx int;
-  ver := '2015-07-16 0001v7';
+  ver := '2015-12-09 0001v7';
   if (USER <> 'dba')
     signal ('RDFXX', 'Only DBA can reload quad map metadata');
   if (not exists (sparql define input:storage "" ask where {
@@ -17623,55 +17721,6 @@ create procedure DB.DBA.RDF_REPL_FLUSH_DP (inout dp any)
 }
 ;
 
-create procedure DB.DBA.RDF_REPL_QUAD_O_VAL (in row any)
-{
-  declare o_val_2 any;
-  declare lid, tid int;
-  declare o_lang, o_type, o_val any;
-  o_val := row[3];
-  o_type := row[4];
-  o_lang := row[5];
-  if (o_lang)
-    {
-      lid := rdf_cache_id ('l', o_lang);
-      if (lid = 0)
-	lid := rdf_rl_lang_id (o_lang);
-    }
-  else
-    lid := 257;
-  if (o_type)
-    {
-      declare parsed any;
-      parsed := __xqf_str_parse_to_rdf_box (o_val, o_type, isstring (o_val));
-      if (parsed is not null)
-	{
-	  if (__tag of rdf_box = __tag (parsed))
-	    {
-	      tid := rdf_cache_id ('t', o_type);
-	      if (tid = 0)
-		tid := rdf_rl_type_id (o_type);
-	      rdf_box_set_type (parsed, tid);
-	    }
-	  else if (__tag of XML = __tag (parsed))
-	    {
-	      parsed := rdf_box (parsed, 300, 257, 0, 1);
-	      rdf_box_set_type (parsed, 257);
-	    }
-	  o_val_2 := parsed;
-	  goto nxt;
-	}
-      tid := rdf_cache_id ('t', o_type);
-      if (tid = 0)
-	tid := rdf_rl_type_id (o_type);
-    }
-  else
-    tid := 257;
-  o_val_2 := rdf_box (o_val, tid, lid, 0, 1);
-  nxt:;
-  return o_val_2;
-}
-;
-
 create procedure DB.DBA.RDF_REPL_DELETE_QUADS (in quads any)
 {
   declare len, inx int;
@@ -17686,14 +17735,7 @@ create procedure DB.DBA.RDF_REPL_DELETE_QUADS (in quads any)
   dpipe_set_rdf_load (dp, 8);
   for (inx := 0; inx < len; inx := inx + 1)
     {
-      if (length (quads[inx]) > 4)
-	{
-	  declare o_val_2 any;
-	  o_val_2 := DB.DBA.RDF_REPL_QUAD_O_VAL (quads[inx]);
-	  dpipe_input (dp, quads[inx][0], quads[inx][1], quads[inx][2], o_val_2);
-	}
-      else
-        dpipe_input (dp, quads[inx][0], quads[inx][1], quads[inx][2], quads[inx][3]);
+      dpipe_input (dp, quads[inx][0], quads[inx][1], quads[inx][2], quads[inx][3]);
     }
   DB.DBA.RDF_REPL_FLUSH_DP (dp);
 }
@@ -17714,14 +17756,7 @@ create procedure DB.DBA.RDF_REPL_INS_QUADS (in quads any)
   dpipe_set_rdf_load (dp, 16);
   for (inx := 0; inx < len; inx := inx + 1)
     {
-      if (length (quads[inx]) > 4)
-	{
-	  declare o_val_2 any;
-	  o_val_2 := DB.DBA.RDF_REPL_QUAD_O_VAL (quads[inx]);
-	  dpipe_input (dp, quads[inx][0], quads[inx][1], quads[inx][2], o_val_2);
-	}
-      else
-	dpipe_input (dp, quads[inx][0], quads[inx][1], quads[inx][2], quads[inx][3]);
+      dpipe_input (dp, quads[inx][0], quads[inx][1], quads[inx][2], quads[inx][3]);
     }
   DB.DBA.RDF_REPL_FLUSH_DP (dp);
 }
@@ -17766,26 +17801,6 @@ create procedure DB.DBA.RDF_QUAD_REPL_DEL (in quads any)
     }
   dpipe_next (dp, 1);
   rep:
-  for (inx := 0; inx < cnt; inx := inx + 1)
-    {
-      row := quads[inx];
-      if (__tag of rdf_box = __tag (row[3]))
-	{
-	  declare o_val any;
-	  declare dt_twobyte, lang_twobyte integer;
-	  o_val := row[3];
-	  dt_twobyte := rdf_box_type (o_val);
-	  lang_twobyte := rdf_box_lang (o_val);
-	  if (257 <> dt_twobyte)
-	    quads[inx] := vector (row[0], row[1], row[2], rdf_box_data (o_val),
-	    (select RDT_QNAME from DB.DBA.RDF_DATATYPE where RDT_TWOBYTE = dt_twobyte), NULL);
-	  else if (257 <> lang_twobyte)
-	    quads[inx] := vector (row[0], row[1], row[2], rdf_box_data (o_val),
-	    NULL, (select RL_ID from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = lang_twobyte));
-	  else
-	    quads[inx] := vector (row[0], row[1], row[2], rdf_box_data (o_val));
-	}
-    }
   repl_text ('__rdf_repl', 'DB.DBA.RDF_REPL_DELETE_QUADS (?)', quads);
 }
 ;
@@ -17810,30 +17825,11 @@ create procedure DB.DBA.RDF_QUAD_REPL_INS (in quads any)
   for (inx := 0; inx < cnt; inx := inx + 1)
     {
       row := dpipe_next (dp, 0);
+      --dbg_obj_print (row);
       quads[inx] := row;
     }
   dpipe_next (dp, 1);
   rep:
-  for (inx := 0; inx < cnt; inx := inx + 1)
-    {
-      row := quads[inx];
-      if (__tag of rdf_box = __tag (row[3]))
-	{
-	  declare o_val any;
-	  declare dt_twobyte, lang_twobyte integer;
-	  o_val := row[3];
-	  dt_twobyte := rdf_box_type (o_val);
-	  lang_twobyte := rdf_box_lang (o_val);
-	  if (257 <> dt_twobyte)
-	    quads[inx] := vector (row[0], row[1], row[2], rdf_box_data (o_val),
-	    (select RDT_QNAME from DB.DBA.RDF_DATATYPE where RDT_TWOBYTE = dt_twobyte), NULL);
-	  else if (257 <> lang_twobyte)
-	    quads[inx] := vector (row[0], row[1], row[2], rdf_box_data (o_val),
-	    NULL, (select RL_ID from DB.DBA.RDF_LANGUAGE where RL_TWOBYTE = lang_twobyte));
-	  else
-	    quads[inx] := vector (row[0], row[1], row[2], rdf_box_data (o_val));
-	}
-    }
   repl_text ('__rdf_repl', 'DB.DBA.RDF_REPL_INS_QUADS (?)', quads);
 }
 ;

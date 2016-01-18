@@ -23,6 +23,7 @@
 
 #include "uuencode_impl.h"
 #include "sqlfn.h"
+#include "sqlbif.h"
 
 static unsigned char uu_enctab_native[0x40] = {
 /* 0 |  1 |  2 |  3 |  4 |  5 |  6 |  7 | */
@@ -1313,7 +1314,7 @@ fin_chk_QP_string (dk_set_t secs, int breakline)
 static int
 do_QP_string (caddr_t str, int len, uu_section_t ** secs, int *idx, int maxlines, int breakline)
 {
-  static char *pps = "0123456789ABCDEF";
+  static const char *pps = "0123456789ABCDEF";
   int i, c;
   uu_section_t *cs;
   cs = secs[*idx];

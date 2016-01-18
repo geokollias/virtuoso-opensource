@@ -243,7 +243,7 @@ int DBG_HASHEXT_NAME (id_casemode_hash_remove) (DBG_PARAMS id_hash_t * ht, caddr
 
 
 void *
-sch_name_to_object_sc (dbe_schema_t * sc, sc_object_type type, char *o_default, char *o, char *qn, int find_many)
+sch_name_to_object_sc (dbe_schema_t * sc, sc_object_type type, const char *o_default, const char *o, const char *qn, int find_many)
 {
   id_casemode_entry_llist_t **list_ptr;
   id_casemode_entry_llist_t *found = NULL;
@@ -290,7 +290,8 @@ sch_name_to_object_sc (dbe_schema_t * sc, sc_object_type type, char *o_default, 
 
 
 void *
-sch_name_to_object (dbe_schema_t * sc, sc_object_type type, const char *name, char *q_def, char *o_default, int find_many)
+sch_name_to_object (dbe_schema_t * sc, sc_object_type type, const char *name, const char *q_def, const char *o_default,
+    int find_many)
 {
   void *obj;
 

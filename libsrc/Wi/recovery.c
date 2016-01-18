@@ -1427,7 +1427,7 @@ db_check (query_instance_t * qi)
 
   if (qi->qi_trx->lt_status != LT_PENDING)
     {
-      char *err = "Database check transaction failed";
+      const char *err = "Database check transaction failed";
       log_info (err);
       sqlr_new_error ("40009", "SR118", "%s", err);
     }
@@ -1498,7 +1498,7 @@ fds_same_file (int fd1, int fd2)
 static caddr_t
 bif_read_log (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  dk_session_t *in = (dk_session_t *) bif_strses_arg (qst, args, 0, "read_log");
+  dk_session_t *in = bif_strses_arg (qst, args, 0, "read_log");
   OFF_T off;
   int bytes;
   caddr_t *header;
@@ -1532,7 +1532,7 @@ bif_read_log (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     }
   if (!log_check_header (header))
     {
-      dk_free_tree (header);
+      dk_free_tree ((caddr_t) header);
       if (need_mtx)
 	mutex_leave (log_write_mtx);
       sqlr_new_error ("22023", "RL002", "Invalid log entry in replay.");
@@ -1543,7 +1543,7 @@ bif_read_log (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   FAILED
   {
     dk_free (trx_string, bytes + 1);
-    dk_free_tree (header);
+    dk_free_tree ((caddr_t) header);
     if (need_mtx)
       mutex_leave (log_write_mtx);
     sqlr_new_error ("22023", "RL002", "Invalid log entry in replay.");
@@ -1575,7 +1575,7 @@ bif_read_log (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 	  case LOG_INSERT:
 	  case LOG_INSERT_SOFT:
 	  case LOG_INSERT_REPL:
-	    row = scan_session (str_in);
+	    row = (caddr_t) scan_session (str_in);
 	    key = sch_id_to_key (wi_inst.wi_schema, unbox (((caddr_t *) row)[0]));
 	    DO_CL (cl, key->key_row_var)
 	    {
@@ -1600,15 +1600,15 @@ bif_read_log (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 	    break;
 	  case LOG_DELETE:
 	  case LOG_KEY_DELETE:
-	    row = scan_session (str_in);
+	    row = (caddr_t) scan_session (str_in);
 	    dk_set_push (&res, row);
 	    break;
 	  case LOG_UPDATE:
 	    {
 	      int inx;
-	      row = scan_session (str_in);
-	      cols = scan_session (str_in);
-	      vals = scan_session (str_in);
+	      row = (caddr_t) scan_session (str_in);
+	      cols = (caddr_t) scan_session (str_in);
+	      vals = (caddr_t) scan_session (str_in);
 	      DO_BOX (caddr_t, v, inx, (caddr_t *) vals)
 	      {
 		if (DV_TYPE_OF (v) == DV_BLOB_HANDLE)
@@ -1624,24 +1624,24 @@ bif_read_log (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 	    }
 	    break;
 	  case LOG_TEXT:
-	    row = scan_session (str_in);
+	    row = (caddr_t) scan_session (str_in);
 	    dk_set_push (&res, row);
 	    break;
 	  case LOG_USER_TEXT:
 	    u_id = read_long (str_in);
-	    row = scan_session (str_in);
+	    row = (caddr_t) scan_session (str_in);
 	    dk_set_push (&res, box_num (u_id));
 	    dk_set_push (&res, row);
 	    break;
 	  case LOG_SEQUENCE:
-	    row = scan_session (str_in);
+	    row = (caddr_t) scan_session (str_in);
 	    count = read_long (str_in);
 	    dk_set_push (&res, row);
 	    dk_set_push (&res, box_num (count));
 	    break;
 	  case LOG_SEQUENCE_64:
-	    row = scan_session (str_in);
-	    count64 = scan_session_boxing (str_in);
+	    row = (caddr_t) scan_session (str_in);
+	    count64 = (caddr_t) scan_session_boxing (str_in);
 	    dk_set_push (&res, row);
 	    dk_set_push (&res, count64);
 	    break;

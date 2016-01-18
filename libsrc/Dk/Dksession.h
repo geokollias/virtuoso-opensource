@@ -27,7 +27,9 @@
 
 #ifndef _DKSESSION_H
 #define _DKSESSION_H
+#include "Dk.h"
 
+VIRT_API_BEGIN
 
 /* Control parameters for a session */
 typedef struct control_s control_t;
@@ -198,5 +200,19 @@ int fileses_read (session_t * ses, char *buffer, int n_bytes);
 void fileses_close (session_t * ses);
 int tcpses_read (session_t * ses, char *buffer, int n_bytes);
 
+#define TCP_CHECKVALUE     313			 /* Donald Duck registration number */
+
+#define TCP_CHK(sesp)       \
+	if ((sesp == NULL) || \
+	    (sesp->ses_device->dev_check != TCP_CHECKVALUE)) \
+	  { \
+		dbg_printf_2 (("TCP_CHK : SER_ILLSESP")); \
+		return (SER_ILLSESP); \
+	  }
+
+int tcpdev_free (device_t * dev);
+int tcpses_write (session_t * ses, char *buffer, int n_bytes);
+
+VIRT_API_END
 
 #endif

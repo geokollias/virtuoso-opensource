@@ -36,6 +36,7 @@
 
 #define S_BLOB(m) cl_send_blob (out, s->m, s, inx)
 #define S_BOX(m) print_object (s->m, out, NULL, NULL)
+#define S_BOX_TYPED(m,type) print_object (s->m, out, NULL, NULL)
 #define S_CALL(dtp, m) \
   cl_serialize_##dtp ((out), s->m)
 
@@ -51,6 +52,7 @@
 #undef END_SER
 #undef S_BLOB
 #undef S_BOX
+#undef S_BOX_TYPED
 #undef S_CALL
 #undef S_INT
 #undef S_FLOAT
@@ -62,6 +64,7 @@
 #undef S_SUBQ
 #undef S_QNODE
 #undef S_SSL_ARRAY
+#undef S_SSL_REF_ARRAY
 #undef S_SSL_LIST
 #undef S_FULL_SSL_LIST
 #undef S_SSL
@@ -92,6 +95,7 @@
 
 #define S_BLOB(m) s->m = cl_receive_blob (in, s, inx)
 #define S_BOX(m) s->m = scan_session_boxing (in)
+#define S_BOX_TYPED(m,type) s->m = (type)(scan_session_boxing (in))
 #define S_CALL(dtp, m) \
   s->m = cl_deserialize_##dtp ((in))
 

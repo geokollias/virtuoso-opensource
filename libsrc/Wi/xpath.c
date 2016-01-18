@@ -36,14 +36,7 @@
 #include "xmlgen.h"
 #include "xmltree.h"
 #include "text.h"
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "langfunc.h"
-#ifdef __cplusplus
-}
-#endif
 #include "multibyte.h"
 #include "bif_text.h"
 #include "xpf.h"
@@ -773,7 +766,7 @@ xp_make_step (xpp_t * xpp, ptrlong axis, XT * node, XT ** preds)
       XT *name_call = xp_make_call (xpp, "name", list (0));
       XT *name_eq = xtlist (xpp, 4, (ptrlong) BOP_EQ, name_call, box_copy (node->_.name_test.qname), xe_new_xqst (xpp, XQST_REF));
       XT *name_pred = xtlist (xpp, 5, XP_PREDICATE, name_eq, (ptrlong) 0, NULL, NULL);
-      XT **new_preds = dk_alloc_box (sizeof (XT *) * (1 + pred_count), DV_ARRAY_OF_POINTER);
+      XT **new_preds = (XT **) dk_alloc_box (sizeof (XT *) * (1 + pred_count), DV_ARRAY_OF_POINTER);
       new_preds[0] = name_pred;
       for (pred_idx = pred_count; pred_idx--; /* no step */ )
 	new_preds[pred_idx + 1] = preds[pred_idx];
@@ -910,13 +903,13 @@ xp_make_flwr (xpp_t * xpp, dk_set_t forlets, XT * where_expn, dk_set_t ordering,
       ordering_array = (XT **) revlist_to_array (ordering);
       if (NULL == last_for_forlet)
 	{
-	  dk_free_tree (ordering_array);	/* Nothing to sort */
+	  dk_free_tree ((caddr_t) ordering_array);	/* Nothing to sort */
 	  ordering_array = NULL;
 	}
     }
   if (NULL != ordering_array)
     {
-      XT **arglist = dk_alloc_box (sizeof (XT *) * (1 + BOX_ELEMENTS (ordering_array)), DV_ARRAY_OF_POINTER);
+      XT **arglist = (XT **) dk_alloc_box (sizeof (XT *) * (1 + BOX_ELEMENTS (ordering_array)), DV_ARRAY_OF_POINTER);
       ptrlong spec_inx;
       DO_BOX_FAST (XT *, spec, spec_inx, ordering_array)
       {
@@ -4175,7 +4168,7 @@ XT *
 xp_make_typeswitch (xpp_t * xpp, XT * src, dk_set_t typecases, XT ** dflt)
 {
   int argctr = 1 + (dk_set_length (typecases) + 1) * 3;
-  XT **arglist = dk_alloc_box (argctr * sizeof (XT *), DV_ARRAY_OF_POINTER);
+  XT **arglist = (XT **) dk_alloc_box (argctr * sizeof (XT *), DV_ARRAY_OF_POINTER);
   memcpy (arglist + (argctr - 3), dflt, 3 * sizeof (XT *));
   argctr -= 3;
   DO_SET (XT **, typecase, &typecases)
@@ -4557,7 +4550,7 @@ xp_make_call (xpp_t * xpp, const char *qname, caddr_t arg_array)
     }
   if (NULL == metas_ptr)
     {
-      static char *undef_name = " undefined";
+      static const char *undef_name = " undefined";
       if (xpp->xpp_dry_run)	/* It's possible that the function is defined in module that must be imported but the import is impossible when inside SQL compiler */
 	goto substitute_with_undefined;
       if (NULL != xpp->xpp_checked_functions)

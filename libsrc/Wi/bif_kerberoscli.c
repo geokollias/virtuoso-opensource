@@ -1092,7 +1092,7 @@ _krb_init_srv_ctx (caddr_t service_name, caddr_t tkt, gss_ctx_id_t * context)
 static caddr_t
 bif_krb_init_ctx (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "krb_init_ctx";
+  const char *me = "krb_init_ctx";
   caddr_t service_name = bif_string_arg (qst, args, 0, me);
   gss_ctx_id_t context;
   caddr_t tkt = NULL;
@@ -1106,7 +1106,7 @@ bif_krb_init_ctx (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 static caddr_t
 bif_krb_inquire_ctx (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "krb_inquire_ctx";
+  const char *me = "krb_inquire_ctx";
   caddr_t _context = (caddr_t) bif_long_arg (qst, args, 0, me);
   long type = bif_long_arg (qst, args, 1, me);
   gss_name_t src_name, targ_name;
@@ -1191,7 +1191,7 @@ bif_krb_inquire_ctx (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 static caddr_t
 bif_krb_init_srv_ctx (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "krb_init_srv_ctx";
+  const char *me = "krb_init_srv_ctx";
   caddr_t service_name = bif_string_arg (qst, args, 0, me);
   caddr_t tkt = bif_string_arg (qst, args, 1, me);
   gss_ctx_id_t context;

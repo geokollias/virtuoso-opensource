@@ -31,7 +31,7 @@ void jsonyyerror_impl(const char *s);
 int jsonyy_string_input (char *buf, int max);
 caddr_t *json_tree;
 caddr_t json_str;
-int jsonyydebug;
+extern int jsonyydebug;
 int jsonyylex (void);
 int json_line;
 %}
@@ -140,12 +140,6 @@ void
 jsonyyerror_impl(const char *s)
 {
   sqlr_new_error ("37000", "JSON1", "JSON parser failed: %.200s at line %d", s, json_line);
-}
-
-int
-jsonyywrap (void)
-{
-  return 1;
 }
 
 int jsonyy_string_input (char *buf, int max)

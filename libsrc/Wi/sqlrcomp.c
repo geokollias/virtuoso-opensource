@@ -40,6 +40,7 @@
 #include "sqlo.h"
 #include "sqlcstate.h"
 #include "date.h"
+#include "datesupp.h"
 
 
 
@@ -1435,7 +1436,7 @@ sqlc_exp_print (sql_comp_t * sc, comp_table_t * ct, ST * exp, char *text, size_t
 	case EXISTS_PRED:
 	case IN_SUBQ_PRED:
 	  {
-	    char *quant = "";
+	    const char *quant = "";
 	    const char *op = tree->_.subq.cmp_op ? bop_text ((int) tree->_.subq.cmp_op) : "";
 	    if (tree->type == IN_SUBQ_PRED)
 	      quant = "IN";

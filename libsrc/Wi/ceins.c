@@ -65,7 +65,7 @@ ceic_all_dtp (ce_ins_ctx_t * ceic, dtp_t dtp)
 	    return 0;
 	  if (is_32)
 	    {
-	      n = unbox_iri_int64 (val);
+	      n = unbox_iri_int64 ((caddr_t) val);
 	      if (IS_64_T (n, can_dtp))
 		return 0;
 	    }
@@ -176,7 +176,7 @@ ce_insert_rl (ce_ins_ctx_t * ceic, ce_ins_ctx_t ** col_ceic, db_buf_t ce, int sp
 	  val = ceic_ins_any_value_ap (ceic, set, &ap, &is_ap);
 	  rc = asc_cmp (ce_first_val, val);
 	  if (is_ap && ((caddr_t) val < ap.ap_area || (caddr_t) val > ap.ap_area + ap.ap_fill))
-	    dk_free_box (val);
+	    dk_free_box ((caddr_t) val);
 	  if (0 != rc)
 	    return CE_INSERT_GEN;
 	}
@@ -869,7 +869,7 @@ ce_insert_dict (ce_ins_ctx_t * ceic, ce_ins_ctx_t ** col_ceic, db_buf_t ce, int 
 	  val = ceic_ins_any_value_ap (ceic, inx + itc->itc_ce_first_set, &ap, &is_ap);
 	  key = ce_dict_ins_any_key (ce, ce_first + 1, (int64) (ptrlong) val, val[0], &dict, &n_distinct, &is_ncast_eq);
 	  if (is_ap && ((caddr_t) val < ap.ap_area || (caddr_t) val > ap.ap_area + ap.ap_fill))
-	    dk_free_box (val);
+	    dk_free_box ((caddr_t) val);
 	  if (is_ncast_eq)
 	    goto ntype;
 	}
@@ -1240,8 +1240,8 @@ ce_compare_ins (ce_ins_ctx_t * ceic, caddr_t * res, db_buf_t ce2, int len)
       if (!box_equal (res[inx], res2[inx]))
 	bing ();
     }
-  dk_free_tree (res);
-  dk_free_tree (res2);
+  dk_free_tree ((caddr_t) res);
+  dk_free_tree ((caddr_t) res2);
 }
 
 int dbf_ce_ins_check = 0;

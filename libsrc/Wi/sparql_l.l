@@ -38,8 +38,13 @@
 #include "sparql.h"
 #include "sparql_p.h"
 #include "numeric.h"
-#include "sparqlwords.h"
 
+VIRT_API_BEGIN
+
+#include "sparqlwords.h"
+void *gxx_bug_workaround_sparql_lex_hash_kw = &sparql_lex_hash_kw;
+
+VIRT_API_END
 struct yyguts_t;
 
 #define sparyyerror(strg) sparyyerror_impl(yyextra, yytext, (strg))
@@ -399,7 +404,7 @@ SPAR_PARAMNAME	(([A-Z]+"::")?(({SPAR_SQLNAME}("."{SPAR_SQLNAME})?)|(":"{SPAR_SQL
   }
 
 <SPARQL>{SPAR_PLAIN_SQLNAME}	{
-    const struct sparql_keyword *sk = sparql_lex_hash_kw (yytext, yyleng);
+    const struct sparql_keyword_s *sk = sparql_lex_hash_kw (yytext, yyleng);
     if (NULL == sk)
       {
         yylval->box = t_box_dv_short_nchars (yytext, yyleng); return SPARQL_PLAIN_ID;

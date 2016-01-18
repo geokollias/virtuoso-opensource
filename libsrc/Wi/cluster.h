@@ -26,13 +26,16 @@
 #ifndef _CLUSTER_H
 #define _CLUSTER_H
 
+#include "Dk.h"
 #include "../Dk/Dkhash64.h"
 #include "clq.h"
 
+VIRT_API_BEGIN typedef struct cl_message_s cl_message_t;
 
-typedef struct cl_message_s cl_message_t;
 
 #ifdef MTX_METER
+#define CLRG_CLW_MTX(clrg) (&cl_ways[clrg->clrg_cl_way % CL_N_WAYS].clw_mtx)
+#define R_CLW_MTX(r) (&cl_ways[r % CL_N_WAYS].clw_mtx)
 #endif
 
 
@@ -131,8 +134,6 @@ struct cl_host_s
   cl_interface_t **ch_interfaces;
   caddr_t ch_connect_string;
   dk_set_t ch_replica;
-  /* resources kept locally for this host */
-  dk_hash_t *ch_id_to_cm;	/*for suspended cm's for this host */
   dk_mutex_t *ch_mtx;
   dk_hash_t *ch_closed_qfs;
   dk_set_t ch_cl_maps;
@@ -234,7 +235,7 @@ typedef struct cl_op_s
     {
       row_delta_t *rd;		/* key and key parts for finding the key to delete, must be first, same as insert  */
       slice_id_t *slices;
-    } delete;
+    } delete_op;
     struct
     {
       query_frag_t *qf;
@@ -357,7 +358,7 @@ typedef struct cl_op_s
     {
       int u_id;
       int req_perms;
-      dk_hash_64_t *ht;
+      id_hash_t *ht;
       caddr_t g_read_qr;
       caddr_t g_read_param;
     } rdf_graph_user_perms;
@@ -390,23 +391,25 @@ typedef struct cl_op_s
 #define QF_STARTED 1
 #define QF_SETP_READ 2
 
+typedef struct cl_top_req_s cl_top_req_t;
+typedef struct clo_queue_s clo_queue_t;
+
 struct cl_thread_s
 {
   /* data for a thread serving a req from another host */
-  cl_queue_t clt_queue;
-  int64 clt_running_trx_no;	/* if trx no associated to this in cll_trx_thread, this is the trx no, else 0, always consistent with cll_trx_thread, in_cll */
-  int clt_now_running_coord;	/* for now running, the coord if dfg, the direct requester otherwise */
-  uint32 clt_now_running;	/* matches cm_req_no */
   int clt_clo_start;
+  cl_top_req_t *clt_top_req;
+  clo_queue_t *clt_cloq;
   cl_message_t *clt_current_cm;
   cl_op_t *clt_clo;
   cl_host_t *clt_client;
   du_thread_t *clt_thread;
-  dk_hash_t *clt_rec_dfg;	/* host:req_no of recursives for which this is the queue.  For fast clear */
   client_connection_t *clt_cli;
+  lock_trx_t *clt_default_lt;	/* use this unless clt bound to main lt of enlisted */
   dk_session_t *clt_reply_strses;
   dk_session_t *clt_reply_ses;	/* if a batch sends multiple reply messages, they are all on this ses to keep order */
   dk_mutex_t clt_reply_mtx;	/* multiple dfg threads need to share one clt reply ses to send to coordinator, needed for message ordering.  Serialize on this */
+  char clt_is_alt;		/* 2nd clt of lt */
   cl_host_t *clt_disconnected;	/* when set by listener, this clt is expected to finish and free all things and threads associated with the disconnected host */
   char clt_no_compress;
   char clt_is_error;		/* Will  the reply message be with error flag set */
@@ -418,6 +421,7 @@ struct cl_thread_s
   int64 clt_n_affected;
   int64 clt_sample_total;
   dk_hash_t *clt_col_stat;
+  cl_thread_t *clt_super;	/* during a recursive cm execution, this is the clt of the enclosing.  When the recursive cloq is at end, this is atomically switched to be the clt of the cli */
   cl_thread_t *clt_top_clt;	/* a recursive cm on a aq thread on non top coord must feed from a real clt, to which the recursive req is bound.  This is the clt for a temp clt 2nd rec clt */
   int64 clt_n_sample_rows;
   int64 clt_n_rows_sampled;
@@ -432,6 +436,27 @@ struct cl_thread_s
 #define CLT_TOP_LEVEL_REC 1	/* a top ;level clt running a recursive cm */
 #define CLT_2ND_REC 2		/* a clt that is not on a cluster server thread, temporary, running a recursive on top coord or aq thread */
 #define CLT_REPLY_TEMP 3	/* not a clt, only used for sending dfg replies to coord */
+
+
+struct cl_top_req_s
+{
+  int64 ctop_req_no;
+  int ctop_n_threads;
+  cl_thread_t *ctop_first_clt;
+  rbuf_t ctop_rb;		/* possibly executable cloqs that do not have a thread */
+};
+
+struct clo_queue_s
+{
+  uint32 cloq_req_no;
+  int cloq_coord;
+  int cloq_nesting;
+  char cloq_cancel;
+  cl_top_req_t *cloq_top_req;
+  cl_thread_t *cloq_clt;
+  rbuf_t cloq_rb;
+};
+
 
 
 typedef struct dc_read_s
@@ -481,7 +506,6 @@ typedef struct cll_in_box_s
   int clib_n_selects_received;	/* if less recd than requested, send a close when freeing the clrg */
   uint32 clib_keep_alive;	/* for long running, time of last keep alive from server */
   int64 clib_n_affected;	/* upd/del changed row count returned here */
-  int64 clib_alt_trx_no;	/* differentiate from other clibs on the same host */
   cl_host_t *clib_host;
   query_frag_t *clib_last_serialized_qf;	/* when finding a series of qf invokes remember the qf, even if not yet compiled on remote so as not to send multiple times in one batch */
   struct cl_req_group_s *clib_group;
@@ -532,14 +556,16 @@ typedef struct cl_req_group_s
   bitf_t clrg_select_same:1;	/* all clo's are the same select with different params */
   bitf_t clrg_is_dfg:1;
   bitf_t clrg_is_dfg_rcv:1;
-  bitf_t clrg_need_enlist;
+  bitf_t clrg_need_enlist:1;
   bitf_t clrg_no_txn:1;		/* for clrg call, do not enlist */
   bitf_t clrg_retriable:2;
   bitf_t clrg_best_effort:1;
+  bitf_t clrg_wait_remd:1;
   bitf_t clrg_is_flood:1;	/* sample req w/o partition, to all slices */
   char clrg_keep_dbg_reply;
   char clrg_cm_control;		/* send ops with this ored to cm_enlist, e.g. cm_control, cm_start_atomic */
   short clrg_dbg_qf;
+  uint32 clrg_cl_way;
   uint32 clrg_send_buffered;	/* total waiting send in clibs */
   int clrg_clo_seq_no;
   uint32 clrg_send_time;
@@ -552,6 +578,7 @@ typedef struct cl_req_group_s
   cluster_map_t *clrg_clm;
   caddr_t *clrg_inst;
   cl_message_t *clrg_rec_continue;
+  cl_thread_t *clrg_wait_clt;
   struct cl_req_group_s *clrg_next_waiting;
   query_frag_t *clrg_local_qf;	/* if this clrg exes a local qf, some vec ssls thereof will be from the pool of the clrg.  Upon free, these must be reset to have no ref to dc in freed mem */
   update_node_t *clrg_dml_node;	/* if used for 2nd keys of del/upd */
@@ -742,15 +769,43 @@ struct cucurbit_s
 #define CU_NO_TXN 2
 #define CU_ORDERED 1
 
+extern dk_mutex_t cll_conn_mtx;
+extern dk_mutex_t cll_qf_mtx;
+extern dk_mutex_t cll_thread_mtx;
+extern dk_mutex_t cll_cfg_mtx;
+
+#define CL_N_WAYS 8
+
+#define DO_CLW(clw) \
+  { int clw_##n; for (clw_##n = 0;  clw_##n < CL_N_WAYS; clw_##n++) { cl_way_t * clw = &cl_ways[clw_##n]; uint32 top_req_no = clw_##n + CL_N_WAYS;
+
+#define END_DO_CLW }}
+
+typedef struct cl_way_s
+{
+  dk_mutex_t clw_mtx;
+  uint32 clw_next_req_no;
+  dk_hash_t clw_top_req;
+  dk_hash_t clw_req;
+  dk_hash_t clw_id_to_clib;
+  dk_hash_t clw_wait_clrg;
+  dk_hash_t clw_id_to_cm;
+  dk_hash_t clw_closed_qfs;
+  dk_hash_t clw_dfg_running_queue;
+  resource_t *clw_rbuf_rc;
+  resource_t *clw_top_reqs;
+  resource_t *clw_cloqs;
+} cl_way_t;
+
+
+extern cl_way_t cl_ways[CL_N_WAYS];
+extern uint32 cl_way_ctr;
+
 typedef struct cl_listener_s
 {
   dk_hash_64_t *cll_id_to_trx;	/* serialized on wi_txn_mtx */
   dk_hash_64_t *cll_w_id_to_trx;	/* serialized on wi_txn_mtx */
   dk_hash_64_t *cll_dead_w_id;	/* The w ids of txns transacted in the last few minutes. Don't du stuff or record things about these.  in txn mtx. */
-  dk_hash_64_t *cll_trx_thread;
-  dk_hash_t *cll_id_to_clib;
-  dk_hash_64_t *cll_rec_dfg;	/* For each recursive dfg, coord:req_no -> clt that feeds it.  Low bit of clt set if thread presently running */
-  dk_mutex_t *cll_mtx;
   dk_set_t volatile cll_clients;
   dk_session_t *cll_self;	/* other threads on this host use this to signal the cluster listener thread */
   cl_host_t *cll_local;
@@ -758,7 +813,6 @@ typedef struct cl_listener_s
   dk_session_t *cll_listen;
   int32 cll_this_host;
   int32 cll_master_host;
-  volatile uint32 cll_next_req_id;
   cl_host_t **cll_master_group;	/* masters in precedence order. */
   dk_set_t cll_cluster_maps;
   dk_hash_t *cll_id_to_host;
@@ -914,6 +968,7 @@ typedef struct cl_self_message_s
 #define CLO_DDL_TRIG 5
 #define CLO_DDL_ATOMIC 6
 #define CLO_DDL_ATOMIC_OVER 7
+#define CLO_DDL_TABLE_LOG 8
 
 /* flags as 1st col of result row of clo_call */
 #define CLO_CALL_ROW 1
@@ -938,8 +993,10 @@ typedef struct cl_self_message_s
 #ifdef MTX_METER
 #define MTX_TS_SET_2(f, m, fl) \
   f = m->mtx_enters | (((int64)(fl)) << 32)
+#define MTXM_STMT(s) s
 #else
 #define MTX_TS_SET_2(f, m, fl)
+#define MTXM_STMT(s)
 #endif
 
 #define CM_FREE_TRACE(cm, file, line) {cm->cm_freed_file = file; cm->cm_freed_line = line;}
@@ -968,7 +1025,6 @@ struct cl_message_s
   int64 cm_uncomp_bytes;	/* if compressed, uncompressed length */
   int64 cm_trx;
   int64 cm_trx_w_id;
-  int64 cm_main_trx;		/* a rc read of a can have many threads on a server and all but the first will have an alt trx no since only one thread per trx no is allowed. If low on threads, can also queue on the thread of cm_trx */
   dk_session_t *cm_strses;
   cl_call_stack_t *cm_cl_stack;
   caddr_t cm_in_string;		/* str box containing message if message was read by dispatch thread */
@@ -977,7 +1033,6 @@ struct cl_message_s
   int cm_anytime_quota;
   cl_op_t *cm_pending_clo;	/* Holds select clo when suspended between batches */
   dk_session_t *cm_client;	/* the client detached from served set, worker thread must read the stuff and return this to served set */
-  lock_trx_t *cm_lt;		/* While registered, remember the lt so that continuable qi's and itc's keep the lt across transacts */
   cl_thread_t *cm_clt;		/* for dbg, if reg'd cm running on a clt */
   cl_op_t *cm_sec;
   cl_message_t **cm_extra_cm;	/* when many consec cms together because of dfg follows, this is the array of non first cms */
@@ -986,9 +1041,8 @@ struct cl_message_s
   char *cm_freed_file;
   int cm_freed_line;
 #endif
-   MTX_TS_T (cm_queue_ts) MTX_TS_T (cm_dfg_detach_ts) MTX_TS_T (cm_dfg_skip_ts) MTX_TS_T (cm_dfg_reg_ts)
+   MTX_TS_T (cm_queue_ts) MTX_TS_T (cm_dfg_detach_ts) MTX_TS_T (cm_dfg_skip_ts) MTX_TS_T (cm_dfg_reg_ts) uint64 cm_id;
 #ifdef MTX_METER
-  uint64 cm_id;
   char cm_in_dfg_cont;
 #endif
 };
@@ -1013,6 +1067,7 @@ struct cl_message_s
 #define CMR_MARKED_REC 32
 #define CMR_FWD_NO_STACK_TOP 64
 #define CMR_ROJ_OUTER 128
+#define CMR_DFG_STARTED 256
 #define CMR_NO_COMPRESS 0x8000
 #define CL_REC_RUNNING 1	/* or'ed to entry in cll_rec_dfg to indicate a thread presently executing for the rec batch */
 #define CL_REC_CANCEL 2		/* or'ed to entry in cll_rec_dfg to indicate cancellation of running recursive batch */
@@ -1025,8 +1080,6 @@ struct cl_message_s
 #define CM_RES_CANCELLED 4	/* means that the clib is out of the waiting set and can't get results or even timeout */
 
 
-#define CM_IS_ALT(cm) \
-  (enable_cl_alt_queue && cm->cm_main_trx && cm->cm_main_trx != cm->cm_trx)
 
 /* api */
 
@@ -1052,6 +1105,7 @@ int clrg_wait (cl_req_group_t * clrg, int mode, caddr_t * qst);
 #define CLRG_WAIT_ANY 0
 #define CLRG_WAIT_ALL 1
 int clrg_wait_1 (cl_req_group_t * clrg, int wait_all);
+void clrg_not_waiting (cl_req_group_t * clrg);
 cl_op_t *clo_allocate (char op);
 cl_op_t *clo_allocate_2 (char op);
 cl_op_t *clo_allocate_3 (char op);
@@ -1060,7 +1114,7 @@ void clo_local_copy (cl_op_t * clo, cl_req_group_t * clrg);
 int clo_destroy (cl_op_t * clop);
 cl_op_t *clib_first (cll_in_box_t * clib);
 cl_message_t *cl_deserialize_cl_message_t (dk_session_t * in);
-cl_host_t *cl_name_to_host (char *name);
+cl_host_t *cl_name_to_host (const char *name);
 itc_cluster_t *itcl_allocate (lock_trx_t * lt, caddr_t * qst);
 
 extern int32 cl_req_batch_size;
@@ -1088,6 +1142,7 @@ extern int64 cl_cum_wait;
 extern int64 cl_cum_wait_msec;
 cl_op_t *cl_deserialize_cl_op_t (dk_session_t * in);
 cl_req_group_t *cl_req_group (lock_trx_t * lt);
+cl_req_group_t *cl_req_group_qi (query_instance_t * qi);
 int clrg_result_array (cl_req_group_t * clrg, cl_op_t ** res, int *fill_ret, int max, caddr_t * qst);
 cl_op_t *sec_copy (cl_op_t * sec);
 void cli_set_sec (client_connection_t * cli, cl_op_t * clo);
@@ -1109,7 +1164,7 @@ void cm_send_reply (cl_message_t * cm, cl_op_t * reply, caddr_t err);
 extern du_thread_t *cl_listener_thr;
 void cls_rollback (dk_session_t * ses, cl_message_t * cm);
 cl_host_t *cl_id_to_host (int id);
-cluster_map_t *cl_name_to_clm (char *name);
+cluster_map_t *cl_name_to_clm (const char *name);
 void cl_itc_free (it_cursor_t * itc);
 void itc_cl_row (it_cursor_t * itc, buffer_desc_t * buf);
 dk_session_t *ch_get_connection (cl_host_t * ch, int op, caddr_t * err_ret);
@@ -1133,6 +1188,10 @@ void seq_dbg_log (char *seq, int64 from, int64 to);
 
 int cset_ld_indices (cl_req_group_t * clrg, data_col_t * s, data_col_t * p, data_col_t * o, data_col_t * g, int is_del);
 void cset_ld_ids (cl_req_group_t * clrg, int s_col, int p_col, int o_col, int g_col, iri_id_t fixed_g);
+int clst_has_ancestor (cl_call_stack_t * clst, int host, int req_no);
+int clw_ht_report ();
+cl_message_t *clt_next_cm (cl_thread_t * clt, int stop, int reg);
+#define CM_REGISTER 1
 
 void clo_free_from_in_parsed (cl_op_t * clo);
 void cl_chash_filled (fun_ref_node_t * fref, caddr_t * inst, int is_first, uint32 bf_size);
@@ -1161,12 +1220,10 @@ extern int enable_itc_dfg_ck;
 void ks_set_dfg_queue_f (key_source_t * ks, caddr_t * inst, it_cursor_t * itc);
 void rb_dfg_flags (rbuf_t * rb, void *elt);
 void cl_send_from_cll (cl_host_t * ch, cl_message_t * cm, int always_queue);
-rbuf_t *qi_slice_queue (caddr_t * slice_inst, stage_node_t * stn);
-extern resource_t *cll_rbuf_rc;
+rbuf_t *qi_slice_queue (caddr_t * slice_inst, stage_node_t * stn, uint32 top_req_no);
 extern int64 cll_entered;
 extern int64 cll_lines[1000];
 extern int cll_counts[1000];
-extern dk_hash_t cl_waiting_clrgs;
 extern dk_mutex_t clrg_wait_mtx;
 
 
@@ -1197,7 +1254,6 @@ int clrg_dfg_send_g (cl_req_group_t * clrg, int coord_host, int64 * bytes_ret, i
 
 extern timeout_t boot_time;
 void clses_set_mctr (cl_ses_t * clses, msg_ctr_t * mctr);
-int tcpses_write (session_t * ses, char *buf, int n_out);
 extern int enable_clrel;
 void clrel_send_ses (dk_session_t ** ses_ret, dk_session_t * ses, cl_message_t * cm, int flush);
 int clrel_buf_full (session_t * ses, char *bytes, int n_bytes);
@@ -1235,7 +1291,7 @@ void qi_free_dfg_queue (query_instance_t * qi, query_t * qr);
 int clo_any_for_slice (cl_op_t * clo);
 void clo_row_dc_reset (cl_op_t * clo);
 int cl_qi_kill (cl_thread_t * clt, query_instance_t * qi);
-#define DFG_ID(coord, req_no)  ((((int64)coord) << 32) | req_no)
+#define DFG_ID(coord, req_no)  ((((int64)(coord)) << 32) | (req_no))
 
 extern int enable_rec_dfg_print;
 #define rdfg_printf(a) {if (enable_rec_dfg_print) printf a; }
@@ -1260,7 +1316,7 @@ void basket_delete (basket_t * head, basket_t ** elt_ret);
 void da_add_enlist (db_activity_t * da, int host, int change);
 void cli_receive_da_enlist (client_connection_t * cli, db_activity_t * da);
 void lt_ensure_branch (lock_trx_t * lt, int host, int change);
-int clst_is_sib_or_desc (cl_call_stack_t * inner, cl_call_stack_t * outer);
+int clst_is_sib_or_desc (cl_call_stack_t * inner, cl_call_stack_t * outer, int ignore_outer);
 void clrg_top_check (cl_req_group_t * clrg, query_instance_t * top_qi);
 void cli_cl_push (client_connection_t * cli, int host, int req_no);
 void cli_cl_pop (client_connection_t * cli);
@@ -1272,10 +1328,18 @@ int clo_frag_n_sets (cl_op_t * clo);
 void cl_fref_local_result (query_instance_t * qi, query_frag_t * qf, state_slot_t * slice_qis, int is_final);
 int dfg_is_slice_continuable (stage_node_t * stn, query_instance_t * slice_qi);
 int dfg_feed (stage_node_t * stn, caddr_t * inst, cl_queue_t * bsk);
-void dfg_after_feed ();
 void clib_dfg_coord_req (cll_in_box_t * clib);
+
+
+#define CL_WAY(n)  ((uint32)(n) % CL_N_WAYS)
+#ifdef MTX_DEBUG
+#define CL_NTH_WAY  ((top_req_no ? top_req_no : (GPF_T1 ("top req no not set"), 0)) % CL_N_WAYS)
+#else
+#define CL_NTH_WAY  (top_req_no % CL_N_WAYS)
+#endif
+
 #define ASSERT_IN_CLL \
-  ASSERT_IN_MTX (local_cll.cll_mtx);
+  ASSERT_IN_MTX (&cl_ways[CL_NTH_WAY].clw_mtx);
 
 int cl_dfg_run_local (stage_node_t * stn, caddr_t * inst, caddr_t * err_ret);
 caddr_t *stn_add_slice_inst (state_slot_t * slice_qis, query_frag_t * qf, caddr_t * inst, int coordinator, slice_id_t slice,
@@ -1318,7 +1382,7 @@ void clib_vec_read_into_slots (cll_in_box_t * clib, caddr_t * inst, dk_set_t slo
 int qf_param_dcs (query_t * qr, caddr_t * inst, mem_pool_t * mp, caddr_t * params);
 void dc_serialize (data_col_t * dc, dk_session_t * ses);
 void sslr_dc_serialize (dk_session_t * ses, caddr_t * inst, state_slot_t * sslr, int n_rows, int dbg_qfs, int dbg_col);
-int dc_serialize_sliced (dk_session_t * ses, data_col_t * dc, slice_id_t * slices, slice_id_t target_slice);
+int dc_serialize_sliced (dk_session_t * ses, const data_col_t * dc, slice_id_t * slices, slice_id_t target_slice);
 
 data_col_t *dc_deserialize (dk_session_t * ses, dtp_t dtp);
 
@@ -1364,19 +1428,33 @@ void cl_self_signal (void (*f) (void *_cd), void *cd);
 
 #ifdef MTX_METER
 #define TRY_CLL cll_try_enter ()
-int cll_try_enter ();
-#define IN_CLL {mutex_enter (local_cll.cll_mtx); cll_entered = rdtsc ();}
-#define LEAVE_CLL { cll_counts[__LINE__ % 1000] ++; cll_lines[__LINE__ % 1000] += rdtsc () - cll_entered;  mutex_leave (local_cll.cll_mtx);}
+int cll_try_enter (uint32 top_req_no);
+#define IN_CLL {mutex_enter (&cl_ways[CL_NTH_WAY].clw_mtx); cll_entered = rdtsc ();}
+#define LEAVE_CLL { cll_counts[__LINE__ % 1000] ++; cll_lines[__LINE__ % 1000] += rdtsc () - cll_entered;  mutex_leave (&cl_ways[CL_NTH_WAY].clw_mtx);}
 #else
-#define TRY_CLL mutex_try_enter (local_cll.cll_mtx)
-#define IN_CLL mutex_enter (local_cll.cll_mtx)
-#define LEAVE_CLL  mutex_leave (local_cll.cll_mtx)
+#define TRY_CLL mutex_try_enter (&cl_ways[CL_NTH_WAY].clw_mtx)
+#define IN_CLL mutex_enter (&cl_ways[CL_NTH_WAY].clw_mtx)
+#define LEAVE_CLL  mutex_leave (&cl_ways[CL_NTH_WAY].clw_mtx)
 #endif
 
 #define IN_CLL_SR \
   {if (!cll_stay_in_cll_mtx) IN_CLL;}
 #define LEAVE_CLL_SR \
   {if (!cll_stay_in_cll_mtx) LEAVE_CLL;}
+
+#define IN_CL_CONN mutex_enter (&cll_conn_mtx);
+#define LEAVE_CL_CONN mutex_leave (&cll_conn_mtx);
+#define ASSERT_IN_CL_CONN ASSERT_IN_MTX (&cll_conn_mtx);
+#define IN_CL_QF mutex_enter (&cll_qf_mtx);
+#define LEAVE_CL_QF mutex_leave (&cll_qf_mtx);
+#define ASSERT_IN_CL_QF ASSERT_IN_MTX (&cll_qf_mtx);
+#define IN_CL_THREAD mutex_enter (&cll_thread_mtx);
+#define LEAVE_CL_THREAD mutex_leave (&cll_thread_mtx);
+#define ASSERT_IN_CL_THREAD ASSERT_IN_MTX (&cll_thread_mtx);
+#define IN_CL_CFG mutex_enter (&cll_cfg_mtx);
+#define LEAVE_CL_CFG mutex_leave (&cll_cfg_mtx);
+#define ASSERT_IN_CL_CFG ASSERT_IN_MTX (&cll_cfg_mtx);
+
 
 
 void cl_write_done (dk_session_t * ses);
@@ -1412,7 +1490,7 @@ void cl_send_db_activity (dk_session_t * ses);
 
 
 caddr_t cl_ddl (query_instance_t * qi, lock_trx_t * lt, caddr_t name, int type, caddr_t trig_table);
-caddr_t cl_start_atomic (query_instance_t * qi, caddr_t name, int type);
+caddr_t cl_start_atomic (query_instance_t * qi, const char *name, int type);
 void cl_local_atomic_over ();
 caddr_t cl_read_partition (query_instance_t * qi, caddr_t tb_name);
 caddr_t cl_read_cluster (query_instance_t * qi, caddr_t name, int create);
@@ -1564,7 +1642,7 @@ extern int cl_trx_inited;
 #else
 #define ctrx_printf(x)
 #endif
-void cl_clear_dead_w_id ();
+void cl_clear_dead_w_id (int host);
 
 #define THR_DBG_CLRG_WAIT ((caddr_t) 1)
 
@@ -1591,7 +1669,7 @@ void itc_cl_sample_init (it_cursor_t * itc, cl_req_group_t ** clrg_ret);
 int64 itc_cl_sample_result (it_cursor_t * itc, cl_req_group_t * clrg);
 
 void cu_free (cucurbit_t * cu);
-void dpipe_define (caddr_t name, dbe_key_t * key, caddr_t fn, cu_op_func_t fn_disp, int l);
+void dpipe_define (const char *name, dbe_key_t * key, const char *fn, cu_op_func_t fn_disp, int l);
 void dpipe_drop (caddr_t name);
 /* dpipe define flags */
 #define CF_UPDATE 1
@@ -1615,11 +1693,11 @@ void dpipe_node_input (dpipe_node_t * dp, caddr_t * inst, caddr_t * state);
 void dpipe_node_local_input (dpipe_node_t * dp, caddr_t * inst, caddr_t * stat);
 void dpipe_node_free (dpipe_node_t * dp);
 #define IS_DP(xx) ((qn_input_fn)dpipe_node_input == ((data_source_t*)(xx))->src_input)
-cu_func_t *cu_func (caddr_t name, int must_find);
+cu_func_t *cu_func (const char *name, int must_find);
 void cu_ssl_row (cucurbit_t * cu, caddr_t * qst, state_slot_t ** args, int first_ssl);
 void cl_fref_result (fun_ref_node_t * fref, caddr_t * inst, cl_op_t ** clo_ret);
 int cl_partitioned_fref_start (dk_set_t nodes, caddr_t * inst);
-void ch_qf_closed (cl_host_t * ch, uint32 req_no, cl_message_t * cm);
+void cl_qf_closed (cl_host_t * ch, uint32 req_no, cl_message_t * cm);
 void cl_timeout_closed_qfs ();
 void cm_free_pending_clo (cl_message_t * cm);
 #ifdef LT_TRACE_SZ
@@ -1633,7 +1711,7 @@ extern int qf_trace;
 int cls_autocommit (cl_thread_t * clt, cl_op_t * clo, caddr_t err, int recov_deadlock);
 void cl_local_insert (caddr_t * inst, cl_op_t * clo);
 void cl_local_delete (caddr_t * inst, cl_op_t * clo);
-cl_req_group_t *dpipe_allocate (query_instance_t * qi, int flags, int n_ops, char **ops);
+cl_req_group_t *dpipe_allocate (query_instance_t * qi, int flags, int n_ops, const char **ops);
 void cu_row (cucurbit_t * cu, caddr_t * args);
 caddr_t *cu_next (cucurbit_t * cu, query_instance_t * qi, int is_flush);
 caddr_t cl_iri_to_id (query_instance_t * qi, caddr_t str, int make_new);
@@ -1711,7 +1789,7 @@ void rd_locate (row_delta_t * rd, dk_set_t * hosts_ret, cl_op_t * op, int *is_lo
 
 void rd_free_temp_blobs (row_delta_t * rd, lock_trx_t * lt, int is_local);
 int cl_handle_reset (cl_op_t * clo, cl_thread_t * clt, query_instance_t * qi, int reset_code);
-void clib_assign_req_no (cll_in_box_t * clib);
+void clib_assign_req_no (cll_in_box_t * clib, uint32 top_req_no);
 cll_in_box_t *itcl_local_start (itc_cluster_t * itcl);
 cl_op_t *itcl_next (itc_cluster_t * itcl);
 cl_op_t *itcl_next_no_order (itc_cluster_t * itcl, cl_buffer_t * clb);
@@ -1822,5 +1900,5 @@ void qi_free_dfg_queue_nodes (query_instance_t * qi, dk_set_t nodes);
 void qf_set_cost (query_frag_t * qf);
 void cu_cl_cset_cols (cucurbit_t * cu, caddr_t g_iid);
 
-
+VIRT_API_END
 #endif

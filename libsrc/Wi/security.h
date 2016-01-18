@@ -27,7 +27,7 @@
 #define _SECURITY_H
 
 int sec_user_has_group (oid_t CheckGroup, oid_t user);
-int sec_user_has_group_name (char *name, oid_t user);
+int sec_user_has_group_name (const char *name, oid_t user);
 int sec_user_is_in_hash (dk_hash_t * ht, oid_t user, int op);
 
 #define QI_IS_DBA(qi) \
@@ -65,7 +65,7 @@ void sec_read_users (void);
 user_t *sec_new_user (query_instance_t * qi, char *name, char *pass);
 
 
-user_t *sec_name_to_user (char *name);
+user_t *sec_name_to_user (const char *name);
 int sec_normalize_user_name (char *name, size_t max_name);
 
 void sec_set_user_data (char *u_name, char *data);

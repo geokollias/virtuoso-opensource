@@ -5126,8 +5126,8 @@ virtodbc__SQLProcedureColumns (SQLHSTMT hstmt,
     SQLCHAR * szProcOwner,
     SQLSMALLINT cbProcOwner, SQLCHAR * szProcName, SQLSMALLINT cbProcName, SQLCHAR * szColumnName, SQLSMALLINT cbColumnName)
 {
-  static char *proc_cols_text = "DB.DBA.SQL_PROCEDURE_COLUMNS (?, ?, ?, ?, ?, ?)";
-  static char *proc_cols_textw = "DB.DBA.SQL_PROCEDURE_COLUMNSW (?, ?, ?, ?, ?, ?)";
+  static const char *proc_cols_text = "DB.DBA.SQL_PROCEDURE_COLUMNS (?, ?, ?, ?, ?, ?)";
+  static const char *proc_cols_textw = "DB.DBA.SQL_PROCEDURE_COLUMNSW (?, ?, ?, ?, ?, ?)";
 
   STMT (stmt, hstmt);
   SQLRETURN rc;

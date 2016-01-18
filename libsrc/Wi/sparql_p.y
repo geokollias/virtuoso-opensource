@@ -381,6 +381,7 @@ int sparyylex_from_sparp_bufs (caddr_t *yylval, sparp_t *sparp)
 %type <token_type> spar_all_distinct_opt
 %type <token_type> spar_ties_opt
 %type <tree> spar_having_clause_opt
+%type <tree> spar_constraint_list_as_and
 %type <trees> spar_order_clause_opt
 %type <backstack> spar_order_conditions
 %type <backstack> spar_order_condition_nocommalist
@@ -443,7 +444,7 @@ int sparyylex_from_sparp_bufs (caddr_t *yylval, sparp_t *sparp)
 %type <trees> spar_triple_inference_option
 %type <trees> spar_triple_freetext_option
 %type <trees> spar_triple_geo_option
-%type <trees> spar_triple_optionlist_tail_commalist
+%type <backstack> spar_triple_optionlist_tail_commalist
 %type <trees> spar_triple_transit_option
 %type <backstack> spar_triple_option_var_commalist
 %type <token_type> spar_same_as_option
@@ -825,7 +826,7 @@ spar_dm_patitem_o	/* [Virt]	PatternItemO	 ::=  VAR1 | VAR2 | IRIref	*/
 			/*... | RDFLiteral | ( '-' | '+' )? NumericLiteral | BooleanLiteral | NIL	*/
 	: QD_VARNAME { $$ = spar_make_param_or_variable (sparp_arg, $1); }
 	| spar_optsigned_numeric_literal
-	| NIL_L				{ $$ = (SPART *)t_box_dv_uname_string ("http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"); }
+	| NIL_L				{ $$ = spartlist (sparp_arg, 2, SPAR_QNAME, uname_rdf_ns_uri_nil); }
 	| spar_rdf_literal
 	| spar_boolean_literal
 	| spar_iriref
@@ -1137,13 +1138,18 @@ spar_bin_op_sign
 	| _GE
 	;
 
-spar_having_clause_opt	/* [Virt]	HavingClause	 ::= 'HAVING' Expn */
+spar_having_clause_opt	/* [Virt]	HavingClause	 ::= 'HAVING' Constraint+ */
 	: /* empty */	{ $$ = NULL; }
 	| HAVING_L {
 		sparp_arg->sparp_allow_aggregates_in_expn |= 1; }
-	    spar_expn {
+	    spar_constraint_list_as_and {
 		$$ = $3;
 		sparp_arg->sparp_allow_aggregates_in_expn &= ~1; }
+	;
+
+spar_constraint_list_as_and
+	: spar_constraint	{ $$ = $1; }
+	| spar_constraint_list_as_and spar_constraint	{ SPAR_BIN_OP ($$, BOP_AND, $1, $2); }
 	;
 
 spar_order_clause_opt	/* [15]	OrderClause	 ::=  'ORDER' 'BY' OrderCondition+	*/
@@ -1344,15 +1350,21 @@ spar_gp			/* [20]	GraphPattern	 ::=  Triples? ( GraphPatternNotTriples '.'? Grap
 		  sparyyerror (sparp_arg, "Ill formed triple pattern or macro pattern variable outside a macro body"); }
 	;
 
-spar_gp_not_triples	/* [21]*	GraphPatternNotTriples	 ::=  */
-	: spar_quad_map_gp { spar_gp_add_member (sparp_arg, $1); }	/*... QuadMapGraphPattern	*/
-	| spar_optional_gp { spar_gp_add_member (sparp_arg, $1); }	/*... | OptionalGraphPattern	*/
+spar_gp_not_triples			/* [21]*	GraphPatternNotTriples	 ::=  */
+	: spar_quad_map_gp { spar_gp_add_member (sparp_arg, $1); }		/*... QuadMapGraphPattern	*/
+	| spar_optional_gp { spar_gp_add_member (sparp_arg, $1); }		/*... | OptionalGraphPattern	*/
 	| spar_group_or_union_gp { spar_gp_add_member (sparp_arg, $1); }	/*... | GroupOrUnionGraphPattern	*/
-	| spar_graph_gp { spar_gp_add_member (sparp_arg, $1); }	/*... | GraphGraphPattern	*/
-	| spar_service_req { spar_gp_add_member (sparp_arg, $1); }	/*... | ServiceRequest	*/
-	| spar_binds { spar_gp_finalize_binds (sparp_arg, $1); }	/*... | Bind	*/
-	| spar_inline_data { spar_gp_add_member (sparp_arg, $1); }	/*... | InlineData	*/
-	| spar_constraint { spar_gp_add_filter (sparp_arg, $1, 1); }	/*... | Constraint	*/
+	| spar_graph_gp { spar_gp_add_member (sparp_arg, $1); }			/*... | GraphGraphPattern	*/
+	| spar_service_req { spar_gp_add_member (sparp_arg, $1); }		/*... | ServiceRequest	*/
+	| spar_binds { spar_gp_finalize_binds (sparp_arg, $1); }		/*... | Bind	*/
+	| spar_inline_data { spar_gp_add_member (sparp_arg, $1); }		/*... | InlineData	*/
+	| FILTER_L spar_constraint { spar_gp_add_filter (sparp_arg, $2, 1); }	/*... | 'FILTER' Constraint */
+	| ASSUME_L spar_constraint	{  spar_gp_add_filter (sparp_arg, sparp_make_builtin_call (sparp_arg, ASSUME_L, (SPART **)t_list (1, $2)), 1); }
+	| MINUS_L spar_constraint_exists_int {					/*... | 'MINUS' DatasetClause* WhereClause */
+		/*!!! Dirty hack! Works wrong if MINUS is at the middle of the GP (before smth or not a 2-nd item) */
+		  SPART *expn;
+		  SPAR_BIN_OP (expn, BOP_NOT, $2, NULL);
+		  spar_gp_add_filter (sparp_arg, expn, 1); }
 	;
 
 spar_optional_gp	/* [22]	OptionalGraphPattern	 ::=  'OPTIONAL' GroupGraphPattern	*/
@@ -1463,24 +1475,15 @@ spar_inline_data_value
 	| spar_optsigned_numeric_literal
 	| spar_rdf_literal
 	| spar_boolean_literal
-	| spar_blank_node
+	| spar_blank_node	{ sparyyerror (sparp_arg, "The use of blank nodes in VALUES is not allowed by SPARQL 1.1 specification"); $$ = NULL; }
 	| UNBOUND_L		{ sparyyerror (sparp_arg, "UNBOUND in VALUES is deprecated, use UNDEF instead"); $$ = NULL; }
 	| UNDEF_L		{$$ = NULL; }
 	;
 
-
-
-
-spar_constraint		/* [25]*	Constraint	 ::=  'FILTER' ( ( '(' Expn ')' ) | BuiltInCall | FunctionCall )	*/
-	: FILTER_L _LPAR spar_expn _RPAR	{ $$ = $3; }
-	| FILTER_L spar_built_in_call	{ $$ = $2; }
-	| FILTER_L spar_function_call	{ $$ = $2; }
-	| ASSUME_L _LPAR spar_expn _RPAR	{ $$ = sparp_make_builtin_call (sparp_arg, ASSUME_L, (SPART **)t_list (1, $3)); }
-	| ASSUME_L spar_built_in_call		{ $$ = sparp_make_builtin_call (sparp_arg, ASSUME_L, (SPART **)t_list (1, $2)); }
-	| ASSUME_L spar_function_call		{ $$ = sparp_make_builtin_call (sparp_arg, ASSUME_L, (SPART **)t_list (1, $2)); }
-	| MINUS_L spar_constraint_exists_int {		/*... | 'MINUS' DatasetClause* WhereClause */
-		/*!!! Dirty hack! Works wrong if MINUS is at the middle of the GP (before smth or not a 2-nd item) */
-		  SPAR_BIN_OP ($$, BOP_NOT, $2, NULL); }
+spar_constraint				/* [69]	Constraint	 ::=  ( ( '(' Expn ')' ) | BuiltInCall | FunctionCall )	*/
+	: _LPAR spar_expn _RPAR	{ $$ = $2; }
+	| spar_built_in_call	{ $$ = $1; }
+	| spar_function_call	{ $$ = $1; }
 	;
 
 spar_exists_or_not_exists
@@ -1528,7 +1531,10 @@ spar_service_req	/* [Virt]	ServiceRequest ::=  'SERVICE' 'Silent'? VarOrIRIref S
 	    spar_service_options_list_opt {
 		$<box>$ = t_alloc (sizeof (sparp_sources_t));
 		if (-1 == sparp_arg->sparp_inner_permitted_syntax)
-		  sparp_arg->sparp_permitted_syntax = SSG_SD_GLOBALS | sparp_find_language_dialect_by_service (sparp_arg, $3);
+		  {
+		    sparp_find_language_dialect_by_service (sparp_arg, $3, &(sparp_arg->sparp_permitted_syntax), &(sparp_arg->sparp_syntax_exceptions));
+		    sparp_arg->sparp_permitted_syntax |= SSG_SD_GLOBALS;
+		  }
 		else
 		  sparp_arg->sparp_permitted_syntax = SSG_SD_GLOBALS | sparp_arg->sparp_inner_permitted_syntax;
 		memcpy ($<box>$, &(sparp_arg->sparp_env->spare_src), sizeof (sparp_sources_t));
@@ -1540,7 +1546,7 @@ spar_service_req	/* [Virt]	ServiceRequest ::=  'SERVICE' 'Silent'? VarOrIRIref S
 		if ((NULL == sparp_arg->sparp_env->spare_src.ssrc_default_graphs) && (NULL == sparp_arg->sparp_env->spare_src.ssrc_named_graphs))
 		  memcpy (&(sparp_arg->sparp_env->spare_src), $<box>6, sizeof (sparp_sources_t));
 		sources = spar_make_sources_like_top (sparp_arg, SELECT_L);
-		sinv = spar_make_service_inv (sparp_arg, $3, $5, sparp_arg->sparp_permitted_syntax, sources, sinv_storage_uri, $2);
+		sinv = spar_make_service_inv (sparp_arg, $3, $5, sparp_arg->sparp_permitted_syntax, sparp_arg->sparp_syntax_exceptions, sources, sinv_storage_uri, $2);
 		spar_add_service_inv_to_sg (sparp_arg, sinv);
 		t_set_push (&(sparp_env()->spare_context_sinvs), sinv);
 		spar_gp_init (sparp_arg, SERVICE_L); }
@@ -1712,7 +1718,7 @@ spar_triple_option	/* [Virt]	TripleOption	 ::=  'TABLE_OPTION' SPARQL_STRING	*/
 	| CUSTOM_L _LPAR spar_triple_optionlist_tail_commalist _RPAR {
 		SPART *lst = spartlist (sparp_arg, 2, SPAR_LIST, t_revlist_to_array ($3));
 		SPAR_ERROR_IF_UNSUPPORTED_SYNTAX (SSG_SD_VIRTSPECIFIC, "CUSTOM option");
-		$$ = t_list (2, (ptrlong)CUSTOM_L, list); }
+		$$ = (SPART **)t_list (2, (ptrlong)CUSTOM_L, list); }
 	| spar_triple_inference_option	{
 		SPAR_ERROR_IF_UNSUPPORTED_SYNTAX (SSG_SD_VIRTSPECIFIC, "inference option");
 		$$ = $1; }
@@ -2045,7 +2051,7 @@ spar_graph_term		/* [42]*	GraphTerm	 ::=  IRIref | RDFLiteral | ( '-' | '+' )? N
 	| spar_optsigned_numeric_literal
 	| spar_boolean_literal
 	| spar_blank_node
-	| NIL_L				{ $$ = (SPART *)t_box_dv_uname_string ("http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"); }
+	| NIL_L				{ $$ = spartlist (sparp_arg, 2, SPAR_QNAME, uname_rdf_ns_uri_nil); }
 	| spar_backquoted
 	;
 
@@ -2098,6 +2104,7 @@ spar_expn		/* [43]	Expn		 ::=  ConditionalOrExpn	( 'AS' ( VAR1 | VAR2 ) ) */
 		    }
 		  else
 		    {
+		      args = dk_set_nreverse (args);
 		      t_set_push (&args, $1);
 		      $$ = sparp_make_builtin_call (sparp_arg, IN_L,
 		        (SPART **)t_list_to_array (args) /* NOT t_revlist_to_array (args), note special first element pushed */ );

@@ -50,6 +50,7 @@ libdksrv_la_SOURCES = \
 	Dksession.c \
 	Dksesstr.c \
 	Dksestcp.c \
+	Dksesssl.c \
 	Dksets.c \
 	Dkpool.c \
 	Dkutil.c \
@@ -80,6 +81,7 @@ libdk1t_la_SOURCES = \
 	Dksession.c \
 	Dksesstr.c \
 	Dksttcp.c \
+	Dksesssl.c \
 	Dksets.c \
 	Dkpool.c \
 	Dkutil.c \

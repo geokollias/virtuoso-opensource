@@ -1,3 +1,29 @@
+/*
+ *  qrc.c
+ *
+ *  $Id$
+ *
+ *  Query compilation cache
+ *
+ *  This file is part of the OpenLink Software Virtuoso Open-Source (VOS)
+ *  project.
+ *
+ *  Copyright (C) 1998-2014 OpenLink Software
+ *
+ *  This project is free software; you can redistribute it and/or modify it
+ *  under the terms of the GNU General Public License as published by the
+ *  Free Software Foundation; only version 2 of the License, dated June 1991.
+ *
+ *  This program is distributed in the hope that it will be useful, but
+ *  WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ *  General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License along
+ *  with this program; if not, write to the Free Software Foundation, Inc.,
+ *  51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
+ *
+ */
 
 
 #include "libutil.h"
@@ -142,7 +168,7 @@ sqlo_check_rhs_lit (sqlo_t * so, ST * tree)
 	{
 	  stl->stl_no_record = 1;
 	  sqlo_scope (so, &tree->_.bin_exp.right);
-	  if (box_equal (rdfs_type, tree->_.bin_exp.right))
+	  if (box_equal (rdfs_type, (cbox_t) (tree->_.bin_exp.right)))
 	    t_set_push (&stl->stl_type_cnos, (void *) (ptrlong) OT_NO (tree->_.bin_exp.left->_.col_ref.prefix));
 	  stl->stl_no_record = 0;
 	  return;
@@ -175,7 +201,7 @@ qces_cmp (qce_sample_t ** ps1, qce_sample_t ** ps2)
 {
   qce_sample_t *s1 = *ps1;
   qce_sample_t *s2 = *ps2;
-  return box_equal (s1->qces_sc_key, s2->qces_sc_key)
+  return box_equal ((cbox_t) (s1->qces_sc_key), (cbox_t) (s2->qces_sc_key))
       && s1->qces_n_params == s2->qces_n_params
       && 0 == memcmp (&s1->qces_params, s2->qces_params, s1->qces_n_params * sizeof (int32));
 }
@@ -252,14 +278,9 @@ sql_tree_hash_tpl (ST * st)
 	  hash = first;
 	else
 	  hash = sql_tree_hash_tpl ((ST *) first);
-	if (0 && SELECT_STMT == first && len > 4 && DV_ARRAY_OF_POINTER == DV_TYPE_OF (st->_.select_stmt.selection))
-	  {
-	    return sql_tree_hash_tpl ((ST *) st->_.select_stmt.selection);
-	  }
-	if (0 && len > 5)
-	  len = 5;
+	hash *= 1971049;
 	for (inx = 1; inx < len; inx++)
-	  hash = ((hash >> 2) | ((hash & 3 << 30))) ^ sql_tree_hash_tpl (((ST **) st)[inx]);
+	  hash += ((hash >> 2) | (((hash & 3) << 30))) ^ (0x5bd1e995 * sql_tree_hash_tpl (((ST **) st)[inx]));
 	return hash;
       }
     default:
@@ -313,7 +334,7 @@ dfe_col_const_cmp (sqlo_t * so, dbe_column_t * col, int op, caddr_t cnst)
   df_elt_t *cmp = sqlo_new_dfe (so, DFE_BOP_PRED, NULL);
   cmp->_.bin.op = dvc_to_bop (op);
   df_elt_t *cd = sqlo_new_dfe (so, DFE_CONST, NULL);
-  cd->dfe_tree = cnst;
+  cd->dfe_tree = (ST *) cnst;
   df_elt_t *lf = sqlo_new_dfe (so, DFE_COLUMN, NULL);
   lf->_.col.col = col;
   cmp->_.bin.left = lf;
@@ -328,14 +349,14 @@ dfe_key_from_sck (df_elt_t * tb_dfe, dtp_t ops, caddr_t * sc_key, df_elt_t ** lo
   dtp_t min = ops & 0xf;
   dtp_t max = ops >> 4;
   dbe_key_t *key = tb_dfe->_.table.key;
-  if (CMP_NONE != min)
-    {
-      lower[inx] = dfe_col_const_cmp (so, dk_set_nth (key->key_parts, inx), min, sc_key[*param_ctr + 1]);
-      (*param_ctr)++;
-    }
   if (CMP_NONE != max)
     {
       upper[inx] = dfe_col_const_cmp (so, dk_set_nth (key->key_parts, inx), max, sc_key[*param_ctr + 1]);
+      (*param_ctr)++;
+    }
+  if (CMP_NONE != min)
+    {
+      lower[inx] = dfe_col_const_cmp (so, dk_set_nth (key->key_parts, inx), min, sc_key[*param_ctr + 1]);
       (*param_ctr)++;
     }
   if (!lower[inx] && upper[inx])
@@ -406,7 +427,7 @@ int qrc_sample_compatible (sqlo_t * so, qce_sample_t * qces, caddr_t * lits)
   float smp = -1;
   int res;
   tb_sample_t *place;
-  caddr_t *sc_key = (caddr_t *) t_box_copy_tree (qces->qces_sc_key);
+  caddr_t *sc_key = (caddr_t *) t_box_copy_tree ((caddr_t) (qces->qces_sc_key));
   int inx;
   for (inx = 0; inx < qces->qces_n_params; inx++)
     {
@@ -533,7 +554,7 @@ qrc_lookup (sql_comp_t * sc, ST * tree)
   if (!place)
     {
       mutex_leave (&qrc_mtx);
-      stl->stl_tree = box_copy_tree ((caddr_t) stl->stl_tree);
+      stl->stl_tree = (ST *) box_copy_tree ((caddr_t) stl->stl_tree);
       TC (tc_qrc_miss);
       return;
     }
@@ -644,9 +665,8 @@ qcd_add_if_new (qc_data_t * qcd, query_t * new_qr, qce_sample_t ** samples, st_l
     qcd->qcd_queries = (query_t **) box_append_1 ((caddr_t) qcd->qcd_queries, (caddr_t) new_qr);
   else
     dk_set_push (&qcd->qcd_to_add, (void *) new_qr);
-  qcd_unref (qcd, 1);
   qrc_fill += new_qr->qr_size;
-  mutex_leave (&qrc_mtx);
+  qcd_unref (qcd, 1);
   return 1;
 }
 
@@ -657,7 +677,7 @@ qces_arr_free (qce_sample_t ** qces_arr)
   int inx;
   DO_BOX (qce_sample_t *, qces, inx, qces_arr)
   {
-    dk_free_tree (qces->qces_sc_key);
+    dk_free_tree ((caddr_t) (qces->qces_sc_key));
     dk_free_box ((caddr_t) qces);
   }
   END_DO_BOX;
@@ -678,14 +698,16 @@ int qrc_trim_pending;
 int
 qr_age_cmp (const void *s1, const void *s2)
 {
+  /* most recently used comes first */
   query_t *qr1 = *(query_t **) s1;
   query_t *qr2 = *(query_t **) s2;
   uint32 now = approx_msec_real_time ();
   uint32 a1 = now - qr1->qr_qce->qce_last_used;
   uint32 a2 = now - qr2->qr_qce->qce_last_used;
-  return a1 < a2;
+  return a1 < a2 ? -1 : 1;
 }
 
+#if 0
 void
 qrc_trim ()
 {
@@ -736,7 +758,6 @@ enough:
 	  qr->qr_qce->qce_free_when_done = 1;
 	  if (qrc_free (qr))
 	    {
-	      cum_size += qr->qr_size;
 	      qr_free (qr);
 	    }
 	}
@@ -745,6 +766,55 @@ enough:
   qrc_fill -= cum_size;
   qrc_trim_pending = 0;
 }
+#else
+/* all atomic */
+void
+qrc_trim ()
+{
+  size_t target = (qrc_capacity / 3) * 2;
+  query_t **arr;
+  int ctr = 0, inx;
+  dk_set_t qrs = NULL;
+  qrc_trim_pending = 1;
+  id_hash_iterator_t hit;
+  qc_data_t **pqcd, *qcd;
+  qc_key_t *qck;
+  ASSERT_IN_MTX (&qrc_mtx);
+  id_hash_iterator (&hit, qr_cache);
+  while (hit_next (&hit, (caddr_t *) & qck, (caddr_t *) & pqcd))
+    {
+      int inx;
+      qcd = *pqcd;
+      if (qcd->qcd_ref_count)
+	continue;
+      DO_BOX (query_t *, qr, inx, qcd->qcd_queries)
+      {
+	if (qr && qr->qr_qce && !qr->qr_qce->qce_ref_count)
+	  {
+	    t_set_push (&qrs, (void *) qr);
+	    if (++ctr > 100000)
+	      goto enough;
+	  }
+      }
+      END_DO_BOX;
+    }
+enough:
+  arr = (query_t **) t_list_to_array (qrs);
+  qsort (arr, ctr, sizeof (caddr_t), qr_age_cmp);
+  for (inx = ctr - 1; inx >= 0; inx--)
+    {
+      query_t *qr = arr[inx];
+      qrc_remove (qr, 1);
+      qce_free (qr->qr_qce);
+      qr->qr_qce = NULL;
+      if (qrc_fill < target)
+	break;
+    }
+  for (inx = inx; inx < ctr; inx++)
+    qr_free (arr[inx]);
+  qrc_trim_pending = 0;
+}
+#endif
 
 
 
@@ -755,7 +825,6 @@ qrc_set (sql_comp_t * sc, query_t * qr)
   qc_key_t qck;
   qc_data_t *qcd;
   qc_data_t **place;
-  qr_cache_ent_t *qce;
   qce_sample_t **samples;
   if (!sc->sc_stl)
     return;
@@ -782,8 +851,8 @@ qrc_set (sql_comp_t * sc, query_t * qr)
   qck.qck_tree = stl->stl_tree;
   qcd = (qc_data_t *) dk_alloc (sizeof (qc_data_t));
   memzero (qcd, sizeof (qc_data_t));
-  qcd->qcd_tree = (caddr_t) qck.qck_tree;
-  qcd->qcd_queries = dk_alloc_box_zero (1 * sizeof (caddr_t), DV_BIN);
+  qcd->qcd_tree = qck.qck_tree;
+  qcd->qcd_queries = (query_t **) dk_alloc_box_zero (1 * sizeof (caddr_t), DV_BIN);
   qcd->qcd_queries[0] = qr;
   qr_set_qce (qr, qcd, samples);
   mutex_enter (&qrc_mtx);
@@ -862,8 +931,8 @@ qrc_remove (query_t * qr, int is_in_qrc)
     mutex_leave (&qrc_mtx);
   if (!any)
     {
-      dk_free_box ((caddr_t) qcd->qcd_queries);
-      dk_free_tree (qcd->qcd_tree);
+      dk_free_box ((caddr_t) (qcd->qcd_queries));
+      dk_free_tree ((caddr_t) (qcd->qcd_tree));
       dk_free ((caddr_t) qcd, sizeof (qc_data_t));
     }
 }
@@ -921,8 +990,8 @@ bif_qrc_clear (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 	mutex_leave (&qrc_mtx);
     }
     END_DO_BOX;
-    dk_free_tree (qcd->qcd_tree);
-    dk_free_box (qcd->qcd_queries);
+    dk_free_tree ((caddr_t) (qcd->qcd_tree));
+    dk_free_box ((caddr_t) (qcd->qcd_queries));
     dk_free ((caddr_t) qcd, sizeof (qc_data_t));
   }
   END_DO_SET ();

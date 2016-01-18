@@ -37,14 +37,7 @@
 #include "security.h"
 #include "xmlparser.h"
 #include "xmlparser_impl.h"
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "langfunc.h"
-#ifdef __cplusplus
-}
-#endif
 #include "arith.h"
 
 /*! Phrase class as stored in DB.DBA.SYS_ANN_PHRASE_CLASS */
@@ -1282,8 +1275,8 @@ appi_prepare_match_list (ap_proc_inst_t * appi, int collapse_flags)
 	  sethash (apc, apc_hash, (void *) ((ptrlong) (m_apc_boxelems++)));
 	}
     }
-  m_apc = dk_alloc_box_zero (m_apc_boxelems * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
-  m_aps = dk_alloc_box_zero (aps_count * 2 * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
+  m_apc = (caddr_t *) dk_alloc_box_zero (m_apc_boxelems * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
+  m_aps = (caddr_t *) dk_alloc_box_zero (aps_count * 2 * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
   for (aps_ctr = 0; aps_ctr < aps_count; aps_ctr++)
     {
       ap_set_t *aps = appi->appi_sets[aps_ctr];
@@ -1307,7 +1300,7 @@ appi_prepare_match_list (ap_proc_inst_t * appi, int collapse_flags)
     }
   app_count = BOX_ELEMENTS (appi->appi_phrases);
   app_hash = hash_table_allocate (app_count);
-  m_app = dk_alloc_box_zero (app_count * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
+  m_app = (caddr_t *) dk_alloc_box_zero (app_count * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
   for (app_ctr = 0; app_ctr < app_count; app_ctr++)
     {
       ap_phrase_t *app = appi->appi_phrases[app_ctr];
@@ -1358,8 +1351,8 @@ appi_prepare_match_list (ap_proc_inst_t * appi, int collapse_flags)
 	apa_w_count++;
     }
   apa_w_ctr = 0;
-  m_apa = dk_alloc_box_zero (apa_fcount * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
-  m_apa_w = dk_alloc_box_zero (apa_w_count * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
+  m_apa = (caddr_t *) dk_alloc_box_zero (apa_fcount * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
+  m_apa_w = (caddr_t *) dk_alloc_box_zero (apa_w_count * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
   for (apa_fctr = 0; apa_fctr < apa_fcount; apa_fctr++)
     {
       ap_arrow_t *apa = apa_farray[apa_fctr];
@@ -1369,7 +1362,7 @@ appi_prepare_match_list (ap_proc_inst_t * appi, int collapse_flags)
 	{
 	  int hit_count = 0;
 	  dk_set_t tail;
-	  hits = dk_alloc_box (dk_set_length (apa->apa_all_hits) * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
+	  hits = (caddr_t *) dk_alloc_box (dk_set_length (apa->apa_all_hits) * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
 	  for (tail = apa->apa_all_hits; NULL != tail; tail = tail->next)
 	    {
 	      ap_hit_t *aph = (ap_hit_t *) (tail->data);
@@ -1393,13 +1386,13 @@ appi_prepare_match_list (ap_proc_inst_t * appi, int collapse_flags)
       if (APA_PLAIN_WORD == apa->apa_is_markup)
 	m_apa_w[apa_w_ctr++] = box_num (apa_fctr);
     }
-  m_aph = dk_alloc_box_zero (appi->appi_confirmed_hit_count * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
+  m_aph = (caddr_t *) dk_alloc_box_zero (appi->appi_confirmed_hit_count * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
   aph_ctr = appi->appi_confirmed_hit_count;
   aph_tail = appi->appi_confirmed_hits_list;
   while (aph_ctr--)
     {
       caddr_t aph_itm;
-      ap_hit_t *aph = aph_tail->data;
+      ap_hit_t *aph = (ap_hit_t *) (aph_tail->data);
       aph_tail = aph_tail->next;
       aph_itm = list (4,
 	  box_num (aph->aph_first_idx),
@@ -1966,7 +1959,7 @@ bif_ap_debug_langhandler (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args
   caddr_t source_UTF8 = bif_string_arg (qst, args, 0, "ap_debug_langhandler");
   caddr_t lang_name = bif_string_arg (qst, args, 1, "ap_debug_langhandler");
   caddr_t *set_ids = (caddr_t *) bif_array_arg (qst, args, 2, "ap_debug_langhandler");
-  dk_session_t *out_ses = (dk_session_t *) bif_strses_arg (qst, args, 3, "ap_debug_langhandler");
+  dk_session_t *out_ses = bif_strses_arg (qst, args, 3, "ap_debug_langhandler");
   ap_set_t **sets;
   lang_handler_t *lh;
   ap_proc_inst_t *appi;

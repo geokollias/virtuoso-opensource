@@ -46,15 +46,8 @@
 #include "http.h"
 #include "xmltree.h"
 #include "bif_xper.h"
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "xmlparser.h"
 #include "xmlparser_impl.h"
-#ifdef __cplusplus
-}
-#endif
 #include "xslt_impl.h"
 #include "soap.h"
 #include "sqltype.h"		/* for XMLTYPE_TO_ENTITY */
@@ -505,7 +498,7 @@ xp_xslt_element_end (void *userdata, const char *name)
   xp->xp_current = parent;
   if (current->xn_namespaces && xp->xp_namespaces)
     {
-      caddr_t copy = box_copy_tree (current->xn_namespaces);
+      caddr_t copy = box_copy_tree ((caddr_t) (current->xn_namespaces));
       id_hash_set (xp->xp_namespaces, (caddr_t) & l, (caddr_t) & copy);
     }
   current->xn_parent = xp->xp_free_list;
@@ -1303,7 +1296,7 @@ static int
 att_is_uri (char *name)
 {
   int inx, uri_len;
-  char *uri[] = { "href", "src", "longdesc", "classid", "codebase", "data", "archive", "usemap",
+  const char *uri[] = { "href", "src", "longdesc", "classid", "codebase", "data", "archive", "usemap",
     "cite", "action", "profile", "for", "datasrc", '\x0'
   };
   uri_len = sizeof (uri);
@@ -3990,7 +3983,7 @@ bif_xte_nodebld_acc_impl (caddr_t * qst, state_slot_t ** args, int preserve_args
 	qi_signal_if_trx_error ((query_instance_t *) qst);
       memset (new_acc, 0, sizeof (caddr_t) * new_acc_length);
       memcpy (new_acc, acc, sizeof (caddr_t) * acc_length);
-      dk_free_box (acc);
+      dk_free_box ((caddr_t) acc);
       acc_ptr[0] = acc = (caddr_t *) new_acc;
       acc_length = new_acc_length;
       dk_check_xte_nodebld_acc (acc);
@@ -4065,7 +4058,7 @@ bif_xte_nodebld_acc_impl (caddr_t * qst, state_slot_t ** args, int preserve_args
 		    memcpy (new_acc, acc, sizeof (caddr_t) * acc_length);
 		    dk_check_xte_nodebld_acc (acc);
 		    dst = ((caddr_t *) new_acc) + (dst - acc);
-		    dk_free_box (acc);
+		    dk_free_box ((caddr_t) acc);
 		    acc_ptr[0] = acc = (caddr_t *) new_acc;
 		    acc_length = new_acc_length;
 		    dk_check_xte_nodebld_acc (acc);
@@ -4312,7 +4305,7 @@ bif_int_vectorbld_init (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   caddr_t *acc = (caddr_t *) dk_alloc_box_zero (sizeof (caddr_t) * 15 /*  2^n - 1 */ , DV_ARRAY_OF_LONG);
   if (1 > BOX_ELEMENTS (args))
-    sqlr_new_error ("22003", "SR344", "Too few arguments for vectorbld_init");
+    sqlr_new_error ("22003", "SR344", "Too few arguments for int_vectorbld_init");
   qst_set (qst, args[0], (caddr_t) acc);
   return NULL;
 }
@@ -4326,17 +4319,15 @@ bif_int_vectorbld_acc (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   int argcount;			/* number of arguments in the call */
   int arg_inx;			/* index of current argument */
   int new_filled_count;		/* value of filled_count at the end of the procedure */
-  int64 *acc = bif_array_arg (qst, args, 0, "int_vector_agg");
-  caddr_t *dst;
+  int64 *acc = (int64 *) bif_array_arg (qst, args, 0, "int_vector_agg");
+  int64 *dst;
   qi_signal_if_trx_error ((query_instance_t *) qst);
-  if (1 > BOX_ELEMENTS (args))
-    sqlr_new_error ("22003", "SR345", "Too few arguments for vectorbld_acc");
   argcount = BOX_ELEMENTS (args);
 /* The following 'if' must not appear here, but this is a workaround for a weird error in aggr in nested select. */
   if (NULL == acc)
     {
       acc = (int64 *) dk_alloc_box_zero (sizeof (int64) * 15 /*  2^n - 1 */ , DV_ARRAY_OF_LONG);
-      qst_set (qst, args[0], acc);
+      qst_set (qst, args[0], (caddr_t) acc);
     }
   filled_count = acc[0];
   acc_length = BOX_ELEMENTS (acc);
@@ -4353,12 +4344,12 @@ bif_int_vectorbld_acc (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     sqlr_new_error ("22003", "SR346", "Out of memory allocation limits: the composed vector contains too many items");
   if (acc_length != new_acc_length)
     {
-      caddr_t new_acc;
-      if (NULL == (new_acc = dk_try_alloc_box (sizeof (int64) * new_acc_length, DV_ARRAY_OF_LONG)))
+      int64 *new_acc;
+      if (NULL == (new_acc = (int64 *) dk_try_alloc_box (sizeof (int64) * new_acc_length, DV_ARRAY_OF_LONG)))
 	qi_signal_if_trx_error ((query_instance_t *) qst);
       memset (new_acc, 0, sizeof (int64) * new_acc_length);
       memcpy (new_acc, acc, sizeof (int64) * acc_length);
-      qst_set (qst, args[0], new_acc);
+      qst_set (qst, args[0], (caddr_t) new_acc);
       acc = new_acc;
       acc_length = new_acc_length;
     }
@@ -4380,16 +4371,16 @@ bif_int_vectorbld_acc (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 caddr_t
 bif_int_vectorbld_final (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  int64 *acc = NULL, new_box;
+  int64 *acc = NULL, *new_box;
   size_t filled_size;
   int arg_ctr = BOX_ELEMENTS (args);
   if (1 > arg_ctr)
-    sqlr_new_error ("22003", "SR444", "Too few arguments for vectorbld_final");
-  qst_swap_or_get_copy (qst, args[0], (int64 *) (&acc));
+    sqlr_new_error ("22003", "SR444", "Too few arguments for int_vectorbld_final");
+  qst_swap_or_get_copy (qst, args[0], (caddr_t *) (&acc));
   filled_size = sizeof (int64) * acc[0];
-  new_box = dk_alloc_box (filled_size, DV_ARRAY_OF_LONG);
+  new_box = (int64 *) dk_alloc_box (filled_size, DV_ARRAY_OF_LONG);
   memcpy (new_box, acc + 1, filled_size);
-  return new_box;
+  return (caddr_t) new_box;
 }
 
 
@@ -4454,7 +4445,7 @@ bif_vectorbld_acc_impl (caddr_t * qst, state_slot_t ** args, int flags, caddr_t 
 	qi_signal_if_trx_error ((query_instance_t *) qst);
       memset (new_acc, 0, sizeof (caddr_t) * new_acc_length);
       memcpy (new_acc, acc, sizeof (caddr_t) * acc_length);
-      dk_free_box (acc);
+      dk_free_box ((caddr_t) acc);
       acc_ptr[0] = acc = (caddr_t *) new_acc;
       acc_length = new_acc_length;
       dk_check_vectorbld_acc (acc);
@@ -4554,7 +4545,7 @@ bif_vectorbld_concat_acc_impl (caddr_t * qst, state_slot_t ** args, int preserve
 	qi_signal_if_trx_error ((query_instance_t *) qst);
       memset (new_acc, 0, sizeof (caddr_t) * new_acc_length);
       memcpy (new_acc, acc, sizeof (caddr_t) * acc_length);
-      dk_free_box (acc);
+      dk_free_box ((caddr_t) acc);
       acc_ptr[0] = acc = (caddr_t *) new_acc;
       acc_length = new_acc_length;
       dk_check_vectorbld_acc (acc);
@@ -4954,7 +4945,7 @@ bif_xq_sequencebld_acc_impl (caddr_t * qst, state_slot_t ** args, int preserve_a
 	qi_signal_if_trx_error ((query_instance_t *) qst);
       memset (new_acc, 0, sizeof (caddr_t) * new_acc_length);
       memcpy (new_acc, acc, sizeof (caddr_t) * acc_length);
-      dk_free_box (acc);
+      dk_free_box ((caddr_t) acc);
       acc_ptr[0] = acc = (caddr_t *) new_acc;
       acc_length = new_acc_length;
       dk_check_vectorbld_acc (acc);
@@ -5444,7 +5435,7 @@ bif_to_xml_array_arg (caddr_t * qst, state_slot_t ** args, int nth, const char *
 		  dk_set_push (ret_set, curr[inx]);
 		/* Partial delete of curr instead of single dk_free_tree (curr); */
 		dk_free_tree (curr[0]);
-		dk_free_box (curr);
+		dk_free_box ((caddr_t) curr);
 	      }
 	    else
 	      {
@@ -5809,7 +5800,7 @@ bif_xmlnss_get (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   xml_entity_t *ent = bif_entity_arg (qst, args, 0, "xmlnss_get");
   ptrlong idx = ent->xe_doc.xd->xd_ns_2dict.xn2_size;
-  caddr_t *res = dk_alloc_box (sizeof (caddr_t) * idx * 2, DV_ARRAY_OF_POINTER);
+  caddr_t *res = dk_alloc_list (idx * 2);
 
   while (idx-- > 0)
     {
@@ -5936,7 +5927,7 @@ bif_xmlnss_xpath_pre (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     }
   FILL_STR_AND_MOVE (ptr, "]");
   ptr[0] = 0;
-  dk_free_tree (prefix2uri);
+  dk_free_tree ((caddr_t) prefix2uri);
   return res_str;
 }
 

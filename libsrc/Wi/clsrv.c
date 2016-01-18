@@ -25,13 +25,6 @@
  *
  */
 
-#include "sqlnode.h"
-#include "sqlver.h"
-#include "sqlparext.h"
-#include "sqlbif.h"
-#include "security.h"
-#include "log.h"
-
 #ifdef unix
 #include <sys/resource.h>
 #include <netdb.h>
@@ -41,7 +34,21 @@
 
 #endif
 
+#include "datesupp.h"
+#include "sqlnode.h"
+#include "sqlver.h"
+#include "sqlparext.h"
+#include "sqlbif.h"
+#include "security.h"
+#include "log.h"
+
+dk_mutex_t cll_conn_mtx;
+dk_mutex_t cll_cfg_mtx;
+cl_way_t cl_ways[CL_N_WAYS];
+dk_mutex_t cll_qf_mtx;
 cl_listener_t local_cll;
+dk_mutex_t cll_thread_mtx;
+uint32 cl_way_ctr;
 du_thread_t *cl_listener_thr;
 int32 cl_stage;
 int32 cl_max_hosts = 100;
@@ -55,7 +62,6 @@ int64 cll_entered;
 int64 cll_lines[1000];
 int cll_counts[1000];
 resource_t *cl_buf_rc;
-resource_t *cll_rbuf_rc;
 int64 cl_cum_wait, cl_cum_wait_msec;
 char *c_cluster_listen;
 int32 c_cluster_threads;
@@ -134,9 +140,12 @@ cll_times ()
   for (inx = 0; inx < fill; inx++)
     printf ("%d:  " BOXINT_FMT " %d\n", l[inx].cll_line, l[inx].cll_time, l[inx].cll_count);
 #ifdef MTX_METER
-  printf ("cll waits: %ld w: %Ld e: %ld\n", local_cll.cll_mtx->mtx_wait_clocks, local_cll.cll_mtx->mtx_waits,
-      local_cll.cll_mtx->mtx_enters);
-  local_cll.cll_mtx->mtx_wait_clocks = local_cll.cll_mtx->mtx_enters = local_cll.cll_mtx->mtx_waits = 0;
+  DO_CLW (clw)
+  {
+    printf ("cll waits: %ld w: %Ld e: %ld\n", clw->clw_mtx.mtx_wait_clocks, clw->clw_mtx.mtx_waits, clw->clw_mtx.mtx_enters);
+    clw->clw_mtx.mtx_wait_clocks = clw->clw_mtx.mtx_enters = clw->clw_mtx.mtx_waits = 0;
+  }
+  END_DO_CLW;
 #endif
   memzero (cll_counts, sizeof (cll_counts));
   memzero (cll_lines, sizeof (cll_lines));
@@ -154,9 +163,9 @@ bif_cll_times (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 
 #ifdef MTX_METER
 int
-cll_try_enter ()
+cll_try_enter (uint32 top_req_no)
 {
-  if (mutex_try_enter (local_cll.cll_mtx))
+  if (mutex_try_enter (&cl_ways[CL_NTH_WAY].clw_mtx))
     {
       cll_entered = rdtsc ();
       return 1;
@@ -344,7 +353,6 @@ cluster_dummy_host ()
   dk_set_push (&cluster_hosts, (void *) ch);
   local_cll.cll_this_host = 1;
   local_cll.cll_max_host = 1;
-  local_cll.cll_id_to_clib = hash_table_allocate (400);
   local_cll.cll_local = ch;
 }
 
@@ -357,10 +365,10 @@ partition_def_bif_define (void)
 }
 
 
-caddr_t
+inline caddr_t
 cl_buf_str_alloc ()
 {
-  return dk_alloc (DKSES_OUT_BUFFER_LENGTH);
+  return (caddr_t) dk_alloc (DKSES_OUT_BUFFER_LENGTH);
 }
 
 
@@ -370,7 +378,14 @@ cl_buf_str_free (caddr_t str)
   dk_free (str, DKSES_OUT_BUFFER_LENGTH);
 }
 
-resource_t *cl_buf_rc;
+
+
+cl_top_req_t *
+ctop_allocate ()
+{
+  NEW_VARZ (cl_top_req_t, ctop);
+  return ctop;
+}
 
 
 caddr_t
@@ -394,13 +409,101 @@ dv_clo_serialize (caddr_t clo, dk_session_t * out)
 
 
 void
+ctop_free (cl_top_req_t * ctop)
+{
+  rbuf_destroy (&ctop->ctop_rb);
+  dk_free ((caddr_t) ctop, sizeof (cl_top_req_t));
+}
+
+
+void
+ctop_clear (cl_top_req_t * ctop)
+{
+  rbuf_delete_all (&ctop->ctop_rb);
+  memzero (ctop, (ptrlong) & (((cl_top_req_t *) 0)->ctop_rb));
+}
+
+
+
+clo_queue_t *
+cloq_allocate ()
+{
+  NEW_VARZ (clo_queue_t, cloq);
+  return cloq;
+}
+
+
+void
+cloq_free (clo_queue_t * cloq)
+{
+  rbuf_destroy (&cloq->cloq_rb);
+  dk_free ((caddr_t) cloq, sizeof (clo_queue_t));
+}
+
+
+void
+cloq_clear (clo_queue_t * cloq)
+{
+  rbuf_delete_all (&cloq->cloq_rb);
+  memzero (cloq, (ptrlong) & (((clo_queue_t *) 0)->cloq_rb));
+}
+
+
+
+void
 cluster_init ()
 {
   PCONFIG pconfig, pconfig_g;
   dk_set_t master_list = NULL;
   cl_host_t *local_ch;
   int inx;
-  local_cll.cll_mtx = mutex_allocate ();
+  c_cluster_threads = 200;
+  for (inx = 0; inx < CL_N_WAYS; inx++)
+    {
+      char mtx_name[20];
+      cl_way_t *clw = &cl_ways[inx];
+      dk_mutex_init (&clw->clw_mtx, MUTEX_TYPE_SHORT);
+      snprintf (mtx_name, sizeof (mtx_name), "CLL:%d", inx);
+      mutex_option (&clw->clw_mtx, mtx_name, NULL, NULL);
+      hash_table_init (&clw->clw_top_req, c_cluster_threads);
+      hash_table_init (&clw->clw_req, 2 * c_cluster_threads);
+      hash_table_init (&clw->clw_id_to_clib, 3 * c_cluster_threads);
+      hash_table_init (&clw->clw_wait_clrg, 3 * 11);
+      hash_table_init (&clw->clw_id_to_cm, c_cluster_threads);
+      hash_table_init (&clw->clw_closed_qfs, 1100);
+      hash_table_init (&clw->clw_dfg_running_queue, 101);
+      clw->clw_dfg_running_queue.ht_rehash_threshold = 2;
+      clw->clw_top_req.ht_rehash_threshold = 2;
+      clw->clw_req.ht_rehash_threshold = 2;
+      clw->clw_id_to_cm.ht_rehash_threshold = 2;
+      clw->clw_id_to_clib.ht_rehash_threshold = 2;
+      clw->clw_wait_clrg.ht_rehash_threshold = 2;
+      clw->clw_closed_qfs.ht_rehash_threshold = 2;
+      clw->clw_dfg_running_queue.ht_rehash_threshold = 2;
+      clw->clw_next_req_no = CL_N_WAYS + inx;
+      clw->clw_top_reqs =
+	  resource_allocate (MDBG_RC_SIZE ((c_cluster_threads / CL_N_WAYS) + 10), (rc_constr_t) ctop_allocate,
+	  (rc_destr_t) ctop_free, (rc_destr_t) ctop_clear, 0);
+      clw->clw_cloqs =
+	  resource_allocate (MDBG_RC_SIZE (c_cluster_threads), (rc_constr_t) cloq_allocate, (rc_destr_t) cloq_free,
+	  (rc_destr_t) cloq_clear, 0);
+      HT_REQUIRE_MTX (&clw->clw_id_to_cm, &clw->clw_mtx);
+      HT_REQUIRE_MTX (&clw->clw_id_to_clib, &clw->clw_mtx);
+      HT_REQUIRE_MTX (&clw->clw_closed_qfs, &clw->clw_mtx);
+      HT_REQUIRE_MTX (&clw->clw_req, &clw->clw_mtx);
+      HT_REQUIRE_MTX (&clw->clw_top_req, &clw->clw_mtx);
+      HT_REQUIRE_MTX (&clw->clw_wait_clrg, &clw->clw_mtx);
+      HT_REQUIRE_MTX (&clw->clw_dfg_running_queue, &clw->clw_mtx);
+      clw->clw_rbuf_rc = resource_allocate (600, (rc_constr_t) rbuf_allocate, (rc_destr_t) dk_free_box, NULL, 0);
+      resource_no_sem (clw->clw_rbuf_rc);
+    }
+  dk_mutex_init (&cll_thread_mtx, MUTEX_TYPE_SHORT);
+  mutex_option (&cll_thread_mtx, "cl_thr", NULL, NULL);
+  dk_mutex_init (&cll_qf_mtx, MUTEX_TYPE_SHORT);
+  mutex_option (&cll_qf_mtx, "cl_qf", NULL, NULL);
+  dk_mutex_init (&cll_conn_mtx, MUTEX_TYPE_SHORT);
+  mutex_option (&cll_conn_mtx, "cl_conn", NULL, NULL);
+  dk_mutex_init (&cll_cfg_mtx, MUTEX_TYPE_SHORT);
   dk_mem_hooks (DV_CLOP, box_non_copiable, (box_destr_f) clo_destroy, 0);
   clib_rc_init ();
   cl_strses_rc =
@@ -418,9 +521,6 @@ cluster_init ()
   cl_str_4 = resource_allocate (30, (rc_constr_t) cl_msg_alloc, (rc_destr_t) cl_msg_free, NULL, (void *) (ptrlong) CL_MSG_SIZE_4);
   cl_str_5 = resource_allocate (30, (rc_constr_t) cl_msg_alloc, (rc_destr_t) cl_msg_free, NULL, (void *) (ptrlong) CL_MSG_SIZE_5);
   cl_str_6 = resource_allocate (30, (rc_constr_t) cl_msg_alloc, (rc_destr_t) cl_msg_free, NULL, (void *) (ptrlong) CL_MSG_SIZE_6);
-  dfg_running_queue = hash_table_allocate (211);
-  cll_rbuf_rc = resource_allocate (600, (rc_constr_t) rbuf_allocate, (rc_destr_t) dk_free_box, NULL, 0);
-  resource_no_sem (cll_rbuf_rc);
   cl_buf_rc = resource_allocate (400, (rc_constr_t) cl_buf_str_alloc, (rc_destr_t) cl_buf_str_free, NULL, NULL);
   PrpcSetWriter (DV_DATA, (ses_write_func) dc_serialize);
   get_readtable ()[DV_DATA] = (macro_char_func) dc_deserialize;
@@ -456,7 +556,7 @@ clm_single_extra_slices (cluster_map_t * clm)
 }
 
 cl_host_t *
-cl_name_to_host (char *name)
+cl_name_to_host (const char *name)
 {
   return NULL;
 }
@@ -467,6 +567,32 @@ cl_id_to_host (int id)
   return local_cll.cll_local;
 }
 
+#if 0				/* This is in feature/fx2 but not in feature/analytics before meking it C++ friendly */
+inline caddr_t
+cl_buf_str_alloc ()
+{
+  return (caddr_t) dk_alloc (DKSES_OUT_BUFFER_LENGTH);
+}
+
+void
+cl_buf_str_free (caddr_t str)
+{
+  dk_free (str, DKSES_OUT_BUFFER_LENGTH);
+}
+
+
+void
+cluster_init ()
+{
+  local_cll.cll_mtx = mutex_allocate ();
+  dk_mem_hooks (DV_CLOP, box_non_copiable, (box_destr_f) clo_destroy, 0);
+  cl_strses_rc =
+      resource_allocate (30, (rc_constr_t) cl_strses_allocate, (rc_destr_t) cl_strses_free, (rc_destr_t) strses_flush, NULL);
+  clib_rc_init ();
+  dk_mem_hooks (DV_CLRG, (box_copy_f) clrg_copy, (box_destr_f) clrg_destroy, 0);
+  PrpcSetWriter (DV_CLRG, (ses_write_func) null_serialize);
+}
+#endif
 
 char *
 cl_thr_stat ()

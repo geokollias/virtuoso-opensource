@@ -203,7 +203,6 @@ typedef struct lock_trx_s
   char lt_is_cl_server;		/* serving a cluster req, whether enlisted or not */
   char lt_cl_detached;		/* cl branch may commit independently but not hold locks if waiting for further cl ops  */
   int lt_threads;
-  int lt_cl_ref_count;		/* no of cluster continuable itc's or qf's wit ref to this.  Don't free until all gone.  Under wi_txn_mtx. No resetting on lt_clear, also no writing outside of txn_mtx, also not in lt_clear */
   int64 lt_trx_no;
   struct client_connection_s *lt_client;
   dk_mutex_t lt_locks_mtx;
@@ -295,6 +294,7 @@ typedef struct lock_trx_s
   dk_set_t lt_cl_branches;	/* cl_host_t for cluster hosts in same commit */
   caddr_t lt_2pc_hosts;		/* list of host ids with prepared state.  Use for recov consensus */
   struct cl_host_s *lt_branch_of;
+  struct cl_message_s *lt_transact_cm;	/* if a transact comes on while there is athread on the lt, put it here and process when the thread would detach from lt */
   OFF_T lt_commit_flag_offset;	/* use for updating log record state in 2pc */
   char lt_need_branch_consensus;	/* prepared originating from self comes in log sync. Must ask other branches what became of it. */
   char lt_cl_main_enlisted;	/* set if branch of enlisted, forward enlist */
@@ -323,7 +323,6 @@ typedef struct lock_trx_s
 #define IS_MT_BRANCH(lt)  ((lt)->lt_rc_w_id && (lt)->lt_rc_w_id != (lt)->lt_w_id)
 
 #define LT_MAIN_W_ID(lt) ((lt)->lt_rc_w_id ? (lt)->lt_rc_w_id : (lt)->lt_w_id)
-#define LT_MAIN_TRX_NO(lt) ((lt)->lt_main_trx_no ? (lt)->lt_main_trx_no : (lt)->lt_trx_no)
 
 #define LTN_HOST(ltn) ((uint32)((ltn) >> 32))
 #define LTN_NO(ltn) ((uint32)((ltn) & 0xffffffff))
@@ -923,7 +922,7 @@ lock_trx_t *lt_main_lt (lock_trx_t * lt);
 int lt_has_delta (lock_trx_t * lt);
 int lt_set_is_branch (dk_set_t list, lock_trx_t * lt, lock_trx_t ** main_lt_ret);
 void log_merge_commit (lock_trx_t * lt, dk_set_t merges);
-void lt_free_merge (dk_set_t merges);
+void lt_free_merge (lock_trx_t * lt);
 int lt_log_merge (lock_trx_t * lt, int in_txn);
 
 int lt_iext_transact (lock_trx_t * lt, int op);

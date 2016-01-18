@@ -39,6 +39,9 @@
 #include "arith.h"
 #include "sqlbif.h"
 #include "mhash.h"
+#include "recovery.h"
+#include "security.h"
+#include "wifn.h"
 
 #if (GCC_VERSION >= 3004) || defined (__clang__)
 #define ENABLE_GCC_OPTS
@@ -1486,6 +1489,11 @@ ce_result (col_pos_t * cpo, int row, dtp_t flags, db_buf_t val, int len, int64 o
   int next, target;
   it_cursor_t *itc = cpo->cpo_itc;
   data_col_t *dc = cpo->cpo_dc;
+  if (ce_result_trap)
+    {
+      if (offset > ce_result_trap)
+	bing ();
+    }
 #if 0
   if (ce_result_trap)
     {
@@ -3944,7 +3952,7 @@ cs_reset_check (compress_state_t * cs)
     {
       while (ready)
 	{
-	  db_buf_t ce = ready->data;
+	  db_buf_t ce = (db_buf_t) (ready->data);
 	  if (ready == cs->cs_prev_ready_ces)
 	    break;
 	  n_values += ce_string_n_values (ce, box_length (ce) - 1);
@@ -4531,7 +4539,7 @@ bif_cs_string (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     len += box_length (ce) - 1;
   }
   END_DO_SET ();
-  best = dk_alloc_box (len + 1, DV_STRING);
+  best = (dtp_t *) dk_alloc_box (len + 1, DV_STRING);
   best[len] = 0;
   DO_SET (caddr_t, ce, &cs->cs_ready_ces)
   {
@@ -4587,7 +4595,7 @@ bif_cs_values (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 
   DO_SET (db_buf_t *, r, &cs->cs_org_values)
   {
-    DO_BOX (db_buf_t, v, inx, r)
+    DO_BOX (caddr_t, v, inx, r)
     {
       res[fill++] = box_copy (v);
     }
@@ -6044,9 +6052,6 @@ col_find_op (int op)
   return 0;
 }
 
-
-void strses_set_int32 (dk_session_t * ses, int64 offset, int32 val);
-
 caddr_t
 bif_dcvt (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
@@ -6066,9 +6071,6 @@ bif_dcvt (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   dk_free_box ((caddr_t) ses);
   return NULL;
 }
-
-#include "recovery.h"
-#include "security.h"
 
 int
 col_key_col_layout_pos (dbe_key_t * key, oid_t col_id)

@@ -382,9 +382,6 @@ dfe_prev_tb (df_elt_t * dfe, float *card_between_ret, int stop_on_new_order)
   return NULL;
 }
 
-int pred_const_rhs (df_elt_t * pred);
-
-
 int
 dfe_lead_const (df_elt_t * dfe)
 {
@@ -910,7 +907,7 @@ typedef struct fn_card_s
 
 
 
-fn_card_t fn_cards[] = { {"isiri_id", 1, 0.001},
+fn_card_t fn_cards[] = { {"isiri_id", 0.98, 0.001},
 {"rdf_is_sub", 0.8, 0.01, FN_RESTR_ABS},
 {"__rgs_ack", 0, 0, 1},		/* near always false, occurs inside a not, so sec cond always passes */
 {"__rgs_ack_cbk", 1, 0, 1},
@@ -1240,7 +1237,7 @@ sqlo_in_list_unit (df_elt_t * in_tb, df_elt_t * pred, float *u1, float *a1)
 {
   du_thread_t *thr;
   int n_items, nth;
-  df_elt_t **subr = NULL;
+  ST **subr = NULL;
   df_elt_t **in_list = sqlo_in_list_1 (pred, NULL, NULL, &subr);
   if (!in_list)
     return 0;
@@ -1368,6 +1365,8 @@ int
 col_may_use_hist (dbe_column_t * col, df_elt_t * lower, df_elt_t * upper)
 {
   caddr_t cnst = NULL, cnst2 = NULL;
+  if (tb_is_rdf_quad (col->col_defined_in))
+    return 0;
   if (!col->col_hist)
     return 0;
   if (lower && upper && IS_LOWER_CONST (lower, &cnst) && IS_UPPER_CONST (upper, &cnst2))
@@ -1515,18 +1514,48 @@ col_hist_card (df_elt_t * col_dfe, df_elt_t * lower, df_elt_t * upper)
 	{
 	  uint64 n_rows = hist_rows (hist, lower_pos, lower_pos + 1);
 	  double frac = (upper_dist - lower_dist) / lower_width;
+	  if (0 == lower_width || 0 == upper_dist || 0 == lower_dist)
+	    frac = 0.5;
 	  rows = n_rows * frac + lower_closed + upper_closed;
 	}
       else
-	rows = hist_rows (hist, lower_pos + 1, upper_pos)
-	    + hist_rows (hist, lower_pos, lower_pos + 1) * (1 - (lower_dist / lower_width))
-	    + hist_rows (hist, upper_pos, upper_pos + 1) * (upper_dist / upper_width) + lower_closed + upper_closed;
+	{
+	  if (0 == lower_dist || lower_dist > lower_width)
+	    {
+	      lower_dist = 0.5;
+	      lower_width = 1;
+	    }
+	  if (0 == upper_dist || upper_dist > upper_width)
+	    {
+	      upper_dist = 0.5;
+	      upper_width = 1;
+	    }
+	  rows = hist_rows (hist, lower_pos + 1, upper_pos)
+	      + hist_rows (hist, lower_pos, lower_pos + 1) * (1 - (lower_dist / lower_width))
+	      + (upper_pos < len - 1 ? hist_rows (hist, upper_pos, upper_pos + 1) * (upper_dist / upper_width) : 0)
+	      + lower_closed + upper_closed;
+	}
     }
   else if (lower)
-    rows = hist_rows (hist, lower_pos + 1, len - 1) + hist_rows (hist, lower_pos, lower_pos + 1) * (1 - (lower_dist / lower_width));
+    {
+      if (0 == lower_width || lower_dist > lower_width)
+	{
+	  lower_dist = 0.5;
+	  lower_width = 1;
+	}
+      rows = hist_rows (hist, lower_pos + 1, len - 1)
+	  + hist_rows (hist, lower_pos, lower_pos + 1) * (1 - (lower_dist / lower_width));
+    }
   else
-    rows = hist_rows (hist, 0, upper_pos - 1)
-	+ hist_rows (hist, upper_pos, upper_pos + 1) * (upper_dist / upper_width) + upper_closed;
+    {
+      if (0 == upper_dist || upper_dist > upper_width)
+	{
+	  upper_dist = 0.5;
+	  upper_width = 1;
+	}
+      rows = hist_rows (hist, 0, upper_pos - 1)
+	  + (upper_pos < len - 1 ? hist_rows (hist, upper_pos, upper_pos + 1) * (upper_dist / upper_width) + upper_closed : 0);
+    }
   return mpy * rows / tb_card;
 empty:
   return 1e-3;
@@ -2673,7 +2702,7 @@ sqlo_rdf_obj_const_value (ST * tree, caddr_t * val_ret, caddr_t * lang_ret)
     {
       caddr_t val;
       int is_err = 0;
-      val = xqf_str_parse_to_rdf_box (tree->_.call.params[0], tree->_.call.params[1], &is_err);
+      val = xqf_str_parse_to_rdf_box ((caddr_t) (tree->_.call.params[0]), (caddr_t) (tree->_.call.params[1]), &is_err);
       if (val_ret && !is_err)
 	{
 	  *val_ret = val;
@@ -3395,7 +3424,7 @@ sqlo_inx_sample_1 (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_el
     place = (tb_sample_t *) id_hash_get (so->so_sc->sc_sample_cache, (caddr_t) & sc_key);
   else
     {
-      so->so_sc->sc_sample_cache = id_hash_allocate (61, sizeof (caddr_t), sizeof (tb_sample_t), treehash, treehashcmp);
+      so->so_sc->sc_sample_cache = t_id_hash_allocate (61, sizeof (caddr_t), sizeof (tb_sample_t), treehash, treehashcmp);
       place = NULL;
     }
   if (place)
@@ -3440,12 +3469,14 @@ sqlo_inx_sample_1 (df_elt_t * tb_dfe, dbe_key_t * key, df_elt_t ** lowers, df_el
   if ((!sop || sop->sop_ric || sop->sop_use_sc_cache) && !ic_is_insufficient_slices (ic))
     {
       tb_sample_t smp;
+      caddr_t t_sc_key = t_full_box_copy_tree (sc_key);
+      dk_free_tree (sc_key);
       memset (&smp, 0, sizeof (tb_sample_t));
       smp.smp_card = res * row_sel;
       smp.smp_inx_card = res;
       smp_set_cols (&smp, itc, 1);
       if (so->so_sc->sc_sample_cache)
-	id_hash_set (so->so_sc->sc_sample_cache, (caddr_t) & sc_key, (caddr_t) & smp);
+	id_hash_set (so->so_sc->sc_sample_cache, (caddr_t) & t_sc_key, (caddr_t) & smp);
     }
   c = res * row_sel;
   ic->ic_inx_card = res;
@@ -3638,7 +3669,7 @@ sqlo_record_rdf_p (sample_opt_t * sop, dbe_key_t * key, caddr_t p_const, int64 e
   distincts[0] = est;
   DO_SET (dbe_column_t *, col, &key->key_parts->next)
   {
-    cs = gethash ((void *) col, sop->sop_cols);
+    cs = (col_stat_t *) gethash ((void *) col, sop->sop_cols);
     if (!cs)
       goto end;
     distincts[fill++] = (float) cs->cs_distinct->ht_count * (float) est / sop->sop_n_sample_rows;
@@ -3651,7 +3682,7 @@ sqlo_record_rdf_p (sample_opt_t * sop, dbe_key_t * key, caddr_t p_const, int64 e
   }
   END_DO_SET ();
   /* free stats on P */
-  cs = gethash (key->key_parts->data, sop->sop_cols);
+  cs = (col_stat_t *) gethash (key->key_parts->data, sop->sop_cols);
   if (!cs)
     goto end;
   DO_IDHASH (caddr_t, k, caddr_t, ign, cs->cs_distinct) dk_free_box (k);
@@ -3870,7 +3901,7 @@ sqlo_record_lit_param_sample (df_elt_t * tb_dfe, caddr_t sc_key, index_choice_t 
   qce_sample_t *qces2;
   if (!stl)
     return;
-  qces.qces_sc_key = box_copy_tree (sc_key);
+  qces.qces_sc_key = (caddr_t *) box_copy_tree ((caddr_t) sc_key);
   qces.qces_n_params = dk_set_length (ic->ic_lit_param_nos);
   DO_SET (ptrlong, n, &ic->ic_lit_param_nos)
   {
@@ -4185,7 +4216,7 @@ dfe_col_n_distinct (df_elt_t * dfe)
 {
   if (dfe->dfe_tables)
     {
-      op_table_t *ot = dfe->dfe_tables->data;
+      op_table_t *ot = (op_table_t *) (dfe->dfe_tables->data);
       if (dfe_is_quad (ot->ot_dfe))
 	{
 	  /* fill in code to get constant p and card for this */
@@ -4265,7 +4296,7 @@ dfe_rq_p_v_card (df_elt_t * tb_dfe, df_elt_t * pred, float *inx_card)
 	float p_stat[4];
 	dk_set_t parts_ret = NULL;
 	pid = unbox_iri_id (p_pred->_.bin.right->dfe_tree);
-	dfe_p_stat (tb_dfe, p_pred, pid, &parts_ret, NULL, &p_stat, NULL);
+	dfe_p_stat (tb_dfe, p_pred, pid, &parts_ret, NULL, p_stat, NULL);
 	n_ps++;
 	ps += p_stat[0];
       }
@@ -4613,9 +4644,9 @@ dfe_init_p_stat (df_elt_t * dfe, df_elt_t * lower)
   rq.rq_p.rqp_lower = lower;
   ic.ic_set_sample_key = 1;
   ic.ic_key = tb_px_key (rq.rq_table, rq.rq_s_col);
-  dfe_p_card (dfe, &rq, &p_stat, &ic, SO_S);
+  dfe_p_card (dfe, &rq, p_stat, &ic, SO_S);
   ic.ic_key = tb_px_key (rq.rq_table, rq.rq_o_col);
-  dfe_p_card (dfe, &rq, &p_stat, &ic, SO_O);
+  dfe_p_card (dfe, &rq, p_stat, &ic, SO_O);
   return 1;
 }
 
@@ -4714,8 +4745,8 @@ sqlo_use_p_stat_2 (df_elt_t * dfe, float *inx_card, float *col_card, index_choic
     }
   if (RQ_BOUND_RANGE == rq.rq_s.rqp_op)
     return 0;
-  col2 = rq_rqp (&rq, key->key_parts->next->data);
-  col3 = rq_rqp (&rq, key->key_parts->next->next->data);
+  col2 = rq_rqp (&rq, (dbe_column_t *) (key->key_parts->next->data));
+  col3 = rq_rqp (&rq, (dbe_column_t *) (key->key_parts->next->next->data));
   if (RQ_UNBOUND == col2->rqp_op && RQ_UNBOUND == col3->rqp_op)
     {
       *inx_card = p_card;
@@ -4875,6 +4906,7 @@ sqlo_use_p_stat (df_elt_t * dfe, df_elt_t ** lowers, int inx_const_fill, int64 e
   dk_free_box (p);
   if (!found)
     return 0;
+  sqlo_p_stat_default (est, place);
   *inx_arity = est / place[1];
   if (lower3 || upper3)
     {
@@ -5666,7 +5698,7 @@ sqlo_set_cost (df_elt_t * dfe, float *u1, float *a1, float *overhead_ret)
     case UNION_ALL_ST:
       break;
     default:
-      csum += (float) (asum * (log (asum) / log (2)));
+      csum += (float) (asum * sqlo_hash_mem_cost (asum));
     }
   switch (dfe->_.qexp.op)
     {
@@ -6014,11 +6046,10 @@ dfe_unit_cost (df_elt_t * dfe, float input_arity, float *u1, float *a1, float *o
 	    n_ins = MIN (n_ins, dc_batch_sz);
 	  n_lookup = input_arity - n_ins;
 	  mem_cost = sqlo_hash_mem_cost (n_ins);
-	  *u1 = (mem_cost * 1.2 * n_ins + mem_cost * n_lookup) / input_arity;
+	  *u1 = (mem_cost * 1.2 * n_ins + mem_cost * n_lookup) / MAX (input_arity, 1);
 	  *a1 = input_arity < 1 ? 1 : dfe->_.setp.gb_card > input_arity ? 0.5 : dfe->_.setp.gb_card / input_arity;
 	}
       break;
-
     case DFE_CALL:
       sqlo_proc_cost (dfe, u1, a1);
       break;

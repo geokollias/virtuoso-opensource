@@ -32,11 +32,11 @@ extern "C"
 {
 #endif
 #include "sparql_p.h"
-#include "xmlparser.h"
-#include "xmlparser_impl.h"
 #ifdef __cplusplus
 }
 #endif
+#include "xmlparser.h"
+#include "xmlparser_impl.h"
 #include "xml_ecm.h"
 #include "xqf.h"
 #include "rdf_core.h"
@@ -6571,7 +6571,7 @@ sparp_collect_all_atable_uses (sparp_t * sparp_or_null, quad_map_t * qm)
   if (NULL != qm->qmTableName)
     max_uses++;
   max_uses += BOX_ELEMENTS_0 (qm->qmATables);
-  uses = dk_alloc_box_zero (sizeof (qm_atable_use_t) * max_uses, DV_ARRAY_OF_LONG);
+  uses = (qm_atable_use_t *) dk_alloc_box_zero (sizeof (qm_atable_use_t) * max_uses, DV_ARRAY_OF_LONG);
   for (fld_ctr = 0; fld_ctr < SPART_TRIPLE_FIELDS_COUNT; fld_ctr++)
     {
       int col_ctr, default_qm_val_table_used = 0;
@@ -6640,7 +6640,7 @@ sparp_collect_all_conds (sparp_t * sparp_or_null, quad_map_t * qm)
 	max_conds += BOX_ELEMENTS_0 (qmv->qmvConds);
     }
   max_conds += BOX_ELEMENTS_0 (qm->qmConds);
-  conds = dk_alloc_box_zero (sizeof (ccaddr_t) * max_conds, DV_ARRAY_OF_LONG);
+  conds = (ccaddr_t *) dk_alloc_box_zero (sizeof (ccaddr_t) * max_conds, DV_ARRAY_OF_LONG);
   for (fld_ctr = 0; fld_ctr < SPART_TRIPLE_FIELDS_COUNT; fld_ctr++)
     {
       qm_value_t *qmv = SPARP_FIELD_QMV_OF_QM (qm, fld_ctr);
@@ -7681,7 +7681,7 @@ sparp_gp_trav_add_graph_perm_read_filters (sparp_t * sparp, SPART * curr, sparp_
 		if (!strcmp (prev->_.var.vname, g_norm_expn->_.var.vname))
 		  goto g_norm_expn_is_dupe;	/* see below */
 	      }
-	    else if (box_equal (prev, g_norm_expn))
+	    else if (box_equal ((cbox_t) prev, (cbox_t) g_norm_expn))
 	      goto g_norm_expn_is_dupe;	/* see below */
 	  }
 	  END_DO_SET ()if ((OPTIONAL_L == gp_of_cache->_.gp.subtype) || (WHERE_L == gp_of_cache->_.gp.subtype))
@@ -7735,7 +7735,7 @@ sparp_gp_trav_add_graph_perm_read_filters (sparp_t * sparp, SPART * curr, sparp_
 	      if (!strcmp (prev->_.var.vname, expn->_.var.vname))
 		goto expn_is_dupe;	/* see below */
 	    }
-	  else if (box_equal (prev, expn))
+	  else if (box_equal ((cbox_t) prev, (cbox_t) expn))
 	    goto expn_is_dupe;	/* see below */
 	}
 	END_DO_SET ()t_set_push (&parent_graph_expns, expn);

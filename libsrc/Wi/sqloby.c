@@ -652,13 +652,15 @@ dfe_col_is_pk_part (df_elt_t * dfe)
 {
   dbe_column_t *col;
   dbe_key_t *pk;
+  int pos;
   if (!dfe || DFE_COLUMN != dfe->dfe_type)
     return 0;
   col = dfe->_.col.col;
   if (!col || !col->col_defined_in)
     return 0;
   pk = col->col_defined_in->tb_primary_key;
-  return dk_set_position (pk->key_parts, (void *) col) < pk->key_n_significant;
+  pos = dk_set_position (pk->key_parts, (void *) col);
+  return pos >= 0 && pos < pk->key_n_significant;
 }
 
 int
@@ -740,8 +742,12 @@ int
 sqlo_tb_u_count (dk_set_t unplaced, op_table_t * ot)
 {
   int c = 0;
-  DO_SET (df_elt_t *, u, &unplaced) if ((void *) ot == u->dfe_tables->data)
-    c++;
+  DO_SET (df_elt_t *, u, &unplaced)
+  {
+    op_table_t *u_ot = (op_table_t *) u->dfe_tables->data;
+    if (ot == u_ot || u_ot->ot_top_ot == ot)
+      c++;
+  }
   END_DO_SET ();
   return c;
 }
@@ -762,37 +768,73 @@ sqlo_lp_dfe (sqlo_t * so, op_table_t * ot)
   return lp_dfe;
 }
 
+
+dk_set_t
+ot_lp_keys (op_table_t * ot)
+{
+#ifdef COLGROUP
+  dk_set_t res = NULL;
+  DO_SET (df_elt_t *, col, &ot->ot_lp_cols)
+  {
+    dbe_key_t *cg = tb_col_group (ot->ot_table, col->_.col.col);
+    t_set_pushnew (&res, (void *) cg);
+  }
+  END_DO_SET ();
+  return res;
+#else
+  return t_cons (ot->ot_table->tb_primary_key, NULL);
+#endif
+}
+
+
+dk_set_t
+ot_key_lp_cols (op_table_t * ot, dbe_key_t * pk)
+{
+  dk_set_t res = NULL;
+  DO_SET (df_elt_t *, col, &ot->ot_lp_cols) if (dk_set_member (pk->key_parts, col->_.col.col))
+    t_set_push (&res, (void *) col);
+  END_DO_SET ();
+  return res;
+}
+
+
 void
 sqlo_make_lp (sqlo_t * so, op_table_t * top_ot, dk_set_t tbs, dk_set_t * pk_cols_ret)
 {
   DO_SET (op_table_t *, ot, &tbs)
   {
-    dbe_key_t *pk;
-    int nth = 0;
+    dk_set_t cgs;
     df_elt_t *lp_dfe;
     if (!ot->ot_lp_cols)
       continue;
-    lp_dfe = sqlo_lp_dfe (so, ot);
-    pk = ot->ot_table->tb_primary_key;
-    lp_dfe->_.table.key = pk;
-    lp_dfe->_.table.out_cols = ot->ot_lp_cols;
-    DO_SET (dbe_column_t *, part, &pk->key_parts)
+    cgs = ot_lp_keys (ot);
+    DO_SET (dbe_key_t *, pk, &cgs)
     {
-      ST *ref = t_listst (3, COL_DOTTED, ot->ot_new_prefix, part->col_name);
-      ST *lp_ref = t_listst (3, COL_DOTTED, lp_dfe->_.table.ot->ot_new_prefix, part->col_name);
-      df_elt_t *col = sqlo_df (so, ref);
-      df_elt_t *lp_col = sqlo_df (so, lp_ref);
-      df_elt_t *pred = sqlo_new_dfe (so, DFE_BOP_PRED, NULL);
-      t_set_push (pk_cols_ret, (void *) col);
-      pred->_.bin.op = BOP_EQ;
-      pred->_.bin.left = lp_col;
-      pred->_.bin.right = col;
-      t_set_push (&lp_dfe->_.table.col_preds, (void *) pred);
-      if (++nth == pk->key_n_significant)
-	break;
+      int nth = 0;
+      lp_dfe = sqlo_lp_dfe (so, ot);
+      lp_dfe->_.table.ot->ot_cg_pk = pk;
+      lp_dfe->_.table.ot->ot_top_ot = ot;
+      lp_dfe->_.table.key = pk;
+      lp_dfe->_.table.out_cols = ot_key_lp_cols (ot, pk);
+      DO_SET (dbe_column_t *, part, &pk->key_parts)
+      {
+	ST *ref = t_listst (3, COL_DOTTED, ot->ot_new_prefix, part->col_name);
+	ST *lp_ref = t_listst (3, COL_DOTTED, lp_dfe->_.table.ot->ot_new_prefix, part->col_name);
+	df_elt_t *col = sqlo_df (so, ref);
+	df_elt_t *lp_col = sqlo_df (so, lp_ref);
+	df_elt_t *pred = sqlo_new_dfe (so, DFE_BOP_PRED, NULL);
+	t_set_push (pk_cols_ret, (void *) col);
+	pred->_.bin.op = BOP_EQ;
+	pred->_.bin.left = lp_col;
+	pred->_.bin.right = col;
+	t_set_push (&lp_dfe->_.table.col_preds, (void *) pred);
+	if (++nth == pk->key_n_significant)
+	  break;
+      }
+      END_DO_SET ();
+      sqlo_place_dfe_after (so, LOC_LOCAL, so->so_gen_pt, lp_dfe);
     }
     END_DO_SET ();
-    sqlo_place_dfe_after (so, LOC_LOCAL, so->so_gen_pt, lp_dfe);
   }
   END_DO_SET ();
 }
@@ -838,6 +880,8 @@ sqlo_late_proj (sqlo_t * so, op_table_t * top_ot)
     op_table_t *c_ot = (op_table_t *) col->dfe_tables->data;
     if (!c_ot->ot_table || c_ot->ot_rds || c_ot->ot_table->tb_file)
       continue;
+    if (c_ot->ot_top_ot)
+      c_ot = c_ot->ot_top_ot;
     t_set_pushnew (&tbs, (void *) c_ot);
   }
   END_DO_SET ();
@@ -874,7 +918,7 @@ sqlo_late_proj (sqlo_t * so, op_table_t * top_ot)
       END_DO_SET ();
       top_ot->ot_group_dfe->_.setp.gb_dependent = t_set_diff (top_ot->ot_group_dfe->_.setp.gb_dependent, unplaced);
       top_ot->ot_group_dfe->_.setp.late_proj = unplaced;
-      if (oby_dfe = top_ot->ot_oby_dfe)
+      if ((oby_dfe = top_ot->ot_oby_dfe))
 	{
 	  oby_dfe->_.setp.is_late_proj = 1;
 	  oby_dfe->_.setp.late_proj = so->so_lp_deps;

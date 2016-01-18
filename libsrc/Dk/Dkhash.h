@@ -83,8 +83,8 @@ typedef struct
 } dk_hash_t;
 
 #ifdef MTX_DEBUG
-#define HT_REQUIRE_MTX(h, m) h->ht_required_mtx = m
-#define HT_NO_REQUIRE_MTX(ht) ht->ht_required_mtx = NULL
+#define HT_REQUIRE_MTX(h, m) (h)->ht_required_mtx = m
+#define HT_NO_REQUIRE_MTX(ht) (ht)->ht_required_mtx = NULL
 #else
 #define HT_REQUIRE_MTX(h, m)
 #define HT_NO_REQUIRE_MTX(ht)
@@ -170,14 +170,6 @@ extern void dbg_dk_rehash (const char *file, int line, dk_hash_t * ht, uint32 ne
 #define remhash(KEY,HT)			dbg_remhash (__FILE__, __LINE__, (KEY), (HT))
 #define clrhash(TABLE)			dbg_clrhash (__FILE__, __LINE__, (TABLE))
 #define dk_rehash(HT,NEW_SZ)		dbg_dk_rehash (__FILE__, __LINE__, (HT), (NEW_SZ))
-#else
-extern dk_hash_t *hash_table_allocate (uint32 size);
-extern void hash_table_init (dk_hash_t * ht, int size);
-extern void hash_table_free (dk_hash_t * table);
-extern void *sethash (const void *key, dk_hash_t * ht, void *data);
-extern int remhash (const void *key, dk_hash_t * ht);
-extern void clrhash (dk_hash_t * table);
-extern void dk_rehash (dk_hash_t * ht, uint32 new_sz);
 #endif
 EXE_EXPORT (void, hash_table_destroy, (dk_hash_t * ht));
 

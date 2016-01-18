@@ -27,6 +27,7 @@
 
 #include "Dk.h"
 #include "Dk/Dksestcp.h"
+#include "aqueue.h"
 #include "sqlnode.h"
 #include "sqlfn.h"
 #include "repl.h"
@@ -85,6 +86,10 @@ long tc_read_wait;
 long tc_write_wait;
 long tc_qp_thread;
 long tc_rec_cm;
+long tc_rec_breaks_wait;
+long tc_cl_no_thread;
+
+
 long tc_dive_would_deadlock;
 long tc_cl_deadlocks;
 long tc_cl_wait_queries;
@@ -105,7 +110,7 @@ long tc_cl_disconnect;
 long tc_cl_disconnect_in_clt;
 long tc_dfg_coord_pause;
 long tc_dfg_more;
-int cls_rollback_no_finish_if_thread;
+int cls_rollback_no_finish_if_thread = 1;
 
 
 long tc_page_fill_hash_overflow;
@@ -173,7 +178,6 @@ long tc_read_wait_decoy;
 long tc_read_wait_while_ra_finding_buf;
 long tc_pg_write_compact;
 long dbf_user_1, dbf_user_2;
-extern int dbs_stop_cp;
 
 
 extern long read_block_usec;
@@ -236,7 +240,10 @@ extern int32 sqlo_compiler_exceeds_run_factor;
 extern int sqlo_n_layout_steps;
 extern int sqlo_n_best_layouts;
 extern int sqlo_n_full_layouts;
-
+extern int64 sqlc_cum_memory;
+extern long tc_sqlo_no_mem;
+extern int sq_cache_hit, sq_cache_miss, sq_hash_fill_hit, sq_hash_fill_miss;
+extern long tc_cached_subq_no_reuse_for_card;
 extern int enable_n_best_plans;
 extern int enable_mem_hash_join;
 extern int32 enable_qrc;
@@ -364,7 +371,6 @@ long vt_batch_size_limit = 1000000L;
 long dbf_no_disk = 0;
 long dbf_log_no_disk;
 extern int32 dbf_log_always;
-extern int32 dbf_no_raw_exit;
 extern int32 dbf_no_atomic;
 long dbf_2pc_prepare_wait;	/* wait this many msec between prepare and commit */
 long dbf_2pc_wait;		/* wait this many msec after each 2pc message or log write */
@@ -419,6 +425,7 @@ extern int enable_split_range;
 extern int enable_split_sets;
 
 extern int32 c_cluster_threads;
+extern int32 cl_max_alt_threads;
 extern int32 cl_msg_drop_rate;
 extern int32 cl_con_drop_rate;
 extern int32 cl_keep_alive_interval;
@@ -1283,9 +1290,6 @@ extern int64 dk_n_nosz_free;
 extern int64 dk_n_bytes;
 extern int64 dk_n_mmaps;
 extern int64 dk_n_max_allocs;
-size_t http_threads_mem_report ();
-size_t dk_alloc_global_cache_total ();
-size_t aq_thr_mem_cache_total ();
 
 void
 mem_status_report ()
@@ -1504,6 +1508,8 @@ stat_desc_t stat_descs[] = {
   {"tc_write_wait", &tc_write_wait, NULL},
   {"tc_cl_deadlocks", &tc_cl_deadlocks, NULL},
   {"tc_rec_cm", &tc_rec_cm},
+  {"tc_rec_breaks_wait", &tc_rec_breaks_wait},
+  {"tc_cl_no_thread", &tc_cl_no_thread},
   {"tc_cl_wait_queries", &tc_cl_wait_queries, NULL},
   {"tc_cl_keep_alives", &tc_cl_keep_alives, NULL},
   {"tc_cl_branch_wanted_queries", &tc_cl_branch_wanted_queries, NULL},
@@ -1537,7 +1543,7 @@ stat_desc_t stat_descs[] = {
   {"tc_page_fill_hash_overflow", &tc_page_fill_hash_overflow, NULL},
   {"tc_autocompact_split", &tc_autocompact_split, NULL},
   {"tc_key_sample_reset", &tc_key_sample_reset, NULL},
-  {"tc_sample_clocks", &tc_sample_clocks},
+  {"tc_sample_clocks", (long *) &tc_sample_clocks},
   {"tc_part_hash_join", &tc_part_hash_join, NULL},
   {"tc_pl_moved_in_reentry", &tc_pl_moved_in_reentry, NULL},
   {"tc_enter_transiting_bm_inx", &tc_enter_transiting_bm_inx, NULL},
@@ -1555,7 +1561,6 @@ stat_desc_t stat_descs[] = {
   {"tc_root_write", &tc_root_write, NULL},
   {"tc_unregister_enter", &tc_unregister_enter, NULL},
   {"tc_root_cache_miss", &tc_root_cache_miss, NULL},
-
 
   {"tc_initial_while_closing", &tc_initial_while_closing, NULL},
   {"tc_initial_while_closing_died", &tc_initial_while_closing_died, NULL},
@@ -1579,7 +1584,7 @@ stat_desc_t stat_descs[] = {
   {"tc_dc_extend_values", &tc_dc_extend_values, NULL},
   {"mp_large_in_use", (long *) &mp_large_in_use, NULL},
   {"mp_max_large_in_use", (long *) &mp_max_large_in_use, NULL},
-  {"mp_mmap_clocks", &mp_mmap_clocks, NULL},
+  {"mp_mmap_clocks", (long *) &mp_mmap_clocks, NULL},
   {"tc_read_aside", &tc_read_aside, NULL},
   {"tc_merge_reads", &tc_merge_reads, NULL},
   {"tc_merge_read_pages", &tc_merge_read_pages, NULL},
@@ -1762,7 +1767,7 @@ stat_desc_t stat_descs[] = {
 
   {"st_host_name", NULL, &dns_host_name},
   {"st_cpu_count", &srv_cpu_count, NULL},
-  {"st_default_language", NULL, &server_default_language_name},
+  {"st_default_language", NULL, (caddr_t *) (&server_default_language_name)},
 
   {"st_os_user_name", NULL, &_st_os_user_name},
 
@@ -1792,7 +1797,7 @@ stat_desc_t stat_descs[] = {
   {"disable_rdf_init", (long *) &disable_rdf_init, SD_INT32},
 
   /* backup vars */
-  {"backup_snappy", &backup_snappy, SD_INT32},
+  {"backup_snappy", (long *) &backup_snappy, SD_INT32},
   {"backup_prefix_name", NULL, &my_bp_prefix},
   {"backup_file_index", (long *) &bp_ctx.db_bp_num, NULL},
   {"backup_dir_index", (long *) &bp_ctx.db_bp_index, NULL},
@@ -1802,8 +1807,8 @@ stat_desc_t stat_descs[] = {
   /* sparql vars */
   {"sparql_result_set_max_rows", &sparql_result_set_max_rows, NULL},
   {"sparql_max_mem_in_use", &sparql_max_mem_in_use, NULL},
-  {"rdf_create_graph_keywords", &rdf_create_graph_keywords, SD_INT32},
-  {"rdf_query_graph_keywords", &rdf_query_graph_keywords, SD_INT32},
+  {"rdf_create_graph_keywords", (long *) &rdf_create_graph_keywords, SD_INT32},
+  {"rdf_query_graph_keywords", (long *) &rdf_query_graph_keywords, SD_INT32},
   {"enable_vec", (long *) &enable_vec, SD_INT32},
   {"srv_init", (long *) &in_srv_global_init, SD_INT32},
   {"ac_real_time", (long *) &ac_real_time, SD_INT32},
@@ -1826,57 +1831,64 @@ stat_desc_t dbf_descs[] = {
   {"dbf_2pc_wait", &dbf_2pc_wait, NULL},
   {"dbf_branch_transact_wait", &dbf_branch_transact_wait, NULL},
   {"dbf_log_no_disk", &dbf_log_no_disk, NULL},
-  {"dbf_log_always", &dbf_log_always, SD_INT32},
-  {"dbf_no_atomic", &dbf_no_atomic, SD_INT32},
-  {"dbf_no_raw_exit", &dbf_no_raw_exit, SD_INT32},
-  {"txn_after_image_limit", &txn_after_image_limit, NULL},
+  {"dbf_log_always", (long *) &dbf_log_always, SD_INT32},
+  {"dbf_no_atomic", (long *) &dbf_no_atomic, SD_INT32},
+/*    {"dbf_no_raw_exit"		, (long *)&dbf_no_raw_exit, SD_INT32},*/
+  {"txn_after_image_limit", (long *) &txn_after_image_limit, NULL},
   {"dbf_clop_enter_wait", &dbf_clop_enter_wait, NULL},
   {"dbf_cl_skip_wait_notify", &dbf_cl_skip_wait_notify, NULL},
   {"dbf_cpt_rb", &dbf_cpt_rb, NULL},
   {"cl_no_auto_remove", (long *) &cl_no_auto_remove, SD_INT32},
   {"dbf_cl_blob_autosend_limit", &dbf_cl_blob_autosend_limit, NULL},
   {"dbf_no_sample_timeout", &dbf_no_sample_timeout, NULL},
-  {"cl_slice_sample_pct", &cl_slice_sample_pct, SD_INT32},
+  {"cl_slice_sample_pct", (long *) &cl_slice_sample_pct, SD_INT32},
   {"dbf_fast_cpt", (long *) &dbf_fast_cpt, SD_INT32},
-  {"enable_flush_all", &enable_flush_all, SD_INT32},
+  {"enable_flush_all", (long *) &enable_flush_all, SD_INT32},
   {"cl_req_batch_size", (long *) &cl_req_batch_size, SD_INT32},
   {"cl_dfg_batch_bytes", (long *) &cl_dfg_batch_bytes, SD_INT32},
   {"cl_res_buffer_bytes", (long *) &cl_res_buffer_bytes, SD_INT32},
   {"cl_batches_per_rpc", (long *) &cl_batches_per_rpc, SD_INT32},
   {"cl_rdf_inf_inited", (long *) &cl_rdf_inf_inited, SD_INT32},
-  {"enable_top_pred", &enable_top_pred, SD_INT32},
-  {"enable_top_print", &enable_top_print, SD_INT32},
-  {"enable_g_in_sec", &enable_g_in_sec, SD_INT32},
-  {"rdf_ctx_max_mem", &rdf_ctx_max_mem, NULL},
-  {"rdf_ctx_in_use", &rdf_ctx_in_use},
+  {"enable_top_pred", (long *) &enable_top_pred, SD_INT32},
+  {"enable_top_print", (long *) &enable_top_print, SD_INT32},
+  {"enable_g_in_sec", (long *) &enable_g_in_sec, SD_INT32},
+  {"rdf_ctx_max_mem", (long *) &rdf_ctx_max_mem, NULL},
+  {"rdf_ctx_in_use", (long *) &rdf_ctx_in_use},
   {"enable_mem_hash_join", (long *) &enable_mem_hash_join, SD_INT32},
-  {"sqlo_max_layouts", &sqlo_max_layouts, SD_INT32},
-  {"sqlo_max_mp_size", &sqlo_max_mp_size},
-  {"enable_initial_plan", &enable_initial_plan, SD_INT32},
-  {"enable_dt_leaf", &enable_dt_leaf, SD_INT32},
-  {"enable_rq_obvious", &enable_rq_obvious, SD_INT32},
-  {"enable_join_sample", &enable_join_sample, SD_INT32},
-  {"sqlo_sample_batch_sz", &sqlo_sample_batch_sz, SD_INT32},
-  {"sqlo_n_layout_steps", &sqlo_n_layout_steps, SD_INT32},
-  {"sqlo_n_best_layouts", &sqlo_n_best_layouts, SD_INT32},
-  {"sqlo_n_full_layouts", &sqlo_n_full_layouts, SD_INT32},
-  {"sqlo_compiler_exceeds_run_factor", &sqlo_compiler_exceeds_run_factor, SD_INT32},
-  {"enable_n_best_plans", &enable_n_best_plans, SD_INT32},
+  {"sqlo_max_layouts", (long *) &sqlo_max_layouts, SD_INT32},
+  {"sqlo_max_mp_size", (long *) &sqlo_max_mp_size},
+  {"enable_initial_plan", (long *) &enable_initial_plan, SD_INT32},
+  {"enable_dt_leaf", (long *) &enable_dt_leaf, SD_INT32},
+  {"enable_rq_obvious", (long *) &enable_rq_obvious, SD_INT32},
+  {"enable_join_sample", (long *) &enable_join_sample, SD_INT32},
+  {"sqlo_sample_batch_sz", (long *) &sqlo_sample_batch_sz, SD_INT32},
+  {"sqlo_n_layout_steps", (long *) &sqlo_n_layout_steps, SD_INT32},
+  {"sqlo_n_best_layouts", (long *) &sqlo_n_best_layouts, SD_INT32},
+  {"tc_cached_subq_no_reuse_for_card", &tc_cached_subq_no_reuse_for_card, NULL},
+  {"tc_sqlo_no_mem", &tc_sqlo_no_mem, NULL},
+  {"sq_cache_hit", (long *) &sq_cache_hit, SD_INT32},
+  {"sq_cache_miss", (long *) &sq_cache_miss, SD_INT32},
+  {"sq_hash_fill_hit", (long *) &sq_hash_fill_hit, SD_INT32},
+  {"sq_hash_fill_miss", (long *) &sq_hash_fill_miss, SD_INT32},
+  {"sqlc_cum_memory", (long *) &sqlc_cum_memory},
+  {"sqlo_n_full_layouts", (long *) &sqlo_n_full_layouts, SD_INT32},
+  {"sqlo_compiler_exceeds_run_factor", (long *) &sqlo_compiler_exceeds_run_factor, SD_INT32},
+  {"enable_n_best_plans", (long *) &enable_n_best_plans, SD_INT32},
   {"enable_hash_merge", (long *) &enable_hash_merge, SD_INT32},
   {"enable_hash_fill_join", (long *) &enable_hash_fill_join, SD_INT32},
   {"enable_subscore", (long *) &enable_subscore, SD_INT32},
-  {"enable_dt_hash", &enable_dt_hash, SD_INT32},
-  {"enable_lp", &enable_lp, SD_INT32},
-  {"enable_hash_fill_reuse", &enable_hash_fill_reuse, SD_INT32},
+  {"enable_dt_hash", (long *) &enable_dt_hash, SD_INT32},
+  {"enable_lp", (long *) &enable_lp, SD_INT32},
+  {"enable_hash_fill_reuse", (long *) &enable_hash_fill_reuse, SD_INT32},
   {"enable_high_card_part", (long *) &enable_high_card_part, SD_INT32},
-  {"c_setp_partition_threshold", &c_setp_partition_threshold},
+  {"c_setp_partition_threshold", (long *) &c_setp_partition_threshold},
   {"enable_stream_gb", (long *) &enable_stream_gb, SD_INT32},
-  {"enable_qrc", &enable_qrc, SD_INT32},
-  {"qrc_tolerance", &qrc_tolerance, SD_INT32},
-  {"qrc_fill", &qrc_fill},
-  {"qrc_capacity", &qrc_capacity},
-  {"enable_in_vector_param", &enable_in_vector_param, SD_INT32},
-  {"enable_remove_absent_values", &enable_remove_absent_values, SD_INT32},
+  {"enable_qrc", (long *) &enable_qrc, SD_INT32},
+  {"qrc_tolerance", (long *) &qrc_tolerance, SD_INT32},
+  {"qrc_fill", (long *) &qrc_fill, NULL},
+  {"qrc_capacity", (long *) &qrc_capacity, NULL},
+  {"enable_in_vector_param", (long *) &enable_in_vector_param, SD_INT32},
+  {"enable_remove_absent_values", (long *) &enable_remove_absent_values, SD_INT32},
   {"tc_qrc_hit", &tc_qrc_hit, NULL},
   {"tc_qrc_miss", &tc_qrc_miss, NULL},
   {"tc_qrc_recompile", &tc_qrc_recompile, NULL},
@@ -1892,9 +1904,9 @@ stat_desc_t dbf_descs[] = {
   {"enable_distinct_sas", (long *) &enable_distinct_sas, SD_INT32},
   {"enable_inline_sqs", (long *) &enable_inline_sqs, SD_INT32},
   {"hash_join_enable", (long *) &hash_join_enable, SD_INT32},
-  {"enable_roj", &enable_roj, SD_INT32},
-  {"enable_joins_only", &enable_joins_only, SD_INT32},
-  {"enable_exact_p_stat", &enable_exact_p_stat, SD_INT32},
+  {"enable_roj", (long *) &enable_roj, SD_INT32},
+  {"enable_joins_only", (long *) &enable_joins_only, SD_INT32},
+  {"enable_exact_p_stat", (long *) &enable_exact_p_stat, SD_INT32},
   {"em_ra_window", (long *) &em_ra_window, SD_INT32},
   {"em_ra_threshold", (long *) &em_ra_threshold, SD_INT32},
   {"em_ra_startup_threshold", (long *) &em_ra_startup_threshold, SD_INT32},
@@ -1916,7 +1928,7 @@ stat_desc_t dbf_descs[] = {
   {"dc_batch_sz", (long *) &dc_batch_sz, SD_INT32},
   {"dc_max_batch_sz", (long *) &dc_max_batch_sz, SD_INT32},
   {"enable_dyn_batch_sz", (long *) &enable_dyn_batch_sz, SD_INT32},
-  {"dbf_next_set_parent_min_pct", &dbf_next_set_parent_min_pct, SD_INT32},
+  {"dbf_next_set_parent_min_pct", (long *) &dbf_next_set_parent_min_pct, SD_INT32},
   {"enable_vec_reuse", (long *) &enable_vec_reuse, SD_INT32},
   {"dc_adjust_batch_sz_min_anytime", (long *) &dc_adjust_batch_sz_min_anytime, SD_INT32},
   {"enable_split_range", (long *) &enable_split_range, SD_INT32},
@@ -1950,16 +1962,14 @@ stat_desc_t dbf_descs[] = {
   {"tc_dc_size", &tc_dc_size, NULL},
   {"tc_dc_extend", &tc_dc_extend, NULL},
   {"tc_dc_extend_values", &tc_dc_extend_values, NULL},
-
   {"c_max_large_vec", (long *) &c_max_large_vec, NULL},
   {"cha_max_gb_bytes", (long *) &cha_max_gb_bytes, NULL},
-  {"mp_large_reserved", &mp_large_reserved},
-  {"mp_max_large_reserved", &mp_max_large_reserved},
-  {"mp_large_reserve_limit", &mp_large_reserve_limit},
-  {"mp_large_soft_cap", &mp_large_soft_cap},
-  {"mp_large_hard_cap", &mp_large_hard_cap},
+  {"mp_large_reserved", (long *) &mp_large_reserved},
+  {"mp_max_large_reserved", (long *) &mp_max_large_reserved},
+  {"mp_large_reserve_limit", (long *) &mp_large_reserve_limit},
+  {"mp_large_soft_cap", (long *) &mp_large_soft_cap},
+  {"mp_large_hard_cap", (long *) &mp_large_hard_cap},
   {"mp_sparql_cap", &mp_sparql_cap, NULL},
-
   {"iri_range_size", (long *) &iri_range_size, SD_INT32},
   {"tn_max_memory", (long *) &tn_max_memory, NULL},
   {"tn_at_mem_cutoff", (long *) &tn_at_mem_cutoff, NULL},
@@ -1968,7 +1978,7 @@ stat_desc_t dbf_descs[] = {
   {"tn_at_card_cutoff", (long *) &tn_at_card_cutoff, NULL},
   {"tn_card_cutoff", (long *) &tn_card_cutoff, NULL},
   {"dbf_max_itc_samples", (long *) &dbf_max_itc_samples, SD_INT32},
-  {"enable_sample_hist", &enable_sample_hist, SD_INT32},
+  {"enable_sample_hist", (long *) &enable_sample_hist, SD_INT32},
   {"enable_mt_ft_inx", (long *) &enable_mt_ft_inx, SD_INT32},
   {"disable_rdf_init", (long *) &disable_rdf_init, SD_INT32},
   {"enable_rdf_trig", (long *) &enable_rdf_trig, SD_INT32},
@@ -1978,26 +1988,25 @@ stat_desc_t dbf_descs[] = {
   {"c_no_dbg_print", (long *) &c_no_dbg_print, SD_INT32},
   {"dbf_explain_level", (long *) &dbf_explain_level, SD_INT32},
   {"mp_local_rc_sz", (long *) &mp_local_rc_sz, SD_INT32},
-  {"dbf_user_1", &dbf_user_1},
-  {"dbf_user_2", &dbf_user_2},
-  {"dbs_stop_cp", &dbs_stop_cp, SD_INT32},
+  {"dbf_user_1", (long *) &dbf_user_1, SD_INT32},
+  {"dbf_user_2", (long *) &dbf_user_2, SD_INT32},
+  {"dbs_stop_cp", (long *) &dbs_stop_cp, SD_INT32},
 #ifdef CACHE_MALLOC
-  {"enable_no_free", &enable_no_free, SD_INT32},
+  {"enable_no_free", (long *) &enable_no_free, SD_INT32},
 #endif
-  {"enable_rdf_box_const", &enable_rdf_box_const, SD_INT32},
+  {"enable_rdf_box_const", (long *) &enable_rdf_box_const, SD_INT32},
   {"simple_rdf_numbers", &simple_rdf_numbers, SD_INT32},
-  {"col_seg_max_rows", &col_seg_max_rows, SD_INT32},
-  {"dk_n_allocs", &dk_n_allocs},
-  {"dk_n_free", &dk_n_free},
-  {"dk_n_total", &dk_n_total},
-  {"dk_n_nosz_free", &dk_n_nosz_free},
-  {"dk_n_bytes", &dk_n_bytes},
-
-  {"pcre_match_limit", &c_pcre_match_limit, SD_INT32},
-  {"pcre_match_limit_recursion", &c_pcre_match_limit_recursion, SD_INT32},
-  {"pcre_max_cache_sz", &pcre_max_cache_sz, SD_INT32},
-  {"enable_qr_comment", &enable_qr_comment, SD_INT32},
-  {"timezoneless_datetimes", &timezoneless_datetimes, SD_INT32},
+  {"col_seg_max_rows", (long *) &col_seg_max_rows, SD_INT32},
+  {"dk_n_allocs", (long *) &dk_n_allocs},
+  {"dk_n_free", (long *) &dk_n_free},
+  {"dk_n_total", (long *) &dk_n_total},
+  {"dk_n_nosz_free", (long *) &dk_n_nosz_free},
+  {"dk_n_bytes", (long *) &dk_n_bytes},
+  {"pcre_match_limit", (long *) &c_pcre_match_limit, SD_INT32},
+  {"pcre_match_limit_recursion", (long *) &c_pcre_match_limit_recursion, SD_INT32},
+  {"pcre_max_cache_sz", (long *) &pcre_max_cache_sz, SD_INT32},
+  {"enable_qr_comment", (long *) &enable_qr_comment, SD_INT32},
+  {"timezoneless_datetimes", (long *) &timezoneless_datetimes, SD_INT32},
   {NULL, NULL, NULL}
 };
 
@@ -4562,13 +4571,13 @@ da_clear (db_activity_t * da)
 
 
 double
-rep_num_scale (double n, char **scale_ret, int is_base_2)
+rep_num_scale (double n, const char **scale_ret, int is_base_2)
 {
   double dec_scale[] = { 1000, 1000000, 1000000000, 1000000000000, 0 };
   double bin_scale[] = { 1024, 1024 * 1024, 1024 * 1024 * 1024, 1024.0 * 1024 * 1024 * 1024, 0 };
   double *scale = is_base_2 ? bin_scale : dec_scale;
-  static char *empty = "";
-  static char *letter[] = { "K", "M", "G", "T", "" };
+  static const char *empty = "";
+  static const char *letter[] = { "K", "M", "G", "T", "" };
   int inx;
   for (inx = 0; inx < 4; inx++)
     {
@@ -4588,7 +4597,7 @@ rep_num_scale (double n, char **scale_ret, int is_base_2)
 void
 da_string (db_activity_t * da, char *out, int len)
 {
-  char *rans, *seqs, *rs, *bs, *ms, *same_segs, *same_pages, *same_pars, *specs, *qps;
+  const char *rans, *seqs, *rs, *bs, *ms, *same_segs, *same_pages, *same_pars, *specs, *qps;
   double ran = rep_num_scale (da->da_random_rows, &rans, 0);
   double seq = rep_num_scale (da->da_seq_rows, &seqs, 0);
   double same_seg = rep_num_scale (da->da_same_seg, &same_segs, 0);
@@ -4613,7 +4622,7 @@ bif_db_activity (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   /* no flag or 0 means text summary.  1 means array.  Or a 2 bit to flag  in order not to reset the counts */
   int flag = BOX_ELEMENTS (args) > 0 ? bif_long_arg (qst, args, 0, "db_activity") : 0;
-  caddr_t acct = BOX_ELEMENTS (args) > 1 ? bif_string_arg (qst, args, 1, "db_activity") : "client";
+  ccaddr_t acct = BOX_ELEMENTS (args) > 1 ? bif_string_arg (qst, args, 1, "db_activity") : "client";
   QNCAST (query_instance_t, qi, qst);
   db_activity_t *da = 0 == strcmp (acct, "http") ? &http_activity : &qi->qi_client->cli_activity;
   caddr_t res;
@@ -4794,7 +4803,7 @@ sc_data_to_ext (query_instance_t * qi, caddr_t dt)
 	arr[inx] = sc_data_to_ext (qi, a);
       }
       END_DO_BOX;
-      return arr;
+      return (caddr_t) arr;
     }
   else
     return box_copy_tree (dt);
@@ -4807,7 +4816,7 @@ sc_ext_to_data (query_instance_t * qi, caddr_t dt)
   dtp_t dtp = DV_TYPE_OF (dt);
   caddr_t err = NULL;
   if (DV_STRING == dtp && (box_flags (dt) || strstr (dt, "http")))
-    return iri_to_id (qi, dt, 1, &err);
+    return iri_to_id ((caddr_t *) qi, dt, 1, &err);
   else if (DV_ARRAY_OF_POINTER == dtp)
     {
       caddr_t *arr = (caddr_t *) dk_alloc_box (box_length (dt), DV_ARRAY_OF_POINTER);
@@ -4816,7 +4825,7 @@ sc_ext_to_data (query_instance_t * qi, caddr_t dt)
 	arr[inx] = sc_ext_to_data (qi, a);
       }
       END_DO_BOX;
-      return arr;
+      return (caddr_t) arr;
     }
   else
     return box_copy_tree (dt);
@@ -4828,7 +4837,7 @@ bif_stat_export (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   QNCAST (QI, qi, qst);
   int inx, inx2;
   dbe_schema_t *sc = wi_inst.wi_schema;
-  dk_set_t *cols = NULL, keys = NULL, rics = NULL;
+  dk_set_t cols = NULL, keys = NULL, rics = NULL;
   DO_HT (ptrlong, id, dbe_column_t *, col, sc->sc_id_to_col)
   {
     dk_set_push (&cols, list (6, box_string (col->col_defined_in->tb_name), box_string (col->col_name),
@@ -4868,7 +4877,7 @@ bif_stat_export (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     id_hash_iterator (&hit, ric->ric_samples);
     while (hit_next (&hit, (caddr_t *) & s_key, (caddr_t *) & smp))
       {
-	caddr_t *ent = sc_data_to_ext (qi, *(caddr_t *) s_key);
+	caddr_t *ent = (caddr_t *) sc_data_to_ext (qi, *(caddr_t *) s_key);
 	dbe_key_t *key = sch_id_to_key (wi_inst.wi_schema, unbox (ent[0]));
 	if (key)
 	  {
@@ -4962,7 +4971,7 @@ bif_stat_import (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   DO_BOX (caddr_t *, ks, inx, stats[1])
   {
     dbe_table_t *tb = sch_name_to_table (sc, ks[0]);
-    caddr_t *ps = ks[3];
+    caddr_t *ps = (caddr_t *) (ks[3]);
     if (!tb)
       continue;
     key = tb_name_to_key (tb, ks[1], 0);
@@ -5002,7 +5011,7 @@ bif_stat_import (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 	  int inx;
 	  for (inx = 2; inx < BOX_ELEMENTS (k); inx++)
 	    {
-	      caddr_t *elt = k[inx];
+	      caddr_t elt = k[inx];
 	      if (DV_STRINGP (elt) && strstr (elt, stat_trap))
 		bing ();
 	    }
@@ -5012,7 +5021,7 @@ bif_stat_import (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       smpl.smp_time = approx_msec_real_time ();
       smpl.smp_card = unbox_float (smp[1]);
       smpl.smp_inx_card = unbox_float (smp[2]);
-      id_hash_set (ric->ric_samples, (caddr_t) & k, (caddr_t *) & smpl);
+      id_hash_set (ric->ric_samples, (caddr_t) & k, (caddr_t) & smpl);
     }
     END_DO_BOX;
   }
@@ -5095,6 +5104,7 @@ typedef struct _ra_key_s
 } ra_key_t;
 
 
+uint32
 rk_hash (ra_key_t * rk)
 {
   uint64 h = 1;
@@ -5144,7 +5154,7 @@ rk_read (ra_key_t * rk, ra_req_t ** rap, int is_last)
     }
   itc_read_ahead_blob (itc, ra, 0);
   if (!is_last)
-    *rap = dk_alloc_box_zero (sizeof (ra_req_t), DV_BIN);
+    *rap = (ra_req_t *) dk_alloc_box_zero (sizeof (ra_req_t), DV_BIN);
 }
 
 caddr_t
@@ -5175,7 +5185,7 @@ bif_ws_restore (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 	  rk.rk_key = sch_id_to_key (wi_inst.wi_schema, key_id);
 	  if (!rk.rk_key)
 	    continue;
-	  place = id_hash_get (ht, (caddr_t) & rk);
+	  place = (ra_req_t **) id_hash_get (ht, (caddr_t) & rk);
 	  if (!place)
 	    {
 	      ra = (ra_req_t *) dk_alloc_box (sizeof (ra_req_t), DV_BIN);
@@ -5191,7 +5201,7 @@ bif_ws_restore (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     }
     END_READ_FAIL (ses);
     id_hash_iterator (&hit, ht);
-    while (hit_next (&hit, &rkp, &place))
+    while (hit_next (&hit, (caddr_t *) (&rkp), (caddr_t *) (&place)))
       rk_read (rkp, place, 1);
   }
   MP_DONE ();

@@ -27,7 +27,8 @@
 */
 
 #include "Dk.h"
-
+#include "Dk/Dksystem.h"
+#include "thread_int.h"
 
 DK_INLINE void
 thread_queue_init (thread_queue_t *thq)

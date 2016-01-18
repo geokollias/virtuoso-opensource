@@ -23,6 +23,7 @@
 
 %option 8bit
 %option never-interactive
+%option noyywrap
 %option nounput
 %{
 #include <ctype.h>

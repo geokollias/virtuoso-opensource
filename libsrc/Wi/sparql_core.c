@@ -531,6 +531,20 @@ spar_error_if_unsupported_syntax_imp (sparp_t * sparp, int feature_in_use, const
       feature_name, feature_in_use);
 }
 
+void
+spar_error_if_syntax_exception_imp (sparp_t * sparp, int feature_in_use, const char *feature_name)
+{
+  if (NULL != sparp->sparp_env->spare_context_sinvs)
+    {
+      SPART *sinv = (SPART *) (sparp->sparp_env->spare_context_sinvs->data);
+      spar_error (sparp, "The %.200s syntax is disabled for the %.300s (bit 0x%x is set)",
+	  feature_name, spar_sinv_naming (sparp, sinv), feature_in_use);
+    }
+  spar_error (sparp,
+      "The %.200s syntax is disabled for debugging or security purpose by setting bit 0x%x of define lang:exceptions", feature_name,
+      feature_in_use);
+}
+
 #ifdef MALLOC_DEBUG
 spartlist_track_t *
 spartlist_track (const char *file, int line)
@@ -967,8 +981,8 @@ static const char *sparp_known_get_params[] = {
 };
 
 static const char *sparp_integer_defines[] = {
-  "input:grab-depth", "input:grab-limit", "output:maxrows", "sql:big-data-const", "sql:log-enable", "sql:signal-void-variables",
-      "sql:comment", "sql:sparql-ebv", NULL
+  "input:grab-depth", "input:grab-limit", "lang:dialect", "lang:exceptions", "output:maxrows", "sql:big-data-const",
+      "sql:log-enable", "sql:signal-void-variables", "sql:comment", "sql:sparql-ebv", NULL
 };
 
 static const char *sparp_var_defines[] = { NULL };
@@ -1305,6 +1319,25 @@ sparp_define (sparp_t * sparp, caddr_t param, ptrlong value_lexem_type, caddr_t 
 	    spar_error (sparp, "'define %.30s' is used more than once", param);
 	  t_set_push (opts_ptr, t_box_dv_short_string (value));
 	  t_set_push (opts_ptr, t_box_dv_uname_string (param));
+	  return;
+	}
+    }
+  if ((5 < strlen (param)) && !memcmp (param, "lang:", 4))
+    {
+      if (!strcmp (param, "lang:dialect"))
+	{
+	  ptrlong val = ((DV_LONG_INT == DV_TYPE_OF (value)) ? unbox_ptrlong (value) : -1);
+	  if ((0 > val) || IS_BOX_POINTER (val))
+	    spar_error (sparp, "define lang:dialect should have nonnegative integer value, a bitmask of valid bits");
+	  sparp->sparp_permitted_syntax = val;
+	  return;
+	}
+      if (!strcmp (param, "lang:exceptions"))
+	{
+	  ptrlong val = ((DV_LONG_INT == DV_TYPE_OF (value)) ? unbox_ptrlong (value) : -1);
+	  if ((0 > val) || IS_BOX_POINTER (val))
+	    spar_error (sparp, "define lang:exceptions should have nonnegative integer value, a bitmask of valid bits");
+	  sparp->sparp_syntax_exceptions = val;
 	  return;
 	}
     }
@@ -2194,16 +2227,16 @@ spar_add_propvariable (sparp_t * sparp, SPART * lvar, int opcode, SPART * verb_q
       uname_virtrdf_ns_uri_isSpecialPredicate);
   if (0 != BOX_ELEMENTS (spec_pred_names))
     {
-      dk_free_tree (spec_pred_names);
+      dk_free_tree ((caddr_t) spec_pred_names);
       spar_error (sparp, "?%.200s %s ?%.200s is not allowed because it uses special predicate name", lvar->_.var.vname, optext,
 	  verb_lexem_text);
     }
   if (NULL == sparp->sparp_env->spare_propvar_sets)
     {
-      dk_free_tree (spec_pred_names);
+      dk_free_tree ((caddr_t) spec_pred_names);
       spar_error (sparp, "?%.200s %s ?%.200s is used in illegal context", lvar->_.var.vname, optext, verb_lexem_text);
     }
-  dk_free_tree (spec_pred_names);
+  dk_free_tree ((caddr_t) spec_pred_names);
 
   lvar_blen = box_length (lvar->_.var.vname);
   verb_qname_blen = box_length (verb_qname->_.lit.val);
@@ -2359,8 +2392,8 @@ spar_add_service_inv_to_sg (sparp_t * sparp, SPART * sinv)
 }
 
 SPART *
-spar_make_service_inv (sparp_t * sparp, SPART * endpoint, dk_set_t all_options, ptrlong permitted_syntax, SPART ** sources,
-    caddr_t sinv_storage, int silent)
+spar_make_service_inv (sparp_t * sparp, SPART * endpoint, dk_set_t all_options, ptrlong permitted_syntax, ptrlong syntax_exceptions,
+    SPART ** sources, caddr_t sinv_storage, int silent)
 {
   dk_set_t iri_params = NULL;
   dk_set_t param_varnames = NULL;
@@ -2422,11 +2455,12 @@ spar_make_service_inv (sparp_t * sparp, SPART * endpoint, dk_set_t all_options, 
 	}
 /*! TBD: add other cases */
     }
-  sinv = spartlist (sparp, 12, SPAR_SERVICE_INV,
+  sinv = spartlist (sparp, 13, SPAR_SERVICE_INV,
       (ptrlong) (0),
       endpoint,
       t_revlist_to_array (iri_params),
       t_box_num (permitted_syntax),
+      t_box_num (syntax_exceptions),
       t_revlist_to_array (param_varnames),
       (ptrlong) in_list_implicit,
       t_revlist_to_array (rset_varnames), t_revlist_to_array (defines), sources, sinv_storage, (ptrlong) silent);
@@ -3241,30 +3275,6 @@ spar_gp_add_ppath_leaf (sparp_t * sparp, SPART ** parts, int part_count, int pp_
 }
 
 SPART *
-sparp_find_first_transitive_step_in_path (SPART * pp)
-{
-  SPART **parts = pp->_.ppath.parts;
-  int part_ctr, part_count = BOX_ELEMENTS (parts);
-  switch (pp->_.ppath.subtype)
-    {
-    case '/':
-    case '|':
-    case 'D':
-      for (part_ctr = 0; part_ctr < part_count; part_ctr++)
-	{
-	  SPART *hit = sparp_find_first_transitive_step_in_path (parts[part_ctr]);
-	  if (NULL != hit)
-	    return hit;
-	}
-    case '*':
-      return pp;
-    default:
-      break;
-    }
-  return NULL;
-}
-
-SPART *
 spar_gp_add_ppath_triples (sparp_t * sparp, SPART * graph, SPART * subject, SPART * pp, SPART * object, SPART ** qm_iri_or_pair,
     int banned_tricks)
 {
@@ -3546,15 +3556,8 @@ spar_gp_add_triplelike (sparp_t * sparp, SPART * graph, SPART * subject, SPART *
       if (NULL != sparp->sparp_env->spare_context_sinvs)
 	{
 	  SPART *sinv = (SPART *) (sparp->sparp_env->spare_context_sinvs->data);
-	  boxint status = unbox (sinv->_.sinv.syntax);
-	  if (status & SSG_SD_SPARQL11_MORE)
+	  if (unbox (sinv->_.sinv.syntax) & SSG_SD_SPARQL11_MORE)
 	    expand_ppath_to_triples = 0;
-	  else if (!(status & SSG_SD_TRANSIT))
-	    {
-	      int path_has_trans = (NULL != sparp_find_first_transitive_step_in_path (predicate));
-	      if (path_has_trans)
-		expand_ppath_to_triples = 0;
-	    }
 	}
       if (expand_ppath_to_triples)
 	return spar_gp_add_ppath_triples (sparp, graph, subject, predicate, object, qm_iri_or_pair,
@@ -4927,9 +4930,9 @@ const sparp_bif_desc_t sparp_bif_descs[] = {
 	      SSG_VALMODE_SQLVAL}, SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL},
   {"remove_unicode3_accents", SPAR_BIF_REMOVE_UNICODE3_ACCENTS, 'B', SSG_SD_BI, 1, 1, SSG_VALMODE_LONG, {SSG_VALMODE_LONG, NULL,
 	      NULL}, SPART_VARR_IS_LIT},
-  {"round", SPAR_BIF_ROUND, 'B', SSG_SD_SPARQL11_DRAFT, 1, 1, SSG_VALMODE_NUM, {SSG_VALMODE_NUM, NULL, NULL},
-      SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL},
   {"rollup", SPAR_BIF__ROLLUP, '-', SSG_SD_VIRTSPECIFIC, 2, 0xFFF, SSG_VALMODE_SQLVAL, {NULL, NULL, NULL},
+      SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL},
+  {"round", SPAR_BIF_ROUND, 'B', SSG_SD_SPARQL11_DRAFT, 1, 1, SSG_VALMODE_NUM, {SSG_VALMODE_NUM, NULL, NULL},
       SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL},
   {"sameterm", SPAR_BIF_SAMETERM, '-', 0, 2, 2, SSG_VALMODE_BOOL, {SSG_VALMODE_LONG, SSG_VALMODE_LONG, NULL},
       SPART_VARR_IS_LIT | SPART_VARR_NOT_NULL | SPART_VARR_LONG_EQ_SQL | SPART_VARR_IS_BOOL},
@@ -6011,7 +6014,7 @@ void sparp_make_sparqld_text (spar_sqlgen_t * ssg);
 caddr_t
 bif_sparql_detalize (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  int param_ctr = 0, flags;
+  int param_ctr = 0, sd_flags, sd_no;
   spar_query_env_t sparqre;
   sparp_t *sparp;
   caddr_t str;
@@ -6020,7 +6023,8 @@ bif_sparql_detalize (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   dk_session_t *res;
   SPARP_SAVED_MP_SIZE_CAP;
   str = bif_string_arg (qst, args, 0, "sparql_detalize");
-  flags = ((2 <= BOX_ELEMENTS (args)) ? bif_long_arg (qst, args, 1, "sparql_detalize") : SSG_SD_VOS_CURRENT);
+  sd_flags = ((2 <= BOX_ELEMENTS (args)) ? bif_long_arg (qst, args, 1, "sparql_detalize") : SSG_SD_VOS_CURRENT);
+  sd_no = ((3 <= BOX_ELEMENTS (args)) ? bif_long_arg (qst, args, 2, "sparql_detalize") : 0);
   MP_START ();
   memset (&sparqre, 0, sizeof (spar_query_env_t));
   sparqre.sparqre_param_ctr = &param_ctr;
@@ -6045,7 +6049,8 @@ bif_sparql_detalize (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   ssg.ssg_sc = &sc;
   ssg.ssg_sparp = sparp;
   ssg.ssg_tree = sparp->sparp_entire_query;
-  ssg.ssg_sd_flags = flags;
+  ssg.ssg_sd_flags = sd_flags;
+  ssg.ssg_sd_no = sd_no;
   ssg.ssg_sd_used_namespaces = id_str_hash_create (16);
   ssg.ssg_comment_sql = sparp->sparp_sg->sg_comment_sql;
   QR_RESET_CTX
@@ -6708,7 +6713,7 @@ bif_sparql_lex_test (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 		}
 	      GPF_T;
 	    end_of_test:
-	      dk_free_tree (lexems);
+	      dk_free_tree ((caddr_t) lexems);
 	      break;
 	    default:
 	      GPF_T;
@@ -6719,8 +6724,6 @@ bif_sparql_lex_test (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 }
 #endif
 
-extern caddr_t bif_sparql_rdb2rdf_codegen (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args);
-extern caddr_t bif_sparql_rdb2rdf_list_tables (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args);
 extern bif_t bif_isnotnull;
 
 extern void sparql_init_bif_optimizers (void);

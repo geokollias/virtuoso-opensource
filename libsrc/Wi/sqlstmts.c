@@ -646,7 +646,7 @@ sqlc_ins_param_types (sql_comp_t * sc, insert_node_t * ins)
 caddr_t
 sqlc_rls_get_condition_string (dbe_table_t * tb, int op, caddr_t * err)
 {
-  static char *action_names[] = {
+  static const char *action_names[] = {
     "U",
     "I",
     "D",
@@ -712,7 +712,7 @@ sqlc_make_policy_trig (comp_context_t * cc, dbe_table_t * tb, int op)
   query_t *qr = NULL;
   caddr_t err = NULL;
   client_connection_t *cli = sqlc_client ();
-  static char *create_trigger_mask[] = {
+  static const char *create_trigger_mask[] = {
     "create trigger \"__%s_PI\" before update on \"%s\".\"%s\".\"%s\" referencing OLD as __oo {\n"
 	"if (not (%s))\n" "  signal ('42000', 'Update of %s prevented by policy', 'SR379');\n" "}",
     "create trigger \"__%s_PU\" before insert on \"%s\".\"%s\".\"%s\" {\n"
@@ -959,7 +959,7 @@ sqlc_insert (sql_comp_t * sc, ST * tree)
 	static int del_inx;
 	char tmp[MAX_NAME_LEN];
 	state_slot_t *save_set_no = sc->sc_set_no_ssl;
-	ST *delete, *where = NULL;
+	ST *st_delete, *st_where = NULL;
 	dbe_key_t *key = ins->ins_key_only ? ins->ins_keys[0]->ik_key : ins->ins_table->tb_primary_key;
 	data_source_t *top = sc->sc_cc->cc_query->qr_head_node;
 	dk_set_t pars, del_pars;
@@ -972,29 +972,29 @@ sqlc_insert (sql_comp_t * sc, ST * tree)
 	      ST *test;
 	      ST *val = sqlc_ins_del_val (sc, ins, inx);
 	      BIN_OP (test, BOP_EQ, (ST *) t_list (3, COL_DOTTED, t_sqlp_box_id_upcase (tmp), t_box_string (col->col_name)), val);
-	      if (!where)
-		where = test;
+	      if (!st_where)
+		st_where = test;
 	      else
 		{
-		  ST *tmp = where;
-		  BIN_OP (where, BOP_AND, tmp, test);
+		  ST *tmp = st_where;
+		  BIN_OP (st_where, BOP_AND, tmp, test);
 		}
 	    }
 	}
 	END_DO_BOX;
 
-	delete = t_listst (2, DELETE_SRC, sqlp_infoschema_redirect (t_listst (9, TABLE_EXP,
+	st_delete = t_listst (2, DELETE_SRC, sqlp_infoschema_redirect (t_listst (9, TABLE_EXP,
 		    t_list (1,
 			t_listbox (6, TABLE_DOTTED, t_box_string (ins->ins_table->tb_name), t_sqlp_box_id_upcase (tmp),
 			    sqlp_view_u_id (), sqlp_view_g_id (), ins->ins_key_only ? t_list (2, OPT_INDEX,
 				t_box_string (ins->ins_key_only)) : NULL /* table opt */ ) /* table */ ),
-		    where, NULL, NULL, NULL, NULL, ins->ins_key_only ? t_list (2, OPT_INDEX,
+		    st_where, NULL, NULL, NULL, NULL, ins->ins_key_only ? t_list (2, OPT_INDEX,
 			t_box_string (ins->ins_key_only)) : NULL /* sql opt */ , NULL)));
 	sc->sc_cc->cc_query->qr_head_node = NULL;
 	pars = sc->sc_cc->cc_query->qr_parms;
 	sc->sc_cc->cc_query->qr_parms = NULL;
 	sc->sc_set_no_ssl = NULL;
-	sqlc_delete_searched (sc, delete);
+	sqlc_delete_searched (sc, st_delete);
 	sc->sc_set_no_ssl = save_set_no;
 	ins->ins_del_node = sc->sc_cc->cc_query->qr_head_node;
 	sc->sc_cc->cc_query->qr_head_node = top;

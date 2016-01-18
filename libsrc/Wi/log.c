@@ -106,7 +106,7 @@ log_set_compatibility_check (int in_txn, char *strg)
 	  w_id = lt_w_counter++;
 	cl_2pc = dk_alloc_box (2 + sizeof (int64), DV_STRING);
 	cl_2pc[0] = LOG_2PC_COMMIT;
-	trx_no = (((int64) local_cll.cll_this_host) << 32) + w_id;
+	trx_no = (((int64) local_cll.cll_this_host) < 32) + w_id;
 	INT64_SET_NA (cl_2pc + 1, trx_no);
       }
     memset (cbox, 0, sizeof (caddr_t) * LOG_HEADER_LENGTH);
@@ -342,7 +342,7 @@ log_merge_commit (lock_trx_t * lt, dk_set_t merges)
     lm->lm_blob_log = NULL;
   }
   END_DO_SET ();
-  lt_free_merge (merges);
+  lt_free_merge (lt);
 }
 
 
@@ -389,7 +389,7 @@ log_commit (lock_trx_t * lt)
 
   cbox = (caddr_t *) dk_alloc_box (sizeof (caddr_t) * LOG_HEADER_LENGTH, DV_ARRAY_OF_POINTER);
   memset (cbox, 0, sizeof (caddr_t) * LOG_HEADER_LENGTH);
-  if (local_cll.cll_is_flt && !lt->lt_cl_branches && !lt->lt_cl_enlisted)
+  if (local_cll.cll_is_flt && !lt->lt_cl_branches && !lt->lt_cl_enlisted && !lt->lt_rc_w_id)
     log_for_flt = 1;		/* If fault tolerance, log local only transactions as 2pc with commit since might need to ship for sync */
   if (lt->lt_log_2pc || log_for_flt)
     {
@@ -673,13 +673,13 @@ log_skip_blobs_1 (dk_session_t * ses)
 	if (DV_BLOB == dtp || DV_BLOB_WIDE == dtp || DV_BLOB_XPER == dtp)
 	  {
 	    int bytes = read_long (ses);
-	    caddr_t x = dk_alloc (bytes);
+	    caddr_t x = (caddr_t) dk_alloc (bytes);
 	    session_buffered_read (ses, x, bytes);
 	    dk_free (x, bytes);
 	    continue;
 	  }
 	ses->dks_in_read--;
-	xx = read_object (ses);
+	xx = (caddr_t) read_object (ses);
 	dk_free_box (xx);
       }
   }
@@ -765,7 +765,7 @@ log_2pc_archive_check (int64 trx_id, int64 * max_id_ret)
   {
     while (DKSESSTAT_ISSET (ses, SST_OK))
       {
-	caddr_t item = read_object (ses);
+	caddr_t item = (caddr_t) read_object (ses);
 	if (DV_LONG_INT == DV_TYPE_OF (item))
 	  {
 	    int64 id = unbox (item);
@@ -1479,10 +1479,10 @@ log_replay_update (lock_trx_t * lt, dk_session_t * in)
   memcpy (params, vals, sizeof (caddr_t) * n_vals);
   memcpy (&params[n_vals], &row[1], sizeof (caddr_t) * n_keys);
   err = qr_exec (lt->lt_client, qr, CALLER_LOCAL, "", NULL, NULL, params, opts, 0);
-  dk_free_tree (cols);
+  dk_free_tree ((caddr_t) cols);
   dk_free_box ((caddr_t) params);
-  dk_free_box (row);
-  dk_free_box (vals);
+  dk_free_box ((caddr_t) row);
+  dk_free_box ((caddr_t) vals);
   cli_free_dae (lt->lt_client);
   if (err != SQL_SUCCESS)
     {
@@ -1913,6 +1913,26 @@ log_replay_sequence_64 (lock_trx_t * lt, dk_session_t * in)
   return ((caddr_t) SQL_SUCCESS);
 }
 
+caddr_t
+log_check_replay_entry (dtp_t op)
+{
+  switch (op)
+    {
+    case LOG_INSERT:
+    case LOG_INSERT_SOFT:
+    case LOG_INSERT_REPL:
+    case LOG_KEY_INSERT:
+    case LOG_DELETE:
+    case LOG_KEY_DELETE:
+    case LOG_UPDATE:
+    case LOG_TEXT:
+    case LOG_USER_TEXT:
+    case LOG_SEQUENCE:
+    case LOG_SEQUENCE_64:
+      return SQL_SUCCESS;
+    }
+  return srv_make_new_error ("42000", "REPL0", "Bad record in log replay");
+}
 
 caddr_t
 log_replay_entry (lock_trx_t * lt, dtp_t op, dk_session_t * in, int is_pushback)
@@ -1975,7 +1995,7 @@ void
 sb_init (string_buffer * sb)
 {
   sb->sb_len = 120;
-  sb->sb_buf = malloc (sb->sb_len);
+  sb->sb_buf = (char *) malloc (sb->sb_len);
   sb->sb_pos = 0;
 }
 
@@ -2060,6 +2080,7 @@ lre_alloc ()
   LOG_REPL_OPTIONS (opts);
   memzero (executor, sizeof (lr_executor_t));
   executor->lre_mtx = mutex_allocate ();
+  executor->lre_opts = opts;
   executor->lre_aqr_count = 0;
   executor->lre_err = SQL_SUCCESS;
   executor->lre_stopped = 0;
@@ -2072,7 +2093,7 @@ lrq_free (lre_queue_t * lrq)
 {
   if (lrq == NULL)
     return;
-  dk_free_box (lrq->lrq_aq);
+  dk_free_box ((caddr_t) (lrq->lrq_aq));
   DO_HT (ptrlong, op, query_t *, qr, lrq->lrq_qrs)
   {
     qr_free (qr);
@@ -2103,7 +2124,7 @@ lre_free (lr_executor_t * executor)
 lre_queue_t *
 lrq_alloc (lr_executor_t * executor, key_id_t key_id, lock_trx_t * lt)
 {
-  lre_queue_t *lrq = gethash ((void *) (ptrlong) key_id, executor->lre_aqs);
+  lre_queue_t *lrq = (lre_queue_t *) gethash ((void *) (ptrlong) key_id, executor->lre_aqs);
   if (lrq)
     return lrq;
   lrq = (lre_queue_t *) dk_alloc (sizeof (lre_queue_t));
@@ -2247,7 +2268,7 @@ log_key_ins_del_qr (dbe_key_t * key, caddr_t * err_ret, int op, int ins_mode, in
       {
 	int n_cols, k, need_comma = 0;
 	caddr_t *names;
-	char *mode = ((LOG_INSERT_SOFT == op || INS_SOFT == ins_mode || -1 == ins_mode) ? "SOFT" : ((op == LOG_INSERT_REPL
+	const char *mode = ((LOG_INSERT_SOFT == op || INS_SOFT == ins_mode || -1 == ins_mode) ? "SOFT" : ((op == LOG_INSERT_REPL
 		    || ins_mode == LOG_INSERT_REPL) ? "REPLACING" : "INTO"));
 	sb_printf (&sb, "INSERT %s \"%s\".\"%s\".\"%s\"", mode, ESC (key_table->tb_qualifier, 1), ESC (key_table->tb_owner, 2),
 	    ESC (key_table->tb_name_only, 3));
@@ -2277,7 +2298,7 @@ log_key_ins_del_qr (dbe_key_t * key, caddr_t * err_ret, int op, int ins_mode, in
 	    sb_printf (&sb, "?");
 	  }
 	sb_printf (&sb, ")");
-	dk_free_box (names);
+	dk_free_box ((caddr_t) names);
 	break;
       }
     case LOG_DELETE:
@@ -2450,7 +2471,7 @@ log_key_upd_qr (dbe_key_t * key, oid_t * col_ids, caddr_t * err_ret)
     key = sch_id_to_key (wi_inst.wi_schema, key->key_migrate_to);
   if (!upd_replay_cache)
     upd_replay_cache = id_hash_allocate (101, sizeof (caddr_t), sizeof (caddr_t), treehash, treehashcmp);
-  h_key = list (2, box_num (key->key_id), box_copy_tree (col_ids));
+  h_key = list (2, box_num (key->key_id), box_copy_tree ((caddr_t) col_ids));
   place = (query_t **) id_hash_get (upd_replay_cache, (caddr_t) & h_key);
   if (place)
     {
@@ -2507,7 +2528,7 @@ get_vec_query (lre_request_t * request, dbe_key_t * key, int flag, caddr_t * err
 {
   lre_queue_t *lq = request->lr_lrq;
   int op = request->lr_op;
-  query_t *res = gethash ((void *) (ptrlong) op, lq->lrq_qrs);
+  query_t *res = (query_t *) gethash ((void *) (ptrlong) op, lq->lrq_qrs);
   if (res)
     {
       if (!res->qr_to_recompile)
@@ -2529,8 +2550,15 @@ log_exec_batch_vec (lre_request_t * request, caddr_t * err_ret, client_connectio
 {
   data_col_t **dcs = request->lr_params_vec;
   query_t *qr = request->lr_qr;
-  LOG_REPL_OPTIONS (opts);
+  stmt_options_t *opts = NULL;
   cli->cli_no_triggers = 1;
+  switch (request->lr_op)
+    {
+    case LOG_DELETE:
+    case LOG_KEY_DELETE:
+      opts = request->lr_lre->lre_opts;
+    }
+
   request->lr_params_vec = NULL;
   *err_ret = qr_exec (cli, qr, CALLER_LOCAL, NULL, NULL, NULL, (caddr_t *) dcs, opts, 0);
   cli->cli_no_triggers = 0;
@@ -2879,7 +2907,7 @@ repl_append_vec_entry_async (lre_queue_t * lq, client_connection_t * cli, lre_re
       dc_append_box (dc, arg);
       dk_free_tree (to_free);
     }
-  dk_free_tree (row);
+  dk_free_tree ((caddr_t) row);
   return SQL_SUCCESS;
 }
 
@@ -2982,7 +3010,7 @@ log_replay_entry_async (lr_executor_t * executor, lock_trx_t * lt, dtp_t op, dk_
 
   if (dbf_rq_key > 1 && key_id != dbf_rq_key)
     {
-      dk_free_tree (row);
+      dk_free_tree ((caddr_t) row);
       return SQL_SUCCESS;
     }
   mutex_enter (executor->lre_mtx);
@@ -3027,7 +3055,7 @@ log_replay_entry_async (lr_executor_t * executor, lock_trx_t * lt, dtp_t op, dk_
 caddr_t
 log_cl_trx_id (caddr_t * header)
 {
-  caddr_t *cl2pc = (caddr_t *) header[LOGH_CL_2PC];
+  caddr_t *cl2pc = header ? (caddr_t *) header[LOGH_CL_2PC] : NULL;
   if (!cl2pc)
     return NULL;
   return ARRAYP (cl2pc) ? cl2pc[0] : (caddr_t) cl2pc;
@@ -3141,9 +3169,9 @@ log_remember_replay (caddr_t trx_id)
   id = INT64_REF_NA (trx_id + 1);
   if (id && local_cll.cll_replayed_w_ids)
     {
-      IN_CLL;
+      IN_CL_CFG;
       sethash_64 (id, local_cll.cll_replayed_w_ids, 1);
-      LEAVE_CLL;
+      LEAVE_CL_CFG;
     }
 }
 
@@ -3156,10 +3184,10 @@ log_is_replayed (caddr_t trx_id)
   id = INT64_REF_NA (trx_id + 1);
   if (!id)
     return 0;
-  IN_CLL;
+  IN_TXN;
   if (local_cll.cll_replayed_w_ids)
     gethash_64 (f, id, local_cll.cll_replayed_w_ids);
-  LEAVE_CLL;
+  LEAVE_TXN;
   return (int) f;
 }
 
@@ -3260,7 +3288,14 @@ log_replay_trx (lr_executor_t * lr_executor, dk_session_t * in, client_connectio
 		if (lr_executor)
 		  err = log_replay_entry_async (lr_executor, lt, op, in, is_pushback);
 		else
-		  err = log_replay_entry (lt, op, in, is_pushback);
+		  {
+		    if (org)
+		      err = log_check_replay_entry (op);
+		    else
+		      err = SQL_SUCCESS;
+		    if (SQL_SUCCESS == err)
+		      err = log_replay_entry (lt, op, in, is_pushback);
+		  }
 	      }
 	    else
 	      {
@@ -3809,7 +3844,7 @@ log_checkpoint (dbe_storage_t * dbs, char *new_log, int shutdown)
 	  LSEEK (tcpses_get_fd (dbs->dbs_log_session->dks_session), 0, SEEK_SET);
 	  FTRUNCATE (tcpses_get_fd (dbs->dbs_log_session->dks_session), (OFF_T) (0));
 	  dbs->dbs_log_length = 0;
-	  if (CPT_SHUTDOWN != shutdown || CL_RUN_CLUSTER == cl_run_local_only)
+	  if (CPT_SHUTDOWN != shutdown)
 	    {
 	      log_set_byte_order_check (1);
 	      log_time (log_time_header (wi_inst.wi_master->dbs_cfg_page_dt));
@@ -3915,9 +3950,21 @@ log_init (dbe_storage_t * dbs)
 	}
       in_log_replay = 1;
       log_replay_file (log_fd);
-      in_log_replay = 0;
       if (enter_bsc)
 	lt_enter_anyway (bootstrap_cli->cli_trx);
+      IN_TXN;
+      in_log_replay = 0;
+      /* aq threads etc may have lt's with a low w id that would be seen as cancelled by a cluster peer if not updated to be above the rolled forward ones */
+      DO_SET (lock_trx_t *, lt, &all_trxs)
+      {
+	if (!lt->lt_branch_of)
+	  lt_new_w_id (lt);
+      }
+      END_DO_SET ();
+      if (CL_RUN_LOCAL != cl_run_local_only)
+	log_info ("Txn w ids start at %d", lt_w_counter);
+      LEAVE_TXN;
+
       mutex_enter (log_write_mtx);
       /* the replay file becomes the log session unless a log session was made during replay for logging cluster config changes deliverdd as control messages */
       if (!dbs->dbs_log_session)

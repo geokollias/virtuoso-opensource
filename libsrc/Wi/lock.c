@@ -59,12 +59,44 @@ dk_set_t all_trxs = NULL;
 
 uint32 lt_counter = 0;		/* 32 bits exact, lower half of trx no 64 bit id, must wrap around */
 uint32 lt_w_counter = 0;	/* 32 bits exact, lower half lt_w_id no 64 bit id, must wrap around */
+
+void
+lt_new_min_w_id (lock_trx_t * lt)
+{
+  /* during rfwd lt's come with a fixed w_id.  Aux lt's like ones for aq threads should not conflict, hemce alloc first free from 0 and ignore dead w id set */
+  uint32 lt_w_counter = 1;
+  int64 plt;
+  int64 id;
+  do
+    {
+      lt_w_counter++;
+      id = ((int64) local_cll.cll_this_host << 32) + lt_w_counter;
+      gethash_64 (plt, id, local_cll.cll_w_id_to_trx);
+      if (!plt)
+	{
+	  remhash_64 (id, local_cll.cll_dead_w_id);
+	}
+    }
+  while (!lt_w_counter || plt);
+  if (lt->lt_w_id)
+    remhash_64 (lt->lt_w_id, local_cll.cll_w_id_to_trx);
+  lt->lt_w_id = (((int64) local_cll.cll_this_host) << 32) + lt_w_counter;
+  sethash_64 (lt->lt_w_id, local_cll.cll_w_id_to_trx, (ptrlong) lt);
+  memcpy (lt->lt_approx_dt, srv_approx_dt, DT_LENGTH);
+}
+
+
 void
 lt_new_w_id (lock_trx_t * lt)
 {
   ptrlong plt = 0;
   int64 id;
   ASSERT_IN_TXN;
+  if (in_log_replay)
+    {
+      lt_new_min_w_id (lt);
+      return;
+    }
   do
     {
       lt_w_counter++;
@@ -172,9 +204,9 @@ lt_allocate (void)
 
 
 void
-lt_free_merge (dk_set_t merges)
+lt_free_merge (lock_trx_t * lt)
 {
-  DO_SET (log_merge_t *, lm, &merges)
+  DO_SET (log_merge_t *, lm, &lt->lt_log_merge)
   {
     strses_flush (lm->lm_log);
     resource_store (cl_strses_rc, (void *) lm->lm_log);
@@ -182,7 +214,8 @@ lt_free_merge (dk_set_t merges)
     dk_free ((caddr_t) lm, sizeof (log_merge_t));
   }
   END_DO_SET ();
-  dk_set_free (merges);
+  dk_set_free (lt->lt_log_merge);
+  lt->lt_log_merge = NULL;
 }
 
 
@@ -198,8 +231,7 @@ lt_free (lock_trx_t * lt)
     GPF_T1 ("Freeing txn that's in MTS");
 #endif
   LT_THREADS_REPORT (lt, "LT_FREE");
-  lt_free_merge (lt->lt_log_merge);
-  lt->lt_log_merge = NULL;
+  lt_free_merge (lt);
   lt_free_rb (lt, 0);
   dk_set_free (lt->lt_waits_for);
   dk_set_free (lt->lt_waiting_for_this);
@@ -236,8 +268,7 @@ lt_clear (lock_trx_t * lt)
 #endif
   if (lt->lt_client && lt->lt_client->cli_row_autocommit)
     lt->lt_client->cli_n_to_autocommit = 0;
-  lt_free_merge (lt->lt_log_merge);
-  lt->lt_log_merge = NULL;
+  lt_free_merge (lt);
   if (lt->lt_w_id)
     {
       ASSERT_IN_TXN;
@@ -633,7 +664,7 @@ lt_done (lock_trx_t * lt)
     int inx;
     if (local_cll.cll_id_to_trx)
       gethash_64 (plt, lt->lt_trx_no, local_cll.cll_id_to_trx);
-    if (plt)
+    if (plt == (ptrlong) lt)
       GPF_T1 ("lt in id to trx  at lt_done");
     for (inx = 0; inx < trx_rc->rc_fill; inx++)
       if (trx_rc->rc_items[inx] == (void *) lt)
@@ -675,7 +706,6 @@ lt_commit (lock_trx_t * lt, int free_trx)
     {
       LEAVE_TXN;
       log_merge_commit (lt, lt->lt_log_merge);
-      lt->lt_log_merge = NULL;
       mutex_enter (log_write_mtx);
       if (LTE_OK != log_commit (lt))
 	{
@@ -1597,7 +1627,7 @@ lock_add_owner (gen_lock_t * pl, it_cursor_t * it, int was_waiting)
       pl->pl_is_owner_list = 1;
       pl->pl_owner = (lock_trx_t *) dk_set_cons ((caddr_t) pl->pl_owner, NULL);
     }
-  if (!lt_set_is_branch ((dk_set_t) pl->pl_owner, (void *) it->itc_ltrx, &owner_lt))
+  if (!lt_set_is_branch ((dk_set_t) pl->pl_owner, it->itc_ltrx, &owner_lt))
     {
       if (pl->pl_waiting && !was_waiting)
 	return 0;		/* There's others before */
@@ -1755,10 +1785,26 @@ lt_clear_non_acq_release_wait (it_cursor_t * waiting)
 int
 pl_is_owner (page_lock_t * pl, lock_trx_t * lt)
 {
-  if (pl->pl_is_owner_list)
-    return NULL != dk_set_member ((dk_set_t) pl->pl_owner, (void *) lt);
+  if (lt->lt_rc_w_id)
+    {
+      if (pl->pl_is_owner_list)
+	{
+	  dk_set_t lst = (dk_set_t) pl->pl_owner;
+	  DO_SET (lock_trx_t *, owner, &lst) if (lt->lt_rc_w_id == owner->lt_w_id)
+	    return 1;
+	  END_DO_SET ();
+	  return 0;
+	}
+      else
+	return pl->pl_owner->lt_w_id == lt->lt_rc_w_id;
+    }
   else
-    return pl->pl_owner == lt;
+    {
+      if (pl->pl_is_owner_list)
+	return NULL != dk_set_member ((dk_set_t) pl->pl_owner, (void *) lt);
+      else
+	return pl->pl_owner == lt;
+    }
 }
 
 

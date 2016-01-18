@@ -29,6 +29,7 @@
 #include <libutil.h>
 #include "sqlver.h"
 #include "wi.h"
+#include "wifn.h"
 #ifdef _RENDEZVOUS
 # include "rendezvous.h"
 #endif
@@ -156,16 +157,12 @@ extern void (*db_exit_hook) (void);	/* called on shutdown */
 
 extern void (*cfg_replace_log)(char *str);
 extern void (*cfg_set_checkpoint_interval)(int32 f);
-extern void (*db_read_cfg)(caddr_t *it, char *mode);
 
 extern void (*process_exit_hook) (int state);
 
 /* externals from sqlsrv.c */
 extern caddr_t sf_make_new_main_log_name(void);
 extern unsigned long autocheckpoint_log_size;
-
-/* externals from repldb.c */
-void repl_read_db_levels (void);
 
 /* Externals from viconfig.c */
 extern char *c_serverport;		/* port to use */

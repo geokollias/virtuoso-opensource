@@ -38,6 +38,40 @@
 
 int enable_ksp_fast = 1;
 
+#if 0				/* This presents in feature/fx2 but not in feature/analytics before making it C++ friendly */
+int
+dc_serial_bytes (data_col_t * dc)
+{
+  switch (dc->dc_dtp)
+    {
+    case DV_LONG_INT:
+    case DV_IRI_ID:
+    case DV_IRI_ID_8:
+    case DV_DOUBLE_FLOAT:
+      return 8 * dc->dc_n_values;
+    case DV_DATETIME:
+      return DT_LENGTH * dc->dc_n_values;
+    case DV_SINGLE_FLOAT:
+      return sizeof (float) * dc->dc_n_places;
+    case DV_ANY:
+      {
+	int inx, n = dc->dc_n_values, len = 0;
+	for (inx = 0; inx < n; inx++)
+	  {
+	    int l;
+	    db_buf_t dv = ((db_buf_t *) dc->dc_values)[inx];
+	    DB_BUF_TLEN (l, dv[0], dv);
+	    len += l;
+	  }
+	return len;
+      }
+    default:
+      GPF_T1 ("unrecognized dtp in dc_serial_bytes");
+    }
+  GPF_T1 ("dc serial bytes, bad dc");
+  return 0;
+}
+#endif
 
 void
 dc_serialize (data_col_t * dc, dk_session_t * ses)
@@ -148,7 +182,7 @@ dc_deserialize_in_dc (dk_session_t * ses, data_col_t * dc, int bytes, int n_valu
       for (inx = 0; inx < n_values; inx++)
 	{
 	  /* deterministic order of read and inc of dc values in case the fuck throws out of here */
-	  caddr_t box = scan_session_boxing (ses);
+	  caddr_t box = (caddr_t) scan_session_boxing (ses);
 	  ((caddr_t *) dc->dc_values)[dc->dc_n_values++] = box;
 	}
       return dc;
@@ -206,7 +240,7 @@ dc_deserialize (dk_session_t * ses, dtp_t dtp)
   if (!clses || (clses && clses->clses_reading_req_clo))
     {
       /* always just record the place in the cm.  May read dcs only from cluster cm strings */
-      caddr_t *box = dk_alloc_box (sizeof (caddr_t), DV_DATA);
+      caddr_t *box = (caddr_t *) dk_alloc_box (sizeof (caddr_t), DV_DATA);
       *(caddr_t *) box = ses->dks_in_buffer + ses->dks_in_read - 8;
       ses->dks_in_read += bytes + 4;
       return (data_col_t *) box;
@@ -539,7 +573,7 @@ clib_vec_read_into_slots (cll_in_box_t * clib, caddr_t * inst, dk_set_t slots)
 
 
 int clib_trap_qf;
-int clib_trap_col = -1;
+int clib_trap_col;
 
 
 

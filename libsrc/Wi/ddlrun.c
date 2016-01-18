@@ -47,6 +47,7 @@
 #include "srvstat.h"
 #include "sqlbif.h"
 #include "2pc.h"
+#include "arith.h"
 
 
 void qi_read_table_schema (query_instance_t * qi, char *read_tb);
@@ -702,7 +703,7 @@ ddl_key_options (query_instance_t * qi, char *tb_name, key_id_t key_id, caddr_t 
   if (!key_bitmap_qr)
     key_bitmap_qr = sql_compile_static ("DB.DBA.ddl_bitmap_inx (?, ?, ?)", bootstrap_cli, &err, SQLC_DEFAULT);
   AS_DBA (qi, err = qr_rec_exec (key_bitmap_qr, qi->qi_client, NULL, qi, NULL, 3,
-	  ":0", tb_name, QRP_STR, ":1", (ptrlong) key_id, QRP_INT, ":2", box_copy_tree (opts), QRP_RAW));
+	  ":0", tb_name, QRP_STR, ":1", (ptrlong) key_id, QRP_INT, ":2", box_copy_tree ((caddr_t) opts), QRP_RAW));
   if (err != (caddr_t) SQL_SUCCESS)
     {
       QI_POISON_TRX (qi);
@@ -960,8 +961,11 @@ ddl_col_set_identity_start (char *table, char *check, caddr_t * col_options, cha
       char q[MAX_NAME_LEN], o[MAX_NAME_LEN], n[MAX_NAME_LEN];
       int start = 1;
       caddr_t id_start;
+      int is_null = 0;
 
-      if (NULL != (id_start = col_options ? get_keyword_int (col_options, "identity_start", NULL) : NULL))
+      id_start = col_options ? get_keyword_int_zero (col_options, "identity_start", NULL, &is_null) : NULL;
+
+      if (col_options && !is_null)
 	{
 	  if (DV_TYPE_OF (id_start) == DV_LONG_INT)
 	    start = (int) unbox (id_start);
@@ -1109,9 +1113,22 @@ ddl_commit_trx (query_instance_t * qi)
 }
 
 
+int
+ddl_has_col_groups (caddr_t * cols)
+{
+  int inx;
+  for (inx = 1; inx < BOX_ELEMENTS (cols); inx += 2)
+    {
+      if (ST_P (((ST *) cols[inx]), COLUMN_GROUP))
+	return 1;
+    }
+  return 0;
+}
+
+
 void
 ddl_create_primary_key (query_instance_t * qi,
-    char *name, char *table, caddr_t * parts, int cluster_on_id, int is_object_id, caddr_t * opts)
+    char *name, char *table, caddr_t * parts, int cluster_on_id, int is_object_id, caddr_t * opts, caddr_t * cols)
 {
   client_connection_t *cli = qi->qi_client;
   int inx = (int) BOX_ELEMENTS (parts);
@@ -1121,6 +1138,28 @@ ddl_create_primary_key (query_instance_t * qi,
 
   ddl_first_key_parts (qi, table, name, parts, inx, cluster_on_id, 1, &id, is_object_id, 1);
 
+  if (ddl_has_col_groups (cols))
+    {
+      caddr_t err = NULL;
+#ifdef COLGROUP
+      static query_t *ddl_cg_stmt;
+      if (!ddl_cg_stmt)
+	ddl_cg_stmt = sql_compile_static ("ddl_cg_create (?, ?, ?, ?, ?)", qi->qi_client, &err, SQLC_DEFAULT);
+      err = qr_rec_exec (ddl_cg_stmt, cli, NULL, qi, NULL, 5,
+	  ":0", name, QRP_STR,
+	  ":1", table, QRP_STR,
+	  ":2", box_copy_tree ((caddr_t) parts), QRP_RAW,
+	  ":3", box_copy_tree ((caddr_t) opts), QRP_RAW, ":4", box_copy_tree ((caddr_t) cols), QRP_RAW);
+#else
+      err = srv_make_new_error ("42000", "NOCGS", "Column groups not supported in Virtuoso open source");
+#endif
+      if (err)
+	{
+	  QI_POISON_TRX (qi);
+	  sqlr_resignal (err);
+	}
+      return;
+    }
   /* Now tag every other column in there as dependent part */
   qr_rec_exec (cols_stmt, cli, &lc_cols, qi, NULL, 1, ":TB", table, QRP_STR);
   while (lc_next (lc_cols))
@@ -1135,8 +1174,6 @@ ddl_create_primary_key (query_instance_t * qi,
 	  if (0 == CASEMODESTRCMP (parts[ci], col))
 	    goto next_in;
 	}
-      if (inx >= TB_MAX_COLS)
-	SQL_DDL_ERROR (qi, ("37000", "SQ007", "Column count too large"));
       col_id = (oid_t) unbox (lc_get_col (lc_cols, "C.COL_ID"));
       qr_rec_exec (add_key_part_stmt, cli, NULL, qi, NULL, 3,
 	  ":0", (ptrlong) id, QRP_INT, ":1", (ptrlong) inx, QRP_INT, ":2", (ptrlong) col_id, QRP_INT);
@@ -2500,7 +2537,7 @@ log_text_cluster (query_instance_t * qi, char *text)
 
 
 void
-ddl_drop_index (caddr_t * qst, const char *table, const char *name, int log_to_trx)
+ddl_drop_index (caddr_t * qst, const char *table, const char *name, int log_to_trx, int drop_pk)
 {
   caddr_t err = NULL;
   char temp_tx[300];
@@ -2514,8 +2551,7 @@ ddl_drop_index (caddr_t * qst, const char *table, const char *name, int log_to_t
   caddr_t temp_tx_box;
   caddr_t *repl = qi->qi_trx->lt_replicate;
   int is_cluster = 0;
-
-  atomic = count_exceed (qi, table, MIN_FOR_ATOMIC, name);
+  atomic = CL_RUN_LOCAL == cl_run_local_only && count_exceed (qi, table, MIN_FOR_ATOMIC, name);
   atomic_mode (qi, 1, atomic);
   STOP_LOG;
   if (!table)
@@ -2525,7 +2561,13 @@ ddl_drop_index (caddr_t * qst, const char *table, const char *name, int log_to_t
     }
   else
     {
-      key = sch_table_key (sc, table, name, 1);
+      key = sch_table_key (sc, table, name, 0);
+    }
+  if (drop_pk && !key)
+    {
+      dbe_table_t *tb = sch_name_to_table (wi_inst.wi_schema, table);
+      if (tb)
+	key = tb->tb_primary_key;
     }
   if (!key)
     {
@@ -2533,7 +2575,7 @@ ddl_drop_index (caddr_t * qst, const char *table, const char *name, int log_to_t
       atomic_mode (qi, 0, atomic);
       sqlr_new_error ("42S12", "SQ019", "No key %s in %s.", name, table ? table : "any table");
     }
-  if (key->key_is_primary)
+  if (key->key_is_primary && !drop_pk && !qi->qi_client->cli_is_log)
     {
       POP_LOG;
       atomic_mode (qi, 0, atomic);
@@ -2570,12 +2612,12 @@ ddl_drop_index (caddr_t * qst, const char *table, const char *name, int log_to_t
       itc_drop_index (it, key);
       itc_free (it);
     }
-  AS_DBA (qi, qr_rec_exec (drop_key_stmt, qi->qi_client, NULL, qi, NULL, 2,
-	  ":0", key->key_table->tb_name, QRP_STR, ":1", key->key_name, QRP_STR));
-
-  ddl_table_and_subtables_changed (qi, key->key_table->tb_name);
+  if (!key->key_is_primary)
+    {
+      AS_DBA (qi, qr_rec_exec (drop_key_stmt, qi->qi_client, NULL, qi, NULL, 2,
+	      ":0", key->key_table->tb_name, QRP_STR, ":1", key->key_name, QRP_STR));
+    }
   POP_LOG;
-  atomic_mode (qi, 0, atomic);
   if (log_to_trx)
     {
       if (CL_RUN_CLUSTER == cl_run_local_only)
@@ -2583,6 +2625,8 @@ ddl_drop_index (caddr_t * qst, const char *table, const char *name, int log_to_t
       else
 	log_text (qi->qi_trx, temp_tx);
     }
+  ddl_table_and_subtables_changed (qi, key->key_table->tb_name);
+  atomic_mode (qi, 0, atomic);
   dk_free_box (szTheTableName);
   dk_free_box (szTheIndexName);
 
@@ -2619,7 +2663,7 @@ ddl_build_index (query_instance_t * qi, char *table, char *name, caddr_t * repl)
       lt_rollback (qi->qi_trx, TRX_CONT);
       LEAVE_TXN;
       qi->qi_trx->lt_replicate = repl;
-      ddl_drop_index ((caddr_t *) qi, table, name, 1);
+      ddl_drop_index ((caddr_t *) qi, table, name, 1, 0);
       sqlr_resignal (err);
     }
   if (cl_run_local_only)
@@ -2759,7 +2803,7 @@ ddl_index_def (query_instance_t * qi, caddr_t name, caddr_t table, caddr_t * col
     POP_LOG;
     QR_RESET_CTX_T (qi->qi_thread)
     {
-      ddl_drop_index ((caddr_t *) qi, table, name, REPL_NO_LOG != repl);
+      ddl_drop_index ((caddr_t *) qi, table, name, REPL_NO_LOG != repl, 0);
     }
     QR_RESET_CODE
     {
@@ -2867,7 +2911,7 @@ ddl_rename_table (query_instance_t * qi, char *old, char *new_name)
 
 
 int
-err_is_state (caddr_t err, char *state)
+err_is_state (caddr_t err, const char *state)
 {
   if (IS_BOX_POINTER (err) && 0 == strncmp (((caddr_t *) err)[1], state, strlen (state)))
     return 1;
@@ -3050,19 +3094,12 @@ ddl_drop_table (query_instance_t * qi, char *name)
   int atomic;
   caddr_t *repl = qi->qi_trx->lt_replicate;
   name = ddl_complete_table_name (qi, name);
-
-  if (!find_remote_table (name, 0))
-    atomic = count_exceed (qi, name, MIN_FOR_ATOMIC, NULL);
-  else
-    atomic = 0;
-
+  atomic = 0;
   if (ddl_droptable_pre (qi, name))
     return;
 
-  atomic_mode (qi, 1, atomic);
   if (!cl_run_local_only)
     qi->qi_trx->lt_replicate = repl;
-#if 1
   /* first check for references to avoid delete action */
   del_st = sql_compile_static ("DB.DBA.droptable_check (?)", cli, &err, SQLC_DEFAULT);
   if (del_st)
@@ -3070,15 +3107,12 @@ ddl_drop_table (query_instance_t * qi, char *name)
       err = qr_rec_exec (del_st, cli, NULL, qi, NULL, 1, ":0", name, QRP_STR);
       if (err != SQL_SUCCESS)
 	{
-	  atomic_mode (qi, 0, atomic);
 	  qr_free (del_st);
 	  sqlr_resignal (err);
 	}
       qr_free (del_st);
       del_st = NULL;
     }
-#endif
-
 
 #ifdef BIF_XML
   del_st = sql_compile_static ("DB.DBA.vt_clear_text_index (?)", cli, &err, SQLC_DEFAULT);
@@ -3087,7 +3121,6 @@ ddl_drop_table (query_instance_t * qi, char *name)
       AS_DBA (qi, err = qr_rec_exec (del_st, cli, NULL, qi, NULL, 1, ":0", name, QRP_STR));
       if (err)
 	{
-	  atomic_mode (qi, 0, atomic);
 	  qr_free (del_st);
 	  sqlr_resignal (err);
 	}
@@ -3103,9 +3136,9 @@ ddl_drop_table (query_instance_t * qi, char *name)
       dbe_table_t *tb = qi_name_to_table (qi, name);
       DO_SET (dbe_key_t *, key, &tb->tb_keys)
       {
-	if (key->key_is_primary || key->key_supers)
+	if ( /*key->key_is_primary || */ key->key_supers)
 	  continue;
-	ddl_drop_index ((caddr_t *) qi, name, key->key_name, (CL_RUN_CLUSTER == cl_run_local_only ? 1 : 0));
+	ddl_drop_index ((caddr_t *) qi, name, key->key_name, (CL_RUN_CLUSTER == cl_run_local_only ? 1 : 0), key->key_is_primary);
       }
       END_DO_SET ();
       snprintf (temp, sizeof (temp), "delete from \"%s\"", escaped_name);
@@ -3121,7 +3154,6 @@ ddl_drop_table (query_instance_t * qi, char *name)
 	    cli->cli_no_triggers = old_no_triggers;
 	  if (err != SQL_SUCCESS && err_is_state (err, "S"))
 	    {
-	      atomic_mode (qi, 0, atomic);
 	      qr_free (del_st);
 	      sqlr_resignal (err);
 	    }
@@ -3134,21 +3166,18 @@ ddl_drop_table (query_instance_t * qi, char *name)
   del_st = sql_compile_static ("DB.DBA.droptable (?)", cli, &err, SQLC_DEFAULT);
   if (!del_st)
     {
-      atomic_mode (qi, 0, atomic);
       sqlr_new_error ("42S02", "SQ025", "Bad table in drop table.");
     }
   AS_DBA (qi, err = qr_rec_exec (del_st, cli, NULL, qi, NULL, 1, ":0", name, QRP_STR));
   if (err != SQL_SUCCESS)
     {
       /* the droptable proc call failed. May have inconsistent schema. Prevent commit */
-      atomic_mode (qi, 0, atomic);
       if (!err_is_state (err, "S0002"))
 	QI_POISON_TRX (qi);
       qr_free (del_st);
       sqlr_resignal (err);
     }
-  atomic_mode (qi, 0, atomic);
-  if (atomic)
+  if (CL_RUN_LOCAL == cl_run_local_only)
     {
       drop_stmt = dk_alloc_box (strlen (name) * 2 + 6 + 12, DV_SHORT_STRING);
       strcpy_box_ck (drop_stmt, "drop table ");
@@ -3630,6 +3659,8 @@ sql_ddl_node_input_1 (ddl_node_t * ddl, caddr_t * inst, caddr_t * state)
 		      sqlr_new_error ("42S11", "SQ027", "Only one PRIMARY KEY clause allowed");
 		    prime = (ST *) constr;
 		    break;
+		  case COLUMN_GROUP:
+		    break;
 		  case FOREIGN_KEY:
 		    break;
 		  case UNIQUE_DEF:
@@ -3678,7 +3709,8 @@ sql_ddl_node_input_1 (ddl_node_t * ddl, caddr_t * inst, caddr_t * state)
 	    caddr_t *opts = prime->_.index.opts;
 	    ddl_create_table (qi, tree->_.table_def.name, (caddr_t *) tree->_.table_def.cols);
 	    ddl_create_primary_key (qi, tree->_.table_def.name,
-		tree->_.table_def.name, (caddr_t *) prime->_.index.cols, KO_CLUSTER (opts), KO_OID (opts), opts);
+		tree->_.table_def.name, (caddr_t *) prime->_.index.cols,
+		KO_CLUSTER (opts), KO_OID (opts), opts, (caddr_t *) tree->_.table_def.cols);
 	  }
 	QR_RESET_CTX
 	{
@@ -3732,7 +3764,7 @@ sql_ddl_node_input_1 (ddl_node_t * ddl, caddr_t * inst, caddr_t * state)
       ddl_rename_table (qi, tree->_.op.arg_1, tree->_.op.arg_2);
       break;
     case INDEX_DROP:
-      ddl_drop_index (state, tree->_.op.arg_2, tree->_.op.arg_1, 1);
+      ddl_drop_index (state, tree->_.op.arg_2, tree->_.op.arg_1, 1, 0);
       break;
     case TABLE_DROP:
       ddl_drop_table (qi, tree->_.op.arg_1);
@@ -3801,7 +3833,7 @@ sql_ddl_node_input (ddl_node_t * ddl, caddr_t * inst, caddr_t * state)
 {
   query_instance_t *qi = (query_instance_t *) inst;
   caddr_t repl = box_copy_tree ((box_t) qi->qi_trx->lt_replicate);
-  qi->qi_trx->lt_replicate = box_copy_tree ((box_t) qi->qi_client->cli_replicate);
+  qi->qi_trx->lt_replicate = (caddr_t *) box_copy_tree ((box_t) qi->qi_client->cli_replicate);
 
   QR_RESET_CTX
   {
@@ -4194,8 +4226,8 @@ find_repl_account_in_src_text (char **src_text_ptr)
   char *repl = NULL;
   if (0 == strncmp (src_text_ptr[0], "__repl", 6))
     {
-      static char *marks[] = { "create ", "#line", "#pragma", "--", "/*", NULL };
-      char **mark_ptr;
+      const static char *marks[] = { "create ", "#line", "#pragma", "--", "/*", NULL };
+      const char **mark_ptr;
       char *best_hit = NULL;
       repl = src_text_ptr[0] + 7 /* = strlen ("__repl") + space */ ;
       for (mark_ptr = marks; NULL != mark_ptr[0]; mark_ptr++)
@@ -4303,7 +4335,7 @@ ddl_read_constraints (char *spec_tb_name, caddr_t * qst)
 dk_set_t triggers_to_redo = NULL;
 
 void
-ddl_redo_undefined_triggers ()
+ddl_redo_undefined_triggers (void)
 {
   caddr_t *trigs;
   user_t *org_user = bootstrap_cli->cli_user;
@@ -4394,7 +4426,7 @@ ddl_redo_undefined_triggers ()
   qr_free (rdproc);
 
 end:;
-  dk_free_box (trigs);
+  dk_free_box ((caddr_t) trigs);
   bootstrap_cli->cli_user = org_user;
   CLI_RESTORE_QUAL (bootstrap_cli, org_qual);
   local_commit (bootstrap_cli);
@@ -5556,7 +5588,7 @@ const char *proc_add_col =
     "  add_col_recursive (tb_name, col_id);\n"
     "  update DB.DBA.SYS_KEYS set KEY_MIGRATE_TO = NULL where KEY_MIGRATE_TO = -1;\n"
     "  ddl_read_table_tree (tb_name);\n"
-    "  cl_exec ('__key_col_ddl (?, ?, ?, 0)', vector (tb_name, name_part (tb_name, 2), col_name));"
+    "  cl_exec ('__key_col_ddl (?, ?, ?, 0)', vector (tb_name, name_part (tb_name, 2), col_name), txn => 1);"
     "  DB.DBA.__INT_REPL_ALTER_REDO_TRIGGERS (tb_name);\n" "}";
 
 static const char *proc_decoy_repl_modify_col =
@@ -5687,7 +5719,7 @@ const char *proc_drop_col =
     "  ddl_drop_col_recursive (tb, c_id);"
     "  update DB.DBA.SYS_KEYS set KEY_MIGRATE_TO = NULL where KEY_MIGRATE_TO = -1;"
     "  ddl_read_table_tree (tb);"
-    "  cl_exec ('__key_col_ddl (?, ?, ?, 1)', vector (tb, name_part (tb, 2), col));"
+    "  cl_exec ('__key_col_ddl (?, ?, ?, 1)', vector (tb, name_part (tb, 2), col), txn => 1);"
     "  if (not sys_stat ('st_lite_mode')) { \n"
     "  DB.DBA.__INT_REPL_ALTER_DROP_COL (tb, col, _col_dtp, _col_scale, _col_prec, c_check, 'DROP');\n"
     "  DB.DBA.__INT_REPL_ALTER_REDO_TRIGGERS (tb);\n"
@@ -6196,7 +6228,7 @@ const char *univ_dd_pt_text =
 
 const char *upd_sys_ds_table_text =
     "update SYS_COLS set COL_DTP = 125 where \"TABLE\" = 'DB.DBA.SYS_DATA_SOURCE' and \"COLUMN\" = 'DS_CONN_STR'";
-char *upd_sys_ds_table_text_2 = "__ddl_changed ('DB.DBA.SYS_DATA_SOURCE')";
+const char *upd_sys_ds_table_text_2 = "__ddl_changed ('DB.DBA.SYS_DATA_SOURCE')";
 
 void
 ddl_ensure_univ_tables (void)

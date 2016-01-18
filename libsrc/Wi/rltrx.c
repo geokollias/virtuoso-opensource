@@ -596,7 +596,7 @@ lock_is_acquirable (gen_lock_t * pl, it_cursor_t * itc)
     return 0;
   if (PL_SHARED == PL_TYPE (pl))
     {
-      if (pl->pl_is_owner_list && lt_set_is_branch ((dk_set_t) pl->pl_owner, (void *) itc->itc_ltrx, NULL))
+      if (pl->pl_is_owner_list && lt_set_is_branch ((dk_set_t) pl->pl_owner, itc->itc_ltrx, NULL))
 	return 1;
       if (PL_SHARED == itc->itc_lock_mode && !pl->pl_waiting)
 	return 1;
@@ -670,7 +670,7 @@ pl_lt_is_owner (page_lock_t * pl, lock_trx_t * lt)
   /* is the lt already an owner of the pl? */
   if (!pl->pl_is_owner_list && LT_SEES_EFFECT (lt, pl->pl_owner))
     return 1;
-  if (pl->pl_is_owner_list && lt_set_is_branch ((dk_set_t) pl->pl_owner, (void *) lt, NULL))
+  if (pl->pl_is_owner_list && lt_set_is_branch ((dk_set_t) pl->pl_owner, lt, NULL))
     return 1;
   return 0;
 }
@@ -766,7 +766,7 @@ lt_add_pl (lock_trx_t * lt, page_lock_t * pl, int flags)
        * which reference this pl wither because of rl ownership or past / present wait at rl */
       if (pl->pl_is_owner_list)
 	{
-	  if (lt_set_is_branch ((dk_set_t) pl->pl_owner, (void *) lt, &lt))
+	  if (lt_set_is_branch ((dk_set_t) pl->pl_owner, lt, &lt))
 	    return lt;
 	  LT_ADD_CK_BRANCH;
 	  dk_set_push ((dk_set_t *) & pl->pl_owner, (void *) lt);
@@ -1015,7 +1015,7 @@ itc_read_committed_check (it_cursor_t * itc, buffer_desc_t * buf)
 
 
 void
-itc_lock_failure (it_cursor_t * itc, char *msg)
+itc_lock_failure (it_cursor_t * itc, const char *msg)
 {
   rdbg_printf (("*** No lock itc %p L=%ld pos=%d K=%s ISO=%d LM=%d %s\n",
 	  itc, (unsigned long) itc->itc_page, itc->itc_map_pos, itc->itc_insert_key ? itc->itc_insert_key->key_name : "no key",
@@ -1238,7 +1238,8 @@ pl_finalize_page (page_lock_t * pl, it_cursor_t * itc)
       it_map_t *itm;
       ITC_IN_KNOWN_MAP (itc, pl->pl_page);
       itm = IT_DP_MAP (pl->pl_it, pl->pl_page);
-      if (DP_DELETED != pl->pl_page && !PL_IS_FINALIZE (pl) && !(buf = gethash (DP_ADDR2VOID (pl->pl_page), &itm->itm_dp_to_buf)))
+      if (DP_DELETED != pl->pl_page && !PL_IS_FINALIZE (pl)
+	  && !(buf = (buffer_desc_t *) gethash (DP_ADDR2VOID (pl->pl_page), &itm->itm_dp_to_buf)))
 	{
 	  pl_finalize_absent (pl, itc);
 	  return;
@@ -1665,7 +1666,7 @@ lt_locks_to_array (lock_trx_t * lt, page_lock_t ** arr, int max, int *fill_ret, 
   if (n_locks > max)
     {
       max = MIN (n_locks, 1000000);
-      arr = dk_alloc_box (sizeof (caddr_t) * max, DV_BIN);
+      arr = (page_lock_t **) dk_alloc_box (sizeof (page_lock_t *) * max, DV_BIN);
     }
   dk_hash_iterator (&hit, locks);
   mutex_enter (pl_ref_count_mtx);
@@ -2169,7 +2170,7 @@ rbe_page_row (rb_entry_t * rbe, row_delta_t * rd)
   key = sch_id_to_key (wi_inst.wi_schema, rbe->rbe_key_id);
   key = rd->rd_key = key->key_versions[kv];
   rd_space = key->key_is_bitmap + dk_set_length (key->key_parts);
-  rd->rd_values = dk_alloc_box (sizeof (caddr_t) * rd_space, DV_ARRAY_OF_POINTER);
+  rd->rd_values = dk_alloc_list (rd_space);
   rd->rd_non_comp_len = key->key_row_var_start[0];
   DO_CL (cl, key->key_key_fixed)
   {

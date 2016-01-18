@@ -66,8 +66,6 @@ long strses_file_seeks = 0;
 long strses_file_writes = 0;
 long strses_file_wait_msec = 0;
 
-long read_wides_from_utf8_file (dk_session_t * ses, long nchars, unsigned char *dest, int copy_as_utf8, unsigned char **dest_ptr_out);
-
 OFF_T
 strf_lseek (strsestmpfile_t * sesfile, OFF_T offset, int whence)
 {

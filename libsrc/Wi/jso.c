@@ -302,7 +302,7 @@ bif_jso_delete (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       if ((JSO_PRIVATE == fldd->jsofd_required) && (NULL != sub))
 	{
 	  if ((NULL == fld_type_cd) && (DV_CUSTOM != DV_TYPE_OF (sub)))
-	    dk_free_tree (sub);
+	    dk_free_tree ((caddr_t) sub);
 	  JSO_FIELD_PTR (inst, fldd)[0] = NULL;
 	}
     }

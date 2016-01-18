@@ -39,7 +39,7 @@
 #include "sqlcstate.h"
 #include "rdfinf.h"
 #include "xmlnode.h"
-
+#include "xmltree.h"
 
 bop_comparison_t *bop_comparison (int op, state_slot_t * l, state_slot_t * r);
 void cv_call_set_result_cols (sql_comp_t * sc, instruction_t * ins, state_slot_t ** params);
@@ -751,12 +751,12 @@ scalar_exp_generate (sql_comp_t * sc, ST * tree, dk_set_t * code)
       if (sc->sc_in_group_by_exec && ST_P (tree, COL_DOTTED) && (ssl = sqlg_group_by_exec_col (sc, tree)))
 	return ssl;
       if (ST_P (tree, LIT_PARAM))
-	return scalar_exp_generate (sc, tree->_.lit_param.value, code);
+	return scalar_exp_generate (sc, (ST *) tree->_.lit_param.value, code);
       dfe = sqlo_df (sc->sc_so, tree);
       if (DFE_CONST == dfe->dfe_type && sc->sc_so->so_stl && dfe->dfe_nth_param)
 	{
 	  if (sc->sc_no_lit_param)
-	    return ssl_new_constant (sc->sc_cc, dfe->dfe_tree);
+	    return ssl_new_constant (sc->sc_cc, (caddr_t) dfe->dfe_tree);
 	  else
 	    return dfe->dfe_ssl;
 	}
@@ -2674,7 +2674,10 @@ code_to_cv_1 (sql_comp_t * sc, dk_set_t code, int trim_one_long_cv)
       END_CATCH;
       hash_table_free (lblhash);
       if (err)
-	sqlc_resignal_1 (sc->sc_cc, err);
+	{
+	  dk_free_box ((caddr_t) cv);
+	  sqlc_resignal_1 (sc->sc_cc, err);
+	}
 
       return cv;
     }
@@ -2730,10 +2733,10 @@ cv_free (code_vec_t cv)
       }
     else if (INS_FOR_VECT == ins->ins_type)
       {
-	dk_free_box (ins->_.for_vect.in_values);
-	dk_free_box (ins->_.for_vect.in_vars);
-	dk_free_box (ins->_.for_vect.out_values);
-	dk_free_box (ins->_.for_vect.out_vars);
+	dk_free_box ((caddr_t) (ins->_.for_vect.in_values));
+	dk_free_box ((caddr_t) (ins->_.for_vect.in_vars));
+	dk_free_box ((caddr_t) (ins->_.for_vect.out_values));
+	dk_free_box ((caddr_t) (ins->_.for_vect.out_vars));
 	/*cv_free (ins->_.for_vect.code); */
       }
     else if (ins->ins_type == INS_COMPOUND_START)
@@ -2750,7 +2753,7 @@ cv_free (code_vec_t cv)
 #endif
     else if (ins->ins_type == INS_FETCH)
       {
-	dk_free_box (ins->_.fetch.targets);
+	dk_free_box ((caddr_t) (ins->_.fetch.targets));
       }
     else if (ins->ins_type == IN_AGG && ins->_.agg.distinct)
       {
@@ -2773,7 +2776,7 @@ sqlg_agg_ins (sql_comp_t * sc, ST * tree, dk_set_t * code, dk_set_t * fun_ref_co
     case AMMSC_MAX:
       {
 	state_slot_t *best = ssl_new_inst_variable (sc->sc_cc, AMMSC_MAX == tree->_.fn_ref.fn_code ? "best" : "min", DV_UNKNOWN);
-	cv_agg (fun_ref_code, tree->_.fn_ref.fn_code, best, arg, set_no, tree->_.fn_ref.all_distinct, sc);
+	cv_agg (fun_ref_code, tree->_.fn_ref.fn_code, best, arg, set_no, (void *) ((ptrlong) (tree->_.fn_ref.all_distinct)), sc);
 	dk_set_push (&sc->sc_fun_ref_temps, (void *) best);
 	best->ssl_qr_global = 1;
 	sc->sc_fun_ref_defaults = NCONC (sc->sc_fun_ref_defaults, CONS (dk_alloc_box (0, DV_DB_NULL), NULL));
@@ -2799,12 +2802,12 @@ sqlg_agg_ins (sql_comp_t * sc, ST * tree, dk_set_t * code, dk_set_t * fun_ref_co
 	sc->sc_fun_ref_default_ssls = NCONC (sc->sc_fun_ref_default_ssls, CONS (sum, NULL));
 	if (!is_constant_arg)
 	  {
-	    cv_agg (fun_ref_code, AMMSC_SUM, sum, arg, set_no, tree->_.fn_ref.all_distinct, sc);
+	    cv_agg (fun_ref_code, AMMSC_SUM, sum, arg, set_no, (void *) ((ptrlong) (tree->_.fn_ref.all_distinct)), sc);
 	  }
 	else
 	  {
 	    if (arg->ssl_dtp != DV_DB_NULL)
-	      cv_agg (fun_ref_code, AMMSC_SUM, sum, arg, set_no, tree->_.fn_ref.all_distinct, sc);
+	      cv_agg (fun_ref_code, AMMSC_SUM, sum, arg, set_no, (void *) ((ptrlong) (tree->_.fn_ref.all_distinct)), sc);
 	  }
 	result = sum;
 	break;

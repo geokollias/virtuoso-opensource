@@ -2147,7 +2147,8 @@ XPF_ROUND (xpf_round_number, virt_rint) XPF_ROUND (xpf_ceiling, ceil) XPF_ROUND 
 	}
       if ((XPF_IMPL_DOCUMENT_LAZY == call_mode) || (XPF_IMPL_DOCUMENT_LAZY_IN_COLL == call_mode))
 	{
-	  xml_entity_t *document = (xml_entity_t *) xlazye_from_cache_key (box_copy_tree (cache_key), qi);
+	  xml_entity_t *document =
+	      (xml_entity_t *) xlazye_from_cache_key ((xml_doc_cache_stdkey_t *) box_copy_tree ((caddr_t) cache_key), qi);
 	  dk_free_tree (cache_key->xdcs_abs_uri);
 	  cache_key->xdcs_abs_uri = NULL;
 	  dk_set_push (&documents, (void *) (document));
@@ -2204,13 +2205,13 @@ XPF_ROUND (xpf_round_number, virt_rint) XPF_ROUND (xpf_ceiling, ceil) XPF_ROUND 
     XQI_SET (xqi, tree->_.xp_func.var->_.var.init, arr);
     XQI_SET (xqi, tree->_.xp_func.var->_.var.res, NULL);
     XQI_SET_INT (xqi, tree->_.xp_func.var->_.var.inx, 0);
-    dk_free_box (cache_key->xdcs_lang_ptr);
+    dk_free_box ((caddr_t) (cache_key->xdcs_lang_ptr));
     return;
   }
 loading_error:
   dk_free_box (doc_text);
   dk_free_box (cache_key->xdcs_abs_uri);
-  dk_free_box (cache_key->xdcs_lang_ptr);
+  dk_free_box ((caddr_t) (cache_key->xdcs_lang_ptr));
   dk_free_box (abs_uri);
   dk_free_tree ((caddr_t) list_to_array (documents));
   sqlr_resignal (loading_error);
@@ -2266,7 +2267,7 @@ xpf_expand_qname (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
     case DV_STRING:
       break;
     case DV_XML_ENTITY:
-      ctx_xe = tmp_ctx_xe = box_copy (qname);
+      ctx_xe = tmp_ctx_xe = (xml_entity_t *) box_copy (qname);
       /* no break */
     default:
       qname = (caddr_t) xpf_arg (xqi, tree, ctx_xe, DV_SHORT_STRING, 1);
@@ -2278,7 +2279,7 @@ xpf_expand_qname (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 	sqlr_new_error_xqi_xdl ("XP001", "?????", xqi, "XML entity expected as a third argument of XPATH function expand-qname()");
     }
   res = ctx_xe->_->xe_find_expanded_name_by_qname (ctx_xe, qname, use_default);
-  dk_free_box (tmp_ctx_xe);
+  dk_free_box ((caddr_t) tmp_ctx_xe);
   XQI_SET (xqi, tree->_.xp_func.res, res);
 }
 
@@ -3655,7 +3656,7 @@ xpf_order_by_operator (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 	}
       if (need_flatten)
 	{
-	  caddr_t *flat_res = dk_alloc_box (res_len, DV_ARRAY_OF_XQVAL);
+	  caddr_t *flat_res = (caddr_t *) dk_alloc_box (res_len, DV_ARRAY_OF_XQVAL);
 	  caddr_t *flat_res_tail = flat_res;
 	  for (items_ctr = 0; items_ctr < items_no; items_ctr++)
 	    {
@@ -4566,7 +4567,7 @@ xpf_extension (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
     if ('!' == argname[0])
       {
 	if (!strcmp (argname, "!ctx"))
-	  arr[decl_arg_ctr] = box_copy_tree (ctx_xe);
+	  arr[decl_arg_ctr] = box_copy_tree ((caddr_t) ctx_xe);
 	else if (!strcmp (argname, "!debug-xslt-srcfile"))
 	  {
 	    char *file = xqi->xqi_xqr->xqr_xdl.xdl_file;
@@ -5307,7 +5308,7 @@ xpf_sql_scalar_select (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 	     SES_PRINT (tmp_ses, "> ");
 	     } */
 	  preamble = preamble_to_free = strses_string (tmp_ses);
-	  dk_free_box (tmp_ses);
+	  dk_free_box ((caddr_t) tmp_ses);
 	}
       query_final_text = box_dv_short_strconcat (preamble, query_text);
       if (query_text != query_raw_text)
@@ -5366,7 +5367,7 @@ xpf_sql_scalar_select (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
 	if (0 == BOX_ELEMENTS (val))
 	  val = NEW_DB_NULL;
 	else
-	  val = box_copy_tree (((caddr_t **) val)[0]);
+	  val = box_copy_tree (((caddr_t *) val)[0]);
       }
     else
       val = box_copy_tree (val);
@@ -5505,7 +5506,7 @@ again:
 	  {
 	    if (is_intersect)
 	      {
-		dk_set_push (&set, box_copy (elt1));
+		dk_set_push (&set, box_copy ((caddr_t) elt1));
 		goto next;
 	      }
 	    else
@@ -5514,7 +5515,7 @@ again:
       }
     if (!is_intersect)
       {
-	dk_set_push (&set, box_copy (elt1));
+	dk_set_push (&set, box_copy ((caddr_t) elt1));
       }
   next:
     ;
@@ -5885,11 +5886,11 @@ scan_complete:
   XQI_SET (xqi, tree->_.xp_func.var->_.var.init, (caddr_t) res);
   XQI_SET (xqi, tree->_.xp_func.var->_.var.res, NULL);
   XQI_SET_INT (xqi, tree->_.xp_func.var->_.var.inx, 0);
-  dk_free_tree (cache_key);
+  dk_free_tree ((caddr_t) cache_key);
   return;
 
 scan_error:
-  dk_free_tree (cache_key);
+  dk_free_tree ((caddr_t) cache_key);
   sqlr_resignal (err);
 }
 

@@ -124,12 +124,12 @@ loaded_xe_is_ready:
   if (XE_IS_TREE (loaded_xe))
     {
       memcpy (xlazye->xe_doc.xd, loaded_doc, sizeof (xml_tree_doc_t));
-      dk_free_box (loaded_doc);
+      dk_free_box ((caddr_t) loaded_doc);
     }
   else
     {
       memcpy (xlazye->xe_doc.xd, loaded_doc, sizeof (xper_doc_t));
-      dk_free_box (loaded_doc);
+      dk_free_box ((caddr_t) loaded_doc);
     }
   xlazye->xe_doc.xd->xd_top_doc = xlazye->xe_doc.xd;
   loaded_xe->xe_doc.xd = xlazye->xe_doc.xd;
@@ -151,9 +151,9 @@ loaded_xe_is_ready:
       xlazye->xe_doc.xd->xd_ref_count++;
     }
   xlazye->xe_doc.xd->xd_ref_count--;	/* because this is counted already while making a copy */
-  dk_free_box (cache_key);
+  dk_free_box ((caddr_t) cache_key);
   box_tag_modify (loaded_xe, DV_CUSTOM);
-  dk_free_box (loaded_xe);
+  dk_free_box ((caddr_t) loaded_xe);
   return;
 
 loading_error:
@@ -178,14 +178,14 @@ xlazye_destroy (xml_entity_t * xe)
       if (NULL != xlazyd->xlazyd_entities)
 	GPF_T1 ("bad xlazyd_entities in xlazye_destroy()");
 #endif
-      dk_free_tree (xlazyd->xlazyd_cache_key);
+      dk_free_tree ((caddr_t) (xlazyd->xlazyd_cache_key));
       dk_free (xlazyd, sizeof (xml_lazy_doc_t));
     }
 }
 
 xml_entity_t *DBG_NAME (xlazye_copy) (DBG_PARAMS xml_entity_t * xe)
 {
-  xml_lazy_ent_t *copy = dk_alloc_box (sizeof (xml_entity_un_t), DV_XML_ENTITY);
+  xml_lazy_ent_t *copy = (xml_lazy_ent_t *) dk_alloc_box (sizeof (xml_entity_un_t), DV_XML_ENTITY);
   memcpy (copy, xe, sizeof (xml_entity_un_t));
   xe->xe_doc.xd->xd_ref_count++;
   dk_set_push (&(xe->xe_doc.xlazyd->xlazyd_entities), copy);

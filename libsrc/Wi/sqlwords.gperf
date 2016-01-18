@@ -21,7 +21,7 @@
  *
  */
 
-struct keyword { char *keiiyword; int token; };
+struct sql3_keyword_s { const char *kwd; int token; };
 %%
 ADA, ADA
 ADD, ADD
@@ -138,7 +138,7 @@ GO, GO
 GOTO, GOTO
 GRANT, GRANT
 GROUP, GROUP
-GROUPING, GROUPING
+GROUPING, GROUPING_L3
 HANDLER, HANDLER
 HASH, HASH
 HAVING, HAVING
@@ -209,6 +209,7 @@ OR, OR
 ORDER, ORDER
 OUT, OUT_L
 OUTER, OUTER
+OVER, OVER
 OVERRIDING, OVERRIDING
 PARTITION, PARTITION
 PASCAL, PASCAL_L

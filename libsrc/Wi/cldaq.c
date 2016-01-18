@@ -61,9 +61,9 @@ array_add (caddr_t ** ap, int *fill, caddr_t elt)
   else if (BOX_ELEMENTS (*ap) <= *fill)
     {
       int len = BOX_ELEMENTS (*ap);
-      caddr_t *nb = dk_alloc_box_zero (sizeof (caddr_t) * (len < 2000 ? 4 : 2) * len, DV_ARRAY_OF_POINTER);
+      caddr_t *nb = (caddr_t *) dk_alloc_box_zero (sizeof (caddr_t) * (len < 2000 ? 4 : 2) * len, DV_ARRAY_OF_POINTER);
       memcpy (nb, *ap, sizeof (caddr_t) * len);
-      dk_free_box (*ap);
+      dk_free_box ((caddr_t) (*ap));
       *ap = nb;
       nb[*fill] = (caddr_t) elt;
       (*fill)++;
@@ -323,7 +323,7 @@ clrg_local_ins_del_single (cl_req_group_t * clrg)
 	    sqlr_resignal (err);
 	  }
 	if (CLO_DELETE == clo->clo_op)
-	  cls_vec_del_rd_layout (clo->_.delete.rd);
+	  cls_vec_del_rd_layout (clo->_.delete_op.rd);
 	err = NULL;
 	qi->qi_client->cli_non_txn_insert = CLO_INSERT == clo->clo_op && clo->_.insert.non_txn;
 	err = cl_vec_exec (qr, qi->qi_client, clrg->clrg_pool, clo->_.insert.rd->rd_values, NULL, QI_NO_SLICE, &set_mask, NULL, 0);
@@ -426,11 +426,11 @@ bif_partition_group (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   hosts = cl_key_locate (key, vec, PART_UPD_FIRST, &slid);
   if (!hosts || !BOX_ELEMENTS (hosts))
     {
-      dk_free_box (hosts);
+      dk_free_box ((caddr_t) hosts);
       return dk_alloc_box (0, DV_DB_NULL);
     }
   no = unbox (hosts[0]);
-  dk_free_tree (hosts);
+  dk_free_tree ((caddr_t) hosts);
   return box_num (slid);
 }
 
@@ -449,7 +449,7 @@ bif_daq (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   query_instance_t *qi = (query_instance_t *) qst;
   int is_txn = bif_long_arg (qst, args, 0, "daq");
-  cl_req_group_t *clrg = cl_req_group (qi->qi_trx);
+  cl_req_group_t *clrg = cl_req_group_qi (qi);
   clrg->clrg_timeout = qi->qi_rpc_timeout;
   clrg->clrg_pool = mem_pool_alloc ();
   clrg->clrg_keep_local_clo = 1;
@@ -491,7 +491,7 @@ id_hash_t *name_to_cu_func;
 //id_hash_t * func_name_to_cu_func;
 
 cu_func_t *
-cu_func (caddr_t name, int must_find)
+cu_func (const char *name, int must_find)
 {
   cu_func_t **place;
   if (!name_to_cu_func)
@@ -957,7 +957,7 @@ bif_dpipe (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   int inx, flags, is_upd = 0;
   query_instance_t *qi = (query_instance_t *) qst;
-  cl_req_group_t *clrg = cl_req_group (qi->qi_trx);
+  cl_req_group_t *clrg = cl_req_group_qi (qi);
   NEW_VARZ (cucurbit_t, cu);
   clrg->clrg_timeout = qi->qi_rpc_timeout;
   clrg->clrg_pool = mem_pool_alloc ();
@@ -1019,10 +1019,10 @@ cu_row (cucurbit_t * cu, caddr_t * args)
 
 
 cl_req_group_t *
-dpipe_allocate (query_instance_t * qi, int flags, int n_ops, char **ops)
+dpipe_allocate (query_instance_t * qi, int flags, int n_ops, const char **ops)
 {
   int inx;
-  cl_req_group_t *clrg = cl_req_group (qi ? qi->qi_trx : NULL);
+  cl_req_group_t *clrg = qi ? cl_req_group_qi (qi) : cl_req_group (NULL);
   NEW_VARZ (cucurbit_t, cu);
   clrg->clrg_pool = mem_pool_alloc ();
   clrg->clrg_keep_local_clo = 1;
@@ -1347,8 +1347,9 @@ bif_cl_detach_thread (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   client_connection_t *cli = qi->qi_client;
   if (!cli->cli_cl_stack || box_length (cli->cli_cl_stack) == sizeof (cl_call_stack_t))
     return NULL;
-  dk_free_box (cli->cli_cl_stack);
+  dk_free_box ((caddr_t) (cli->cli_cl_stack));
   cli->cli_cl_stack = NULL;
+  cli->cli_cl_stack_ref_count = 0;
   return box_num (1);
 }
 
@@ -1370,7 +1371,7 @@ dpipe_refresh_schema ()
 
 
 void
-dpipe_define (caddr_t name, dbe_key_t * key, caddr_t fn, cu_op_func_t fn_disp, int l)
+dpipe_define (const char *name, dbe_key_t * key, const char *fn, cu_op_func_t fn_disp, int l)
 {
   cu_func_t *cf, *prev_cf = NULL;
   prev_cf = cu_func (name, 0);

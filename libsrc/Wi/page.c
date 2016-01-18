@@ -1461,7 +1461,7 @@ page_row_bm (buffer_desc_t * buf, int irow, row_delta_t * rd, int op, it_cursor_
   if (rd->rd_copy_of_deleted && !kv)
     GPF_T1 ("suspect to have a leaf ptr with deld flag");
   if (!rd->rd_values && RO_LEAF == op && RD_ALLOCATED == rd->rd_allocated)
-    rd->rd_values = dk_alloc_box (sizeof (caddr_t) * key->key_n_significant, DV_ARRAY_OF_POINTER);
+    rd->rd_values = dk_alloc_list (key->key_n_significant);
   else if (!rd->rd_values && RO_ROW == op && RD_ALLOCATED == rd->rd_allocated)
     rd->rd_values =
 	(caddr_t *) dk_alloc_box_zero ((dk_set_length (key->key_parts) + key->key_is_bitmap) * sizeof (caddr_t),
@@ -2301,7 +2301,7 @@ pa_page_leave (it_cursor_t * itc, buffer_desc_t * buf, int chg)
 
 #define PF_REG_FREE \
   if (pf.pf_registered != &paf->paf_registered[0]) \
-    dk_free_box (pf.pf_registered);
+    dk_free_box ((caddr_t)(pf.pf_registered));
 
 
 void

@@ -34,15 +34,8 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "xmlparser.h"
 #include "xmlparser_impl.h"
-#ifdef __cplusplus
-}
-#endif
 #include "xml_ecm.h"
 
 #ifdef DEBUG
@@ -2567,10 +2560,8 @@ sparp_rvr_set_by_constant (sparp_t * sparp, rdf_val_range_t * dest, ccaddr_t dat
       else
 	{
 	  dtp_t valtype = DV_TYPE_OF (value);
-#ifdef DEBUG
 	  if (SPAR_LIT != SPART_TYPE (value))
 	    GPF_T1 ("sparp_" "rvr_set_by_constant(): value is neither QNAME nor a literal");
-#endif
 	  dest->rvrRestrictions |= (SPART_VARR_IS_LIT | SPART_VARR_TYPED | SPART_VARR_FIXED | SPART_VARR_NOT_NULL);
 	  if (DV_ARRAY_OF_POINTER == valtype)
 	    {
@@ -4296,22 +4287,35 @@ sparp_find_qmv_of_var_or_retval (sparp_t * sparp, SPART * var_triple, SPART * gp
   return qmv;
 }
 
-int
-sparp_find_language_dialect_by_service (sparp_t * sparp, SPART * service_expn)
+void
+sparp_find_language_dialect_by_service (sparp_t * sparp, SPART * service_expn, int *dialect_ret, int *exceptions_ret)
 {
   caddr_t service_iri = SPAR_LIT_OR_QNAME_VAL (service_expn);
-  caddr_t *lang_strs;
-  int res;
+  caddr_t *obj_strings;
   if ((DV_STRING != DV_TYPE_OF (service_iri)) && (DV_UNAME != DV_TYPE_OF (service_iri)))
-    return 0;
-  lang_strs = jso_triple_get_objs ((caddr_t *) (sparp->sparp_sparqre->sparqre_qi), service_iri, uname_virtrdf_ns_uri_dialect);
-  if (1 != BOX_ELEMENTS_0 (lang_strs))
-    return SSG_SD_NEED_LOAD_SERVICE_DATA;
-  if (1 != sscanf (lang_strs[0], "%08x", &res))
-    return 0;
-  if (0 > res)
-    return 0;
-  return res;
+    goto ret_zero;		/* see below */
+  obj_strings = jso_triple_get_objs ((caddr_t *) (sparp->sparp_sparqre->sparqre_qi), service_iri, uname_virtrdf_ns_uri_dialect);
+  if (1 != BOX_ELEMENTS_0 (obj_strings))
+    {
+      dialect_ret[0] = SSG_SD_NEED_LOAD_SERVICE_DATA;
+      exceptions_ret[0] = 0;
+      return;
+    }
+  if (1 != sscanf (obj_strings[0], "%08x", dialect_ret))
+    goto ret_zero;		/* see below */
+  if (0 > dialect_ret[0])
+    goto ret_zero;		/* see below */
+  exceptions_ret[0] = 0;
+  obj_strings =
+      jso_triple_get_objs ((caddr_t *) (sparp->sparp_sparqre->sparqre_qi), service_iri, uname_virtrdf_ns_uri_dialect_exceptions);
+  if (1 == BOX_ELEMENTS_0 (obj_strings))
+    if (1 == sscanf (obj_strings[0], "%08x", exceptions_ret))
+      if (0 > exceptions_ret[0])
+	exceptions_ret[0] = 0;
+  return;
+ret_zero:
+  dialect_ret[0] = exceptions_ret[0] = 0;
+  return;
 }
 
 quad_storage_t *

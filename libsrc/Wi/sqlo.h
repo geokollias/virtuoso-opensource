@@ -28,7 +28,7 @@
 
 #ifndef _SQLO_H
 #define _SQLO_H
-
+#include "sqlcmps.h"
 typedef struct df_elt_s df_elt_t;
 typedef struct dfe_reuse_s dfe_reuse_t;
 typedef struct sqlo_s sqlo_t;
@@ -57,7 +57,17 @@ typedef struct op_table_s
 #endif
   ST *ot_dt;
   ST *ot_left_sel;
+  ST **ot_dt_oj_ref;		/* if this ot is right of left outer, then this is the place in the parse tree that refs the table_ref */
+  struct op_table_s *ot_top_ot;
+  dbe_key_t *ot_cg_pk;		/* if a single cg has all dep cols with conditions */
+  dk_set_t ot_cg_cond_cols;	/* list of columns participating in coditions */
+  dk_set_t ot_cg_group_cols;
+  dk_set_t ot_cg_order_cols;
+  dk_set_t ot_col_conds;	/* predicates that are direct on a col of this ot, use for checking if sorted proj has range or/order/grouping */
   ST *ot_join_cond;
+  char ot_inside_clause;	/* for a dt ot, set if doing scope for its where/gby/oby.  Use for cgs.  Distinguish col refs in where  */
+  char ot_is_cg;		/* if table with many col groups */
+  char ot_cg_first_placed;
   char ot_is_outer;
   char ot_inside_outer;
   ST *ot_enclosing_where_cond;	/* optional or other ot can add a condition to the top level where of the enclosing dt */
@@ -129,8 +139,6 @@ typedef struct op_table_s
   dk_set_t ot_all_dts;		/* all currently placed dts,scalar subqs.  Can look for intermediate reuse. In top ot only */
   dk_set_t ot_lp_cols;		/* late projection cols, to fetch after gby or top oby */
   float ot_initial_cost;	/* cost of initial plan with this ot in first position */
-  float ot_joined_card;
-  char ot_is_rdf;
   char ot_any_plan;		/* true if there is at least one full plan with this ot in first position */
   char ot_is_right_oj;		/* for a dt ot, set if trying a right hash oj plan.  Only hash join is considered */
   char ot_has_top_test;
@@ -145,6 +153,11 @@ typedef struct op_table_s
   dk_set_t ot_s_eqs;		/* all preds where some s of a table in this dt is eq something else */
   struct csg_col_s *ot_csgc;
 } op_table_t;
+
+/* ot_inside_clause */
+#define OT_IN_WHERE 1
+#define OT_IN_GBY 2
+#define OT_IN_OBY 3
 
 /* ot_is_cset_dt */
 #define OT_CSET_SCAN 1
@@ -316,6 +329,7 @@ struct df_elt_s
       bitf_t is_late_proj:1;
       bitf_t cl_colocated:1;	/* always same partition as previous table in cluster */
       bitf_t no_in_on_index:1;
+      bitf_t is_cg_first:1;
       bitf_t joins_pk:2;
       bitf_t cset_role:2;
       bitf_t add_cset_psog:1;
@@ -633,11 +647,14 @@ struct sqlo_s
   char so_mark_gb_dep;
   char so_placed_outside_dt;
   char so_no_dt_cache;
+  char so_org_tree_copied;
   char so_any_rdf_quad;
   char so_ret_flag;		/* aux, used for misc status return */
 
   st_lit_state_t *so_stl;	/* if gathering literals for use as params */
-
+  op_table_t *so_def_ot;	/* temp for the ot and table of a col ref during scope */
+  dbe_column_t *so_def_col;
+  ST *so_org_tree;		/* tree unmodified by col group expansion */
 };
 
 typedef struct lp_col_s
@@ -919,6 +936,11 @@ df_elt_t *sqlo_layout_copy_1 (sqlo_t * so, df_elt_t * dfe, df_elt_t * parent);
 
 void sqlo_dt_unplace (sqlo_t * so, df_elt_t * tb_dfe);
 void sqlo_dfe_unplace (sqlo_t * so, df_elt_t * dfe);
+float itc_row_selectivity (it_cursor_t * itc, int64 inx_est);
+int pred_const_rhs (df_elt_t * pred);
+caddr_t sqlo_iri_constant_name (ST * tree);
+float arity_scale (float ar);
+int dfe_range_card (df_elt_t * tb_dfe, df_elt_t * lower, df_elt_t * upper, float *card);
 float sqlo_score (df_elt_t * dfe, float in_arity);
 int dfe_try_ordered_key (df_elt_t * prev_tb, df_elt_t * dfe);
 df_elt_t *dfe_prev_tb (df_elt_t * dfe, float *card_between_ret, int stop_on_new_order);
@@ -983,6 +1005,7 @@ void dfe_top_discount (df_elt_t * dfe, float *u1, float *a1);
 
 /* sqloinx.c */
 void sqlo_init_eqs (sqlo_t * so, op_table_t * ot, dk_set_t preds, int placed_only, dk_set_t except);
+void sqlo_dt_eqs (sqlo_t * so, df_elt_t * dfe);
 void sqlo_clear_eqs (id_hash_t * eqs);
 
 void sqlo_find_inx_intersect (sqlo_t * so, df_elt_t * tb_dfe, dk_set_t col_preds, float best);
@@ -1098,7 +1121,7 @@ int sqlo_is_sec_in_list (df_elt_t ** in_list);
 #define INL_RDF_INF 2
 
 df_elt_t **sqlo_in_list (df_elt_t * pred, df_elt_t * tb_dfe, caddr_t name);
-df_elt_t **sqlo_in_list_1 (df_elt_t * pred, df_elt_t * tb_dfe, caddr_t name, df_elt_t *** subrange_ret);
+df_elt_t **sqlo_in_list_1 (df_elt_t * pred, df_elt_t * tb_dfe, caddr_t name, ST *** subrange_ret);
 dbe_column_t *cp_left_col (df_elt_t * cp);
 df_elt_t **sqlo_pred_body (sqlo_t * so, locus_t * loc, df_elt_t * tb_dfe, df_elt_t * pred);
 void qn_ins_before (sql_comp_t * sc, data_source_t ** head, data_source_t * ins_before, data_source_t * new_qn);
@@ -1158,6 +1181,8 @@ void sqlo_map_st (ST * tree, tree_cb_t cb, void *cd);
 typedef int (*tree_ref_cb_t) (ST ** ptree, void *cd);
 void sqlo_map_st_ref (ST ** ptree, tree_ref_cb_t cb, void *cd);
 int box_is_subtree (caddr_t box, caddr_t subtree);
+int st_equal_csq (const caddr_t b1, const caddr_t b2);
+int sqlo_is_const_subq (sqlo_t * so, ST * tree);
 void sqlg_unplace_ssl (sqlo_t * so, ST * tree);
 char sqlc_geo_op (sql_comp_t * sc, ST * op);
 dbe_table_t *sqlg_geo_index_table (dbe_key_t * id_key, ST ** geo_args);
@@ -1199,6 +1224,12 @@ float arity_scale (float ar);
 caddr_t sqlo_rdf_lit_const (ST * tree);
 caddr_t sqlo_rdf_obj_const_value (ST * tree, caddr_t * val_ret, caddr_t * lang_ret);
 
+/* col groups */
+void sqlo_cg_expand (sqlo_t * so, op_table_t * sel_ot, ST * tree);
+df_elt_t *dfe_col_def_dfe_cg (sqlo_t * so, df_elt_t * col_dfe);
+df_elt_t *dfe_skip_to_min_card (df_elt_t * place, df_elt_t * super, df_elt_t * dfe);
+dbe_key_t *tb_col_group (dbe_table_t * tb, dbe_column_t * col);
+
 /* cset */
 df_elt_t *dfe_right (df_elt_t * tb_dfe, df_elt_t * pred);
 state_slot_t **sqlc_compound_stmt (sql_comp_t * sc, ST * tree, dk_set_t ret_exps);
@@ -1235,6 +1266,7 @@ void sqlo_qrc_hash (sqlo_t * so, ST * tree);
 void sqlo_check_rhs_lit (sqlo_t * so, ST * tree);
 void sqlo_lit_param (sqlo_t * so, ST ** plit);
 void sqlo_init_lit_params (sql_comp_t * sc, sqlo_t * so);
+void qrc_set (sql_comp_t * sc, query_t * qr);
 void qrc_lookup (sql_comp_t * sc, ST * tree);
 #define QRC_FOUND 111
 

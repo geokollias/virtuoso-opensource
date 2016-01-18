@@ -83,7 +83,7 @@ clo_top_free (cl_op_t * clo)
   mutex_leave (&cha_top_mtx);
   if (!refc)
     {
-      dk_free_tree (clo->_.top.values);
+      dk_free_tree ((caddr_t) clo->_.top.values);
       dk_mutex_destroy (&clo->_.top.mtx);
       return 0;
     }
@@ -279,7 +279,7 @@ setp_top_merge (setp_node_t * setp, caddr_t * inst, cl_op_t * clo, int copy)
     {
       caddr_t oldv = (caddr_t) top_clo->_.top.values;
       top_clo->_.top.is_full = 1;
-      top_clo->_.top.values = box_mt_copy_tree ((caddr_t) clo->_.top.values);
+      top_clo->_.top.values = (caddr_t *) box_mt_copy_tree ((caddr_t) clo->_.top.values);
       top_print (top_clo->_.top.values, "first full");
       changed = 1;
       setp_top_change (setp, inst, top_clo, ser);
@@ -333,7 +333,7 @@ setp_top_merge (setp_node_t * setp, caddr_t * inst, cl_op_t * clo, int copy)
 	  if (top_clo->_.top.fill == top_clo->_.top.cnt)
 	    {
 	      caddr_t *oldv = top_clo->_.top.values;
-	      top_clo->_.top.values = top_clo->_.top.values[top_clo->_.top.fill - 1];
+	      top_clo->_.top.values = (caddr_t *) top_clo->_.top.values[top_clo->_.top.fill - 1];
 	      top_clo->_.top.is_full = 1;
 	      top_print (top_clo->_.top.values, "init");
 	      setp_top_change (setp, inst, top_clo, ser);
@@ -391,7 +391,7 @@ setp_top_oby_changed (setp_node_t * setp, caddr_t * inst, int top)
     return;
   if (arr_dc->dc_n_values > 1)
     return;
-  arr = ((caddr_t *) arr_dc->dc_values)[0];
+  arr = ((caddr_t ***) arr_dc->dc_values)[0];
   memzero (&clo, sizeof (clo));
   qi->qi_set = 0;
   fill = unbox (qst_get (inst, setp->setp_row_ctr));
@@ -409,11 +409,11 @@ setp_top_oby_changed (setp_node_t * setp, caddr_t * inst, int top)
     }
   else
     {
-      clo._.top.values = arr[fill - 1][0];
+      clo._.top.values = (caddr_t *) arr[fill - 1][0];
       clo._.top.is_full = 1;
     }
   setp_top_merge (setp, inst, &clo, 1);
-  dk_free_box (values);
+  dk_free_box ((caddr_t) values);
 }
 
 
@@ -462,7 +462,7 @@ setp_top_k_limit (setp_node_t * setp, caddr_t * inst, caddr_t * ret_box)
       mutex_leave (&top_clo->_.top.mtx);
       return 0;
     }
-  *ret_box = box_mt_copy_tree (top_clo->_.top.values);
+  *ret_box = box_mt_copy_tree ((caddr_t) top_clo->_.top.values);
   mutex_leave (&top_clo->_.top.mtx);
   return 1;
 }
@@ -666,7 +666,7 @@ setp_mem_insert (setp_node_t * setp, caddr_t * qst, int pos, caddr_t ** arr, int
       new_row = setp_mem_sort_row (setp, qst);
       if (setp_top_duplicate (arr, pos, fill, new_row, n_keys))
 	{
-	  dk_free_tree (new_row);
+	  dk_free_tree ((caddr_t) new_row);
 	  return;
 	}
     }

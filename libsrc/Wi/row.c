@@ -38,14 +38,7 @@
 #include "xml.h"
 #include "sqlbif.h"
 #include "security.h"
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "xmlparser_impl.h"
-#ifdef __cplusplus
-}
-#endif
 
 char *__get_column_name (oid_t col_id, dbe_key_t * key);
 const char *dv_type_title (int type);
@@ -85,6 +78,27 @@ key_find_cl (dbe_key_t * key, oid_t col)
   cl = cl_list_find (key->key_row_var, col);
   if (cl)
     return cl;
+  return NULL;
+}
+
+
+dbe_col_loc_t *
+tb_find_cl (dbe_table_t * tb, oid_t col)
+{
+  DO_SET (dbe_key_t *, key, &tb->tb_keys)
+  {
+    if (key->key_is_primary || key->key_is_col_group)
+      {
+	dbe_col_loc_t *cl;
+	if (key->key_is_col)
+	  cl = cl_list_find (key->key_row_var, col);
+	else
+	  cl = key_find_cl (key, col);
+	if (cl)
+	  return cl;
+      }
+  }
+  END_DO_SET ();
   return NULL;
 }
 
@@ -600,7 +614,7 @@ page_mp_box_col (it_cursor_t * itc, mem_pool_t * mp, buffer_desc_t * buf, db_buf
       }
     case DV_ANY:
       VL;
-      return mp_box_deserialize_string (mp, (caddr_t) xx, len, offset);
+      return mp_box_deserialize_string (mp, (ccaddr_t) xx, len, offset);
     default:
       {
 	caddr_t box = page_box_col (itc, buf, row, cl);
@@ -886,7 +900,7 @@ page_write_col (buffer_desc_t * buf, db_buf_t row, dbe_col_loc_t * cl, dk_sessio
 	numeric_t num = (numeric_t) dk_alloc_box (sizeof (struct numeric_s) + NUMERIC_MAX_DATA_BYTES - NUMERIC_PADDING, DV_NUMERIC);
 	numeric_from_buf (num, xx);
 	numeric_serialize (num, ses);
-	dk_free_box (num);
+	dk_free_box ((caddr_t) num);
 	return;
       }
     case DV_BIN:
@@ -1826,8 +1840,7 @@ row_insert_cast (row_delta_t * rd, dbe_col_loc_t * cl, caddr_t data, caddr_t * e
       if (err_ret && *err_ret)
 	return;
       ITC_OWNS_PARAM (ins_itc, str);
-      if ((DV_STRING == (dtp_t) str[0] || DV_SHORT_STRING_SERIAL == (dtp_t) str[0] || IS_WIDE_STRING_DTP ((dtp_t) str[0]))
-	  && tb_is_rdf_quad (key->key_table))
+      if ((DV_STRING == (dtp_t) str[0] || DV_SHORT_STRING_SERIAL == (dtp_t) str[0]) && tb_is_rdf_quad (key->key_table))
 	{
 	  caddr_t err = srv_make_new_error ("42000", "RDFST", "Inserting a string into O in RDF_QUAD.  RDF box is expected");
 	  if (err_ret)
@@ -2761,7 +2774,7 @@ rd_col_change (it_cursor_t * itc, buffer_desc_t * buf, row_delta_t * rd, dbe_col
       values = (caddr_t *) dk_alloc_box (box_length (rd->rd_values) - sizeof (caddr_t), DV_ARRAY_OF_POINTER);
       memcpy (values, rd->rd_values, nth * sizeof (caddr_t));
       memcpy (values + nth, rd->rd_values + (1 + nth), box_length (rd->rd_values) - (1 + nth) * sizeof (caddr_t));
-      dk_free_box (rd->rd_values);
+      dk_free_box ((caddr_t) (rd->rd_values));
       rd->rd_values = values;
       rd->rd_n_values--;
     }

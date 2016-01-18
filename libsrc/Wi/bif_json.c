@@ -50,7 +50,7 @@ bif_json_parse (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   {
     jsonyy_reset ();
     jsonyyparse ();
-    tree = box_copy_tree (json_tree);
+    tree = box_copy_tree ((caddr_t) json_tree);
   }
   QR_RESET_CODE
   {

@@ -55,9 +55,9 @@
 /* Thread attributes hash table size */
 #define THREAD_ATTRIBUTE_HASH	17
 
+VIRT_API_BEGIN
 
 #if defined (linux) && !defined (NO_THREAD)
-#include <sched.h>
 typedef cpu_set_t dk_cpu_set_t;
 #else
 typedef struct _dkcpusets { int64 bits[16]; } dk_cpu_set_t;
@@ -297,4 +297,7 @@ extern timer_queue_t *_timerq;		/* simulated threads only */
 extern int _num_runnables;		/* simulated threads only */
 
 extern char *build_thread_model;
+
+VIRT_API_END
+
 #endif

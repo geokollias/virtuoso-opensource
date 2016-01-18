@@ -89,12 +89,12 @@ cu_key_is_dup (cucurbit_t * cu, dbe_key_t * key, char **col_names, caddr_t * val
 void
 cu_rdf_del_cb (cucurbit_t * cu, caddr_t * row)
 {
-  char *g_iid_name = "g_iid";
+  const char *g_iid_name = "g_iid";
   dbe_table_t *quad = sch_name_to_table (wi_inst.wi_schema, "DB.DBA.RDF_QUAD");
   client_connection_t *cli = cu->cu_clrg->clrg_lt->lt_client;
   caddr_t *place;
   int inx;
-  static char *col_names[] = { "G", "S", "P", "O", NULL };
+  static const char *col_names[] = { "G", "S", "P", "O", NULL };
   caddr_t values[4];
   cl_req_group_t *clrg = cu->cu_clrg;
   if (cu->cu_rdf_load_mode == RDF_LD_DEL_GS)	/* called subscriber hook */
@@ -164,7 +164,7 @@ void
 cu_rdf_ins_label (cucurbit_t * cu, caddr_t * row)
 {
   dbe_table_t *tbl = sch_name_to_table (wi_inst.wi_schema, "DB.DBA.RDF_LABEL");
-  static char *col_names[] = { "RL_O", "RL_RO_ID", "RL_TEXT", "RL_LANG", NULL };
+  static const char *col_names[] = { "RL_O", "RL_RO_ID", "RL_TEXT", "RL_LANG", NULL };
   caddr_t oval, values[4];
   cl_req_group_t *clrg = cu->cu_clrg;
   static rdf_inf_ctx_t *ctx;
@@ -219,9 +219,9 @@ cu_rdf_ins_cb (cucurbit_t * cu, caddr_t * row)
   /* when the dpipe produces a row, this is called.  This places the insert clo's for the quad table in the dpipe's daq as extra side effects */
   dbe_table_t *quad = sch_name_to_table (wi_inst.wi_schema, "DB.DBA.RDF_QUAD");
   client_connection_t *cli = cu->cu_clrg->clrg_lt->lt_client;
-  char *g_iid_name = "g_iid";
+  const char *g_iid_name = "g_iid";
   caddr_t *place;
-  static char *col_names[] = { "G", "S", "P", "O", NULL };
+  static const char *col_names[] = { "G", "S", "P", "O", NULL };
   caddr_t values[4];
   cl_req_group_t *clrg = cu->cu_clrg;
   iri_id_t g;
@@ -257,7 +257,7 @@ cu_rdf_ins_cb (cucurbit_t * cu, caddr_t * row)
 	  if (rb->rb_is_text_index)
 	    {
 	      client_connection_t *cli = cu->cu_clrg->clrg_lt->lt_client;
-	      char *g_dict_name = "g_dict";
+	      const char *g_dict_name = "g_dict";
 	      id_hash_iterator_t **dict_place = (id_hash_iterator_t **) id_hash_get (cli->cli_globals, (caddr_t) & g_dict_name);
 	      id_hash_t *ht;
 	      if (dict_place && (ht = dict_ht (*dict_place)))
@@ -433,7 +433,7 @@ rdf_fetch_gs (query_instance_t * qi, caddr_t * gs, caddr_t * err_ret, id_hash_t 
   END_DO_BOX;
   if (LC_AT_END != rc)
     gs_read_lc (lc, rc, err_ret, res);
-  dk_free_box (empty);
+  dk_free_box ((caddr_t) empty);
   dk_free_box ((caddr_t) lc);
 }
 
@@ -460,7 +460,7 @@ rdf_repl_gs_batch (query_instance_t * qi, caddr_t * batch, int ins)
   LEAVE_TXN;
   if (!reg)
     {
-      dk_free_tree (batch);
+      dk_free_tree ((caddr_t) batch);
       return;
     }
   dk_free_box (reg);
@@ -474,7 +474,7 @@ rdf_repl_gs_batch (query_instance_t * qi, caddr_t * batch, int ins)
   if (!delqr || !insqr)
     {
       log_error ("RDF replication failed.");
-      dk_free_tree (batch);
+      dk_free_tree ((caddr_t) batch);
       return;
     }
   pars = (caddr_t *) list (1, batch);
@@ -483,7 +483,7 @@ rdf_repl_gs_batch (query_instance_t * qi, caddr_t * batch, int ins)
     {
       PRINT_ERR (err);
     }
-  dk_free_box (pars);
+  dk_free_box ((caddr_t) pars);
 }
 
 
@@ -624,7 +624,7 @@ cl_rdf_call_insert_cb (cucurbit_t * cu, caddr_t * qst, caddr_t * err_ret)
   pre = id_hash_allocate (cu->cu_fill, sizeof (caddr_t), 0, treehash, treehashcmp);
   id_hash_set_rehash_pct (pre, 200);
   rdf_fetch_gs (qi, (caddr_t *) g_iid_to_delete, err_ret, pre);
-  dk_free_tree (g_iid_to_delete);
+  dk_free_tree ((caddr_t) g_iid_to_delete);
   ins = id_hash_allocate (cu->cu_fill, sizeof (caddr_t), 0, treehash, treehashcmp);
   id_hash_set_rehash_pct (ins, 200);
   cu_feed_ins (cu, pre, ins, 1, 0, qst);
@@ -643,7 +643,7 @@ cl_rdf_call_insert_cb (cucurbit_t * cu, caddr_t * qst, caddr_t * err_ret)
   cu_feed_ins (cu, pre, ins, 0, &inserted, qst);
   DO_SET (caddr_t *, row, &cu->cu_ld_rows)	/* release memory, not needed anymore */
   {
-    dk_free_tree (row);
+    dk_free_tree ((caddr_t) row);
   }
   END_DO_SET ();
   dk_set_free (cu->cu_ld_rows);

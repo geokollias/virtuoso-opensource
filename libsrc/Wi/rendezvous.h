@@ -23,8 +23,9 @@
 
 #ifndef _RENDEZVOUS_H
 #define _RENDEZVOUS_H
+#include "Dk.h"
 
-typedef struct zeroconfig_s
+VIRT_API_BEGIN typedef struct zeroconfig_s
 {
   box_t zc_name;
   box_t zc_dsn;
@@ -39,4 +40,5 @@ int start_rendezvous (void);
 int reinit_rendezvous (void);
 int stop_rendezvous (void);
 
+VIRT_API_END
 #endif

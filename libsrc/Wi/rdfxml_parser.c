@@ -30,15 +30,8 @@
 #include "sqlnode.h"
 #include "xml.h"
 #include "xmltree.h"
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "xmlparser.h"
 #include "xmlparser_impl.h"
-#ifdef __cplusplus
-}
-#endif
 
 #ifdef NDEBUG
 #undef RDFXML_DEBUG
@@ -895,7 +888,7 @@ xp_rdfxml_element_end (void *userdata, const char *name)
 	GPF_T1 ("xp_rdfxml_element_end(): non-empty xp_strses outside XRL_PARSETYPE_LITERAL");
       if (NULL != current_node->xn_children)
 	GPF_T1 ("xp_rdfxml_element_end(): non-empty xn_children outside XRL_PARSETYPE_LITERAL");
-      dk_free_tree (current_node->xn_attrs);
+      dk_free_tree ((caddr_t) (current_node->xn_attrs));
       xp->xp_current = parent_node;
       current_node->xn_parent = xp->xp_free_list;
       xp->xp_free_list = current_node;
@@ -931,7 +924,7 @@ xp_rdfxml_element_end (void *userdata, const char *name)
 	  obj = (caddr_t) literal_xte;
 	  lang_in_effect = NULL;
 	}
-      dk_free_tree (current_node->xn_attrs);
+      dk_free_tree ((caddr_t) (current_node->xn_attrs));
       xp->xp_current = parent_node;
       current_node->xn_parent = xp->xp_free_list;
       xp->xp_free_list = current_node;
@@ -1243,7 +1236,7 @@ xp_rdfa_parse_attr_value (xparse_ctx_t * xp, xp_node_t * xn, int attr_id, char *
   if (NULL != values_ret)
     {
       if (NULL == values_ret[0])
-	values_ret[0] = dk_alloc_box_zero (sizeof (caddr_t), DV_ARRAY_OF_POINTER);
+	values_ret[0] = (caddr_t *) dk_alloc_box_zero (sizeof (caddr_t), DV_ARRAY_OF_POINTER);
       values_count = values_count_ret[0];
     }
   else
@@ -1431,7 +1424,7 @@ next_token:
 	{
 	  caddr_t new_buf = dk_alloc_box_zero (sizeof (caddr_t) * values_count * 2, DV_ARRAY_OF_POINTER);
 	  memcpy (new_buf, values_ret[0], box_length (values_ret[0]));
-	  dk_free_box (values_ret[0]);
+	  dk_free_box ((caddr_t) (values_ret[0]));
 	  values_ret[0] = (caddr_t *) new_buf;
 	}
       else if (NULL != values_ret[0][values_count])	/* There's some old garbage to delete */
@@ -1800,7 +1793,7 @@ rdfa_feed_or_make_ict (xparse_ctx_t * xp, xp_rdfa_locals_t * xrdfal, caddr_t lef
       rdfa_ict_t *ict;
       int buf_in_use = xrdfal->xrdfal_ict_count * sizeof (rdfa_ict_t);
       if (NULL == xrdfal->xrdfal_ict_buffer)
-	xrdfal->xrdfal_ict_buffer = dk_alloc_box_zero (sizeof (rdfa_ict_t), DV_ARRAY_OF_POINTER);
+	xrdfal->xrdfal_ict_buffer = (rdfa_ict_t *) dk_alloc_box_zero (sizeof (rdfa_ict_t), DV_ARRAY_OF_POINTER);
       if (box_length (xrdfal->xrdfal_ict_buffer) <= buf_in_use)
 	{
 	  rdfa_ict_t *new_buf;
@@ -2460,12 +2453,12 @@ xp_rdfa_element_end (void *userdata, const char *name)
 	}
       else if (box_length (parent->xrdfal_ict_buffer) < needed_size)
 	{
-	  rdfa_ict_t *new_buf = dk_alloc_box_zero (needed_size, DV_ARRAY_OF_POINTER);
+	  rdfa_ict_t *new_buf = (rdfa_ict_t *) dk_alloc_box_zero (needed_size, DV_ARRAY_OF_POINTER);
 	  memcpy (new_buf, parent->xrdfal_ict_buffer, parent_size);
 	  memset (parent->xrdfal_ict_buffer, 0, parent_size);
 	  memcpy (new_buf + parent->xrdfal_ict_count, inner->xrdfal_ict_buffer, inner_size);
 	  memset (inner->xrdfal_ict_buffer, 0, inner_size);
-	  dk_free_tree (parent->xrdfal_ict_buffer);
+	  dk_free_tree ((caddr_t) (parent->xrdfal_ict_buffer));
 	  parent->xrdfal_ict_buffer = new_buf;
 	}
       else
@@ -2509,7 +2502,7 @@ xp_rdfa_element_end (void *userdata, const char *name)
 	}
     }
   parent_node = xp->xp_current->xn_parent;
-  dk_free_tree (current_node->xn_attrs);
+  dk_free_tree ((caddr_t) (current_node->xn_attrs));
   xp->xp_current = parent_node;
   current_node->xn_parent = xp->xp_free_list;
   xp->xp_free_list = current_node;
@@ -3730,7 +3723,7 @@ xp_free_rdf_parser_fields (xparse_ctx_t * xp)
   while (NULL != xp->xp_rdfa_locals)
     {
 #ifndef NDEBUG
-      dk_free_tree (xp->xp_rdfa_locals->xrdfal_ict_buffer);
+      dk_free_tree ((caddr_t) (xp->xp_rdfa_locals->xrdfal_ict_buffer));
       xp->xp_rdfa_locals->xrdfal_ict_buffer = NULL;
 #endif
       xp_pop_rdfa_locals (xp);
@@ -3748,7 +3741,7 @@ xp_free_rdf_parser_fields (xparse_ctx_t * xp)
   while (NULL != xrdfal)
     {
       xp_rdfa_locals_t *next_xrdfal = xrdfal->xrdfal_parent;
-      dk_free_tree (xrdfal->xrdfal_ict_buffer);
+      dk_free_tree ((caddr_t) (xrdfal->xrdfal_ict_buffer));
       dk_free (xrdfal, sizeof (xp_rdfa_locals_t));
       xrdfal = next_xrdfal;
     }
@@ -3759,6 +3752,6 @@ xp_free_rdf_parser_fields (xparse_ctx_t * xp)
       dk_free (xmdatal, sizeof (xp_mdata_locals_t));
       xmdatal = next_xmdatal;
     }
-  dk_free_tree (xp->xp_tmp);
+  dk_free_tree ((caddr_t) (xp->xp_tmp));
   /* Note that xp_tf is intentionally left untouched. */
 }

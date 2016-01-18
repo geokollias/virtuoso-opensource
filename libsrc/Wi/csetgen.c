@@ -346,12 +346,6 @@ csg_ts_frame (sqlo_t * so, op_table_t * top_ot, cset_t * cset, table_source_t * 
     }
   for (sp = ks->ks_row_spec; sp; sp = sp->sp_next)
     {
-      if (sp->sp_col == (dbe_column_t *) ks->ks_key->key_parts->data
-	  || sp->sp_col == (dbe_column_t *) ks->ks_key->key_parts->next->data)
-	continue;		/* s or g specs do not make rq access */
-      if (csg_col_is_o_by_index (sc, ts, sp->sp_col))
-	continue;
-      sethash ((void *) sp->sp_col, ht, (void *) 1);
       if (sp->sp_cl.cl_col_id == g_col_id)
 	{
 	  if (g_spec && CMP_EQ == g_spec->sp_min_op)
@@ -359,7 +353,13 @@ csg_ts_frame (sqlo_t * so, op_table_t * top_ot, cset_t * cset, table_source_t * 
 	  else
 	    g_spec = sp;
 	}
-      else if (sp->sp_col == (dbe_column_t *) ks->ks_key->key_parts->data
+      if (sp->sp_col == (dbe_column_t *) ks->ks_key->key_parts->data
+	  || sp->sp_col == (dbe_column_t *) ks->ks_key->key_parts->next->data)
+	continue;		/* s or g specs do not make rq access */
+      if (csg_col_is_o_by_index (sc, ts, sp->sp_col))
+	continue;
+      sethash ((void *) sp->sp_col, ht, (void *) 1);
+      if (sp->sp_col == (dbe_column_t *) ks->ks_key->key_parts->data
 	  || sp->sp_col == (dbe_column_t *) ks->ks_key->key_parts->next->data)
 	continue;		/* s or g specs do not make rq access */
       if (csts->csts_o_index_p && sp->sp_col->col_cset_iri == csts->csts_o_index_p)
@@ -1010,7 +1010,7 @@ csg_extra_specs (sqlo_t * so, cset_t * cset, query_t * qr, table_source_t * mode
   int n_bits = 0;
   int n_cols = box_length (csgc_arr) / sizeof (csg_col_t);
   cset_ts_t *csts = model_ts->ts_csts;
-  ssl_index_t tmp_bits = cc_new_instance_slot (sc->sc_cc);
+  ssl_index_t tmp_bits = cc_new_sets_slot (sc->sc_cc);
   state_slot_t **exc_bits = NULL;
   data_source_t *qn;
   for (inx = 0; inx < n_cols; inx++)
@@ -1154,18 +1154,18 @@ csg_top (sql_comp_t * sc, cset_t * cset, table_source_t * ts, int mode)
   cc->cc_in_cset_gen = 1;
   for (inx = BOX_ELEMENTS (csts->csts_vec_ssls) - 1; inx >= 0; inx--)
     {
-      dk_set_push (&cc->cc_qi_vec_places, (void *) (ptrlong) csts->csts_vec_ssls[inx]->ssl_index);
-      dk_set_push (&cc->cc_qi_box_places, (void *) (ptrlong) csts->csts_vec_ssls[inx]->ssl_box_index);
+      t_set_push (&cc->cc_qi_vec_places, (void *) (ptrlong) csts->csts_vec_ssls[inx]->ssl_index);
+      t_set_push (&cc->cc_qi_box_places, (void *) (ptrlong) csts->csts_vec_ssls[inx]->ssl_box_index);
     }
 
   for (inx = BOX_ELEMENTS (csts->csts_scalar_ssls) - 1; inx >= 0; inx--)
     {
-      dk_set_push (&cc->cc_qi_scalar_places, (void *) (ptrlong) csts->csts_scalar_ssls[inx]->ssl_index);
+      t_set_push (&cc->cc_qi_scalar_places, (void *) (ptrlong) csts->csts_scalar_ssls[inx]->ssl_index);
     }
   for (inx = (box_length (csts->csts_qi_places) / sizeof (ssl_index_t)) - 1; inx >= 0; inx--)
-    dk_set_push (&cc->cc_qi_places, (void *) (uptrlong) csts->csts_qi_places[inx]);
+    t_set_push (&cc->cc_qi_places, (void *) (uptrlong) csts->csts_qi_places[inx]);
   for (inx = (box_length (csts->csts_qi_sets) / sizeof (ssl_index_t)) - 1; inx >= 0; inx--)
-    dk_set_push (&cc->cc_qi_sets_places, (void *) (uptrlong) csts->csts_qi_sets[inx]);
+    t_set_push (&cc->cc_qi_sets_places, (void *) (uptrlong) csts->csts_qi_sets[inx]);
   so->so_is_select = 1;
   so->so_sc = sc;
   sc->sc_so = so;

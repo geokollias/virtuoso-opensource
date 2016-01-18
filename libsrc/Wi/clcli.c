@@ -33,6 +33,7 @@
 #include "netdb.h"
 #include "netinet/tcp.h"
 #endif
+#include "sqlbif.h"
 
 #define oddp(x) ((x) & 1)
 
@@ -48,7 +49,7 @@ cll_in_box_t *
 clib_allocate ()
 {
   B_NEW_VARZ (cll_in_box_t, clib);
-  clib->clib_req_strses = resource_get (cl_strses_rc);
+  clib->clib_req_strses = (dk_session_t *) resource_get (cl_strses_rc);
   clib->clib_req_strses->dks_cluster_flags = DKS_TO_CLUSTER;
   SESSION_SCH_DATA (&clib->clib_in_strses) = &clib->clib_in_siod;
   return clib;
@@ -104,54 +105,19 @@ id_hash_print (id_hash_t * ht)
   END_DO_IDHASH;
 }
 
-int
-ht_print_cmp (const void *s1, const void *s2)
-{
-  ptrlong l1 = *(ptrlong **) s1;
-  ptrlong l2 = *(ptrlong **) s2;
-  return l1 < l2 ? -1 : 1;
-}
-
-
 void
-ht_print (dk_hash_t * ht, int n)
+ht_print (dk_hash_t * ht)
 {
-  /* n 0 means print all, positive n means print least n, negative n means print greatest -n */
-  if (n)
-    {
-      int sz = 2 * sizeof (caddr_t) * ht->ht_count, fill = 0;
-      int ctr, cnt = n < 0 ? -n : n;
-      void **arr = dk_alloc (sz);
-      if (cnt > ht->ht_count)
-	cnt = ht->ht_count;
-      DO_HT (void *, k, void *, d, ht)
-      {
-	arr[fill++] = k;
-	arr[fill++] = d;
-      }
-      END_DO_HT;
-      qsort (arr, ht->ht_count, 2 * sizeof (void *), ht_print_cmp);
-      for (ctr = 0; ctr < cnt; ctr++)
-	{
-	  void **place = n > 0 ? &arr[ctr * 2] : &arr[(ht->ht_count - (ctr + 1)) * 2];
-	  printf ("%p -> %p\n", place[0], place[1]);
-	}
-      dk_free (arr, sz);
-    }
-  else
-    {
-      HT_NO_REQUIRE_MTX (ht);
-      DO_HT (void *, k, void *, d, ht)
-      {
-	printf ("%p -> %p\n", k, d);
-      }
-      END_DO_HT;
-    }
+  DO_HT (void *, k, void *, d, ht)
+  {
+    printf ("%p -> %p\n", k, d);
+  }
+  END_DO_HT;
 }
 
 
 int64
-__gethash64 (int64 i, id_hash_t * ht)
+__gethash64 (int64 i, dk_hash_t * ht)
 {
   int64 r;
   gethash_64 (r, i, ht);
@@ -169,6 +135,19 @@ __dk_hash_64_print (id_hash_t * ht)
   END_DO_IDHASH;
 }
 
+uint32
+cli_cl_way (client_connection_t * cli)
+{
+  if (cli->cli_cl_stack)
+    return cli->cli_cl_stack[0].clst_req_no;
+  if (!cli->cli_cl_way)
+    cli->cli_cl_way = cl_way_ctr++;
+  if (!cli->cli_cl_way)
+    cli->cli_cl_way = CL_N_WAYS;
+  return cli->cli_cl_way;
+}
+
+
 cl_req_group_t *
 cl_req_group (lock_trx_t * lt)
 {
@@ -177,7 +156,31 @@ cl_req_group (lock_trx_t * lt)
   dk_mutex_init (&clrg->clrg_mtx, MUTEX_TYPE_SHORT);
   clrg->clrg_lt = lt;
   if (lt)
-    clrg->clrg_trx_no = lt->lt_main_trx_no ? lt->lt_main_trx_no : lt->lt_trx_no;
+    {
+      clrg->clrg_trx_no = lt->lt_main_trx_no ? lt->lt_main_trx_no : lt->lt_trx_no;
+      clrg->clrg_cl_way = cli_cl_way (lt->lt_client);
+    }
+  else
+    {
+      clrg->clrg_cl_way = cl_way_ctr++;
+      if (!clrg->clrg_cl_way)
+	clrg->clrg_cl_way = CL_N_WAYS;
+    }
+  return clrg;
+}
+
+
+cl_req_group_t *
+cl_req_group_qi (query_instance_t * qi)
+{
+  lock_trx_t *lt = qi->qi_trx;
+  cl_req_group_t *clrg = (cl_req_group_t *) dk_alloc_box_zero (sizeof (cl_req_group_t), DV_CLRG);
+  clrg->clrg_ref_count = 1;
+  dk_mutex_init (&clrg->clrg_mtx, MUTEX_TYPE_SHORT);
+  clrg->clrg_lt = lt;
+  clrg->clrg_inst = (caddr_t *) qi;
+  clrg->clrg_trx_no = lt->lt_main_trx_no ? lt->lt_main_trx_no : lt->lt_trx_no;
+  clrg_top_check (clrg, qi);
   return clrg;
 }
 
@@ -227,7 +230,6 @@ clrg_dml_free (cl_req_group_t * clrg)
 }
 
 
-void lt_alt_trx_no_free (lock_trx_t * lt, int64 alt_no);
 
 
 #define TA_DUP_CANCEL 1300
@@ -272,6 +274,7 @@ int
 clrg_destroy (cl_req_group_t * clrg)
 {
   id_hash_t *dups = NULL;
+  uint32 top_req_no = clrg->clrg_cl_way;
   mutex_enter (&clrg->clrg_mtx);
   clrg->clrg_ref_count--;
   if (clrg->clrg_ref_count)
@@ -281,22 +284,18 @@ clrg_destroy (cl_req_group_t * clrg)
     }
   mutex_leave (&clrg->clrg_mtx);
   IN_CLL;
-  mutex_enter (&clrg->clrg_mtx);
   DO_SET (cll_in_box_t *, clib, &clrg->clrg_clibs)
   {
-    if (clib->clib_alt_trx_no)
-      lt_alt_trx_no_free (clrg->clrg_lt, clib->clib_alt_trx_no);
     if (!clib->clib_req_no || clib->clib_fake_req_no)
       continue;			/* if no req no or a dfg sending clib, it is not really registered. If freed here, would remhash using a remote clib no and could collide dropping a local registration */
 #if 0
-    if (gethash ((void *) (ptrlong) clib->clib_req_no, local_cll.cll_id_to_clib) != (void *) clib)
+    if (gethash ((void *) (ptrlong) clib->clib_req_no, &cl_ways[CL_NTH_WAY].clw_id_to_clib) != (void *) clib)
       GPF_T1 ("duplicate clib req no");
 #endif
-    remhash ((void *) (ptrlong) clib->clib_req_no, local_cll.cll_id_to_clib);
+    remhash ((void *) (ptrlong) clib->clib_req_no, &cl_ways[CL_NTH_WAY].clw_id_to_clib);
   }
   END_DO_SET ();
   LEAVE_CLL;
-  mutex_leave (&clrg->clrg_mtx);
   dk_free_tree (clrg->clrg_error);
   DO_SET (cll_in_box_t *, clib, &clrg->clrg_clibs)
   {
@@ -333,7 +332,7 @@ clrg_destroy (cl_req_group_t * clrg)
 cl_op_t *
 clo_allocate (char op)
 {
-  cl_op_t *clo = dk_alloc_box_zero (sizeof (cl_op_t), DV_CLOP);
+  cl_op_t *clo = (cl_op_t *) dk_alloc_box_zero (sizeof (cl_op_t), DV_CLOP);
   clo->clo_op = op;
   return clo;
 }
@@ -341,7 +340,7 @@ clo_allocate (char op)
 cl_op_t *
 clo_allocate_2 (char op)
 {
-  cl_op_t *clo = dk_alloc_box_zero (sizeof (cl_op_t), DV_CLOP);
+  cl_op_t *clo = (cl_op_t *) dk_alloc_box_zero (sizeof (cl_op_t), DV_CLOP);
   clo->clo_op = op;
   return clo;
 }
@@ -349,7 +348,7 @@ clo_allocate_2 (char op)
 cl_op_t *
 clo_allocate_3 (char op)
 {
-  cl_op_t *clo = dk_alloc_box_zero (sizeof (cl_op_t), DV_CLOP);
+  cl_op_t *clo = (cl_op_t *) dk_alloc_box_zero (sizeof (cl_op_t), DV_CLOP);
   clo->clo_op = op;
   return clo;
 }
@@ -357,7 +356,7 @@ clo_allocate_3 (char op)
 cl_op_t *
 clo_allocate_4 (char op)
 {
-  cl_op_t *clo = dk_alloc_box_zero (sizeof (cl_op_t), DV_CLOP);
+  cl_op_t *clo = (cl_op_t *) dk_alloc_box_zero (sizeof (cl_op_t), DV_CLOP);
   clo->clo_op = op;
   return clo;
 }
@@ -418,11 +417,11 @@ clo_destroy (cl_op_t * clo)
 	}
       break;
     case CLO_DELETE:
-      if (clo->_.delete.rd)
+      if (clo->_.delete_op.rd)
 	{
-	  if (clo->_.delete.rd->rd_itc)
-	    itc_free (clo->_.delete.rd->rd_itc);
-	  rd_free (clo->_.delete.rd);
+	  if (clo->_.delete_op.rd->rd_itc)
+	    itc_free (clo->_.delete_op.rd->rd_itc);
+	  rd_free (clo->_.delete_op.rd);
 	}
       break;
     case CLO_SELECT:
@@ -447,7 +446,7 @@ clo_destroy (cl_op_t * clo)
       break;
     case CLO_CALL:
       dk_free_tree (clo->_.call.func);
-      dk_free_tree (clo->_.call.params);
+      dk_free_tree ((caddr_t) (clo->_.call.params));
       break;
     case CLO_QF_EXEC:
       dk_free_tree ((caddr_t) clo->_.frag.params);
@@ -476,6 +475,135 @@ clo_destroy (cl_op_t * clo)
 
 
 
+
+
+void
+clrg_top_check (cl_req_group_t * clrg, query_instance_t * top_qi)
+{
+  /* if this is first cluster op on a thread not invoked from cluster set up a clib for getting recursive cluster ops */
+  if (0 && cl_run_local_only == CL_RUN_LOCAL)
+    {
+      clrg->clrg_cl_way = cl_way_ctr++;
+      if (!clrg->clrg_cl_way)
+	clrg->clrg_cl_way = CL_N_WAYS;
+      return;
+    }
+  if (top_qi && top_qi->qi_client->cli_cl_stack && !clrg)
+    return;
+  if (!top_qi)
+    top_qi = (QI *) clrg->clrg_inst;
+  top_qi = qi_top_qi (top_qi);
+  if (!top_qi)
+    GPF_T1 ("clrg top check requires top qi");
+  if (top_qi->qi_is_cl_root)
+    {
+      if (!top_qi->qi_client->cli_cl_stack)
+	GPF_T1 ("The cli on a cl root qi must have a cl stack");
+      if (clrg)
+	clrg->clrg_cl_way = top_qi->qi_client->cli_cl_stack[0].clst_req_no;
+      return;
+    }
+  if (!top_qi->qi_client->cli_cl_stack)
+    {
+      int64 top_id;
+      uint32 top_req_no = cl_way_ctr++;
+      cl_call_stack_t *clst;
+      cll_in_box_t *top_clib = (cll_in_box_t *) resource_get (clib_rc);
+      NEW_VARZ (cl_top_req_t, ctop);
+      if (!top_req_no)
+	top_req_no = CL_N_WAYS;
+      ctop->ctop_n_threads = 1;
+      if (clrg)
+	clrg->clrg_cl_way = top_req_no;
+      top_qi->qi_is_cl_root = 1;
+      top_clib->clib_is_top_coord = 1;
+      IN_CLL;
+      clib_assign_req_no (top_clib, top_req_no);
+      top_id = DFG_ID (local_cll.cll_this_host, top_clib->clib_req_no);;
+      ctop->ctop_req_no = top_id;
+      sethash ((void *) top_id, &cl_ways[CL_NTH_WAY].clw_top_req, (void *) ctop);
+      LEAVE_CLL;
+      clst = top_qi->qi_client->cli_cl_stack = (cl_call_stack_t *) dk_alloc_box (sizeof (cl_call_stack_t), DV_BIN);
+      top_qi->qi_client->cli_cl_stack_ref_count = 1;
+      clst->clst_host = local_cll.cll_this_host;
+      clst->clst_req_no = top_clib->clib_req_no;
+    }
+  else
+    {
+      clrg->clrg_cl_way = top_qi->qi_client->cli_cl_stack[0].clst_req_no;
+      if (IS_BOX_POINTER (top_qi->qi_caller))
+	GPF_T1 ("top qi has a caller");
+      if (!top_qi->qi_client->cli_cl_stack_ref_count)
+	return;
+      if (!top_qi->qi_is_cl_root)
+	{
+	  top_qi->qi_is_cl_root = 1;
+	  top_qi->qi_client->cli_cl_stack_ref_count++;
+	}
+    }
+}
+
+
+void
+cli_free_stack (client_connection_t * cli)
+{
+  dk_set_t replies = NULL;
+  cll_in_box_t *clib = NULL;
+  uint32 top_req_no = cli->cli_cl_stack[0].clst_req_no;
+  int coord = cli->cli_cl_stack[0].clst_host;;
+  uint64 top_id = DFG_ID (local_cll.cll_this_host, top_req_no);
+  cl_top_req_t *ctop;
+  if (coord != local_cll.cll_this_host)
+    return;
+  cli->cli_cl_stack_ref_count--;
+  if (cli->cli_cl_stack_ref_count)
+    return;
+  IN_CLL;
+  clib = (cll_in_box_t *) gethash ((void *) (ptrlong) cli->cli_cl_stack->clst_req_no, &cl_ways[CL_NTH_WAY].clw_id_to_clib);
+  remhash ((void *) (ptrlong) cli->cli_cl_stack->clst_req_no, &cl_ways[CL_NTH_WAY].clw_id_to_clib);
+  ctop = (cl_top_req_t *) gethash ((void *) top_id, &cl_ways[CL_NTH_WAY].clw_top_req);
+  if (ctop->ctop_n_threads < 1)
+    GPF_T1 ("ctop on coord must have at least 1 thread at end of its owner qi");
+  ctop->ctop_n_threads--;
+  if (ctop && !ctop->ctop_n_threads)
+    remhash ((void *) top_id, &cl_ways[CL_NTH_WAY].clw_top_req);
+  if (ctop)
+    {
+      DO_RBUF (clo_queue_t *, cloq, rbe, rbe_inx, &ctop->ctop_rb)
+      {
+	DO_RBUF (cl_message_t *, cm, rbe, rbe_inx, &cloq->cloq_rb)
+	{
+	  int coord;
+	  int64 k;
+	  coord = CMR_DFG & cm->cm_req_flags ? cm->cm_dfg_coord : cm->cm_from_host;
+	  k = DFG_ID (coord, cm->cm_req_no);
+	  dk_set_pushnew (&replies, (void *) k);
+	  remhash_64 (k, &cl_ways[CL_NTH_WAY].clw_req);
+	  cm_free (cm);
+	}
+	END_DO_RBUF;
+	rbuf_delete_all (&cloq->cloq_rb);
+	resource_store (cl_ways[CL_NTH_WAY].clw_cloqs, (void *) cloq);
+      }
+      END_DO_RBUF;
+      rbuf_delete_all (&ctop->ctop_rb);
+      if (!ctop->ctop_n_threads)
+	resource_store (cl_ways[CL_NTH_WAY].clw_top_reqs, (void *) ctop);
+    }
+  LEAVE_CLL;
+  if (clib)
+    resource_store (clib_rc, (void *) clib);
+  if (replies)
+    {
+      caddr_t err = srv_make_new_error ("S1TER", "CLDON", "recursive op rejected because root qi already terminated");
+      cl_message_t t_cm;
+      memzero (&t_cm, sizeof (t_cm));
+      dk_free_tree (err);
+    }
+  dk_free_box ((caddr_t) cli->cli_cl_stack);
+  cli->cli_cl_stack = NULL;
+}
+
 void
 cm_set_quota (cl_req_group_t * clrg, cl_message_t * cm, int time)
 {
@@ -488,18 +616,18 @@ cm_set_quota (cl_req_group_t * clrg, cl_message_t * cm, int time)
     cm->cm_anytime_quota = 0;
 }
 
-
 void
-clib_assign_req_no (cll_in_box_t * clib)
+clib_assign_req_no (cll_in_box_t * clib, uint32 top_req_no)
 {
   uint32 req_no;
-  ASSERT_IN_MTX (local_cll.cll_mtx);
+  cl_way_t *clw = &cl_ways[CL_NTH_WAY];
+  ASSERT_IN_CLL;
   do
     {
-      req_no = local_cll.cll_next_req_id++;
+      req_no = clw->clw_next_req_no += CL_N_WAYS;
     }
-  while (req_no == 0 || gethash ((void *) (ptrlong) req_no, local_cll.cll_id_to_clib));
-  sethash ((void *) (ptrlong) req_no, local_cll.cll_id_to_clib, (void *) clib);
+  while (req_no == 0 || gethash ((void *) (ptrlong) req_no, &clw->clw_id_to_clib));
+  sethash ((void *) (ptrlong) req_no, &clw->clw_id_to_clib, (void *) clib);
   clib->clib_req_no = req_no;
 }
 
@@ -620,14 +748,4 @@ cl_local_skip_to_set (cll_in_box_t * clib)
       else
 	return;
     }
-}
-
-void
-lt_alt_trx_no_free (lock_trx_t * lt, int64 alt_no)
-{
-}
-
-void
-clrg_top_check (cl_req_group_t * clrg, query_instance_t * top_qi)
-{
 }

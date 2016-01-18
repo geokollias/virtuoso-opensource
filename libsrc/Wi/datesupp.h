@@ -53,6 +53,7 @@ void num2date (jday_t julian_days, int *year, int *month, int *day);
 int ymd_valid_p (int year, int month, int day);
 int date2weekday (int year, int month, int day);
 void dt_now (caddr_t dt);
+void dt_now_GMT (caddr_t dt);
 void dt_now_tz (caddr_t dt);
 void time_t_to_dt (time_t tim, long fraction, char *dt);
 #if defined (WIN32) && (defined (_AMD64_) || defined (_FORCE_WIN32_FILE_TIME))
@@ -62,7 +63,7 @@ void sec2time (int sec, int *day, int *hour, int *min, int *tsec);
 int time2sec (int day, int hour, int min, int sec);
 void ts_add (TIMESTAMP_STRUCT * ts, boxint n, const char *unit);
 int dt_validate (caddr_t dt);
-extern int dt_compare (caddr_t dt1, caddr_t dt2, int cmp_is_safe);
+extern int dt_compare (ccaddr_t dt1, ccaddr_t dt2, int cmp_is_safe);
 void dt_to_GMTimestamp_struct (ccaddr_t dt, GMTIMESTAMP_STRUCT * ts);
 void GMTimestamp_struct_to_dt (GMTIMESTAMP_STRUCT * ts_in, char *dt);
 void dt_to_timestamp_struct (ccaddr_t dt, TIMESTAMP_STRUCT * ts);

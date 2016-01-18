@@ -1082,6 +1082,11 @@ dbe_key_layout_1 (dbe_key_t * key)
       END_DO_SET ();
       key_col_alter (key, &prev_parts);
     }
+  if (DV_ARRAY_OF_POINTER == DV_TYPE_OF (key->key_options) && inx_opt_flag (key->key_options, "cg"))
+    {
+      key->key_table->tb_has_cgs = 1;
+      key->key_is_col_group = 1;
+    }
   DO_SET (dbe_column_t *, col, &key->key_parts)
   {
     if (inx >= key->key_n_significant)
@@ -1287,7 +1292,7 @@ key_set_version (dbe_key_t * key)
 void
 key_part_in_layout_order (dbe_key_t * key)
 {
-  short *arr = key->key_part_in_layout_order = dk_alloc_box (sizeof (short) * key->key_n_significant, DV_BIN);
+  short *arr = key->key_part_in_layout_order = (short *) dk_alloc_box (sizeof (short) * key->key_n_significant, DV_BIN);
   int inx = 0;
   int key_n_fixed = 0;
   DO_CL_0 (cl, key->key_key_fixed)
@@ -1485,7 +1490,7 @@ dbe_key_layout (dbe_key_t * key, dbe_schema_t * sc)
   dbe_key_list_pref_compressible (key);
   if (KI_TEMP == key->key_id)
     {
-      key->key_versions = dk_alloc_box (2 * sizeof (caddr_t), DV_BIN);
+      key->key_versions = (dbe_key_t **) dk_alloc_box (2 * sizeof (caddr_t), DV_BIN);
       key->key_versions[0] = key;
       key->key_versions[1] = key;
       key->key_version = 1;
@@ -1573,7 +1578,11 @@ key_add_part (dbe_key_t * key, oid_t col_id)
   dbe_column_t *col = (dbe_column_t *) gethash ((void *) (ptrlong) col_id,
       key->key_table->tb_schema->sc_id_to_col);
   if (dk_set_length (key->key_parts) < (uint32) key->key_n_significant)
-    col->col_is_key_part = (1 == key->key_n_significant && (key->key_is_primary || key->key_is_unique)) ? COL_KP_UNQ : 1;
+    {
+      col->col_is_key_part = (1 == key->key_n_significant && (key->key_is_primary || key->key_is_unique)) ? COL_KP_UNQ : 1;
+      if (key->key_is_primary)
+	col->col_is_pk_part = 1;
+    }
   key->key_parts = dk_set_conc (key->key_parts, dk_set_cons ((caddr_t) col, NULL));
   if (IS_BLOB_DTP (col->col_sqt.sqt_dtp))
     key->key_table->tb_any_blobs = 1;
@@ -2859,9 +2868,15 @@ qi_read_table_schema_old_keys (query_instance_t * qi, char *read_tb, dk_set_t ol
 
   if (!qi->qi_trx->lt_branch_of && !old_keys && !qi->qi_client->cli_in_daq)
     {
-      ddl_commit_trx (qi);
       if (!qi->qi_client->cli_is_log)
 	cl_ddl (qi, qi->qi_trx, read_tb, CLO_DDL_TABLE, NULL);
+      ddl_commit_trx (qi);
+    }
+  else if (lt->lt_branch_of)
+    {
+      IN_TXN;
+      lt_commit_schema_merge (lt);
+      LEAVE_TXN;
     }
   else
     ddl_commit_trx (qi);
@@ -2998,41 +3013,50 @@ dbe_key_insert_spec (dbe_key_t * key)
   return (key->key_insert_spec.ksp_spec_array);
 }
 
+int
+cid_cmp (const void *s1, const void *s2)
+{
+  int id1 = ((dbe_column_t **) s1)[0]->col_id;
+  int id2 = ((dbe_column_t **) s2)[0]->col_id;
+  return id1 < id2 ? -1 : 1;
+}
+
 
 dk_set_t
-key_ensure_visible_parts (dbe_key_t * key)
+key_ensure_visible_parts (dbe_key_t * key1)
 {
+  dbe_column_t **arr;
   dk_set_t parts = NULL;
-  int ctr, inx;
-  dbe_column_t *cols[VDB_TB_MAX_COLS];
-  int n_cols = 0;
-  if (key->key_visible_parts)
-    return (key->key_visible_parts);
-  DO_SET (dbe_column_t *, col, &key->key_parts)
+  int ctr, inx, fill = 0;
+  dk_hash_t *cols;
+  if (key1->key_visible_parts)
+    return (key1->key_visible_parts);
+  cols = hash_table_allocate (22);
+  dk_hash_set_rehash (cols, 3);
+  DO_SET (dbe_key_t *, key, &key1->key_table->tb_keys)
   {
-    if (n_cols >= sizeof (cols) / sizeof (caddr_t))
-      break;
-    if (0 != strcmp (col->col_name, "_IDN"))
+    if (key->key_is_primary || key->key_is_col_group)
       {
-	cols[n_cols++] = col;
+	DO_SET (dbe_column_t *, col, &key->key_parts)
+	{
+	  if (0 != strcmp (col->col_name, "_IDN"))
+	    sethash ((void *) (ptrlong) col->col_id, cols, (void *) col);
+	}
+	END_DO_SET ();
       }
   }
   END_DO_SET ();
 
-  for (ctr = n_cols - 1; ctr > 0; ctr--)
-    for (inx = 0; inx < ctr; inx++)
-      {
-	if (cols[inx]->col_id > cols[inx + 1]->col_id)
-	  {
-	    dbe_column_t *tm = cols[inx];
-	    cols[inx] = cols[inx + 1];
-	    cols[inx + 1] = tm;
-	  }
-      }
-  for (ctr = n_cols - 1; ctr >= 0; ctr--)
-    parts = dk_set_cons ((caddr_t) cols[ctr], parts);
-  key->key_visible_parts = parts;
-  return (key->key_visible_parts);
+  arr = (dbe_column_t **) dk_alloc_box_zero (cols->ht_count * sizeof (caddr_t), DV_BIN);
+  DO_HT (ptrlong, cid, dbe_column_t *, col, cols) arr[fill++] = col;
+  END_DO_HT;
+  qsort (arr, cols->ht_count, sizeof (caddr_t), cid_cmp);
+  for (ctr = fill - 1; ctr >= 0; ctr--)
+    parts = dk_set_cons ((caddr_t) arr[ctr], parts);
+  key1->key_visible_parts = parts;
+  hash_table_free (cols);
+  dk_free_box ((caddr_t) arr);
+  return (key1->key_visible_parts);
 }
 
 

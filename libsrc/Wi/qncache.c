@@ -40,7 +40,7 @@ qc_lookup (uint32 clslice, caddr_t qckey)
   place = (qc_result_t **) id_hash_get (res, (caddr_t) & qckey);
   if (!place)
     {
-      qcr = dk_alloc_box_zero (sizeof (qc_result_t), DV_QC_RESULT);
+      qcr = (qc_result_t *) dk_alloc_box_zero (sizeof (qc_result_t), DV_QC_RESULT);
       qcr->qcr_ref_count = 1;
       qcr->qcr_slice = clslice;
       qcr->qcr_key = qckey;

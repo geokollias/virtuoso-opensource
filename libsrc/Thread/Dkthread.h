@@ -31,16 +31,29 @@
 
 #define _OPL_THREADS	1
 
+/*#define JMP_CKSUM*/
+
 typedef struct
   {
     jmp_buf buf;
+#ifdef JMP_CKSUM
+    uint32	j_cksum;
+#endif
   } jmp_buf_splice;
-#define setjmp_splice(b)	setjmp ((b)->buf)
-#if 1
-#define longjmp_splice(b,f)	longjmp ((b)->buf, f)
+
+
+#ifdef JMP_CKSUM
+#define longjmp_splice(b,f)	longjmp_brk ((b), f)
+uint32 j_cksum (jmp_buf j);
+int j_set_cksum (jmp_buf_splice * j, int rc);
+
+#define setjmp_splice(b)	j_set_cksum (b, setjmp ((b)->buf))
+
+void longjmp_brk (jmp_buf_splice * j, int rc);
+
 #else
-#define longjmp_splice(b,f)	longjmp_brk ((b)->buf, f)
-void longjmp_brk (jmp_buf j, int rc);
+#define setjmp_splice(b)	setjmp ((b)->buf)
+#define longjmp_splice(b,f)	longjmp ((b)->buf, f)
 #endif
 
 #if defined (__APPLE__)
@@ -209,7 +222,7 @@ void mutex_option (dk_mutex_t * mtx, char * name, mtx_entry_check_t ck, void * c
 #define mutex_option(mtx,name,ck,cd) do { ; } while (0)
 #endif
 EXE_EXPORT (int, mutex_try_enter, (dk_mutex_t *mtx));
-void mutex_stat (void);
+void mutex_stat (int mode, int max);
 
 spinlock_t * spinlock_allocate (void);
 void spinlock_free (spinlock_t *self);

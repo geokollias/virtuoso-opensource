@@ -177,14 +177,6 @@ struct it_map_s
     remap_dp = dp; \
 }
 
-#define DP_BUF_PREFETCH(_it, _dp) \
-{ \
-  dp_addr_t __dp = dp; \
-  index_tree_t * __tree = it; \
-  dk_hash_t * ht = &(IT_DP_MAP (__tree, __dp))->itm_dp_to_buf; \
-  uint32 hno = HASH_INX (ht, (void*)(ptrlong)__dp); \
-  __builtin_prefetch (&ht->ht_elements[hno]); \
-}
 
 
 typedef unsigned int32 bp_ts_t;	/* timestamp of buffer, use in  cache replacement to distinguish old buffers.  Faster than double linked list for LRU.  Wraparound does not matter since only differences of values are considered.  */
@@ -215,7 +207,7 @@ struct buffer_pool_s
   int bp_n_clean[BP_N_BUCKETS];	/* bp_ts at the boundary between buckets */
   int bp_n_dirty[BP_N_BUCKETS];
   buffer_desc_t **bp_sort_tmp;
-  void *bp_tlsf;
+  tlsf_t *bp_tlsf;
 };
 
 
@@ -1744,7 +1736,6 @@ extern buffer_desc_t *bounds_check_buf;
 #define BUF_ALLOC_SZ (PAGE_SZ + sizeof (int32))
 
 int adler32_of_buffer (unsigned char *data, size_t len);
-int32 sqlbif_rnd (int32 * seed);
 #define BUF_SET_CK(buf) do { \
 	  int32 chk; \
   	  RAND_pseudo_bytes (buf->bd_buffer, PAGE_SZ); \

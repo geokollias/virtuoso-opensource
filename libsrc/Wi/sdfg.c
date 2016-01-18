@@ -61,7 +61,7 @@ sdfg_key_partition (sql_comp_t * sc, setp_node_t * setp, state_slot_t ** ssl_ret
     col_partition_t *cp = cp_by_ssl (best_ssl);
     NEW_VARZ (key_partition_def_t, kpd);
     kpd->kpd_map = clm_all;
-    kpd->kpd_cols = dk_alloc_box (sizeof (caddr_t), DV_BIN);
+    kpd->kpd_cols = (col_partition_t **) dk_alloc_box (sizeof (col_partition_t *), DV_BIN);
     kpd->kpd_cols[0] = cp_copy (cp, inx);
     kpd->kpd_cols[0]->cp_col_id = best_inx + 1;
     return kpd;
@@ -202,6 +202,7 @@ ts_sdfg_run (table_source_t * ts, caddr_t * inst)
   stage_node_t *stn = qn_next_stn ((data_source_t *) ts);
   cl_op_t *itcl_clo = (cl_op_t *) qst_get (inst, ts->clb.clb_itcl);
   cl_req_group_t *clrg = itcl_clo->_.itcl.itcl->itcl_clrg;
+  uint32 top_req_no = clrg->clrg_cl_way;
   cll_in_box_t *rcv_clib = (cll_in_box_t *) clrg->clrg_clibs->data;
   int save_sl = qi->qi_is_dfg_slice;
   caddr_t **qis = QST_BOX (caddr_t **, inst, ts->ts_aq_qis->ssl_index);
@@ -232,11 +233,8 @@ ts_sdfg_run (table_source_t * ts, caddr_t * inst)
       }
       END_DO_BOX;
       IN_CLL;
-      mutex_enter (&clrg->clrg_mtx);
       dfg_feed (stn, inst, &rcv_clib->clib_in);
       LEAVE_CLL;
-      mutex_leave (&clrg->clrg_mtx);
-      dfg_after_feed ();
       rc = cl_dfg_run_local (stn, inst, &err);
       if (err)
 	{

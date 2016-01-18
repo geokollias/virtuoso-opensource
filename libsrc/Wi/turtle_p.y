@@ -54,8 +54,8 @@
 
 #define YY_FATAL_ERROR(err) ttlyyerror_action(err)
 
-extern int ttlyylex (void *yylval_param, ttlp_t *ttlp_arg, yyscan_t yyscanner);
-
+extern VIRT_C_LINKAGE int ttlyylex (void *yylval_param, ttlp_t *ttlp_arg, yyscan_t yyscanner);
+#define YY_DECL int ttlyylex (YYSTYPE *yylval_param, ttlp_t *ttlp_arg, yyscan_t yyscanner)
 
 #ifdef TTLDEBUG
 #define YYDEBUG 1

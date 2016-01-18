@@ -456,6 +456,10 @@ qi_inst_state_free (caddr_t * qi_box)
   int n = slots ? BOX_ELEMENTS (slots) : 0, inx;
   if (prof_on && qi->qi_log_stats && cli && CLI_TERMINATE != cli->cli_terminate_requested)
     qi_qn_stat (qi);
+  if (qi->qi_is_cl_root && qi->qi_client && qi->qi_client->cli_cl_stack)
+    {
+      cli_free_stack (qi->qi_client);
+    }
   if (!qi->qi_is_branch && qi->qi_root_id)
     qi_root_done (qi);
   for (inx = 0; inx < n; inx++)
@@ -3882,7 +3886,9 @@ ddl_node_input_1 (ddl_node_t * ddl, caddr_t * inst, caddr_t * state)
   else if (0 == strcmp (stmt[0], "create_unique_index"))
     {
       ddl_create_primary_key (qi, stmt[1], stmt[3],
-	  (char **) stmt[4], box_is_string (stmt, "contiguous", 5, stmt_len), box_is_string (stmt, "object_id", 5, stmt_len), NULL);
+	  (char **) stmt[4],
+	  box_is_string (stmt, "contiguous", 5, stmt_len),
+	  box_is_string (stmt, "object_id", 5, stmt_len), NULL, (caddr_t *) list (1));
     }
   else if (0 == strcmp (stmt[0], "create_index"))
     {
@@ -3896,7 +3902,7 @@ ddl_node_input_1 (ddl_node_t * ddl, caddr_t * inst, caddr_t * state)
   else if (0 == strcmp (stmt[0], "build_index"))
     ddl_build_index (qi, stmt[1], stmt[2], qi->qi_trx->lt_replicate);
   else if (0 == strcmp (stmt[0], "drop_index"))
-    ddl_drop_index (state, stmt[1], stmt[2], 1);
+    ddl_drop_index (state, stmt[1], stmt[2], 1, 0);
 
   else
     GPF_T;			/* No such DDL statement */
@@ -4722,9 +4728,9 @@ qr_complete:
 	if (ret && DV_ARRAY_OF_POINTER == DV_TYPE_OF (ret) && qr->qr_proc_vectored)
 	  {
 	    {
-	      caddr_t *prev = ret;
-	      ret = (caddr_t *) ((caddr_t *) ret)[0];
-	      dk_free_box ((caddr_t) prev);
+	      caddr_t prev = ret;
+	      ret = ((caddr_t *) ret)[0];
+	      dk_free_box (prev);
 	    }
 	  }
       }
@@ -4932,7 +4938,7 @@ qr_dml_array_exec (client_connection_t * cli, query_t * qr,
       qr_anytime (qr, qi, reset_code);
       POP_QR_RESET;
       QI_BUNION_RESET (qi, qr, 0);
-      PLD_SEM_CLEAR (qi) dk_free_tree (param_array);
+      PLD_SEM_CLEAR (qi) dk_free_tree ((caddr_t) param_array);
       return (qi_handle_reset (qi, reset_code));
     }
     END_QR_RESET;
@@ -4986,7 +4992,7 @@ qr_complete:
 	  rets[param_inx - 1] = NULL;
 	}
       cli_send_row_count (cli, n_affected, (caddr_t *) ret, self_thread);
-      dk_free_box (rets);
+      dk_free_box ((caddr_t) rets);
     }
 #ifdef WIRE_DEBUG
   list_wired_buffers (__FILE__, __LINE__, "qr_exec finish");
@@ -5246,7 +5252,7 @@ qr_subq_exec_vec (client_connection_t * cli, query_t * qr,
   long end_time;
 #endif
 
-  QR_EXEC_CHECK_STACK (caller, &ret, CALL_STACK_MARGIN, NULL);
+  QR_EXEC_CHECK_STACK (caller, &ret, CALL_STACK_MARGIN, (state_slot_t **) NULL);
   inst = (caddr_t *) qi_alloc (qr, opts, auto_qi, auto_qi_len, n_sets);
   qi = (query_instance_t *) inst;
   state = inst;
@@ -5473,7 +5479,7 @@ qr_complete:
 /* Local API */
 
 caddr_t
-qr_quick_exec (query_t * qr, client_connection_t * cli, char *id, local_cursor_t ** lc_ret, long n_pars, ...)
+qr_quick_exec (query_t * qr, client_connection_t * cli, const char *id, local_cursor_t ** lc_ret, long n_pars, ...)
 {
   caddr_t ret;
   local_cursor_t *lc = NULL;

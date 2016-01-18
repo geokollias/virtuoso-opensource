@@ -1052,13 +1052,13 @@ xq_expr_varins
 xq_expr_varin
 	: XQVARIABLE_NAME IN_L
             {
-	      $<bookmark>$ = dk_alloc_box (sizeof (xp_lexbmk_t), DV_ARRAY_OF_LONG);
+	      $<bookmark>$ = (xp_lexbmk_t *)dk_alloc_box (sizeof (xp_lexbmk_t), DV_ARRAY_OF_LONG);
               ($<bookmark>$)[0] = xpp_arg->xpp_curr_lexem_bmk;
 	    }
 	   xq_expr_single
 	    {
               $$ = xtlist (xpp_arg, 3, XQ_IN, box_copy ($1), xp_embedded_xmlview (xpp_arg, $<bookmark>3, $4));
-	      dk_free_box ($<bookmark>3);
+	      dk_free_box ((caddr_t)($<bookmark>3));
             }
 	;
 

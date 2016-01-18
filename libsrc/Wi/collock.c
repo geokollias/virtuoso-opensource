@@ -81,8 +81,8 @@ ceic_del_dbg_log (ce_ins_ctx_t * ceic)
   }
   END_WRITE_FAIL (dbg_log_ses);
   mutex_leave (log_write_mtx);
-  dk_free_tree (ses);
-  dk_free_tree (h);
+  dk_free_tree ((caddr_t) ses);
+  dk_free_tree ((caddr_t) h);
   lt->lt_log = save;
   lt->lt_replicate = repl;
 }
@@ -111,17 +111,17 @@ ceic_del_dbg_log_row (ce_ins_ctx_t * ceic, buffer_desc_t * buf)
     }
   if (!n_del)
     return;
-  itc->itc_matches = mp_alloc_box (ceic->ceic_mp, n_del * sizeof (row_no_t), DV_BIN);
+  itc->itc_matches = (row_no_t *) mp_alloc_box (ceic->ceic_mp, n_del * sizeof (row_no_t), DV_BIN);
   log_rds = (row_delta_t **) mp_alloc_box (ceic->ceic_mp, sizeof (caddr_t) * n_del, DV_BIN);
   for (inx = 0; inx < itc->itc_range_fill; inx++)
     {
       if (COL_NO_ROW == itc->itc_ranges[inx].r_end)
 	{
-	  row_delta_t *rd = log_rds[fill] = mp_alloc (ceic->ceic_mp, sizeof (row_delta_t));
+	  row_delta_t *rd = log_rds[fill] = (row_delta_t *) mp_alloc (ceic->ceic_mp, sizeof (row_delta_t));
 	  memzero (rd, sizeof (row_delta_t));
 	  rd->rd_key = key;
 	  rd->rd_op = RD_DELETE;
-	  rd->rd_values = mp_alloc_box (ceic->ceic_mp, sizeof (caddr_t) * key->key_n_significant, DV_ARRAY_OF_POINTER);
+	  rd->rd_values = (caddr_t *) mp_alloc_box (ceic->ceic_mp, sizeof (caddr_t) * key->key_n_significant, DV_ARRAY_OF_POINTER);
 	  itc->itc_matches[fill++] = itc->itc_ranges[inx].r_first;
 	}
     }
@@ -131,7 +131,7 @@ ceic_del_dbg_log_row (ce_ins_ctx_t * ceic, buffer_desc_t * buf)
   memzero (&dc, sizeof (dc));
   dc.dc_mp = ceic->ceic_mp;
   dc.dc_type = DCT_BOXES | DCT_FROM_POOL;
-  dc.dc_values = mp_alloc (ceic->ceic_mp, sizeof (caddr_t) * n_del);
+  dc.dc_values = (db_buf_t) mp_alloc (ceic->ceic_mp, sizeof (caddr_t) * n_del);
   dc.dc_sqt.sqt_dtp = DV_ARRAY_OF_POINTER;
   dc.dc_n_places = n_del;
   DO_SET (dbe_column_t *, col, &key->key_parts)
@@ -546,7 +546,7 @@ itc_col_lock (it_cursor_t * itc, buffer_desc_t * buf, int n_used, int may_delete
 	  n_done++;
 	}
     }
-#if defined (MTX_DEBUG) || defined (PAGE_TRACE)
+#if defined (PAGE_TRACE)
   if (!itc->itc_pl)
     GPF_T1 ("itc pl not set after setting col locks");
   pl_check_owners (itc->itc_pl);
@@ -1131,7 +1131,7 @@ ceic_merge_finalize (ce_ins_ctx_t * top_ceic, ce_ins_ctx_t ** col_ceic_ret, buff
   int any_rb = 0;
   int n_values;
   if (org_n_values > sizeof (matches_auto) / sizeof (row_no_t))
-    matches = dk_alloc_box (sizeof (row_no_t) * org_n_values, DV_BIN);
+    matches = (row_no_t *) dk_alloc_box (sizeof (row_no_t) * org_n_values, DV_BIN);
   ITC_DELTA (itc, buf);
   if (IS_BLOB_DTP (top_ceic->ceic_col->col_sqt.sqt_dtp) && RB_CPT != top_ceic->ceic_is_rb)
     ceic_delete_blobs (top_ceic, buf, ice, &matches_auto[0], sizeof (matches_auto) / sizeof (row_no_t));
@@ -1915,7 +1915,7 @@ itc_seg_uc_updates (it_cursor_t * itc, buffer_desc_t * buf, row_lock_t * rl, int
 	{
 	  NEW_VARZ (row_delta_t, rd);
 	  rd->rd_allocated = RD_ALLOCATED;
-	  rd->rd_values = dk_alloc_box_zero (n_cols * sizeof (caddr_t), DV_BIN);
+	  rd->rd_values = (caddr_t *) dk_alloc_box_zero (n_cols * sizeof (caddr_t), DV_BIN);
 	  cinx = 0;
 	  DO_SET (dbe_column_t *, col, &itc->itc_insert_key->key_parts)
 	  {

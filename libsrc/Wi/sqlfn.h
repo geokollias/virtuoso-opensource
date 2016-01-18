@@ -26,14 +26,16 @@
 #ifndef _SQLFN_H
 #define _SQLFN_H
 
+#include "Dk.h"
 #include "sqlcomp.h"
 
 #ifndef _SQLNODE_H_
 #include "sqlnode.h"
 #endif
 
+VIRT_API_BEGIN
 /*! Commonly used description of fragment of source sql text, to pass data from SQL compiler to, say, SPARQL compiler. */
-typedef struct scn3_include_frag_s
+    typedef struct scn3_include_frag_s
 {
   dk_session_t *sif_skipped_part;
   int sif_saved_lineno;
@@ -215,7 +217,7 @@ caddr_t qr_subq_exec_vec (client_connection_t * cli, query_t * qr,
 
 caddr_t qr_more (caddr_t * inst);
 
-caddr_t qr_quick_exec (query_t * qr, client_connection_t * cli, char *id, local_cursor_t ** cursor, long n_pars, ...);
+caddr_t qr_quick_exec (query_t * qr, client_connection_t * cli, const char *id, local_cursor_t ** cursor, long n_pars, ...);
 
 query_t *qr_recompile (query_t * qr, caddr_t * err_ret);
 
@@ -230,8 +232,6 @@ EXE_EXPORT (void, lc_free, (local_cursor_t * lc));
 EXE_EXPORT (long, lc_next, (local_cursor_t * lc));
 #define LC_FREE(lc) if (lc) \
     		      lc_free (lc)
-
-caddr_t qr_quick_exec (query_t * qr, client_connection_t * cli, char *id, local_cursor_t ** lc_ret, long n_pars, ...);
 
 /* ddlrun.c */
 
@@ -252,14 +252,14 @@ void ddl_create_table (query_instance_t * cli, const char *name, caddr_t * cols)
 void ddl_create_sub_table (query_instance_t * cli, char *name, caddr_t * supers, caddr_t * cols);
 
 void ddl_create_primary_key (query_instance_t * cli, char *table, char *key,
-    caddr_t * parts, int cluster_on_id, int is_object_id, caddr_t * opts);
+    caddr_t * parts, int cluster_on_id, int is_object_id, caddr_t * opts, caddr_t * cols);
 
 void ddl_create_key (query_instance_t * cli, char *table, char *key,
     caddr_t * parts, int cluster_on_id, int is_object_id, int is_unique, int is_bitmap, caddr_t * opts);
 
 void ddl_add_col (query_instance_t * cli, const char *table, caddr_t * col);
 
-void ddl_drop_index (caddr_t * qst, const char *table, const char *name, int log_to_trx);
+void ddl_drop_index (caddr_t * qst, const char *table, const char *name, int log_to_trx, int allow_pk);
 
 void ddl_drop_trigger (query_instance_t * qi, const char *name);
 
@@ -303,7 +303,7 @@ switch (dtp) \
 }
 #endif
 
-void sinv_builtin_inverse (caddr_t * f1, caddr_t * f2, int *flags, int n);
+void sinv_builtin_inverse (const char **f1, const char **f2, int *flags, int n);
 
 void table_source_input (table_source_t * ts, caddr_t * inst, caddr_t * volatile state);
 void table_source_cycle_input (table_source_t * ts, caddr_t * inst, caddr_t * volatile state);
@@ -341,7 +341,7 @@ void gs_union_free (gs_union_node_t * gsu);
 
 
 void ddl_node_input (ddl_node_t * ddl, caddr_t * inst, caddr_t * state);
-
+void ddl_redo_undefined_triggers (void);
 void read_proc_and_trigger_tables (int remotes);
 void read_utd_method_tables (void);
 void ddl_read_constraints (char *spec_tb_name, caddr_t * qst);
@@ -379,8 +379,6 @@ typedef struct server_lock_s
 } server_lock_t;
 
 extern server_lock_t server_lock;
-
-void plh_free (placeholder_t * plh);
 
 EXE_EXPORT (caddr_t, srv_make_new_error, (const char *code, const char *virt_code, const char *msg,...));
 #ifndef _USRDLL
@@ -764,7 +762,7 @@ void sort_read_input (table_source_t * ts, caddr_t * inst, caddr_t * state);
 void pl_source_input (pl_source_t * pls, caddr_t * inst, caddr_t * state);
 void pl_source_free (pl_source_t * pls);
 
-int err_is_state (caddr_t err, char *state);
+int err_is_state (caddr_t err, const char *state);
 
 typedef void srv_global_init_plugin_action_t (char *mode);
 extern dk_set_t srv_global_init_pre_log_actions;
@@ -910,15 +908,6 @@ void remote_init (int cl_reinit);
 #define ERR_STATE(err)  (((caddr_t*) err)[1])
 #define ERR_MESSAGE(err)  (((caddr_t*) err)[2])
 
-/* datesupp.c */
-void dt_now (caddr_t dt);
-void time_t_to_dt (time_t tim, long fraction, char *dt);
-#if defined (WIN32) && (defined (_AMD64_) || defined (_FORCE_WIN32_FILE_TIME))
-int file_mtime_to_dt (const char *name, char *dt);
-#endif
-void dt_date_round (char *dt);
-void dt_to_tv (char *dt, char *tv);
-
 /* sqltrig.c */
 void tb_drop_trig_def (dbe_table_t * tb, char *name);
 void trig_set_def (dbe_table_t * tb, query_t * nqr);
@@ -956,7 +945,6 @@ extern int32 cli_utf8_execs;
 extern int32 cli_no_system_tables;
 extern int32 cli_binary_timestamp;
 extern long cli_encryption_on_password;
-extern int timezoneless_datetimes;
 int current_of_node_scrollable (current_of_node_t * co, query_instance_t * qi, char *cr_name);
 void cli_set_scroll_current_ofs (client_connection_t * cli, caddr_t * current_ofs);
 void stmt_start_scroll (client_connection_t * cli, srv_stmt_t * stmt, caddr_t ** params, char *cursor_name, stmt_options_t * opts);
@@ -975,12 +963,12 @@ void buf_bsort (buffer_desc_t ** bs, int n_bufs, sort_key_func_t key);
 #define QR_EXEC_CHECK_STACK(qi, addr, margin, params) \
   if (THR_IS_STACK_OVERFLOW (qi->qi_thread, addr, margin))  { \
     int pinx = 0; \
-    if (params) \
+    if (NULL != (params)) \
       { \
 	DO_SET (state_slot_t *, parm, &qr->qr_parms) \
 	  { \
 	    if (!IS_SSL_REF_PARAMETER (parm->ssl_type)) \
-	      dk_free_tree (parms[pinx]); \
+	      dk_free_tree ((caddr_t)((params)[pinx])); \
 	    pinx ++; \
 	  } \
 	END_DO_SET (); \
@@ -1029,8 +1017,6 @@ char *cd_strip_col_name (char *name);
 caddr_t n_srv_make_new_error (const char *code, const char *virt_code, size_t buf_len, const char *msg, ...);
 #define GET_EXCLUSIVE 1
 #define GET_ANY 0
-
-caddr_t sf_make_new_log_name (dbe_storage_t * dbs);
 
 dk_set_t srv_get_logons (void);
 
@@ -1148,7 +1134,8 @@ const char *dv_type_title (int type);
 /* sqlbif.c */
 void connection_set (client_connection_t * cli, caddr_t name, caddr_t val);
 void sprintf_escaped_table_name (char *out, char *name);
-void sprintf_escaped_str_literal (caddr_t str, char *out, dk_session_t * ses);
+void sprintf_escaped_str_literal (const char *str, char *out, dk_session_t * ses);
+extern caddr_t get_keyword_int_zero (caddr_t * arr, char *item, const char *me, int *is_null);
 extern caddr_t get_keyword_int (caddr_t * arr, char *item, const char *me);
 extern caddr_t get_keyword_ucase_int (caddr_t * arr, const char *item, caddr_t dflt);
 extern char *find_repl_account_in_src_text (char **src_text_ptr);
@@ -1318,12 +1305,6 @@ int itc_bm_vec_row_check (it_cursor_t * itc, buffer_desc_t * buf);
 void itc_bm_land (it_cursor_t * itc, buffer_desc_t * buf);
 void itc_next_bit (it_cursor_t * itc, buffer_desc_t * buf);
 void itc_invalidate_bm_crs (it_cursor_t * itc, buffer_desc_t * buf, int is_transit, dk_set_t * local_transits);
-/*! This splits an IRI as it is stored in RDF "prefix" and "local" tables. */
-extern int iri_split (char *iri, caddr_t * pref, caddr_t * name);
-/*! This splits an IRI to "prefix" and "local" parts, making "local" as short as it is allowed by TURTLE syntax. */
-extern void iri_split_ttl_qname (const char *iri, caddr_t * pref, caddr_t * name, int abbreviate_nodeid);
-extern void iri_split_ttl_qname_impl (const char *iri, caddr_t * pref, caddr_t * name, int abbreviate_nodeid, int flag);
-int64 unbox_iri_int64 (caddr_t x);
 int itc_bm_land_lock (it_cursor_t * itc, buffer_desc_t ** buf_ret);
 void itc_init_bm_search (it_cursor_t * itc);
 extern void bm_init (void);
@@ -1414,6 +1395,7 @@ void itc_assert_no_reg (it_cursor_t * itc);
 void qn_result (data_source_t * qn, caddr_t * inst, int set_no);
 void ssl_result (state_slot_t * ssl, caddr_t * inst, int set_no);
 void itc_pop_last_out (it_cursor_t * itc, caddr_t * inst, v_out_map_t * om, buffer_desc_t * buf);
+void dc_pop_last_ssl (caddr_t * inst, state_slot_t * ssl);
 void qi_vec_init (query_instance_t * qi, int n_sets);
 void itc_vec_new_results (it_cursor_t * itc);
 void ks_vec_new_results (key_source_t * ks, caddr_t * inst, it_cursor_t * itc);
@@ -1468,6 +1450,8 @@ void itc_fetch_col (it_cursor_t * itc, buffer_desc_t * buf, dbe_col_loc_t * cl, 
 #define FC_APPEND_PRESENT -2
 #define FC_FROM_CEIC -3		/* the ceic contains updates to the page for itc_fetch_col.  If a col is updated in the ceic, use that instead of the value on the page. */
 void itc_col_search (it_cursor_t * itc, buffer_desc_t * buf);
+void dc_wide_tags (data_col_t * dc, int from);
+void dc_xml_entities (it_cursor_t * itc, dbe_col_loc_t * cl, data_col_t * dc, int from);
 void key_col_insert (it_cursor_t * itc, row_delta_t * rd, insert_node_t * ins);
 int ce_col_cmp (db_buf_t any, int64 offset, dtp_t ce_flags, dbe_col_loc_t * cl, caddr_t value);
 int itc_col_row_check (it_cursor_t * itc, buffer_desc_t ** buf_ret, dp_addr_t * leaf_ret);
@@ -1491,10 +1475,10 @@ void delete_node_vec_run (delete_node_t * del, caddr_t * inst, caddr_t * state, 
 void update_node_vec_run (update_node_t * upd, caddr_t * inst, caddr_t * state);
 
 void dc_digit_sort (data_col_t ** dcs, int n_dcs, int *sets, int n_sets);
-void sslr_n_consec_ref (caddr_t * inst, state_slot_ref_t * sslr, int *sets, int set, int n_sets);
 void dc_reset_array (caddr_t * inst, data_source_t * qn, state_slot_t ** ssls, int new_sz);
 uint64 qi_new_ht_id (query_instance_t * qi, uint64 high_bits);
 void chash_init ();
+index_tree_t *cha_allocate (setp_node_t * setp, caddr_t * inst, int64 card);
 int setp_chash_group (setp_node_t * setp, caddr_t * inst);
 int setp_chash_distinct (setp_node_t * setp, caddr_t * inst);
 void chash_to_memcache (caddr_t * inst, index_tree_t * it, hash_area_t * ha);
@@ -1553,7 +1537,6 @@ int sctr_hash_range_check (caddr_t * inst, search_spec_t * sp);
 #define TB_IS_RQ(tb) (tb && 0 == stricmp (tb->tb_name_only, "RDF_QUAD"))
 
 db_buf_t sel_extend_bits (select_node_t * sel, caddr_t * inst, int row_no, int *bits_max);
-uint32 cp_any_hash (col_partition_t * cp, db_buf_t val, int32 * rem_ret);
 
 
 #define SRC_N_IN(src, inst, n)  {if (src->src_stat)  SRC_STAT (src, inst)->srs_n_in += n;}
@@ -1698,7 +1681,7 @@ void cli_free_dae (client_connection_t * cli);
 void qi_set_batch_sz (caddr_t * inst, table_source_t * ts, int new_sz);
 void dk_hash_copy (dk_hash_t * to, dk_hash_t * from);
 state_slot_t *upd_find_col_ssl (update_node_t * upd, oid_t col_id);
-void complete_proc_name (char *proc_name, char *complete, char *def_qual, char *def_owner);
+void complete_proc_name (char *proc_name, char *ret_complete, const char *def_qual, const char *def_owner);
 
 
 
@@ -1755,6 +1738,11 @@ extern caddr_t rdfs_type;
 
 #define TA_QRC_LIT_PARAMS 6000
 extern int chash_block_size;
+#if defined (MALLOC_DEBUG) | defined (VALGRIND)
+#define MDBG_RC_SIZE(n) 0
+#else
+#define MDBG_RC_SIZE(n) n
+#endif
 
 
 /*cset */
@@ -1790,5 +1778,5 @@ query_t *csg_query (cset_t * cset, table_source_t * ts, int mode, caddr_t * o_mo
 void qr_cset_adjust_dcs (query_t * qr, caddr_t * inst);
 void csetp_set_bloom (caddr_t * inst, iri_id_t * p_arr, iri_id_t * s_arr, int n_values);
 
-
+VIRT_API_END
 #endif /* _SQLFN_H */

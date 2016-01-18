@@ -160,3 +160,6 @@ extern caddr_t csg_s_uname;
 extern caddr_t csg_g_uname;
 extern caddr_t csg_o_uname;
 extern caddr_t csg_p_uname;
+
+void cset_init ();
+void cset_pre_init ();

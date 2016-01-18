@@ -39,7 +39,7 @@
 #define clq_next(q, rbe, inx)
 #define clq_delete(q, rbe, inx) rbuf_delete (q, rbe, &inx)
 #define clq_is_empty(q) (0 == (q)->rb_count)
-#define clq_first(q) rbuf_first(q)
+#define clq_first(q) ((cl_message_t *)rbuf_first(q))
 
 #define CLQ_REQ_MTX(clq, mtx) RBUF_REQ_MTX (clq, mtx)
 
@@ -66,7 +66,7 @@
 #define clq_next(q, rbe, inx) rbe = rbe->bsk_next
 #define clq_delete(q, rbe, inx) basket_delete ((q), &rbe)
 #define clq_is_empty(q) basket_is_empty(q)
-#define clq_first(q) basket_first(q)
+#define clq_first(q) ((cl_message_t *)basket_first(q))
 
 #define CLQ_REQ_MTX(clq, mtx) BSK_REQ_MTX (clq, mtx)
 #endif

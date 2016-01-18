@@ -203,7 +203,7 @@ typedef struct se_ctx_s
 } se_ctx_t;
 
 caddr_t
-se_new_hit (int idx, const void *begin, const void *end)
+se_new_hit (int idx, const char *begin, const char *end)
 {
   se_hit_t *seh = (se_hit_t *) dk_alloc (sizeof (se_hit_t));
   seh->seh_idx = idx;

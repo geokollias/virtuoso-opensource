@@ -865,7 +865,7 @@ failed:
 virt_trx_id_t
 tp_add_transaction_entry (client_connection_t * cli, char **err_ret)
 {
-  static char *pl_call_text = "_2PC.DBA._0001_ADD_ENTRY()";
+  static const char *pl_call_text = "_2PC.DBA._0001_ADD_ENTRY()";
   return (virt_trx_id_t) (ptrlong) exec_trx_sql_1 (cli, pl_call_text, 0, 0, 0, err_ret, 1);
 }
 
@@ -873,7 +873,7 @@ virt_branch_id_t
 tp_add_remote (client_connection_t * cli, virt_trx_t * vtrx, char **err_ret)
 {
   /*
-     static char *pl_call_text = "_2PC.DBA._0001_ADD_REMOTE (?)";
+     static const char *pl_call_text = "_2PC.DBA._0001_ADD_REMOTE (?)";
      return (virt_branch_id_t) exec_trx_sql_1 (cli, pl_call_text, 1, vtrx->vtx_id, 0, err_ret); */
   return 1;
 }
@@ -882,7 +882,7 @@ tp_add_remote (client_connection_t * cli, virt_trx_t * vtrx, char **err_ret)
 int
 virt_trx_set_state (client_connection_t * cli, virt_trx_id_t trx_id, const char *state_str)
 {
-  static char *pl_call_text = "_2PC.DBA._0001_TRX_SSTATE (?,?)";
+  static const char *pl_call_text = "_2PC.DBA._0001_TRX_SSTATE (?,?)";
   char *err = NULL;
   exec_trx_sql_1 (cli, pl_call_text, 2, trx_id, state_str, &err, 1);
   if (err)

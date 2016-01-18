@@ -34,15 +34,8 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "xmlparser.h"
 #include "xmlparser_impl.h"
-#ifdef __cplusplus
-}
-#endif
 #include "http.h"
 #include "date.h"
 /*#include "xml_ecm.h"*/
@@ -398,7 +391,7 @@ ssg_sd_opname (sparp_t * sparp, ptrlong opname, int is_op)
 void
 ssg_assert_sd_flags (spar_sqlgen_t * ssg, int sd_needed_flags, const char *feature_name)
 {
-  char *msg_tail = "";
+  const char *msg_tail = "";
   if (sd_needed_flags & ssg->ssg_sd_flags)
     return;
   if (NULL != ssg->ssg_sd_current_sinv)
@@ -633,7 +626,7 @@ ssg_sdprint_equiv_restrs (spar_sqlgen_t * ssg, sparp_equiv_t * eq)
   else if ((SPART_VARR_IS_BLANK & eq->e_rvr.rvrRestrictions) && !(SPART_VARR_IS_BLANK & mixed_field_restr))
     builtin_name = "isBLANK";
   else if ((SPART_VARR_IS_REF & eq->e_rvr.rvrRestrictions) && !(SPART_VARR_IS_REF & mixed_field_restr))
-    builtin_name = ((ssg->ssg_sd_flags & SSG_SD_VIRTSPECIFIC) ? "isREF" : "!isLITERAL");
+    builtin_name = ((ssg->ssg_sd_flags & (SSG_SD_BI | SSG_SD_VIRTSPECIFIC)) ? "isREF" : "!isLITERAL");
   else if ((SPART_VARR_NOT_NULL & eq->e_rvr.rvrRestrictions) && !(SPART_VARR_NOT_NULL & mixed_field_restr))
     builtin_name = "BOUND";
   if (NULL != builtin_name)
@@ -1044,6 +1037,8 @@ ssg_sdprint_tree (spar_sqlgen_t * ssg, SPART * tree)
 		      int valctr;
 		      if (!strcmp (name, "lang:dialect"))
 			continue;
+		      if (!strcmp (name, "lang:exceptions"))
+			continue;
 		      ssg_puts (" DEFINE ");
 		      ssg_puts (name);
 		      DO_BOX_FAST (SPART **, val, valctr, vals)
@@ -1385,6 +1380,9 @@ ssg_sdprint_tree (spar_sqlgen_t * ssg, SPART * tree)
 	  ssg_newline (0);
 	if (need_new_graph)
 	  {
+	    if (SSG_SD_NO_GRAPH & ssg->ssg_sd_no)
+	      spar_error (ssg->ssg_sparp, "%.100s does not support GRAPH <...> {...} syntax, so SPARQL query is not composed",
+		  ssg->ssg_sd_service_naming);
 	    ssg_puts (" GRAPH");
 	    ssg_sdprint_tree (ssg, curr_graph);
 	    ssg_puts (" {");

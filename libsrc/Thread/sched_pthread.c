@@ -28,6 +28,7 @@
 
 #include <pthread.h>
 #include "Dk.h"
+#include "thread_int.h"
 
 #if defined(linux) && defined(VIRT_GPROF)
 #define pthread_create gprof_pthread_create
@@ -111,7 +112,9 @@ _sched_init (void)
 #endif
 #ifdef MTX_METER
   all_mtxs_mtx = mutex_allocate ();
+  mutex_option (all_mtxs_mtx, "all_mtxs", NULL, NULL);
   all_mtxs = hash_table_allocate (10000);
+  sethash ((void*)all_mtxs_mtx, all_mtxs, (void*)1);
   all_mtxs->ht_rehash_threshold = 2;
 #endif
 }
@@ -1473,25 +1476,85 @@ mutex_leave (dk_mutex_t *mtx)
     pthread_mutex_unlock ((pthread_mutex_t*) &mtx->mtx_mtx);
 }
 
+#ifdef MTX_METER
+int
+mtx_wait_clk_f (const void *s1, const void *s2)
+{
+  dk_mutex_t * m1 = *(dk_mutex_t **)s1;
+  dk_mutex_t * m2 = *(dk_mutex_t **)s2;
+  return m1->mtx_wait_clocks > m2->mtx_wait_clocks ? -1 : 1;
+}
+
+
+int
+mtx_wait_cnt_f (const void *s1, const void *s2)
+{
+  dk_mutex_t * m1 = *(dk_mutex_t **)s1;
+  dk_mutex_t * m2 = *(dk_mutex_t **)s2;
+  return m1->mtx_waits > m2->mtx_waits ? -1 : 1;
+}
+
+
+int
+mtx_enter_f (const void *s1, const void *s2)
+{
+  dk_mutex_t * m1 = *(dk_mutex_t **)s1;
+  dk_mutex_t * m2 = *(dk_mutex_t **)s2;
+  return m1->mtx_enters > m2->mtx_enters ? -1 : 1;
+}
+
+
+int 
+mtx_is_bad (dk_mutex_t * mtx)
+{
+  return mtx->mtx_type != 0 || mtx->mtx_enters < 0 || mtx->mtx_waits < 0
+#ifdef linux 
+    || 3 != mtx->mtx_mtx.__data.__kind
+#endif
+    ;
+}
+#endif
+
 
 void
-mutex_stat ()
+mutex_stat (int mode, int max)
 {
 #ifdef MTX_METER
+  dk_mutex_t ** arr;
+  size_t sz;
+  int fill = 0, cnt;
+  mutex_enter (all_mtxs_mtx);
+  printf ("*** Mutex stat mode %d top %d\n", mode, max);
+  sz = all_mtxs->ht_count;
+  arr = (dk_mutex_t**)dk_alloc (sizeof (caddr_t) * sz);
   DO_HT (dk_mutex_t *, mtx, void*, ign, all_mtxs)
     {
       if (!mtx->mtx_enters)
 	continue;
+      if (mtx_is_bad (mtx))
+	continue;
+      arr[fill++] = mtx;
+    }
+  END_DO_HT;
+  qsort (arr, fill, sizeof (caddr_t), 0 == mode ? mtx_wait_clk_f : 1 == mode ? mtx_wait_cnt_f : mtx_enter_f);
+  for (cnt = 0; cnt < MIN (fill, max); cnt++)
+    {
+      dk_mutex_t * mtx = arr[cnt];
 #ifdef APP_SPIN
       printf ("%s %p E: %ld W %ld  spinw: %ld spin: %d\n", mtx->mtx_name ? mtx->mtx_name : "<?>",  mtx,
 	      mtx->mtx_enters, mtx->mtx_waits, mtx->mtx_spin_waits, mtx->mtx_spins);
 #else
       printf ("%s %p E: %ld W %ld wclk %ld \n", mtx->mtx_name ? mtx->mtx_name : "<?>",  mtx,
 	      mtx->mtx_enters, mtx->mtx_waits, mtx->mtx_wait_clocks);
-      mtx->mtx_enters = mtx->mtx_waits = mtx->mtx_wait_clocks = 0;;
 #endif
     }
-  END_DO_SET();
+  for (cnt = 0; cnt < fill; cnt++)
+    {
+      dk_mutex_t * mtx = arr[cnt];
+      mtx->mtx_enters = mtx->mtx_waits = mtx->mtx_wait_clocks = 0;
+    }
+  mutex_leave (all_mtxs_mtx);
+  dk_free ((caddr_t)arr, sz * sizeof (caddr_t));
 #else
   printf ("Mutex stats not enabled.}\n");
 #endif

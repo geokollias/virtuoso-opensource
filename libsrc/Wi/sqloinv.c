@@ -265,13 +265,13 @@ sinv_read_sql_inverses (const char *function_name, client_connection_t * cli)
 
 
 void
-sinv_builtin_inverse (caddr_t * f1, caddr_t * f2, int *flags, int n)
+sinv_builtin_inverse (const char **f1, const char **f2, int *flags, int n)
 {
   client_connection_t *cli = bootstrap_cli;
   sinv_map_t *map = NULL;
   dk_set_t inverse_set = NULL;
-  caddr_t sinvm_name;
-  caddr_t sinvm_inverse;
+  const char *sinvm_name;
+  const char *sinvm_inverse;
   unsigned sinvm_flags, nth;
 
   if (!sinv_func_hash)

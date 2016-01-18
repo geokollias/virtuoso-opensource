@@ -1047,7 +1047,7 @@ thr_alloc_cache_clear (thread_t * thr)
 
 
 void
-dk_alloc_cache_status (resource_t ** cache)
+dk_alloc_cache_status (void* cache)
 {
   int inx;
   size_t bs = 0;
@@ -1068,7 +1068,7 @@ dk_alloc_cache_status (resource_t ** cache)
 }
 
 size_t
-dk_alloc_global_cache_total ()
+dk_alloc_global_cache_total (void)
 {
   int inx;
   size_t bs = 0;

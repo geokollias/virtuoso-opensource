@@ -645,7 +645,7 @@ ts_add (TIMESTAMP_STRUCT * ts, boxint n, const char *unit)
 }
 
 int
-dt_compare (caddr_t dt1, caddr_t dt2, int cmp_is_safe)
+dt_compare (ccaddr_t dt1, ccaddr_t dt2, int cmp_is_safe)
 {
   int day1, day2;
   int minm1, maxm1, minm2, maxm2;
@@ -1150,13 +1150,13 @@ dt_to_iso8601_string_ext (const char *dt, char *buf, int len, int mode)
     }
 }
 
+static const char *wkday[] = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+static const char *monthname[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 
 void
 dt_to_rfc1123_string (const char *dt, char *str, int len)
 {
   GMTIMESTAMP_STRUCT ts;
-  char *wkday[] = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
-  char *monday[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 #ifndef NDEBUG
   if (DT_TZL (dt))
     GPF_T1 ("Can not print timezoneless datetime in RDF1123 format");
@@ -1164,7 +1164,7 @@ dt_to_rfc1123_string (const char *dt, char *str, int len)
   dt_to_GMTimestamp_struct (dt, &ts);
   /* Mon, 01 Feb 2000 00:00:00 GMT */
   snprintf (str, len, "%s, %02d %s %04d %02d:%02d:%02d GMT",
-      wkday[date2weekday (ts.year, ts.month, ts.day) - 1], ts.day, monday[ts.month - 1], ts.year, ts.hour, ts.minute, ts.second);
+      wkday[date2weekday (ts.year, ts.month, ts.day) - 1], ts.day, monthname[ts.month - 1], ts.year, ts.hour, ts.minute, ts.second);
   /*ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second, (long) ts.fraction); */
 }
 
@@ -1172,11 +1172,10 @@ void
 dt_to_ms_string (const char *dt, char *str, int len)
 {
   TIMESTAMP_STRUCT ts;
-  char *monday[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
   dt_to_timestamp_struct (dt, &ts);
 
   /* 01-Feb-2000 00:00:00 */
-  snprintf (str, len, "%02d-%s-%04d %02d:%02d:%02d", ts.day, monday[ts.month - 1], ts.year, ts.hour, ts.minute, ts.second);
+  snprintf (str, len, "%02d-%s-%04d %02d:%02d:%02d", ts.day, monthname[ts.month - 1], ts.year, ts.hour, ts.minute, ts.second);
 }
 
 #ifdef DT_DEBUG

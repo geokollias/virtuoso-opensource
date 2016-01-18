@@ -219,7 +219,7 @@ sqlo_ic_set_tsa (df_elt_t * tb_dfe, dk_set_t path)
   DO_SET (df_elt_t *, pred, &tb_dfe->dfe_sqlo->so_after_preds)
   {
     pos++;
-    if (sqlo_pred_in_path (path, (void *) (ptrlong) (pos - 1)) || sqlo_pred_eliminated_in_path (path, pred))
+    if (sqlo_pred_in_path (path, (df_elt_t *) ((ptrlong) (pos - 1))) || sqlo_pred_eliminated_in_path (path, pred))
       continue;
     if (sqlo_after_test_placeable (tb_dfe, path, pred->dfe_tree))
       t_set_push (&local, (void *) (ptrlong) (pos - 1));
@@ -241,7 +241,7 @@ sqlo_ip_copy (df_elt_t * tb_dfe, dk_set_t path)
     *ic2 = *ic;
     if (ic2->ic_inx_op)
       ic2->ic_inx_op = inx_op_copy (so, ic2->ic_inx_op, tb_dfe, tb_dfe);
-    t_set_push (&res, (void *) (void *) ic2);
+    t_set_push (&res, (void *) ic2);
   }
   END_DO_SET ();
   return res;
@@ -1035,7 +1035,7 @@ sqlg_in_iter_add_after_test (sqlo_t * so, dk_set_t prev_in_iters, key_source_t *
   /* videte et credite.  A fucking in iter over a key of a previous ks. If no pk ref inx, got to recheck the fucking col of the in pred. cause not joined on a unique key between inxes. */
   DO_SET (in_iter_node_t *, ii, &prev_in_iters)
   {
-    df_elt_t **in_list = sqlo_in_list (ii->ii_dfe, NULL, NULL);
+    df_elt_t **in_list = sqlo_in_list ((df_elt_t *) (ii->ii_dfe), NULL, NULL);
     DO_SET (dbe_column_t *, col, &ks->ks_key->key_parts)
     {
       if (col == in_list[0]->_.col.col)
@@ -1222,7 +1222,7 @@ sqlg_make_path_ts (sqlo_t * so, df_elt_t * tb_dfe)
   {
     ts = sqlg_make_1_ts (so, tb_dfe, ic, jt, nxt ? 0 : 1);
     if (so->so_sc->sc_gen_rdf_rd_sec)
-      sqlg_rdf_ck (so->so_sc, ts, 0);
+      sqlg_rdf_ck (so->so_sc, (table_source_t *) ts, 0);
     last_ts = (table_source_t *) ts;
     if (!ret_ts)
       ret_ts = ts;

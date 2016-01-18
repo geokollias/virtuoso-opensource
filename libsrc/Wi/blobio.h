@@ -25,12 +25,12 @@
 
 #ifndef _BLOBIO_H
 #define _BLOBIO_H
-
+#include "Dk.h"
 #include "widisk.h"
 #include "widv.h"
 #include "multibyte.h"
 
-struct blob_state_s
+VIRT_API_BEGIN struct blob_state_s
 {
   unsigned char utf8_chr;	/* this is for reading utf8 data from client */
   unsigned char count;		/* this is for prefetch in utf8 page read from client */
@@ -129,10 +129,6 @@ void iri_id_write (iri_id_t * iid, dk_session_t * ses);
 
 void blobio_init (void);
 caddr_t datetime_serialize (caddr_t dt, dk_session_t * out);
-void dt_to_string (const char *dt, char *str, int len);
-void dt_to_iso8601_string (const char *dt, char *str, int len);
-void dt_to_iso8601_string_ext (const char *dt, char *buf, int len, int mode);
-void dt_to_rfc1123_string (const char *dt, char *str, int len);
 void dt_to_ms_string (const char *dt, char *str, int len);
 void sec_login_digest (char *ses_name, char *user, char *pwd, unsigned char *digest);
 int http_date_to_dt (const char *http_date, char *dt);
@@ -222,4 +218,5 @@ extern void rb_complete_1 (rdf_box_t * rb, struct lock_trx_s *lt, void * /*actua
 #endif
 #endif
 
+VIRT_API_END
 #endif /* _BLOBIO_H */

@@ -44,10 +44,6 @@ dv_compare (db_buf_t dv1, db_buf_t dv2, collation_t * collation, offset_t offset
     }
   if (DV_BOX_FLAGS == dtp2)
     {
-#if 0
-      if (!dv1_flags)
-	bing ();
-#endif
       dv2_flags = LONG_REF_NA (dv2 + 1);
       dv2 += 5;
       dtp2 = *dv2;
@@ -340,7 +336,7 @@ dv_compare (db_buf_t dv1, db_buf_t dv2, collation_t * collation, offset_t offset
 	      long len, head_len;
 	      db_buf_length (org_dv1, &head_len, &len);
 	      if (head_len + len > sizeof (auto_copy))
-		copy = dk_alloc (alloc_len = head_len + len);
+		copy = (db_buf_t) dk_alloc (alloc_len = head_len + len);
 	      memcpy (copy, org_dv1, head_len + len);
 	      copy[head_len + len - 1] += offset;
 	      org_dv1 = copy;

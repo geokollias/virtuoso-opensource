@@ -33,14 +33,7 @@
 #include "bif_xper.h"
 #include "srvmultibyte.h"
 #include "security.h"
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "langfunc.h"
-#ifdef __cplusplus
-}
-#endif
 #include "arith.h"
 
 #define VT_BATCH_SIZE_MIN	31
@@ -48,7 +41,7 @@ extern "C"
 #define VT_BATCH_SIZE_DEFAULT	1001
 
 lang_handler_t *server_default_lh = &lh__xany;
-char *server_default_language_name = NULL;
+const char *server_default_language_name = NULL;
 
 
 /* The last error number used is FT038 */
@@ -1479,8 +1472,25 @@ process_string:
     }
   if (XE_XPACK_SERIALIZATION == is_serialized_xml)
     {
-      dk_session_t *ses = blob_to_string_output (qi->qi_trx, str);
-      xte_deserialize_packed (ses, (caddr_t **) & temp_tree, NULL);
+      dk_session_t *ses = NULL;
+      if (DV_STRINGP (str))
+	{
+	  ses = strses_allocate ();
+	  ses->dks_in_buffer = str;
+	  ses->dks_in_read = 0;
+	  ses->dks_in_fill = box_length (str) - 1;
+	  xte_deserialize_packed (ses, (caddr_t **) & temp_tree, NULL);
+	  ses->dks_in_buffer = NULL;
+	}
+      else if (DV_DB_NULL == DV_TYPE_OF (str))
+	return NULL;
+      else if (IS_BLOB_HANDLE (str))
+	{
+	  ses = blob_to_string_output (qi->qi_trx, str);
+	  xte_deserialize_packed (ses, (caddr_t **) & temp_tree, NULL);
+	}
+      else
+	sqlr_new_error ("HT002", "XI022", "Can't deserialize XML tree from datum of type %d", (int) DV_TYPE_OF (str));
       strses_free (ses);
       goto temp_tree_ready;
     }

@@ -40,17 +40,9 @@
 #include "xml.h"		/* IvAn/TextXmlIndex/000814 */
 #include "bif_text.h"		/* IvAn/TextXperIndex/000814 */
 #include "security.h"
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "langfunc.h"
 #include "xmlparser.h"
 #include "xmlparser_impl.h"
-#ifdef __cplusplus
-}
-#endif
-
 #include "multibyte.h"
 #include "xpathp_impl.h"
 
@@ -241,8 +233,8 @@ static long xper_entity_free_ctr = 0;
       if (NULL != (xpd)->xd_dtd) \
 	dtd_release ((xpd)->xd_dtd); \
       dk_free_box ((caddr_t)(xpd->xd_id_dict)); \
-      dk_free_box (xpd->xd_id_scan); \
-      dk_free_box ((xpd)); \
+      dk_free_box ((caddr_t)(xpd->xd_id_scan)); \
+      dk_free_box ((caddr_t)(xpd)); \
     } while (0)
 
 
@@ -1989,10 +1981,6 @@ dsfi_reset (dk_session_fwd_iter_t * iter, dk_session_t * ses)
   feed_log = fopen ("feed_log", "wb");
 #endif
 }
-
-extern long read_wides_from_utf8_file (dk_session_t * ses, long nchars, unsigned char *dest, int copy_as_utf8,
-    unsigned char **dest_ptr_out);
-
 
 size_t
 dsfi_read (void *read_cd, char *buf, size_t bsize)

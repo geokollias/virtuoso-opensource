@@ -38,7 +38,7 @@
 #include "recovery.h"
 
 #include "security.h"
-
+#include "../snappy/snappy_2c.h"
 
 #ifdef WIN32
 #include <windows.h>

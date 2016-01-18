@@ -31,14 +31,7 @@
 #ifndef ROLLBACK_XQ
 #include "wifn.h"
 #endif
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "langfunc.h"
-#ifdef __cplusplus
-}
-#endif
 #include <errno.h>
 #if !defined (__APPLE__)
 #include <wchar.h>
@@ -52,8 +45,8 @@ extern "C"
 caddr_t
 box_utf8_as_wide_char (ccaddr_t _utf8, caddr_t _wide_dest, size_t utf8_len, size_t max_wide_len)
 {
-  unsigned char *utf8 = (unsigned char *) _utf8;
-  unsigned char *utf8work;
+  const unsigned char *utf8 = (const unsigned char *) _utf8;
+  const unsigned char *utf8work;
   size_t wide_len, wide_boxsize;
   virt_mbstate_t state;
   caddr_t dest;
@@ -92,8 +85,8 @@ caddr_t DBG_NAME (box_wide_as_utf8_char) (DBG_PARAMS ccaddr_t _wide, size_t wide
   char *dest;
   size_t utf8_len;
   virt_mbstate_t state;
-  wchar_t *wide = (wchar_t *) _wide;
-  wchar_t *wide_work;
+  const wchar_t *wide = (const wchar_t *) _wide;
+  const wchar_t *wide_work;
 #ifdef DEBUG
   if (wide_len & ~0xFFFFFF)
     GPF_T1 ("bad wide_len in cast wide as UTF8");
@@ -120,8 +113,8 @@ mp_box_wide_as_utf8_char (mem_pool_t * mp, ccaddr_t _wide, size_t wide_len, dtp_
   char *dest;
   size_t utf8_len;
   virt_mbstate_t state;
-  wchar_t *wide = (wchar_t *) _wide;
-  wchar_t *wide_work;
+  const wchar_t *wide = (const wchar_t *) _wide;
+  const wchar_t *wide_work;
 #ifdef DEBUG
   if (wide_len & ~0xFFFFFF)
     GPF_T1 ("bad wide_len in cast wide as UTF8");
@@ -143,9 +136,10 @@ mp_box_wide_as_utf8_char (mem_pool_t * mp, ccaddr_t _wide, size_t wide_len, dtp_
 }
 
 int
-wide_serialize (caddr_t wide_data, dk_session_t * ses)
+wide_serialize (ccaddr_t wide_data, dk_session_t * ses)
 {
-  wchar_t *wstr = (wchar_t *) wide_data, *wide_work = (wchar_t *) wide_data;
+  const wchar_t *wstr = (const wchar_t *) wide_data;
+  const wchar_t *wide_work = wstr;
   size_t utf8_len, wide_len = box_length (wide_data) / sizeof (wchar_t) - 1;
   virt_mbstate_t state;
   unsigned char mbs[VIRT_MB_CUR_MAX];
@@ -279,7 +273,7 @@ wide_char_length_of_utf8_string (const unsigned char *str, size_t utf8_length)
 {
   virt_mbstate_t state;
   memset (&state, 0, sizeof (virt_mbstate_t));
-  return virt_mbsnrtowcs (NULL, (unsigned char **) &str, utf8_length, 0, &state);
+  return virt_mbsnrtowcs (NULL, &str, utf8_length, 0, &state);
 }
 
 
@@ -545,7 +539,8 @@ cli_utf8_to_narrow (wcharset_t * charset, const unsigned char *_str, size_t max_
 {
   virt_mbstate_t state;
   size_t len, inx;
-  unsigned char *str = (unsigned char *) _str, *src = (unsigned char *) _str;
+  const unsigned char *str = (const unsigned char *) _str;
+  const unsigned char *src = str;
   caddr_t box;
   memset (&state, 0, sizeof (virt_mbstate_t));
   len = virt_mbsnrtowcs (NULL, &src, max_len, 0, &state);
@@ -696,14 +691,14 @@ wide_charset_free (wcharset_t * charset)
 
 
 size_t
-wide_as_utf8_len (caddr_t _wide)
+wide_as_utf8_len (ccaddr_t _wide)
 {
   ptrlong _n = box_length (_wide);
   size_t _utf8_len;
   virt_mbstate_t state;
   memset (&state, 0, sizeof (virt_mbstate_t));
 
-  _utf8_len = virt_wcsnrtombs (NULL, ((wchar_t **) (&_wide)), _n / sizeof (wchar_t) - 1, 0, &state);
+  _utf8_len = virt_wcsnrtombs (NULL, ((const wchar_t **) (&_wide)), _n / sizeof (wchar_t) - 1, 0, &state);
   if (((long) _utf8_len) < 0)
     GPF_T1 ("Obscure wide string in wide_as_utf8_len");
   return _utf8_len;

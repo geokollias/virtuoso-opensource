@@ -44,14 +44,7 @@
 #include "bif_text.h"
 #include "xpf.h"
 #include "xmlparser.h"
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "xmlparser_impl.h"
-#ifdef __cplusplus
-}
-#endif
 #include "rdf_core.h"
 #include "xslt_impl.h"
 #include "bif_xper.h"		/* for write_escaped_attvalue */
@@ -1644,7 +1637,7 @@ xslt_for_each_row (xparse_ctx_t * xp, caddr_t * xstree)
 	      SES_PRINT (tmp_ses, "> ");
 	    }
 	  preamble = xp->xp_sheet->xsh_sparql_preamble = strses_string (tmp_ses);
-	  dk_free_box (tmp_ses);
+	  dk_free_box ((caddr_t) tmp_ses);
 	}
       query_final_text = box_dv_short_strconcat (preamble, query_text);
       if (query_text != query_texts_set[0])
@@ -2855,7 +2848,7 @@ xslt_top (query_instance_t * qi, xml_entity_t * xe, xslt_sheet_t * xsh, caddr_t 
   {
     context.xp_error_msg = thr_get_error_code (qi->qi_thread);
     rc = 0;
-    dk_free_tree (root_elt_head);
+    dk_free_tree ((caddr_t) root_elt_head);
     POP_QR_RESET;
     XD_DOM_RELEASE (xe->xe_doc.xd);
   }
@@ -2889,12 +2882,12 @@ xslt_top (query_instance_t * qi, xml_entity_t * xe, xslt_sheet_t * xsh, caddr_t 
 		if (!strcmp (head[idx], uname__bang_exclude_result_prefixes))
 		  goto child_has_excl_attr;	/* see below */
 	      }
-	    new_head = dk_alloc_box ((2 + head_len) * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
+	    new_head = dk_alloc_list (2 + head_len);
 	    memcpy (new_head, head, head_len * sizeof (caddr_t));
 	    new_head[head_len] = uname__bang_exclude_result_prefixes;
 	    new_head[head_len + 1] = box_copy_tree (excl_val);
 	    chld[0] = new_head;
-	    dk_free_box (head);
+	    dk_free_box ((caddr_t) head);
 	  }
       child_has_excl_attr:;
       }
@@ -2970,7 +2963,7 @@ shuric_parse_text__xslt (shuric_t * shuric, caddr_t uri_text_content, query_inst
 #endif
   if (tree_is_local)
     {
-      dk_free_tree (tree);
+      dk_free_tree ((caddr_t) tree);
       xml_ns_2dict_clean (ns_2dict_ptr);
     }
 /*  shuric->shuric_loading_time = ts; */
@@ -2982,8 +2975,8 @@ xslt_template_destroy (xslt_template_t * xst)
 {
   dk_free_tree (xst->xst_name);
   dk_free_tree (xst->xst_mode);
-  dk_free_tree (xst->xst_match);
-  dk_free_tree (xst->xst_tree);
+  dk_free_tree ((caddr_t) (xst->xst_match));
+  dk_free_tree ((caddr_t) (xst->xst_tree));
   dk_free (xst, sizeof (xslt_template_t));
 }
 

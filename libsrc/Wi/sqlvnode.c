@@ -38,6 +38,7 @@
 #include "sqltype.h"
 #include "repl.h"
 #include "replsr.h"
+#include "rdf_core.h"
 
 
 void
@@ -1102,13 +1103,11 @@ cl_local_deletes (delete_node_t * del, caddr_t * inst, caddr_t * part_inst)
 }
 
 
-iri_id_t del_trap_iri;
-
 void
 dbg_del_check (data_col_t * source_dc, int source_row)
 {
   caddr_t box = dc_box (source_dc, source_row);
-  if (DV_IRI_ID == DV_TYPE_OF (box) && del_trap_iri == *(long *) box)
+  if (DV_IRI_ID == DV_TYPE_OF (box) && 7000064 == *(long *) box)
     bing ();
   dk_free_tree (box);
 }
@@ -1185,8 +1184,7 @@ delete_node_vec_run (delete_node_t * del, caddr_t * inst, caddr_t * state, int i
 		dc_append_null (target_dc);
 	      else
 		{
-		  if (del_trap_iri)
-		    dbg_del_check (source_dc, source_row);
+		  /*dbg_del_check (source_dc, source_row); */
 		  if (f)
 		    {
 		      f (target_dc, source_dc, source_row, &err);
@@ -1214,7 +1212,7 @@ delete_node_vec_run (delete_node_t * del, caddr_t * inst, caddr_t * state, int i
     END_DO_BOX;
   }
   END_DO_BOX;
-  if (in_update && enable_mt_txn && CL_RUN_CLUSTER == cl_run_local_only)
+  if (any_cl && in_update && enable_mt_txn && CL_RUN_CLUSTER == cl_run_local_only)
     return;
   cl_local_deletes (del, inst, clrg ? clrg->clrg_inst : inst);
   if (!in_update && qi->qi_client->cli_row_autocommit)

@@ -533,8 +533,8 @@ bif_rdf_iext_insert_vec (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args,
 	  ie = this_tie->tie_slices[slid];
 	  if (!ie)
 	    sqlr_new_error ("ELASL", "ELASL", "No slice %d for iext rdf insert on host %d", slid, local_cll.cll_this_host);
-	  tie->tie_iext->iext_insert (ie, ietx, ins_id_dc->dc_n_values, ins_id_dc->dc_values, (caddr_t *) ins_str_dc->dc_values,
-	      &err);
+	  tie->tie_iext->iext_insert (ie, ietx, ins_id_dc->dc_n_values, (long long *) (ins_id_dc->dc_values),
+	      (caddr_t *) ins_str_dc->dc_values, &err);
 	  if (err)
 	    {
 	      hash_table_free (done);

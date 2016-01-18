@@ -944,12 +944,12 @@ ttlp_qname_prefix_is_explicit_and_valid (ttlp_t * ttlp_arg, caddr_t qname)
   if (ttlp_arg[0].ttlp_in_trig_graph)
     {
       ns_dict = ttlp_arg[0].ttlp_inner_namespaces_prefix2iri;
-      ns_uri_ptr = ((NULL == ns_dict) ? NULL : (caddr_t *) id_hash_get (ns_dict, (caddr_t) (&ns_pref)));
+      ns_uri_ptr = ((NULL == ns_dict) ? NULL : (caddr_t **) id_hash_get (ns_dict, (caddr_t) (&ns_pref)));
       if (NULL != ns_uri_ptr)
 	goto ns_found;		/* see below */
     }
   ns_dict = ttlp_arg[0].ttlp_namespaces_prefix2iri;
-  ns_uri_ptr = ((NULL == ns_dict) ? NULL : (caddr_t *) id_hash_get (ns_dict, (caddr_t) (&ns_pref)));
+  ns_uri_ptr = ((NULL == ns_dict) ? NULL : (caddr_t **) id_hash_get (ns_dict, (caddr_t) (&ns_pref)));
   if (NULL != ns_uri_ptr)
     goto ns_found;		/* see below */
   if (!strcmp (ns_pref, "rdf:"))
@@ -1403,15 +1403,15 @@ nic_set_n_ways (name_id_cache_t * nic, int n_ways)
   nic->nic_n_ways = n_ways;
   id_hash_free (nic->nic_name_to_id);
   nic->nic_name_to_id = NULL;
-  hash_table_free_64 (nic->nic_id_to_name);
+  id_hash_free (nic->nic_id_to_name);
   nic->nic_id_to_name = NULL;
-  nic->nic_in_array = (dk_hash_64_t **) dk_alloc_box (sizeof (caddr_t) * n_ways, DV_BIN);
+  nic->nic_in_array = (id_hash_t **) dk_alloc_box (sizeof (caddr_t) * n_ways, DV_BIN);
   nic->nic_ni_array = (id_hash_t **) dk_alloc_box (sizeof (caddr_t) * n_ways, DV_BIN);
-  nic->nic_ni_mtx = dk_alloc_box (sizeof (dk_mutex_t) * n_ways, DV_BIN);
-  nic->nic_in_mtx = dk_alloc_box (sizeof (dk_mutex_t) * n_ways, DV_BIN);
+  nic->nic_ni_mtx = (dk_mutex_t *) dk_alloc_box (sizeof (dk_mutex_t) * n_ways, DV_BIN);
+  nic->nic_in_mtx = (dk_mutex_t *) dk_alloc_box (sizeof (dk_mutex_t) * n_ways, DV_BIN);
   for (inx = 0; inx < n_ways; inx++)
     {
-      nic->nic_in_array[inx] = hash_table_allocate_64 (sz);
+      nic->nic_in_array[inx] = id_hash_table_allocate (sz);
       nic->nic_ni_array[inx] = id_hash_allocate (sz, sizeof (caddr_t), sizeof (caddr_t), iristrhash, iristrhashcmp);
       dk_mutex_init (&nic->nic_in_mtx[inx], MUTEX_TYPE_SHORT);
       mutex_option (&nic->nic_in_mtx[inx], "NICB_IN", NULL, NULL);
@@ -1447,7 +1447,7 @@ caddr_t DBG_NAME (nic_id_name_n) (DBG_PARAMS name_id_cache_t * nic, boxint id)
   boxint r;
   int nth_id;
   NIC_IN_ID (nic, nth_id, id);
-  gethash_64 (r, id, nic->nic_in_array[nth_id]);
+  r = id_gethash (id, nic->nic_in_array[nth_id]);
   ret = r ? DBG_NAME (box_copy) (DBG_ARGS (caddr_t) ((ptrlong) r)) : NULL;
   /* read the value inside the mtx because cache replacement may del it before the copy is made if not in the mtx */
   NIC_LEAVE_ID (nic, nth_id);
@@ -1480,7 +1480,7 @@ nic_remove_some_elements_n (name_id_cache_t * nic, int nth_name, char cachelet_m
 	    }
 	  mutex_leave (&nic->nic_ni_mtx[nth_name]);
 	  NIC_IN_ID (nic, nth_id, el.nicel_id);
-	  remhash_64_f (el.nicel_id, nic->nic_in_array[nth_id], flag);
+	  flag = id_remhash (el.nicel_id, nic->nic_in_array[nth_id]);
 	  if (!flag)
 	    log_debug ("missed delete of name id cache %s %L (%p %s)", el.nicel_name + 4, el.nicel_id, el.nicel_name,
 		el.nicel_name);
@@ -1553,11 +1553,11 @@ nic_set_n (name_id_cache_t * nic, caddr_t name, boxint id)
       mutex_leave (&nic->nic_ni_mtx[nth_name]);
 
       NIC_IN_ID (nic, nth_id, old_id);
-      remhash_64 (old_id, nic->nic_in_array[nth_id]);
+      id_remhash (old_id, nic->nic_in_array[nth_id]);
       NIC_LEAVE_ID (nic, nth_id);
 
       NIC_IN_ID (nic, nth_id, id);
-      sethash_64 (id, nic->nic_in_array[nth_id], (boxint) ((ptrlong) (name_box)));
+      id_sethash (id, nic->nic_in_array[nth_id], (boxint) ((ptrlong) (name_box)));
       NIC_LEAVE_ID (nic, nth_id);
     }
   else
@@ -1572,7 +1572,7 @@ nic_set_n (name_id_cache_t * nic, caddr_t name, boxint id)
       mutex_leave (&nic->nic_ni_mtx[nth_name]);
 
       NIC_IN_ID (nic, nth_id, id);
-      sethash_64 (id, nic->nic_in_array[nth_id], (boxint) ((ptrlong) (name_box)));
+      id_sethash (id, nic->nic_in_array[nth_id], (boxint) ((ptrlong) (name_box)));
       NIC_LEAVE_ID (nic, nth_id);
     }
 }
@@ -1597,15 +1597,15 @@ nic_set (name_id_cache_t * nic, caddr_t name, boxint id)
 	    boxint old_id = *(boxint *) place;
 	    name_box = ((caddr_t *) place)[-1];
 	    *(boxint *) place = id;
-	    remhash_64 (old_id, nic->nic_id_to_name);
-	    sethash_64 (id, nic->nic_id_to_name, (boxint) ((ptrlong) (name_box)));
+	    id_remhash (old_id, nic->nic_id_to_name);
+	    id_sethash (id, nic->nic_id_to_name, (boxint) ((ptrlong) (name_box)));
 	  }
 	else
 	  {
 	    nic_remove_some_elements (nic, 1);
 	    name_box = nic->nic_is_boxes ? box_copy (name) : box_dv_short_string (name);
 	    id_hash_set (nic->nic_name_to_id, (caddr_t) & name_box, (caddr_t) & id);
-	    sethash_64 (id, nic->nic_id_to_name, (boxint) ((ptrlong) (name_box)));
+	    id_sethash (id, nic->nic_id_to_name, (boxint) ((ptrlong) (name_box)));
 	  }
 	mutex_leave (nic->nic_mtx);
       }
@@ -1734,7 +1734,7 @@ nic_free (name_id_cache_t * nic)
       int inx;
       for (inx = 0; inx < nic->nic_n_ways; inx++)
 	{
-	  hash_table_free_64 (nic->nic_in_array[inx]);
+	  id_hash_free (nic->nic_in_array[inx]);
 	  id_hash_free (nic->nic_ni_array[inx]);
 	  mutex_free (&nic->nic_in_mtx[inx]);
 	  mutex_free (&nic->nic_ni_mtx[inx]);
@@ -1803,7 +1803,7 @@ caddr_t DBG_NAME (nic_id_name) (DBG_PARAMS name_id_cache_t * nic, boxint id)
   if (nic->nic_n_ways)
     return DBG_NAME (nic_id_name_n) (DBG_ARGS nic, id);
   mutex_enter (nic->nic_mtx);
-  gethash_64 (r, id, nic->nic_id_to_name);
+  r = id_gethash (id, nic->nic_id_to_name);
   ret = r ? DBG_NAME (box_copy) (DBG_ARGS (caddr_t) (ptrlong) r) : NULL;
   /* read the value inside the mtx because cache replacement may del it before the copy is made if not in the mtx */
   mutex_leave (nic->nic_mtx);
@@ -1850,7 +1850,7 @@ nic_allocate (unsigned long sz, int is_box, int ht_init_sz)
     nic->nic_name_to_id = id_hash_allocate (sz / 2, sizeof (caddr_t), sizeof (boxint), strhash, strhashcmp);
   else
     nic->nic_name_to_id = id_hash_allocate (sz, sizeof (caddr_t), sizeof (boxint), iristrhash, iristrhashcmp);
-  nic->nic_id_to_name = hash_table_allocate_64 (sz);
+  nic->nic_id_to_name = id_hash_table_allocate (sz);
   id_hash_set_rehash_pct (nic->nic_id_to_name, 220);
   id_hash_set_rehash_pct (nic->nic_name_to_id, 220);
   nic->nic_mtx = mutex_allocate ();
@@ -1886,7 +1886,7 @@ nic_flush_n (name_id_cache_t * nic)
   DO_SET (nic_name_id_cache_element_t *, el, &removed_keys)
   {
     NIC_IN_ID (nic, nth_id, el->nicel_id);
-    remhash_64 (el->nicel_id, nic->nic_in_array[nth_id]);
+    id_remhash (el->nicel_id, nic->nic_in_array[nth_id]);
     dk_free_box (el->nicel_name);
     dk_free (el, sizeof (nic_name_id_cache_element_t));
     NIC_LEAVE_ID (nic, nth_id);
@@ -1911,7 +1911,7 @@ nic_flush (name_id_cache_t * nic)
       boxint id;
       while (id_hash_remove_rnd (nic->nic_name_to_id, bucket_ctr, (caddr_t) & key, (caddr_t) & id))
 	{
-	  remhash_64 (id, nic->nic_id_to_name);
+	  id_remhash (id, nic->nic_id_to_name);
 	  dk_free_box (key);
 	}
     }
@@ -3894,10 +3894,8 @@ rdf_obj_ft_rule_check_if_configured (caddr_t * qst, state_slot_t ** args, int g_
   mutex_enter (rdf_obj_ft_rules_mtx);
   if (NULL != id_hash_get (rdf_obj_ft_rules_by_iids, (caddr_t) (&iid_hkey)))
     goto hit;			/* see_below */
-  mutex_leave (rdf_obj_ft_rules_mtx);
   g_id = bif_iri_id_or_null_arg (qst, args, g_arg_idx, fname);
   p = bif_arg (qst, args, g_arg_idx + 1, fname);
-  mutex_enter (rdf_obj_ft_rules_mtx);
   p_dtp = DV_TYPE_OF (p);
   switch (p_dtp)
     {
@@ -4452,8 +4450,8 @@ rdf_core_init (void)
   bif_set_uses_index (bif_rdf_obj_set_is_text_if_ft_rule_check);
   bif_define ("__rdf_obj_ft_rule_count_in_graph", bif_rdf_obj_ft_rule_count_in_graph);
   {
-    char *inv1[] = { "__id2in", "__i2idn", "__ID2IN", "__I2IDN" };
-    char *inv2[] = { "__i2idn", "__id2in", "__I2IDN", "__ID2IN" };
+    const char *inv1[] = { "__id2in", "__i2idn", "__ID2IN", "__I2IDN" };
+    const char *inv2[] = { "__i2idn", "__id2in", "__I2IDN", "__ID2IN" };
     int flags[] = { 0, 0, 0, 0 };
     sinv_builtin_inverse (inv1, inv2, flags, 4);
   }

@@ -360,7 +360,7 @@ itc_cset_except (it_cursor_t * itc, buffer_desc_t * buf, int prev_matches, int r
   search_spec_t *sp = itc->itc_col_spec;
   row_no_t prev_row;
   int nth_bit = sp->sp_ordinal;
-  cset_p_t *csetp = sp->sp_col->col_csetp;
+  cset_p_t *csetp = sp->sp_col ? sp->sp_col->col_csetp : NULL;
   row_no_t *pre, *post;
   uint64 *bf;
   uint32 n_bf;
@@ -972,7 +972,8 @@ itc_cset_exc_param_nos (it_cursor_t * itc)
   int inx, fill = 0;
   uint64 *bf;
   uint32 n_bf;
-  if (itc->itc_ks->ks_is_cset_exc_scan)
+  data_col_t *s_dc = ITC_P_VEC (itc, 1);
+  if (itc->itc_ks->ks_is_cset_exc_scan || (itc->itc_search_par_fill > 1 && !s_dc))
     {
       nos[0] = 0;
       return 1;
@@ -980,7 +981,6 @@ itc_cset_exc_param_nos (it_cursor_t * itc)
   table_source_t *ts = itc->itc_ks->ks_ts;
   iri_id_t p = unbox_iri_id (itc->itc_search_params[0]);
   cset_t *cset = ts->ts_csm->csm_cset;
-  data_col_t *s_dc = ITC_P_VEC (itc, 1);
   iri_id_t *s_arr = (iri_id_t *) s_dc->dc_values;
   cset_p_t *csetp = (cset_p_t *) gethash ((void *) p, &cset->cset_p);
   caddr_t *inst = itc->itc_out_state;
@@ -1232,7 +1232,7 @@ psog_cset_scan_exceptions (table_source_t * ts, caddr_t * inst, caddr_t * state)
   cset_mode_t *cset_csm = cset_ts->ts_csm;
   it_cursor_t *itc = TS_ORDER_ITC (ts, inst);
   iri_id_t lower = 0, upper = 0;
-  key_source_t *exc_ks = ts->ts_csm->csm_exc_scan_ks;
+  key_source_t *exc_ks = rq_ts->ts_csm->csm_exc_scan_ks;
   data_col_t *s_lookup_dc;
   if (state && QST_INT (inst, ts->src_gen.src_out_fill))
     {
@@ -1260,9 +1260,14 @@ again:
       else
 	{
 	  s_lookup_dc = ITC_P_VEC (itc, 1);
-	  DC_CHECK_LEN (exc_s_dc, s_lookup_dc->dc_n_values - 1);
-	  memcpy_16 (exc_s_dc->dc_values, s_lookup_dc->dc_values, sizeof (iri_id_t) * s_lookup_dc->dc_n_values);
-	  exc_s_dc->dc_n_values = s_lookup_dc->dc_n_values;
+	  if (s_lookup_dc)
+	    {
+	      DC_CHECK_LEN (exc_s_dc, s_lookup_dc->dc_n_values - 1);
+	      memcpy_16 (exc_s_dc->dc_values, s_lookup_dc->dc_values, sizeof (iri_id_t) * s_lookup_dc->dc_n_values);
+	      exc_s_dc->dc_n_values = s_lookup_dc->dc_n_values;
+	    }
+	  else
+	    exc_s_dc->dc_n_values = 0;
 	}
       scan_state = QST_INT (inst, cset_csm->csm_cset_scan_state);
       cset_itc = TS_ORDER_ITC (cset_ts, inst);

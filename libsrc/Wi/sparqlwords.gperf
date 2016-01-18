@@ -21,7 +21,7 @@
  *
  */
 
-struct sparql_keyword { char *kwd; int token; int subtype; };
+struct sparql_keyword_s { char *kwd; int token; int subtype; };
 %%
 "ABS",			SPARQL_BIF		, SPAR_BIF_ABS
 "ADD",			ADD_L			, 0

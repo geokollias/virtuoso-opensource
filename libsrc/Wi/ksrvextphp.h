@@ -62,7 +62,7 @@ static char *php_virtuoso_getenv (char *name, size_t name_len TSRMLS_DC);
 static void sapi_virtuoso_register_variables (zval * track_vars_array TSRMLS_DC);
 static int php_module_startup_int (sapi_module_struct * sapi_module);
 extern PHPAPI char *php_ini_opened_path;
-int log_error (char *format, ...);
+int log_error (const char *format, ...);
 
 #define SECTION(name)  PUTS("<H2 align=\"center\">" name "</H2>\n")
 

@@ -51,12 +51,6 @@
 #include "xmltree.h"
 #include "arith.h"
 #include "rdfinf.h"
-
-
-
-
-
-
 #include "ssl.c"
 /* #define USE_SYS_CONSTANT */
 
@@ -69,7 +63,7 @@ cc_new_instance_slot (comp_context_t * cc)
     GPF_T1 ("qi with state slots over the limit.");
   if (cc->cc_in_cset_gen)
     {
-      int inx = (ptrlong) dk_set_pop (&cc->cc_qi_places);
+      int inx = (ptrlong) t_set_pop (&cc->cc_qi_places);
       if (!inx)
 	sqlc_new_error (cc, "NCSSL", "NCSSL", "Nott enough unspecialized qi places for cset plan");
       return inx;
@@ -87,12 +81,12 @@ cc_new_ssl_slot (comp_context_t * cc, ssl_index_t * box_inx_ret)
     return cc_new_instance_slot (cc);
   if (box_inx_ret)
     {
-      inx = (ptrlong) dk_set_pop (&cc->cc_qi_box_places);
+      inx = (ptrlong) t_set_pop (&cc->cc_qi_box_places);
       if (!inx)
 	sqlc_new_error (cc, "CSNSL", "VCSNSL", "Not enough cset qi places for making cset plan");
       *box_inx_ret = inx;
     }
-  inx = (ptrlong) dk_set_pop (&cc->cc_qi_vec_places);
+  inx = (ptrlong) t_set_pop (&cc->cc_qi_vec_places);
   if (!inx)
     sqlc_new_error (cc, "CSNSL", "VCSNSL", "Not enough cset qi places for making cset plan");
   return inx;
@@ -105,7 +99,7 @@ cc_new_sets_slot (comp_context_t * cc)
   cc = cc->cc_super_cc;
   if (!cc->cc_in_cset_gen)
     return cc_new_instance_slot (cc);
-  inx = (ptrlong) dk_set_pop (&cc->cc_qi_sets_places);
+  inx = (ptrlong) t_set_pop (&cc->cc_qi_sets_places);
   if (!inx)
     sqlc_new_error (cc, "CSNSL", "VCSNSL", "Not enough cset qi qn sets places for making cset plan");
   return inx;
@@ -120,7 +114,7 @@ cc_new_scalar_slot (comp_context_t * cc)
   cc = cc->cc_super_cc;
   if (!cc->cc_in_cset_gen)
     return cc_new_instance_slot (cc);
-  inx = (ptrlong) dk_set_pop (&cc->cc_qi_scalar_places);
+  inx = (ptrlong) t_set_pop (&cc->cc_qi_scalar_places);
   if (!inx)
     sqlc_new_error (cc, "CSNSL", "VCSNSL", "Not enough cset qi scalar places for making cset plan");
   return inx;
@@ -495,22 +489,22 @@ qr_free (query_t * qr)
       )
     {
       /* a local qr has parallel branches.  If going, let the last of them free the qr */
-      IN_CLL;
+      IN_CL_QF;
       if (qr->qr_ref_count)
 	{
 	  qr->qr_last_qi_may_free = 1;
-	  LEAVE_CLL;
+	  LEAVE_CL_QF;
 	  return;
 	}
-      LEAVE_CLL;
+      LEAVE_CL_QF;
     }
   qr_drop_dependencies (qr);
   while (NULL != qr->qr_used_tables)
-    dk_free_tree (dk_set_pop (&(qr->qr_used_tables)));
+    dk_free_tree ((caddr_t) dk_set_pop (&(qr->qr_used_tables)));
   while (NULL != qr->qr_used_udts)
-    dk_free_tree (dk_set_pop (&(qr->qr_used_udts)));
+    dk_free_tree ((caddr_t) dk_set_pop (&(qr->qr_used_udts)));
   while (NULL != qr->qr_used_jsos)
-    dk_free_tree (dk_set_pop (&(qr->qr_used_jsos)));
+    dk_free_tree ((caddr_t) dk_set_pop (&(qr->qr_used_jsos)));
   dk_free_tree (qr->qr_parse_tree);
   DO_SET (data_source_t *, sr, &qr->qr_nodes)
   {
@@ -1373,7 +1367,7 @@ key_free_trail_specs (search_spec_t * sp)
 void
 clb_free (cl_buffer_t * clb)
 {
-  dk_free_box (clb->clb_save);
+  dk_free_box ((caddr_t) (clb->clb_save));
 }
 
 
@@ -2438,7 +2432,7 @@ typedef void (*eql_comp_func_t) (comp_context_t * cc, caddr_t * stmt, data_sourc
 
 typedef struct _eqlcfgstruct
 {
-  char *cf_name;
+  const char *cf_name;
   eql_comp_func_t cf_func;
 }
 eql_comp_fn_ent_t;

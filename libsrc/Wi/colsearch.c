@@ -184,7 +184,7 @@ col_make_map (buffer_desc_t * buf, page_map_t ** pm_ret, db_buf_t str, int head,
   page_map_t *pm = *pm_ret;
   int fill = 0;
   if (!pm)
-    pm = (page_map_t *) pm_get (buf, (PM_SZ_1));
+    pm = pm_get (buf, (PM_SZ_1));
   pm->pm_bytes_free = buf_len;
   pm->pm_filled_to = head;
   DO_CE (ce, bytes, values, ce_type, flags, str + head, buf_len)
@@ -2249,7 +2249,7 @@ itc_key_del_values (it_cursor_t * itc, buffer_desc_t * buf, int end, int n_used,
   memzero (&dc, sizeof (dc));
   memzero (&cpo, sizeof (cpo));
   cpo.cpo_dc = &dc;
-  dc.dc_values = dk_alloc_box (sizeof (caddr_t) * n_used, DV_ARRAY_OF_POINTER);
+  dc.dc_values = (db_buf_t) dk_alloc_box (sizeof (caddr_t) * n_used, DV_ARRAY_OF_POINTER);
   dc.dc_dtp = DV_ARRAY_OF_POINTER;
   dc.dc_n_places = n_used;
   dc.dc_type = DCT_BOXES;
@@ -3213,7 +3213,7 @@ itc_col_seg (it_cursor_t * itc, buffer_desc_t * buf, int is_singles, int n_sets_
       for (nth = 0; nth < n_keys; nth++)
 	{
 	  if (!om[nth].om_ssl)
-	    dk_free_tree (key_vals[nth]);
+	    dk_free_tree ((caddr_t) (key_vals[nth]));
 	}
     }
   if (itc->itc_is_cset)

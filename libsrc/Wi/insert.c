@@ -60,7 +60,7 @@ map_resize (buffer_desc_t * buf, page_map_t ** pm_ret, int new_sz)
   page_map_t *pm = *pm_ret;
   page_map_t *new_pm;
 #if 1
-  new_pm = (page_map_t *) pm_get (buf, (new_sz));
+  new_pm = pm_get (buf, (new_sz));
 #ifdef VALGRIND
   new_pm->pm_entries[new_sz - 1] = 0xc0c0;	/* for valgrind */
 #endif
@@ -152,7 +152,7 @@ pg_make_map (buffer_desc_t * buf)
   pg_key = KI_TEMP == k_id ? buf->bd_tree->it_key : sch_id_to_key (wi_inst.wi_schema, k_id);
   if (!map)
     {
-      map = (page_map_t *) pm_get (buf, (PM_SZ_1));
+      map = pm_get (buf, (PM_SZ_1));
     }
   if (pos && !pg_key)
     {
@@ -1244,7 +1244,7 @@ itc_compact (it_cursor_t * itc, buffer_desc_t * parent, page_rel_t * pr, int pr_
   pg_map_clear (pf.pf_current);
   pf.pf_current->bd_tree = itc->itc_tree;
   pf.pf_itc = itc;
-  pf.pf_hash = resource_get (pfh_rc);
+  pf.pf_hash = (pf_hash_t *) (resource_get (pfh_rc));
   pfh_init (pf.pf_hash, pf.pf_current);
   if (is_col)
     {

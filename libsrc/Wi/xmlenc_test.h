@@ -33,7 +33,7 @@ void trset_end ();
 void xenc_test_begin ();
 void xenc_test_end ();
 int xenc_test_processing ();
-void xenc_assert_1 (int term, char *file, long line);
+void xenc_assert_1 (int term, const char *file, long line);
 
 #define xenc_assert(term) xenc_assert_1(term, __FILE__, __LINE__)
 

@@ -55,7 +55,7 @@ long xenc_errs;
 long xenc_asserts;
 
 void
-xenc_assert_1 (int term, char *file, long line)
+xenc_assert_1 (int term, const char *file, long line)
 {
   xenc_asserts++;
   if (!term)
@@ -689,7 +689,7 @@ xml_c_nss_hash_create (caddr_t * select_tree, id_hash_t * nss, caddr_t * new_nam
     caddr_t *new_new_namespaces = 0;
     xml_c_fill_exc_list_up (&pexc_list, new_namespaces);
     new_new_namespaces = xml_c_namespaces_sort_2 (select_tree, &pexc_list, 0);
-    dk_free_box (new_namespaces);
+    dk_free_box ((caddr_t) new_namespaces);
     new_namespaces = new_new_namespaces;
     xml_c_namespaces_sort (new_namespaces);	/* XXX: this needed as MS.WSE used sorted prefixes */
   }
@@ -782,7 +782,7 @@ xml_canonicalize (query_instance_t * qi, caddr_t * doc_tree, caddr_t * select_tr
 
 #ifdef DEBUG
   /* This is to keep xte_tree_check() happy */
-  xs->xs_doc->xe_doc.xtd->xtd_tree = list (1, list (1, uname__root));
+  xs->xs_doc->xe_doc.xtd->xtd_tree = (caddr_t *) list (1, list (1, uname__root));
 #else
   xs->xs_doc->xe_doc.xtd->xtd_tree = 0;
 #endif
@@ -2953,10 +2953,10 @@ dsig_tr_enveloped_signature_test (query_instance_t * qi)
 void
 dsig_sha1_digest_test ()
 {
-  char msg[] =
+  const char msg[] =
       "What is Hot in the World of DivX(tm) Video This Week: Sherlock Holmes, In Other News, and Skin Mania Now Sent to Over 1.7 Million DivX Fans Worldwide!";
   dk_session_t *in = strses_allocate ();
-  char digest_etalon_1[] =
+  unsigned char digest_etalon_1[] =
       { 0xf7, 0xae, 0xec, 0x74, 0x7e, 0x36, 0x90, 0xcb, 0x21, 0xb9, 0xa0, 0xe7, 0x71, 0x53, 0x7a, 0x9c, 0x16, 0x45, 0x28, 0x20 };
   char digest_etalon[sizeof (digest_etalon_1) * 2];
   /*  "967sdH42kMshuaDncVN6nBZFKCB07K73y5A2fueg8" */

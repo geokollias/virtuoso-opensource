@@ -49,8 +49,7 @@
 #include "statuslog.h"
 #include "sqltype.h"
 #include "virtpwd.h"
-
-extern caddr_t bif_arg (caddr_t * qst, state_slot_t ** args, int nth, const char *func);
+#include "sqlbif.h"
 
 id_hash_t *sec_users;
 dk_hash_t *sec_user_by_id;	/*!< Dictionary of all users and groups. Key is U_ID as ptrlong, value is the pointer to user_t */
@@ -519,7 +518,7 @@ sec_db_grant (query_instance_t * qi, char *object, char *column, int is_grant, i
 
 
 user_t *
-sec_name_to_user (char *name)
+sec_name_to_user (const char *name)
 {
   user_t **place;
   if (0 == strcmp (name, "DBA"))
@@ -1818,7 +1817,7 @@ sec_user_has_group (oid_t CheckGroup, oid_t user)
 
 
 int
-sec_user_has_group_name (char *name, oid_t user)
+sec_user_has_group_name (const char *name, oid_t user)
 {
   int inx;
   user_t *u = sec_id_to_user (user), *g;

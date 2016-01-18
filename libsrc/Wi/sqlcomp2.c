@@ -508,159 +508,6 @@ sqlc_select_top (sql_comp_t * sc, select_node_t * sel, ST * tree, dk_set_t * cod
   sel->sel_row_ctr = ssl_new_variable (sc->sc_cc, "rowctr", DV_LONG_INT);
 }
 
-
-void
-yy_new_error (const char *s, const char *state, const char *native)
-{
-  int nlen;
-  int is_semi;
-  int this_lineno = global_scs->scs_scn3c.lineno;
-  char buf_for_next[2000];
-  char *current_lexem_text = NULL;
-  yyscan_t scanner;
-  YYSTYPE lval;
-  scn3_include_fragment_t *outer;
-  if (global_scs->scs_scn3c.inside_error_reporter)
-    goto jmp;			/* see below */
-  nlen = scn3_sprint_curr_line_loc (sql_err_text, sizeof (sql_err_text));
-  if (state)
-    {
-      strncpy (sql_err_state, state, sizeof (sql_err_state));
-      sql_err_state[sizeof (sql_err_state) - 1] = 0;
-    }
-  if (native)
-    {
-      strncpy (sql_err_native, native, sizeof (sql_err_native));
-      sql_err_native[sizeof (sql_err_native) - 1] = 0;
-    }
-  scanner = global_scs->scs_scn3c.scanner;
-  if (NULL != scanner)
-    current_lexem_text = scn3_get_yytext (scanner);
-  if (NULL == current_lexem_text)
-    {
-      is_semi = 0;
-      snprintf (sql_err_text + nlen, sizeof (sql_err_text) - nlen, ": %s", s);
-    }
-  else
-    {
-      is_semi = !strcmp (current_lexem_text, ";");
-      snprintf (sql_err_text + nlen, sizeof (sql_err_text) - nlen, ": %s at '%s'", s, current_lexem_text);
-    }
-  global_scs->scs_scn3c.inside_error_reporter++;
-  if (NULL != scanner && 0 != scn3yylex (&lval, scanner))
-    if (global_scs->scs_scn3c.lineno != this_lineno)
-      strcpy (buf_for_next, " immediately before end of line");
-    else
-      {
-	snprintf (buf_for_next, sizeof (buf_for_next), " before '%s'", scn3_get_yytext (scanner));
-	buf_for_next[sizeof (buf_for_next) - 1] = 0;
-      }
-  else
-    {
-      if (is_semi)
-	{
-	  sql_err_text[sizeof (sql_err_text) - 1] = '\0';
-	  sql_err_text[strlen (sql_err_text) - 7] = '\0';
-	  buf_for_next[0] = '\0';
-	}
-      else
-	strcpy (buf_for_next, " immediately before end of statement");
-    }
-  strncat_ck (sql_err_text, buf_for_next, (sizeof (sql_err_text) - 1));
-  sql_err_text[sizeof (sql_err_text) - 1] = '\0';
-jmp:
-  outer = global_scs->scs_scn3c.include_stack + global_scs->scs_scn3c.include_depth;
-  if (outer->_.sif_skipped_part)
-    {
-      dk_free_box (outer->_.sif_skipped_part);
-      outer->_.sif_skipped_part = NULL;
-    }
-  longjmp_splice (&(global_scs->parse_reset), 1);
-}
-
-
-void
-yyerror (const char *s)
-{
-  yy_new_error (s, NULL, NULL);
-}
-
-void
-yyfatalerror (const char *s)
-{
-  if (global_scs->scs_scn3c.inside_error_reporter)
-    goto jmp;			/* see below */
-  strcpy_ck (sql_err_text, s);
-  sql_err_text[sizeof (sql_err_text) - 1] = '\0';
-
-jmp:
-  longjmp_splice (&(global_scs->parse_reset), 1);
-}
-
-void
-yyerror_1 (int yystate, short *yyssa, short *yyssp, const char *strg)
-{
-  char buf[2000];
-  int this_lineno = global_scs->scs_scn3c.lineno;
-  char buf_for_next[2000];
-  char *current_lexem_text = NULL;
-  yyscan_t scanner;
-  YYSTYPE lval;
-  scanner = global_scs->scs_scn3c.scanner;
-  if (global_scs->scs_scn3c.inside_error_reporter)
-    goto jmp;			/* see below */
-  if (NULL != scanner)
-    current_lexem_text = scn3_get_yytext (scanner);
-  if (NULL == current_lexem_text)
-    strcpy (buf, strg);
-  else
-    snprintf (buf, sizeof (buf), ": %s at '%s'", strg, current_lexem_text);
-  scn3_sprint_curr_line_loc (sql_err_text, sizeof (sql_err_text));
-  strcat_ck (sql_err_text, buf);
-  global_scs->scs_scn3c.inside_error_reporter++;
-  if (NULL != scanner && 0 != scn3yylex (&lval, scanner))
-    if (global_scs->scs_scn3c.lineno != this_lineno)
-      strcpy (buf_for_next, " immediately before end of line");
-    else
-      snprintf (buf_for_next, sizeof (buf_for_next), " before '%s'", scn3_get_yytext (scanner));
-  else
-    strcpy (buf_for_next, " immediately before end of statement");
-  strcat_ck (sql_err_text, buf_for_next);
-
-jmp:
-  longjmp_splice (&(global_scs->parse_reset), 1);
-}
-
-
-void
-yyfatalerror_1 (yyscan_t scanner, int yystate, short *yyssa, short *yyssp, const char *strg)
-{
-  char buf[2000];
-#ifdef DEBUG
-  int sm2, sm1, sp1;
-  sp1 = yyssp[1];
-  sm1 = yyssp[-1];
-  sm2 = ((sm1 > 0) ? yyssp[-2] : 0);
-  snprintf (buf, sizeof (buf), ": %s [%d-%d-(%d)-%d]", strg, sm2, sm1, yystate,
-      ((sp1 & ~0x7FF) ? -1 : sp1) /* stub to avoid printing random garbage in logs */ );
-#else
-  snprintf (buf, sizeof (buf), ": %s", strg);
-#endif
-  if (global_scs->scs_scn3c.inside_error_reporter)
-    goto jmp;			/* see below */
-  scn3_sprint_curr_line_loc (sql_err_text, sizeof (sql_err_text));
-  strcat_ck (sql_err_text, buf);
-
-jmp:
-  longjmp_splice (&(global_scs->parse_reset), 1);
-}
-
-void
-scn3yyerror (const char *strg)
-{
-  yyerror_1 (-1, "lexical error", "", strg);
-}
-
 int
 ssl_param_key (state_slot_t * sl)
 {
@@ -1009,6 +856,7 @@ sc_free (sql_comp_t * sc)
       END_DO_HT;
       hash_table_free (sc->sc_ssl_eqs);
     }
+#if 0
   if (sc->sc_sample_cache)
     {
       id_hash_iterator_t hit;
@@ -1022,6 +870,7 @@ sc_free (sql_comp_t * sc)
 	}
       id_hash_free (sc->sc_sample_cache);
     }
+#endif
   if (NULL != sc->sc_big_ssl_consts)
     {
 #ifndef NDEBUG
@@ -1033,7 +882,7 @@ sc_free (sql_comp_t * sc)
       }
       END_DO_BOX_FAST;
 #endif
-      dk_free_tree (sc->sc_big_ssl_consts);
+      dk_free_tree ((caddr_t) (sc->sc_big_ssl_consts));
     }
   if (sc->sc_qn_to_dfe)
     hash_table_free (sc->sc_qn_to_dfe);
@@ -1698,7 +1547,7 @@ query_t *DBG_NAME (sql_compile_1) (DBG_PARAMS const char *string2, client_connec
 	    {
 	      if (qr->qr_aggregate)
 		{
-		  static char *ua_header = "--#pragma bootstrap user-aggregate\n";
+		  static const char *ua_header = "--#pragma bootstrap user-aggregate\n";
 		  caddr_t string3 = dk_alloc_box (strlen (ua_header) + strlen (string2) + 1, DV_STRING);
 		  snprintf (string3, box_length (string3), "%s%s", ua_header, string2);
 		  qr = sqlc_make_proc_store_qr (cli, qr, string3);
@@ -1746,7 +1595,7 @@ dbg_sql_compile_static (const char *file, int line, const char *string2, client_
       cr_type = SQLC_DEFAULT;
     }
   qr = DBG_NAME (sql_compile_1) (DBG_ARGS string2, cli, err, cr_type, tree, NULL);
-  dk_free_tree ((caddr_t *) tree);
+  dk_free_tree ((caddr_t) tree);
   if (NULL != err)
     err[0] = my_err;
   if (NULL == qr)
@@ -1848,7 +1697,7 @@ sql_compile_static (const char *string2, client_connection_t * cli, caddr_t * er
       cr_type = SQLC_DEFAULT;
     }
   qr = DBG_NAME (sql_compile_1) (DBG_ARGS string2, cli, err, cr_type, tree, NULL);
-  dk_free_tree ((caddr_t *) tree);
+  dk_free_tree ((caddr_t) tree);
   return qr;
 }
 #endif
@@ -1915,7 +1764,7 @@ query_t *DBG_NAME (sql_proc_to_recompile) (DBG_PARAMS const char *string2, clien
   if (!sql_proc_use_recompile)
     return NULL;
 
-  lexems = (caddr_t **) sql_lex_analyze (string2, NULL, 0, 1, BEGINX);
+  lexems = sql_lex_analyze (string2, NULL, 0, 1, BEGINX);
   n_lexems = BOX_ELEMENTS (lexems);
   if (!proc_name)
     {				/* have to find out one using the parser */
@@ -2111,7 +1960,10 @@ sqlc_subquery_1 (sql_comp_t * super_sc, predicate_t * super_pred, ST ** ptree, i
 	    qr->qr_select_node->sel_ext_set_no = ext_sets;
 	  }
 	if (qr->qr_proc_vectored && !sc.sc_check_view_sec)
-	  sqlg_vector_subq (&sc);
+	  {
+	    sqlg_vector_subq (&sc);
+	    super_sc->sc_qr_size += sc.sc_qr_size;
+	  }
 	tree = *ptree;
       }
     subq_comp->sqc_tree = tree;

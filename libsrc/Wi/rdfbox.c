@@ -524,7 +524,7 @@ bif_rdf_box (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 	  long dtp = bif_long_arg (qst, args, 6, "rdf_box");
 	  if ((dtp & ~0xFF) || !(dtp & 0x80))
 	    {
-	      dk_free_box ((caddr_t *) rbb);
+	      dk_free_box ((caddr_t) rbb);
 	      sqlr_new_error ("22023", "SR556", "Invalid dtp %ld in call of rdf_box()", dtp);
 	    }
 	  rbb->rbb_box_dtp = (dtp_t) dtp;
@@ -744,7 +744,7 @@ bif_rdf_box_data (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   rdf_box_t *rb = (rdf_box_t *) bif_arg (qst, args, 0, "rdf_box_data");
   if (DV_RDF != DV_TYPE_OF (rb))
-    return box_copy_tree (rb);
+    return box_copy_tree ((caddr_t) rb);
   rdf_box_audit (rb);
   if (1 < BOX_ELEMENTS (args))
     {
@@ -1443,19 +1443,19 @@ dc_append_dv_rdf_any (data_col_t * dc, db_buf_t dv)
       memcpy_16 (cp, dv, len);
       cp[len] = 0;
       dc_append_bytes (dc, cp, len, NULL, 0);
-      dk_free_box (cp);
+      dk_free_box ((caddr_t) cp);
     }
   if (flags & RBS_EXT_TYPE)
     {
       if (flags & RBS_HAS_TYPE)
 	len += 2;
       len += (RBS_64 & flags) ? 8 : 4;
-      cp = dk_alloc_box (len + 4, DV_STRING);
+      cp = (db_buf_t) dk_alloc_box (len + 4, DV_STRING);
       memcpy (cp, dv, len + 2);
       cp[1] &= ~RBS_COMPLETE;
       cp[len + 3] = 0;
       dc_append_bytes (dc, cp, len - 1, NULL, 0);
-      dk_free_box (cp);
+      dk_free_box ((caddr_t) cp);
       return;
     }
   if (RBS_SKIP_DTP & flags)
@@ -2277,7 +2277,7 @@ bif_rdf_sqlval_of_obj (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   if (((RDF_BOX_DEFAULT_TYPE == rb->rb_type) && (RDF_BOX_DEFAULT_LANG == rb->rb_lang))
       || ((1 < BOX_ELEMENTS (args)) && bif_long_arg (qst, args, 1, "__rdf_sqlval_of_obj")))
     return box_copy_tree (rb->rb_box);
-  return box_copy (rb);
+  return box_copy ((caddr_t) rb);
 }
 
 caddr_t
@@ -2766,7 +2766,7 @@ bif_rdf_dist_deser_long (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 	rbb->rbb_base.rb_is_outlined = 1;
       vec[0] = 0;
       rb_dt_lang_check (&(rbb->rbb_base));
-      dk_free_tree (vec);
+      dk_free_tree ((caddr_t) vec);
       return (caddr_t) rbb;
     }
   return deser;
@@ -3125,7 +3125,6 @@ ttl_try_to_cache_new_prefix (caddr_t * qst, dk_session_t * ses, ttl_env_t * env,
   id_hash_iterator_t *ns2pref_hit = env->te_used_prefixes;
   id_hash_t *ns2pref = ns2pref_hit->hit_hash;
   caddr_t *prefx_ptr;
-  caddr_t prefix, ns;
   ptrlong ns_counter_val;
   if ('\0' == ti->ns[0])
     return 0;
@@ -3166,18 +3165,10 @@ ttl_try_to_cache_new_prefix (caddr_t * qst, dk_session_t * ses, ttl_env_t * env,
 	}
       ti->prefix = box_sprintf (20, "ns%d", ns2pref->ht_count);
     }
-  if (ns2pref->ht_mp)
-    {
-      prefix = mp_full_box_copy_tree ((mem_pool_t *) (ns2pref->ht_mp), ti->prefix);
-      ns = mp_full_box_copy_tree ((mem_pool_t *) (ns2pref->ht_mp), ti->ns);
-    }
-  else
-    {
-      prefix = box_copy (ti->prefix);
-      ns = box_copy (ti->ns);
-    }
-  id_hash_set (ns2pref, (caddr_t) (&ns), (caddr_t) (&prefix));
+  id_hash_set (ns2pref, (caddr_t) (&ti->ns), (caddr_t) (&(ti->prefix)));
+  ti->prefix = box_copy (ti->prefix);
   ns_counter_ptr[0] = ns_counter_val + 1;
+  ti->ns = box_copy (ti->ns);
   return 1;
 }
 
@@ -5213,10 +5204,19 @@ bif_http_ld_json_triple (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   else				/* 01.2345678901 */
     session_buffered_write (ses, " ,\n        ", 11);
   if (obj_is_iri)
-    {				/* 01 2345 678 90 */
-      session_buffered_write (ses, "{ \"@id\": \"", 10);
-      dks_esc_write (ses, obj_iri, box_length (obj_iri) - 1, CHARSET_UTF8, CHARSET_UTF8, DKS_ESC_JSWRITE_DQ);
-      session_buffered_write (ses, "\"}", 2);
+    {
+      if (!strcmp (pred_iri, uname_rdf_ns_uri_type))	/* Fix for 17108: values of @type should be printed without { "@id" : ... } enclosing */
+	{
+	  session_buffered_write_char ('\"', ses);
+	  dks_esc_write (ses, obj_iri, box_length (obj_iri) - 1, CHARSET_UTF8, CHARSET_UTF8, DKS_ESC_JSWRITE_DQ);
+	  session_buffered_write_char ('\"', ses);
+	}
+      else
+	{			/* 01 2345 678 90 */
+	  session_buffered_write (ses, "{ \"@id\": \"", 10);
+	  dks_esc_write (ses, obj_iri, box_length (obj_iri) - 1, CHARSET_UTF8, CHARSET_UTF8, DKS_ESC_JSWRITE_DQ);
+	  session_buffered_write (ses, "\"}", 2);
+	}
     }
   else
     http_ld_json_write_literal_obj (ses, qi, obj, obj_dtp);
@@ -5724,7 +5724,6 @@ bif_sparql_iri_split_rdfa_qname (caddr_t * qst, caddr_t * err_ret, state_slot_t 
   const char *tail;
   int iri_strlen;
   caddr_t ns_iri, prefix, *prefix_ptr, res = NULL, to_free = NULL;
-  caddr_t t_prefix, t_ns_iri;
   switch (DV_TYPE_OF (raw_iri))
     {
     case DV_IRI_ID:
@@ -5791,6 +5790,8 @@ bif_sparql_iri_split_rdfa_qname (caddr_t * qst, caddr_t * err_ret, state_slot_t 
 	    }
 	  else
 	    {
+	      caddr_t t_prefix = prefix;
+	      caddr_t t_ns_iri;
 	      if (flags & 0x1)
 		{
 		  if (ht->ht_mp)
@@ -5802,14 +5803,13 @@ bif_sparql_iri_split_rdfa_qname (caddr_t * qst, caddr_t * err_ret, state_slot_t 
 		    }
 		  else
 		    {
-		      t_prefix = prefix;
 		      t_ns_iri = ns_iri;
 		      to_free = NULL;	/* to be released when hash table is free */
 		    }
 		  id_hash_set (ht, (caddr_t) (&t_ns_iri), (caddr_t) (&t_prefix));
 		}
 	      res =
-		  (flags & 0x2) ? list (3, box_copy (t_prefix), box_copy (ns_iri), box_dv_short_nchars (tail,
+		  (flags & 0x2) ? list (3, box_copy (prefix), box_copy (ns_iri), box_dv_short_nchars (tail,
 		      iri + iri_strlen - tail)) : NULL;
 	      break;
 	    }
@@ -5818,18 +5818,9 @@ bif_sparql_iri_split_rdfa_qname (caddr_t * qst, caddr_t * err_ret, state_slot_t 
 	{
 	  char buf[10];
 	  sprintf (buf, "n%ld", (long) (ht->ht_count));
-	  if (ht->ht_mp)
-	    {
-	      prefix = mp_box_string ((mem_pool_t *) (ht->ht_mp), buf);
-	      t_ns_iri = mp_full_box_copy_tree ((mem_pool_t *) (ht->ht_mp), ns_iri);
-	    }
-	  else
-	    {
-	      prefix = box_dv_short_string (buf);
-	      t_ns_iri = ns_iri;
-	      to_free = NULL;	/* to be released when hash table is free */
-	    }
-	  id_hash_set (ht, (caddr_t) (&t_ns_iri), (caddr_t) (&prefix));
+	  prefix = box_dv_short_string (buf);
+	  id_hash_set (ht, (caddr_t) (&ns_iri), (caddr_t) (&prefix));
+	  to_free = NULL;	/* to be released when hash table is free */
 	  break;
 	}
       res = (flags & 0x2) ? list (3, NULL, box_copy (ns_iri), box_dv_short_nchars (tail, iri + iri_strlen - tail)) : NULL;
@@ -5868,35 +5859,35 @@ caddr_t
 bif_rdf_graph_id2iri_dict (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   sec_check_dba ((query_instance_t *) qst, "__rdf_graph_id2iri_dict");
-  return box_copy (rdf_graph_id2iri_dict_hit);
+  return box_copy ((caddr_t) rdf_graph_id2iri_dict_hit);
 }
 
 caddr_t
 bif_rdf_graph_iri2id_dict (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   sec_check_dba ((query_instance_t *) qst, "__rdf_graph_iri2id_dict");
-  return box_copy (rdf_graph_iri2id_dict_hit);
+  return box_copy ((caddr_t) rdf_graph_iri2id_dict_hit);
 }
 
 caddr_t
 bif_rdf_graph_group_dict (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   sec_check_dba ((query_instance_t *) qst, "__rdf_graph_group_dict");
-  return box_copy (rdf_graph_group_dict_hit);
+  return box_copy ((caddr_t) rdf_graph_group_dict_hit);
 }
 
 caddr_t
 bif_rdf_graph_public_perms_dict (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   sec_check_dba ((query_instance_t *) qst, "__rdf_graph_public_perms_dict");
-  return box_copy (rdf_graph_public_perms_dict_hit);
+  return box_copy ((caddr_t) rdf_graph_public_perms_dict_hit);
 }
 
 caddr_t
 bif_rdf_graph_group_of_privates_dict (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   sec_check_dba ((query_instance_t *) qst, "__rdf_graph_group_of_privates_dict");
-  return box_copy (rdf_graph_group_of_privates_dict_hit);
+  return box_copy ((caddr_t) rdf_graph_group_of_privates_dict_hit);
 }
 
 caddr_t
@@ -5904,8 +5895,8 @@ bif_rdf_graph_default_perms_of_user_dict (caddr_t * qst, caddr_t * err_ret, stat
 {
   sec_check_dba ((query_instance_t *) qst, "__rdf_graph_default_perms_of_user_dict");
   if (bif_long_arg (qst, args, 0, "__rdf_graph_default_perms_of_user_dict"))
-    return box_copy (rdf_graph_default_private_perms_of_user_dict_hit);
-  return box_copy (rdf_graph_default_world_perms_of_user_dict_hit);
+    return box_copy ((caddr_t) rdf_graph_default_private_perms_of_user_dict_hit);
+  return box_copy ((caddr_t) rdf_graph_default_world_perms_of_user_dict_hit);
 }
 
 extern const char *spar_unsafe_table_names[];
@@ -5966,7 +5957,7 @@ rdf_graph_specific_perms_of_user (user_t * u, iri_id_t g_iid)
   if (NULL == u->usr_rdf_graph_perms)
     return 0;
   rwlock_rdlock (u->usr_rdf_graph_perms->ht_rwlock);
-  gethash_64 (res, (boxint) g_iid, u->usr_rdf_graph_perms);
+  res = id_gethash ((boxint) g_iid, u->usr_rdf_graph_perms);
   rwlock_unlock (u->usr_rdf_graph_perms->ht_rwlock);
   return res;
 }
@@ -6021,7 +6012,7 @@ rdf_graph_configured_perms (query_instance_t * qst, caddr_t graph_boxed_iid, use
       if (check_usr_rdf_graph_perms && (NULL != u->usr_rdf_graph_perms))
 	{
 	  int p;
-	  gethash_64 (p, unbox_iri_int64 (graph_boxed_iid), u->usr_rdf_graph_perms);
+	  p = id_gethash (unbox_iri_int64 (graph_boxed_iid), u->usr_rdf_graph_perms);
 	  perms |= p;		/* No need in "0x8000 | p" because zero can not be stored here under any circumstances */
 	  if (!(req_perms & ~perms))
 	    break;
@@ -6054,10 +6045,10 @@ rdf_graph_app_cbk_perms (query_instance_t * qst, caddr_t graph_boxed_iid, user_t
   return rc;
 }
 
-static dk_hash_64_t *
+static id_hash_t *
 rgs_alloc_usr_rdf_graph_perms (user_t * u)
 {
-  dk_hash_64_t *ht = hash_table_allocate_64 (97);
+  id_hash_t *ht = id_hash_allocate (97, sizeof (boxint), sizeof (boxint), boxint_hash, boxint_hashcmp);
   ht->ht_rwlock = rwlock_allocate ();
   ht->ht_dict_refctr = 1;
   u->usr_rdf_graph_perms = ht;
@@ -6094,7 +6085,7 @@ bif_rdf_graph_specific_perms_of_user (caddr_t * qst, caddr_t * err_ret, state_sl
 	  if (NULL != u->usr_rdf_graph_perms)
 	    {
 	      rwlock_wrlock (u->usr_rdf_graph_perms->ht_rwlock);
-	      remhash_64 (g_iid, u->usr_rdf_graph_perms);
+	      id_remhash (g_iid, u->usr_rdf_graph_perms);
 	      rwlock_unlock (u->usr_rdf_graph_perms->ht_rwlock);
 	    }
 	}
@@ -6105,7 +6096,7 @@ bif_rdf_graph_specific_perms_of_user (caddr_t * qst, caddr_t * err_ret, state_sl
 	      rgs_alloc_usr_rdf_graph_perms (u);
 	    }
 	  rwlock_wrlock (u->usr_rdf_graph_perms->ht_rwlock);
-	  sethash_64 (g_iid, u->usr_rdf_graph_perms, perms);
+	  id_sethash (g_iid, u->usr_rdf_graph_perms, perms);
 	  rwlock_unlock (u->usr_rdf_graph_perms->ht_rwlock);
 	}
       return 0;
@@ -6224,10 +6215,10 @@ bif_rgs_impl_graph_set_userdetails (caddr_t * qst, state_slot_t ** args, const c
       switch (DV_TYPE_OF (user_and_cbk))
 	{
 	case DV_LONG_INT:
-	  ud_ret->ud_orig_id = unbox ((void *) user_and_cbk);
+	  ud_ret->ud_orig_id = unbox ((caddr_t) ((void *) user_and_cbk));
 	  break;
 	case DV_STRING:
-	  ud_ret->ud_orig_name = (void *) user_and_cbk;
+	  ud_ret->ud_orig_name = (char *) ((void *) user_and_cbk);
 	  break;
 	}
     }
@@ -6488,7 +6479,7 @@ bif_rgs_prepare_del_or_ins (caddr_t * qst, caddr_t * err_ret, state_slot_t ** ar
       continue;
 
     signal_failed_perms:
-      dk_free_tree ((void *) data_to_drop);
+      dk_free_tree ((caddr_t) ((void *) data_to_drop));
       if (NULL != g_props_hash)
 	hash_table_free (g_props_hash);
       err =
@@ -6515,7 +6506,7 @@ bif_rgs_prepare_del_or_ins (caddr_t * qst, caddr_t * err_ret, state_slot_t ** ar
       qst_set (qst, args[3 + fldctr], (caddr_t) ((void *) (all_flds[fldctr])));
       data_to_drop[1 + fldctr] = NULL;
     }
-  dk_free_tree ((void *) data_to_drop);
+  dk_free_tree ((caddr_t) data_to_drop);
   if (NULL != g_props_hash)
     hash_table_free (g_props_hash);
   return NULL;
@@ -6684,7 +6675,7 @@ rdf_repl_feed_batch_of_rquads (query_instance_t * qi, caddr_t ** rquads_vector, 
   tf_commit (tf);
   tf->tf_current_graph_uri = NULL;	/* To not free it twice (there's no box_copy_tree from rquad[1] to it, just copying the pointer) */
   tf_free (tf);
-  dk_free_tree (rquads_vector);
+  dk_free_tree ((caddr_t) rquads_vector);
 }
 
 
@@ -6915,12 +6906,12 @@ bif_rdf_range_check (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       if (NULL != box_ret_ptr)
 	{
 	  if (complete_box == (rdf_box_t *) ro_id_arg)
-	    complete_box = box_copy (ro_id_arg);
-	  qst_swap (qst, args[6], (void *) (&complete_box));
+	    complete_box = (rdf_box_t *) box_copy (ro_id_arg);
+	  qst_swap (qst, args[6], (caddr_t *) ((void *) (&complete_box)));
 	}
     }
   if ((NULL != complete_box) && (complete_box != (rdf_box_t *) ro_id_arg))
-    dk_free_tree (complete_box);
+    dk_free_tree ((caddr_t) complete_box);
   return (caddr_t) ((ptrlong) res);
 }
 

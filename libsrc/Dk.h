@@ -69,6 +69,33 @@ extern void ldbg_longjmp (jmp_buf env, int value);
 # define LOW_ORDER_FIRST
 #endif
 
+#if defined (i386) || \
+    defined (_WIN64) || \
+    defined (_M_IX86) || \
+    defined (_M_ALPHA) || \
+    defined (mc68000) || \
+    defined (sparc) || \
+    defined (__x86_64) || \
+    defined (__alpha) || \
+    defined (__powerpc) || \
+    defined (mips) || \
+    defined (__OS2__) || \
+    defined (_IBMR2)
+# define _IEEE_FLOATS
+#endif
+
+#ifdef __cplusplus
+#define VIRT_C_LINKAGE "C"
+#define VIRT_API_BEGIN extern "C" {
+#define VIRT_API_END }
+#else
+#define VIRT_C_LINKAGE
+#define VIRT_API_BEGIN
+#define VIRT_API_END
+#endif
+
+VIRT_API_BEGIN
+
 #ifndef MALLOC_DEBUG
 #include "util/dbgmal.h"
 #endif
@@ -100,6 +127,8 @@ extern void ldbg_longjmp (jmp_buf env, int value);
 #endif
 
 #include "Dk/Dkstubs.h"
+
+VIRT_API_END
 
 /*
  * Localization macros

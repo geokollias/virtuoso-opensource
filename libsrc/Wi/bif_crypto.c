@@ -993,7 +993,7 @@ bif_smime_sign (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 static caddr_t
 bif_smime_encrypt (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "smime_encrypt";
+  const char *me = "smime_encrypt";
   caddr_t msg = bif_string_arg (qst, args, 0, me);
   caddr_t scerts = bif_array_arg (qst, args, 1, me);
   caddr_t cipher_name = bif_string_arg (qst, args, 2, me);
@@ -1073,7 +1073,7 @@ bif_smime_encrypt (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 static caddr_t
 bif_smime_decrypt (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "smime_decrypt";
+  const char *me = "smime_decrypt";
   caddr_t msg = bif_string_arg (qst, args, 0, me);
   caddr_t cert = bif_string_arg (qst, args, 1, me);
   caddr_t privatekey = bif_string_arg (qst, args, 2, me);
@@ -1588,7 +1588,7 @@ bif_get_certificate_info (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args
       }
     case 10:
       {
-	char *attr = BOX_ELEMENTS (args) > 4 ? bif_string_arg (qst, args, 4, "get_certificate_info") : "CN";
+	const char *attr = BOX_ELEMENTS (args) > 4 ? bif_string_arg (qst, args, 4, "get_certificate_info") : "CN";
 	X509_NAME *subj = X509_get_subject_name (cert);
 	X509_NAME_ENTRY *ne, *ne_ret = NULL;
 	int n, i, len;
@@ -1784,7 +1784,7 @@ bif_sha1_digest (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 static caddr_t
 bif_pkcs7_certificates (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "pkcs7_certificates";
+  const char *me = "pkcs7_certificates";
   X509 *cert = NULL;
   caddr_t scert = bif_string_arg (qst, args, 0, me);
   caddr_t *ret = NULL;
@@ -1826,7 +1826,7 @@ static caddr_t
 bif_base36enc (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   boxint value = bif_long_range_arg (qst, args, 0, "base36enc", 0, INT64_MAX);
-  char base36[36] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const char *base36 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   char buf[14];
   size_t offset = sizeof (buf);
 
@@ -1843,7 +1843,7 @@ bif_base36enc (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 static caddr_t
 bif_base36dec (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  boxint str = bif_string_arg (qst, args, 0, "base36dec");
+  caddr_t str = bif_string_arg (qst, args, 0, "base36dec");
   boxint ret;
   ret = strtoul (str, NULL, 36);
   return box_num (ret);

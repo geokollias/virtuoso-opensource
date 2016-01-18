@@ -233,7 +233,7 @@ wi_instance_get (void)
 
 
 dbe_storage_t *
-dbs_allocate (char *name, char type)
+dbs_allocate (const char *name, char type)
 {
   NEW_VARZ (dbe_storage_t, dbs);
   dbs->dbs_type = type;
@@ -409,7 +409,7 @@ it_allocate (dbe_storage_t * dbs)
 {
   int inx;
   index_tree_t *tree = (index_tree_t *) dk_alloc_box_zero (sizeof (index_tree_t), DV_ITC);
-  tree->it_maps = dk_alloc (sizeof (it_map_t) * IT_N_MAPS);
+  tree->it_maps = (it_map_t *) dk_alloc (sizeof (it_map_t) * IT_N_MAPS);
   memset (tree->it_maps, 0, sizeof (it_map_t) * IT_N_MAPS);
   tree->it_lock_release_mtx = mutex_allocate ();
   for (inx = 0; inx < IT_N_MAPS; inx++)
@@ -549,7 +549,7 @@ it_temp_allocate (dbe_storage_t * dbs)
       {
 	tree = (index_tree_t *) dk_alloc_box_zero (sizeof (index_tree_t), DV_INDEX_TREE);
 	tree->it_ref_count = 1;
-	tree->it_maps = dk_alloc (sizeof (it_map_t) * IT_N_MAPS);
+	tree->it_maps = (it_map_t *) dk_alloc (sizeof (it_map_t) * IT_N_MAPS);
 	memset (tree->it_maps, 0, sizeof (it_map_t) * IT_N_MAPS);
 	for (inx = 0; inx < IT_N_MAPS; inx++)
 	  {
@@ -599,7 +599,7 @@ it_free (index_tree_t * it)
     mutex_free (it->it_lock_release_mtx);
   dk_free ((void *) it->it_maps, sizeof (it_map_t) * IT_N_MAPS);
   box_tag_modify (it, DV_CUSTOM);
-  dk_free_box ((void *) it);
+  dk_free_box ((caddr_t) it);
 }
 
 
@@ -791,7 +791,7 @@ buffer_group_t *
 buffer_group_allocate ()
 {
   B_NEW_VARZ (buffer_group_t, bg);
-  bg->bg_buffer0 = ALIGN_8K (bg->bg_space);
+  bg->bg_buffer0 = (db_page_buf_t *) ALIGN_8K (bg->bg_space);
   if (NULL != bg_first)
     {
       bg->bg_next = bg_first;
@@ -839,7 +839,7 @@ buffer_allocate (int type)
       if (NULL != buf->bd_buffer)
 	continue;
       memset (buf, 0, sizeof (buffer_desc_t));
-      buf->bd_buffer = (void *) (bg_first->bg_buffer0 + b_ctr);
+      buf->bd_buffer = (db_buf_t) (bg_first->bg_buffer0 + b_ctr);
       memset (buf->bd_buffer, 0, PAGE_SZ);
       BUF_SET_END_MARK (buf);
       SHORT_SET (buf->bd_buffer + DP_FLAGS, type);
@@ -862,7 +862,7 @@ buffer_free (buffer_desc_t * buf)
   if (NULL == buf->bd_buffer)
     GPF_T1 ("buffer_free(): double free ?");
   mutex_enter (bg_mutex);
-  bg = gethash (buf, bg_of_bd);
+  bg = (buffer_group_t *) gethash (buf, bg_of_bd);
   if (NULL == bg)
     GPF_T1 ("buffer_free(): can't find a group of the buffer, was the buffer allocated by buffer_allocate() ?");
   if (0 >= bg->bg_used)
@@ -1124,14 +1124,14 @@ int bp_stat_action (buffer_pool_t * bp, int stat_only);
 extern uint32 col_ac_last_time;
 extern uint32 col_ac_last_duration;
 int col_ac_is_due (uint32 now);
-int enable_flush_all = 1;
+long enable_flush_all = 1;
 int bp_no_buffers;
 
 void
 bp_flush_thread_func (void *arg)
 {
   int inx, min_age = 0;
-  int *age_limit = dk_alloc (sizeof (int) * bp_n_bps);
+  int *age_limit = (int *) dk_alloc (sizeof (int) * bp_n_bps);
   for (;;)
     {
       semaphore_enter (bp_flush_sem);
@@ -1676,7 +1676,7 @@ bp_make_buffer_list (int n)
 	    {
 	      if (c_use_o_direct)
 		GPF_T1 ("An exe compiled with malloc_bufs defd is not compatible with the use O_DIRECT setting");
-	      buf->bd_buffer = malloc (BUF_ALLOC_SZ);
+	      buf->bd_buffer = (db_buf_t) malloc (BUF_ALLOC_SZ);
 	      if (!buf->bd_buffer)
 		GPF_T1 ("Cannot allocate memory for Database buffers, try to decrease NumberOfBuffers INI setting");
 	      BUF_SET_END_MARK (buf);
@@ -2097,22 +2097,22 @@ buf_disk_read_impl (buffer_desc_t * buf, db_buf_t target)
 #endif
 }
 
-void *
+page_map_t *
 pm_get (buffer_desc_t * buf, size_t sz)
 {
 #ifndef PM_TLSF
-  return resource_get (PM_RC (sz));
+  return (page_map_t *) resource_get (PM_RC (sz));
 #else
-  void *map;
+  page_map_t *map;
   int bytes = (int) (PM_ENTRIES_OFFSET + sz * sizeof (short));
   tlsf_t *tlsf = buf->bd_pool ? buf->bd_pool->bp_tlsf : wi_inst.wi_bps[0]->bp_tlsf;
   if (!tlsf)
     GPF_T;
   mutex_enter (&tlsf->tlsf_mtx);
-  map = malloc_ex (bytes, tlsf);
+  map = (page_map_t *) malloc_ex (bytes, tlsf);
   mutex_leave (&tlsf->tlsf_mtx);
   memset (map, 0, bytes);
-  ((page_map_t *) map)->pm_size = (short) sz;
+  map->pm_size = (short) sz;
   return map;
 #endif
 }
@@ -3654,7 +3654,7 @@ dbs_open_disks (dbe_storage_t * dbs)
 
 
 void
-wi_close ()
+wi_close (void)
 {
   int inx;
 
@@ -3664,7 +3664,7 @@ wi_close ()
     dk_free (bp, sizeof (buffer_pool_t));
   }
   END_DO_BOX;
-  dk_free_box (wi_inst.wi_bps);
+  dk_free_box ((caddr_t) (wi_inst.wi_bps));
 
   resource_clear (pm_rc_1, NULL);
   resource_clear (pm_rc_2, NULL);
@@ -3681,7 +3681,7 @@ wi_close ()
 
 
 void
-dbs_close_disks (dbe_storage_t * dbs, int delete)
+dbs_close_disks (dbe_storage_t * dbs, int unlink_files)
 {
   int inx;
   if (dbs->dbs_slices)
@@ -3698,7 +3698,7 @@ dbs_close_disks (dbe_storage_t * dbs, int delete)
 	}
       dbs_sys_db_file_remove (dst->dst_file);
       /*id_hash_remove (wi_inst.wi_files, (caddr_t)&dst->dst_file); */
-      if (delete)
+      if (unlink_files)
 	unlink (dst->dst_file);
     }
     END_DO_BOX;
@@ -3739,6 +3739,7 @@ dst_sync (caddr_t * xx)
 
 
 extern semaphore_t *bp_flush_sem;
+extern void dbs_mtwrite_init (dbe_storage_t * dbs);
 
 void
 dbs_sync_disks (dbe_storage_t * dbs)
@@ -3798,7 +3799,7 @@ dbs_sync_disks (dbe_storage_t * dbs)
 	    semaphore_enter (dst_sync_sem);
 	  }
 	  END_DO_SET ();
-	  DO_SET (caddr_t *, xx, &args) dk_free_box (xx);
+	  DO_SET (caddr_t *, xx, &args) dk_free_box ((caddr_t) xx);
 	  END_DO_SET ();
 	  dk_set_free (iqs);
 	  dk_set_free (args);
@@ -4471,7 +4472,7 @@ dbs_open_main_files (dbe_storage_t * dbs, char type)
 }
 
 dbe_storage_t *
-dbs_from_file (char *name, char *file, char type, volatile int *exists)
+dbs_from_file (const char *name, const char *file, char type, volatile int *exists)
 {
   wi_database_t cfg_page;
   dbe_storage_t *dbs = dbs_allocate (name, type);
@@ -4683,7 +4684,7 @@ wi_open (char *mode)
   mutex_option (log_write_mtx, "Log_write", log_write_entry_check, NULL);
   transit_list_mtx = mutex_allocate ();
   mutex_option (transit_list_mtx, "transit_list", NULL, NULL);
-  srv_client_defaults_init ();
+
   wi_inst.wi_bps = (buffer_pool_t **) dk_alloc_box (bp_n_bps * sizeof (caddr_t), DV_CUSTOM);
   if (wi_inst.wi_max_dirty > main_bufs)
     wi_inst.wi_max_dirty = main_bufs;
@@ -4902,6 +4903,7 @@ wi_init_globals (void)
 
   trx_rc = resource_allocate (TRX_RC_SZ, (rc_constr_t) lt_allocate, (rc_destr_t) lt_free, (rc_destr_t) lt_clear, 0);
   local_cll.cll_w_id_to_trx = hash_table_allocate_64 (101);
+  HT_REQUIRE_MTX (local_cll.cll_w_id_to_trx, wi_inst.wi_txn_mtx);
   local_cll.cll_dead_w_id = hash_table_allocate_64 (1001);
   cp_distinct_any.cp_sqt.sqt_dtp = DV_ANY;
   cp_distinct_any.cp_type = CP_WORD;

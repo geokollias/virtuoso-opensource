@@ -1636,7 +1636,7 @@ create procedure __HTTP_XSLT (inout _XML any, inout DOC_URI varchar, inout XSLT_
 -- create triggers for consistency rules
 create procedure DB.DBA.ddl_fk_rules (in pktb varchar, in drop_tb varchar, in drop_col varchar)
 {
-  declare stmt, set_cl, whe_cl, updst, delst, thetb, pkcols, pkvars, trig_pref, skip_on_this varchar;
+  declare stmt, set_cl, whe_cl, updst, delst, thetb, pkcols, pkvars, trig_pref, skip_on_this, thefk varchar;
   declare is_upd, is_del integer;
 
   is_upd := 0;
@@ -1663,7 +1663,7 @@ create procedure DB.DBA.ddl_fk_rules (in pktb varchar, in drop_tb varchar, in dr
       skip_on_this := drop_tb;
       drop_tb := '';
     }
-  pkcols := ''; pkvars := ''; thetb := ''; set_cl := ''; whe_cl := ''; updst := '';
+  pkcols := ''; pkvars := ''; thetb := ''; set_cl := ''; whe_cl := ''; updst := ''; thefk := '';
   trig_pref := sprintf ('%s_%s_%s', DB.DBA.SYS_ALFANUM_NAME (name_part (pktb, 0)),
 				    DB.DBA.SYS_ALFANUM_NAME (name_part (pktb, 1)),
 				    DB.DBA.SYS_ALFANUM_NAME (name_part (pktb, 2)));
@@ -1697,15 +1697,15 @@ create procedure DB.DBA.ddl_fk_rules (in pktb varchar, in drop_tb varchar, in dr
     }
 
   -- create update statements
-  for select FK_TABLE, FKCOLUMN_NAME, PKCOLUMN_NAME, UPDATE_RULE  from DB.DBA.SYS_FOREIGN_KEYS
+  for select FK_TABLE, FK_NAME, FKCOLUMN_NAME, PKCOLUMN_NAME, UPDATE_RULE  from DB.DBA.SYS_FOREIGN_KEYS
     where 0 = casemode_strcmp (PK_TABLE, pktb) and UPDATE_RULE is not null and UPDATE_RULE > 0
 	and 0 <> casemode_strcmp (FK_TABLE, drop_tb)
 	and not (0 = casemode_strcmp (FK_TABLE, skip_on_this) and 0 = casemode_strcmp (FKCOLUMN_NAME, drop_col))
-	order by FK_TABLE do
+	order by FK_TABLE, FK_NAME do
       {
 
 	is_upd := 1;
-	if (FK_TABLE <> thetb and thetb <> '')
+	if ((FK_TABLE <> thetb and thetb <> '') or (FK_NAME <> thefk and thefk <> ''))
 	  {
 	    set_cl := substring (set_cl, 1, length (set_cl) - 2);
 	    whe_cl := concat (' WHERE ', whe_cl);
@@ -1718,6 +1718,7 @@ create procedure DB.DBA.ddl_fk_rules (in pktb varchar, in drop_tb varchar, in dr
 	if (FK_TABLE is not null)
 	  {
 	    thetb := FK_TABLE;
+	    thefk := FK_NAME;
 	    if (UPDATE_RULE = 1)
 	      set_cl := concat (set_cl, sprintf ('"%I" = N."%I", ' , FKCOLUMN_NAME, PKCOLUMN_NAME));
 	    else if (UPDATE_RULE = 2)
@@ -1754,16 +1755,16 @@ stmt := sprintf ('CREATE TRIGGER "%s_FK_UPDATE" AFTER UPDATE (%s)\n ON "%I"."%I"
       stmt := sprintf ('DROP TRIGGER "%I"."%I"."%s_FK_UPDATE"', name_part (pktb, 0), name_part (pktb, 1), trig_pref);
       DB.DBA.execstr (stmt);
     }
-delst := ''; thetb := '';
+delst := ''; thetb := ''; thefk := '';
   -- create delete statements
-  for select FK_TABLE, FKCOLUMN_NAME, PKCOLUMN_NAME from DB.DBA.SYS_FOREIGN_KEYS
+  for select FK_TABLE, FK_NAME, FKCOLUMN_NAME, PKCOLUMN_NAME from DB.DBA.SYS_FOREIGN_KEYS
     where 0 = casemode_strcmp (PK_TABLE, pktb) and DELETE_RULE = 1
 	and 0 <> casemode_strcmp (FK_TABLE, drop_tb)
 	and not (0 = casemode_strcmp (FK_TABLE, skip_on_this) and 0 = casemode_strcmp (FKCOLUMN_NAME, drop_col))
-	order by FK_TABLE do
+	order by FK_TABLE, FK_NAME do
       {
 	is_del := 1;
-	if (FK_TABLE <> thetb and thetb <> '')
+	if ((FK_TABLE <> thetb and thetb <> '') or (FK_NAME <> thefk and thefk <> ''))
 	  {
 	    whe_cl := concat (' WHERE ', whe_cl);
 	    whe_cl := substring (whe_cl, 1, length (whe_cl) - 5);
@@ -1774,6 +1775,7 @@ delst := ''; thetb := '';
 	if (FK_TABLE is not null)
 	  {
 	    thetb := FK_TABLE;
+	    thefk := FK_NAME;
 	    whe_cl := concat (whe_cl, sprintf ('"%I" = _VAR_%s and ' , FKCOLUMN_NAME, DB.DBA.SYS_ALFANUM_NAME (PKCOLUMN_NAME)));
 	  }
       }
@@ -1787,15 +1789,15 @@ delst := ''; thetb := '';
       whe_cl := '';
     }
   -- create update after delete statements
-  updst := '';  thetb := '';
-  for select FK_TABLE, FKCOLUMN_NAME, PKCOLUMN_NAME, DELETE_RULE  from DB.DBA.SYS_FOREIGN_KEYS
+  updst := '';  thetb := ''; thefk := '';
+  for select FK_TABLE, FK_NAME, FKCOLUMN_NAME, PKCOLUMN_NAME, DELETE_RULE  from DB.DBA.SYS_FOREIGN_KEYS
     where 0 = casemode_strcmp (PK_TABLE, pktb) and DELETE_RULE is not null and DELETE_RULE > 1
 	and 0 <> casemode_strcmp (FK_TABLE, drop_tb)
 	and not (0 = casemode_strcmp (FK_TABLE, skip_on_this) and 0 = casemode_strcmp (FKCOLUMN_NAME, drop_col))
-	order by FK_TABLE do
+	order by FK_TABLE, FK_NAME do
       {
 	is_del := 1;
-	if (FK_TABLE <> thetb and thetb <> '')
+	if ((FK_TABLE <> thetb and thetb <> '') or (FK_NAME <> thefk and thefk <> ''))
 	  {
 	    set_cl := substring (set_cl, 1, length (set_cl) - 2);
 	    whe_cl := concat (' WHERE ', whe_cl);
@@ -1808,6 +1810,7 @@ delst := ''; thetb := '';
 	if (FK_TABLE is not null)
 	  {
 	    thetb := FK_TABLE;
+	    thefk := FK_NAME;
 	    if (DELETE_RULE = 2)
 	      set_cl := concat (set_cl, sprintf ('"%I" = NULL, ' , FKCOLUMN_NAME));
 	    else if (DELETE_RULE = 3)
@@ -5325,6 +5328,39 @@ result_names (n, cond);
 }
 ;
 
+
+create procedure sqlc_result (in c varchar, in rst int := 0)
+{
+  tc_result (c);
+  if (rst)
+    __dbf_set (c, 0);
+}
+;
+
+create procedure sqlc_stat (in reset int := 0)
+{
+  declare cond varchar (60);
+  declare n int;
+  result_names (n, cond);
+  sqlc_result ('enable_initial_plan', 0);
+  sqlc_result ('enable_n_best_plans', 0);
+
+  sqlc_result ('sqlo_n_layout_steps', reset);
+  sqlc_result ('sqlo_n_full_layouts', reset);
+  sqlc_result ('sqlo_n_best_layouts', reset);
+  sqlc_result ('sqlo_max_layouts', 0);
+  sqlc_result ('enable_joins_only', 0);
+  sqlc_result ('sqlo_compiler_exceeds_run_factor', 0);
+  sqlc_result ('tc_sqlo_no_mem', reset);
+  sqlc_result ('sq_hash_fill_hit', reset);
+  sqlc_result ('sq_hash_fill_miss', reset);
+  sqlc_result ('sq_cache_hit', reset);
+  sqlc_result ('sq_cache_miss', reset);
+  sqlc_result ('tc_cached_subq_no_reuse_for_card', reset);
+  sqlc_result ('sqlc_cum_memory', reset);
+}
+;
+
 create procedure cl_exec_srv (in str varchar, in params any)
 {
   declare st, msg varchar;
@@ -5749,12 +5785,18 @@ create procedure ddl_ren_k_new_name (in kn varchar, in o varchar, in n varchar)
 ;
 
 
-create procedure DB.DBA.DDL_TABLE_RENAMED (in o varchar, in n varchar)
+create procedure DB.DBA.DDL_TABLE_RENAMED_LOG (in o varchar, in n varchar)
 {
-  __ddl_table_renamed (o, n);
   log_text ('__ddl_table_renamed (?, ?)', o, n);
 }
 ;
+
+create procedure DB.DBA.DDL_TABLE_RENAMED (in o varchar, in n varchar)
+{
+  __ddl_table_renamed (o, n);
+}
+;
+
 
 
 create procedure rename_table (in n varchar, in o varchar)
@@ -5785,7 +5827,9 @@ create procedure rename_table (in n varchar, in o varchar)
   update SYS_PARTITION set PART_TABLE = n, PART_KEY = ddl_ren_k_new_name (PART_KEY, o, n),
       PART_DATA = vector (PART_DATA[0], n, ddl_ren_k_new_name (PART_KEY, o, n), PART_DATA[3], PART_DATA[4])
     where PART_TABLE = o;
-  cl_exec ('DB.DBA.ddl_table_renamed (?, ?)', vector (o, n), txn => 1);
+  cl_exec ('DB.DBA.ddl_table_renamed_log (?, ?)', vector (o, n), txn => 1);
+  commit work;
+    cl_exec ('DB.DBA.ddl_table_renamed (?, ?)', vector (o, n), txn => 0);
 }
 ;
 
@@ -5881,6 +5925,10 @@ DB.DBA.SYS_SQL_VAL_PRINT (in v any)
     return sprintf ('{ts ''%s''}', datestring (v));
   else if (__tag (v) = __tag of nvarchar)
     return sprintf ('N\'%S\'', replace (charset_recode (v, '_WIDE_', 'UTF-8'), '\\', '\\\\'));
+  else if (isiri_id (v))
+    return sprintf ('__id2i (\'%s\')', __id2i (v));
+  else if (__tag of rdf_box = __tag (v))
+    return sprintf ('rdf_box (0, 257, 257, %d, 0)', rdf_box_ro_id (v));
   else if (__tag (v) = 255)
     return '<tag 255>';
   else

@@ -1536,6 +1536,12 @@ __xqf_compare (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe, int do_wha
 	int len = 0, wide_len;
 	caddr_t wide_box = box_utf8_as_wide_char (str1, NULL, strlen (str1), 0), utf8_box;
 
+	if (!wide_box)
+	  {
+	    XQI_SET (xqi, tree->_.xp_func.res, (caddr_t) 0L);
+	    return;
+	  }
+
 	wide_len = box_length (wide_box) / sizeof (wchar_t) - 1;
 	n = utf8_strlen ((utf8char *) str2);
 	utf8_box = box_wide_as_utf8_char (wide_box, MIN (n, wide_len), DV_SHORT_STRING);
@@ -1902,8 +1908,8 @@ xqf_lower_case (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
     res[i] = (wchar_t) unicode3_getlcase ((unichar) (wide_str[i]));
 
   XQI_SET (xqi, tree->_.xp_func.res, box_cast_to_UTF8 ((caddr_t *) xqi->xqi_qi, (caddr_t) res));
-  dk_free_box (res);
-  dk_free_box (wide_str);
+  dk_free_box ((caddr_t) res);
+  dk_free_box ((caddr_t) wide_str);
 }
 
 void
@@ -1918,8 +1924,8 @@ xqf_upper_case (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
     res[i] = (wchar_t) unicode3_getucase ((unichar) (wide_str[i]));
 
   XQI_SET (xqi, tree->_.xp_func.res, box_cast_to_UTF8 ((caddr_t *) xqi->xqi_qi, (caddr_t) res));
-  dk_free_box (res);
-  dk_free_box (wide_str);
+  dk_free_box ((caddr_t) res);
+  dk_free_box ((caddr_t) wide_str);
 }
 
 void
@@ -1941,8 +1947,8 @@ xqf_escape_uri (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
   }
   XQI_SET (xqi, tree->_.xp_func.res, box_cast_to_UTF8 ((caddr_t *) xqi->xqi_qi, (caddr_t) wide_res));
 
-  dk_free_box (wide_str);
-  dk_free_box (wide_res);
+  dk_free_box ((caddr_t) wide_str);
+  dk_free_box ((caddr_t) wide_res);
 }
 
 void
@@ -2004,8 +2010,8 @@ __xqf_ends_with (caddr_t str, caddr_t mstr, collation_t * coll)
 	  n1inx++;
 	  n2inx++;
 	}
-      dk_free_box (wide1);
-      dk_free_box (wide2);
+      dk_free_box ((caddr_t) wide1);
+      dk_free_box ((caddr_t) wide2);
       return res;
     }
   else
@@ -2576,8 +2582,8 @@ xqf_insert_before (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
   memcpy (new_res + pos, ins_ptr[0], ins_len * sizeof (caddr_t));
   if (pos < len)
     memcpy (new_res + pos + ins_len, res_ptr[0] + pos, (len - pos) * sizeof (caddr_t));
-  dk_free_box (ins_ptr[0]);
-  dk_free_box (res_ptr[0]);
+  dk_free_box ((caddr_t) (ins_ptr[0]));
+  dk_free_box ((caddr_t) (res_ptr[0]));
   ins_ptr[0] = NULL;
   res_ptr[0] = new_res;
 }
@@ -2603,7 +2609,7 @@ xqf_remove (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
   dk_free_tree (res_ptr[0][pos]);
   pos++;
   memcpy (new_res + pos - 1, res_ptr[0] + pos, (len - pos) * sizeof (caddr_t));
-  dk_free_box (res_ptr[0]);
+  dk_free_box ((caddr_t) (res_ptr[0]));
   res_ptr[0] = new_res;
 }
 
@@ -2659,7 +2665,7 @@ xqf_subsequence (xp_instance_t * xqi, XT * tree, xml_entity_t * ctx_xe)
   if ((n1 > 0) || (n2 < len))
     {
       int sz = (n2 - n1) * sizeof (caddr_t);
-      caddr_t *new_res = dk_alloc_box (sz, DV_ARRAY_OF_XQVAL);
+      caddr_t *new_res = (caddr_t *) dk_alloc_box (sz, DV_ARRAY_OF_XQVAL);
       memcpy (new_res, res_ptr[0] + n1, sz);
       memset (res_ptr[0] + n1, '\0', sz);
       XQI_SET (xqi, tree->_.xp_func.var->_.var.init, (caddr_t) new_res);

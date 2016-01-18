@@ -75,13 +75,12 @@ sqlo_index_path_print (df_elt_t * dfe)
 caddr_t dv_iri_short_name (caddr_t x);
 
 void
-dbg_print_st (caddr_t * box, FILE * f)
+dbg_print_st (ST * st, FILE * f)
 {
-  ST *st = (ST *) box;
-  dtp_t dtp = DV_TYPE_OF (box);
+  dtp_t dtp = DV_TYPE_OF (st);
   if (DV_IRI_ID == dtp)
     {
-      caddr_t n = dv_iri_short_name (box);
+      caddr_t n = dv_iri_short_name ((caddr_t) (st));
       sqlo_print (("#%s ", n ? n : "unnamed"));
       dk_free_box (n);
       return;
@@ -91,10 +90,10 @@ dbg_print_st (caddr_t * box, FILE * f)
   else if (ST_P (st, CALL_STMT))
     {
       dbg_print_box (st->_.call.name, f);
-      dbg_print_box ((caddr_t) st->_.call.params, f);
+      dbg_print_box ((caddr_t) (st->_.call.params), f);
     }
   else
-    dbg_print_box ((caddr_t) box, f);
+    dbg_print_box ((caddr_t) st, f);
 }
 
 
@@ -190,26 +189,26 @@ sqlo_dfe_print (df_elt_t * dfe, int offset)
       {
 	if (ST_P (dfe->dfe_tree, KWD_PARAM))
 	  {
-	    dbg_print_st ((caddr_t *) dfe->dfe_tree->_.bin_exp.left, stdout);
+	    dbg_print_st (dfe->dfe_tree->_.bin_exp.left, stdout);
 	    sqlo_print (("=> "));
-	    dbg_print_st ((caddr_t *) dfe->dfe_tree->_.bin_exp.right, stdout);
+	    dbg_print_st (dfe->dfe_tree->_.bin_exp.right, stdout);
 	  }
 	else if (ST_P (dfe->dfe_tree, ASG_STMT))
 	  {
-	    dbg_print_st ((caddr_t *) dfe->_.bin.left->dfe_tree, stdout);
+	    dbg_print_st (dfe->_.bin.left->dfe_tree, stdout);
 	    sqlo_print ((":= "));
-	    dbg_print_st ((caddr_t *) dfe->_.bin.right->dfe_tree, stdout);
+	    dbg_print_st (dfe->_.bin.right->dfe_tree, stdout);
 	  }
 	else
 	  {
 	    sqlo_print ((" "));
 	    if (!dfe->_.bin.right)
 	      sqlo_print ((" %s ", bop_text (dfe->_.bin.op)));
-	    dbg_print_st ((caddr_t *) dfe->_.bin.left->dfe_tree, stdout);
+	    dbg_print_st (dfe->_.bin.left->dfe_tree, stdout);
 	    if (dfe->_.bin.right)
 	      {
 		sqlo_print ((" %s ", bop_text (dfe->_.bin.op)));
-		dbg_print_st ((caddr_t *) dfe->_.bin.right->dfe_tree, stdout);
+		dbg_print_st (dfe->_.bin.right->dfe_tree, stdout);
 	      }
 	  }
 	sqlo_print (("\n"));
@@ -647,7 +646,7 @@ dbg_qi_print_row (query_instance_t * qi, dk_set_t slots, int nthset)
   qi->qi_set = nthset;
   DO_SET (state_slot_t *, sl, &slots)
   {
-    dbg_print_box (qst_get (qi, sl), stdout);
+    dbg_print_box (qst_get ((caddr_t *) qi, sl), stdout);
     printf ("\t");
   }
   END_DO_SET ()qi->qi_set = save_nthset;
@@ -663,7 +662,7 @@ dbg_qi_print_slots (query_instance_t * qi, state_slot_t ** slots, int nthset)
   int i;
   DO_BOX (state_slot_t *, sl, i, slots)
   {
-    dbg_print_box (qst_get (qi, sl), stdout);
+    dbg_print_box (qst_get ((caddr_t *) qi, sl), stdout);
     printf ("\t");
   }
   END_DO_BOX;

@@ -184,7 +184,7 @@ itc_insert_rd_range (it_cursor_t * itc, buffer_desc_t * buf, int first_set)
   if (itc->itc_set - first_set < sizeof (rds_auto) / sizeof (caddr_t))
     rds = rds_auto;
   else
-    rds = dk_alloc_box (sizeof (caddr_t) * (itc->itc_set - first_set), DV_BIN);
+    rds = (row_delta_t **) dk_alloc_box (sizeof (caddr_t) * (itc->itc_set - first_set), DV_BIN);
   for (inx = 0; inx < itc->itc_set - first_set; inx++)
     {
       row_delta_t *rd = itc->itc_vec_rds[itc->itc_param_order[inx + first_set]];
@@ -609,9 +609,9 @@ dc_mp_insert_copy_any (mem_pool_t * mp, data_col_t * dc, int inx, dbe_column_t *
       db_buf_t rdf_id = mp_dv_rdf_to_db_serial (mp, dv);
       return (caddr_t) rdf_id;
     }
-  if ((DV_STRING == dv[0] || DV_SHORT_STRING_SERIAL == dv[0] || DV_DB_NULL == dv[0] ||
-	  DV_UNAME == dv[0] || DV_SYMBOL == dv[0] || DV_BOX_FLAGS == dv[0] || IS_WIDE_STRING_DTP (dv[0]))
-      && col && 'O' == col->col_name[0] && tb_is_rdf_quad (col->col_defined_in) && !f_read_from_rebuilt_database)
+  if ((DV_STRING == dv[0] || DV_SHORT_STRING_SERIAL == dv[0] || DV_DB_NULL == dv[0] || DV_UNAME == dv[0] || DV_SYMBOL == dv[0]
+	  || DV_BOX_FLAGS == dv[0]) && col && 'O' == col->col_name[0] && tb_is_rdf_quad (col->col_defined_in)
+      && !f_read_from_rebuilt_database)
     {
       if (THR_TMP_POOL == mp)
 	SET_THR_TMP_POOL (NULL);
@@ -872,8 +872,10 @@ tb_is_rdf_quad (dbe_table_t * tb)
       {
 	if (!stricmp (key->key_name, "RDF_QUAD_POGS") && key->key_decl_parts == 4)
 	  {
-	    dbe_column_t *c1 = dk_set_nth (key->key_parts, 0), *c2 = dk_set_nth (key->key_parts, 1), *c3 =
-		dk_set_nth (key->key_parts, 2), *c4 = dk_set_nth (key->key_parts, 3);
+	    dbe_column_t *c1 = (dbe_column_t *) dk_set_nth (key->key_parts, 0);
+	    dbe_column_t *c2 = (dbe_column_t *) dk_set_nth (key->key_parts, 1);
+	    dbe_column_t *c3 = (dbe_column_t *) dk_set_nth (key->key_parts, 2);
+	    dbe_column_t *c4 = (dbe_column_t *) dk_set_nth (key->key_parts, 3);
 	    if (!stricmp (c1->col_name, "P") && !stricmp (c2->col_name, "O") && !stricmp (c3->col_name, "S")
 		&& !stricmp (c4->col_name, "G"))
 	      enable_p_stat = 2;

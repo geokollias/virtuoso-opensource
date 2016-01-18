@@ -27,7 +27,9 @@
 
 #ifndef _PLDBG_H
 #define _PLDBG_H
+#include "Dk.h"
 
+VIRT_API_BEGIN
 #define PD_BREAK 	0	/* set/delete a breakpoint */
 #define PD_NEXT  	1	/* next */
 #define PD_INFO  	2	/* misc. info */
@@ -42,12 +44,10 @@
 #define PD_FRAME	11	/* choose a frame */
 #define PD_FINISH	12	/* run still exit from current proc */
 #define PD_UNTIL	14	/* run still reach a line # */
-
 #define PDI_THRE	0
 #define PDI_CLI		1
 #define PDI_BREAK	2
-
-typedef struct pldbg_message_s
+    typedef struct pldbg_message_s
 {
   dk_session_t *ses;
   caddr_t msg;
@@ -68,57 +68,15 @@ typedef struct pldbg_cmd_s
 } pldbg_cmd_t;
 
 /* available commands */
-pldbg_cmd_t pld_cmds[] =
-{
-  {
-  "BREAK", PD_BREAK, "procedure_name [line number]", "Set breakpoint at specified line or PL function"},
-  {
-  "NEXT", PD_NEXT, NULL, "Step program, proceeding through PL subroutine calls."},
-  {
-  "INFO", PD_INFO, "(THREAD|CLIENT|BREAK)", "Generic command for showing things about the program/process being debugged."},
-  {
-  "ATTACH", PD_ATTACH, "thread_id|client_id", "Attach to a running process."},
-  {
-  "STEP", PD_STEP, NULL, "Step PL program until it reaches a different source line."},
-  {
-  "LIST", PD_LIST, "[procedure name] [line number]", "List specified procedure or line."},
-  {
-  "WHERE", PD_WHERE, NULL, "Print backtrace of all stack frames."},
-  {
-  "CONTINUE", PD_CONT, NULL, "Continue PL program being debugged after breakpoint."},
-  {
-  "PRINT", PD_PRINT, "variable_name", "Print value of variables or arguments."},
-  {
-  "SET", PD_SET, "variable_name new_value", "Assign a specified value to a variable."},
-  {
-  "DELETE", PD_DELETE, "([breakpoint_number]|[procedure_name] [line_number])", "Delete some breakpoints."},
-  {
-  "FRAME", PD_FRAME, "frame_number", "Select and print a stack frame."},
-  {
-  "FINISH", PD_FINISH, NULL, "Execute until returns."},
-  {
-  "UNTIL", PD_UNTIL, "line_number", "Execute until the program reaches a source line greater than the current."},
-  {
-  NULL, 0, NULL, NULL}
-};
-
-/* available infos */
-pldbg_cmd_t pld_infos[] =
-{
-  {
-  "THREADS", PDI_THRE, NULL, "Running threads"},
-  {
-  "CLIENTS", PDI_CLI, NULL, "Connected SQL/ODBC clients"},
-  {
-  "BREAKPOINTS", PDI_BREAK, NULL, "Active breakpoints"},
-  {
-  NULL, 0, NULL, NULL}
-};
+extern pldbg_cmd_t pld_cmds[];
+extern pldbg_cmd_t pld_infos[];
 
 #define PLD_LINE_LIMIT 256
 
-caddr_t pldbg_read_resp (void *ses1);
-int pldbg_command (void *ses1, char *cmd1);
-void *pldbg_connect (char *addr, char *usr, char *pwd1);
+extern caddr_t pldbg_read_resp (void *ses1);
+extern int pldbg_command (void *ses1, char *cmd1);
+extern void *pldbg_connect (char *addr, char *usr, char *pwd1);
+extern void pldbg_help (FILE * f);
 
+VIRT_API_END
 #endif

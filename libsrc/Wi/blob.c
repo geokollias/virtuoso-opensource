@@ -39,15 +39,9 @@
 #include <wchar.h>
 #endif
 #include "bif_xper.h"
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "langfunc.h"
-#ifdef __cplusplus
-}
-#endif
 #include "sqlbif.h"
+#include "log.h"
 
 #if 0
 static long blob_fill_buffer_from_wide_string (caddr_t bh, caddr_t buf, int *at_end, long *char_len);
@@ -1717,7 +1711,7 @@ itc_set_xper_col (it_cursor_t * row_itc, db_buf_t col, xper_entity_t * data, dp_
 	  tmp_remaps = &(tmp_itm->itm_remap);
 	  tmp_bufs = &(tmp_itm->itm_dp_to_buf);
 	  remap = gethash (migr_key, tmp_remaps);
-	  buf = gethash (migr_key, tmp_bufs);
+	  buf = (buffer_desc_t *) gethash (migr_key, tmp_bufs);
 #ifdef DEBUG
 	  if (0 == migr_key)
 	    GPF_T1 ("0 == migr_key");

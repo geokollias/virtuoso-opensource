@@ -32,7 +32,6 @@
 #endif
 #undef log
 #include "math.h"
-#include "tlsf.h"
 
 
 void
@@ -2034,7 +2033,7 @@ mp_reserve (mem_pool_t * mp, size_t inc)
 }
 
 void
-mp_comment (mem_pool_t * mp, char * str1, char * str2)
+mp_comment (mem_pool_t * mp, const char * str1, const char * str2)
 {
 #ifndef NDEBUG
   int len1 = (str1 ? strlen (str1) : 0);

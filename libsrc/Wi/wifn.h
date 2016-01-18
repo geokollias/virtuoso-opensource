@@ -28,15 +28,15 @@
 #ifndef _WIFN_H
 #define _WIFN_H
 
+#include "Dk.h"
 #include "wi.h"
 #include "widisk.h"
 #include "widd.h"
 #include "schspace.h"
 #include "../Dk/Dkhash64.h"
-//#include "../Dk/Dkbox.h"
 
+VIRT_API_BEGIN
 /* search.c */
-
 void const_length_init (void);
 extern numeric_t num_int64_max;
 extern numeric_t num_int64_min;
@@ -371,11 +371,11 @@ db_buf_t dv1 = (db_buf_t)p1, dv2 = (db_buf_t)p2; \
 /* disk.c */
 
      dbe_storage_t *dbs_open_slice (dbe_storage_t * top_dbs, disk_segment_t * seg, int slice_no, int create);
-     void dbs_slice_close (cluster_map_t * clm, dbe_storage_t * top_dbs, dbe_storage_t * dbs, int delete);
+     void dbs_slice_close (cluster_map_t * clm, dbe_storage_t * top_dbs, dbe_storage_t * dbs, int unlink_files);
      void cl_dbs_read_cfg (dbe_storage_t * dbs);
      void dbs_slice_init (dbe_storage_t * top_dbs, dbe_storage_t * dbs, int exists);
      int word_free_bit (dp_addr_t w);
-     dbe_storage_t *dbs_allocate (char *name, char type);
+     dbe_storage_t *dbs_allocate (const char *name, char type);
      void dbs_close (dbe_storage_t * dbs);
      void wi_storage_offsets (void);
      int dbs_open_disks (dbe_storage_t * dbs);
@@ -425,7 +425,7 @@ db_buf_t dv1 = (db_buf_t)p1, dv2 = (db_buf_t)p2; \
      void dbs_free_disk_page (dbe_storage_t * dbs, dp_addr_t dp);
      buffer_desc_t *dbs_read_page_set (dbe_storage_t * dbs, dp_addr_t first_dp, int flag);
      void bp_write_dirty (buffer_pool_t * bp, int force, int is_in_page_map, int n_oldest);
-
+     void wi_close (void);
      void dbs_sync_disks (dbe_storage_t * dbs);
 
      extern int n_oldest_flushable;
@@ -533,7 +533,7 @@ void dbs_locate_free_bit (dbe_storage_t * dbs, dp_addr_t near_dp,
     int from, dp_addr_t page_to, int to, buffer_desc_t * buf_to);
      void map_append (buffer_desc_t * buf, page_map_t ** pm_ret, int ent);
      void pm_store (buffer_desc_t * buf, size_t sz, void *map);
-     void *pm_get (buffer_desc_t * buf, size_t sz);
+     struct page_map_s *pm_get (buffer_desc_t * buf, size_t sz);
 
 /* tree.c */
 
@@ -692,6 +692,7 @@ void dbs_locate_free_bit (dbe_storage_t * dbs, dp_addr_t near_dp,
      void row_set_col (row_fill_t * rf, dbe_col_loc_t * cl, caddr_t data);
      void row_set_prefix (row_fill_t * rf, dbe_col_loc_t * cl, caddr_t value, row_size_t prefix_bytes, unsigned short prefix_ref,
     dtp_t extra);
+     dbe_col_loc_t *tb_find_cl (dbe_table_t * tb, oid_t col);
      dbe_col_loc_t *key_find_cl (dbe_key_t * key, oid_t col);
      dbe_col_loc_t *cl_list_find (dbe_col_loc_t * cl, oid_t col_id);
      search_spec_t *key_add_spec (search_spec_t * last, it_cursor_t * it, dk_session_t * ses);
@@ -807,10 +808,9 @@ void dbs_locate_free_bit (dbe_storage_t * dbs, dp_addr_t near_dp,
 #endif
      extern dk_set_t old_backup_dirs;
      extern int enable_gzip;
-     extern int isdts_mode;
      extern FILE *http_log;
-     extern char *http_soap_client_id_string;
-     extern char *http_client_id_string;
+     extern const char *http_soap_client_id_string;
+     extern const char *http_client_id_string;
      extern char *http_server_id_string;
      extern long http_ses_trap;
      extern unsigned long cfg_scheduler_period;
@@ -861,7 +861,6 @@ void dbs_locate_free_bit (dbe_storage_t * dbs, dp_addr_t near_dp,
      caddr_t sch_view_def (dbe_schema_t * sc, const char *name);
      void dbe_schema_dead (dbe_schema_t * sc);
      void it_free_schemas (index_tree_t * it, long now);
-     void srv_global_init (char *mode);
      void db_to_log (void);
      void db_crash_to_log (char *mode);
 
@@ -901,7 +900,6 @@ void dbs_locate_free_bit (dbe_storage_t * dbs, dp_addr_t near_dp,
      void sf_shutdown (char *log_name, lock_trx_t * lt);
      void sf_makecp (char *log_name, lock_trx_t * trx, int fail_on_vdb, int shutdown);
      void sf_make_auto_cp (void);
-     caddr_t log_new_name (char *log_name);
      caddr_t sf_srv_status (void);
      long sf_log (caddr_t * replicate);
 
@@ -1061,10 +1059,10 @@ void dbs_locate_free_bit (dbe_storage_t * dbs, dp_addr_t near_dp,
      void dbs_registry_from_array (dbe_storage_t * dbs, caddr_t * reg);
      caddr_t *dbs_registry_to_array (dbe_storage_t * dbs);
      void registry_exec (void);
-     boxint sequence_set_1 (char *name, boxint value, int mode, int in_map, caddr_t * err_ret);
-     boxint sequence_next (char *name, int in_map);
-     boxint sequence_next_inc_1 (char *name, int in_map, boxint inc_by, caddr_t * err_ret);
-     int sequence_remove (char *name, int in_map);
+     boxint sequence_set_1 (const char *name, boxint value, int mode, int in_map, caddr_t * err_ret);
+     boxint sequence_next (const char *name, int in_map);
+     boxint sequence_next_inc_1 (ccaddr_t name, int in_map, boxint inc_by, caddr_t * err_ret);
+     int sequence_remove (const char *name, int in_map);
      box_t sequence_get_all (void);	/* returns the name,value, name,value array */
 #define sequence_set(name,value,mode,in_map) sequence_set_1(name,value,mode,in_map, NULL)
 #define sequence_next_inc(name,in_map,inc_by) sequence_next_inc_1(name,in_map,inc_by, NULL)
@@ -1079,21 +1077,23 @@ EXE_EXPORT (caddr_t, registry_get, (const char *name));
      void registry_set_1 (const char *name, const char *value, int is_boxed, caddr_t * err_ret);
 #define registry_set(name,value) registry_set_1(name,value,0, NULL)
 EXE_EXPORT (box_t, registry_get_all, (void));	/* returns the name,value, name,value array */
-     caddr_t registry_remove (char *name);
+     caddr_t registry_remove (const char *name);
      int dbs_write_registry (dbe_storage_t * dbs);
      void dbs_init_registry (dbe_storage_t * dbs);
      void db_replay_registry_sequences (void);
      void cli_bootstrap_cli ();
      void db_log_registry (dk_session_t * log);
      void registry_update_sequences (void);
-     caddr_t box_deserialize_string (caddr_t text, int opt_len, int64 offset);
-     caddr_t mp_box_deserialize_string (mem_pool_t * mp, caddr_t text, int opt_len, int64 offset);
+     caddr_t box_deserialize_string (ccaddr_t text, int opt_len, int64 offset);
+     caddr_t mp_box_deserialize_string (mem_pool_t * mp, ccaddr_t text, int opt_len, int64 offset);
 
 
 /* sqlsrv.c */
      void itc_flush_client (it_cursor_t * itc);
      extern unsigned long autocheckpoint_log_size;
-     caddr_t sf_make_new_log_name (dbe_storage_t * dbs);
+     extern caddr_t sf_make_new_log_name (dbe_storage_t * dbs);
+     extern caddr_t sf_make_new_main_log_name (void);
+
      extern int threads_is_fiber;
      void srv_plugins_init (void);
 
@@ -1127,13 +1127,13 @@ EXE_EXPORT (box_t, registry_get_all, (void));	/* returns the name,value, name,va
 
 
 /* auxfiles.c */
-     dbe_storage_t *dbs_from_file (char *name, char *file, char type, volatile int *exists);
-     void _dbs_read_cfg (dbe_storage_t * dbs, char *file);
-     extern void (*dbs_read_cfg) (caddr_t * dbs, char *file);
+     dbe_storage_t *dbs_from_file (const char *name, const char *file, char type, volatile int *exists);
+     void _dbs_read_cfg (dbe_storage_t * dbs, const char *file);
+     extern void (*dbs_read_cfg) (caddr_t * dbs, const char *file);
      dk_set_t _cfg_read_storages (caddr_t ** temp_storage);
      extern dk_set_t (*dbs_read_storages) (caddr_t ** temp_file);
      extern int freeing_unfreeable;
-     caddr_t dbs_log_derived_name (dbe_storage_t * dbs, char *ext);
+     caddr_t dbs_log_derived_name (dbe_storage_t * dbs, const char *ext);
      void dbs_unfreeable (dbe_storage_t * dbs, dp_addr_t dp, int flag);
      void page_set_check (db_buf_t page);
 
@@ -1175,7 +1175,7 @@ EXE_EXPORT (box_t, registry_get_all, (void));	/* returns the name,value, name,va
      caddr_t box_cast_to (caddr_t * qst, caddr_t data, dtp_t data_dtp,
     dtp_t to_dtp, ptrlong prec, unsigned char scale, caddr_t * err_ret);
 
-     caddr_t box_sprintf_escaped (caddr_t str, int is_id);
+     caddr_t box_sprintf_escaped (ccaddr_t str, int is_id);
 
      void dp_set_backup_flag (dbe_storage_t * dbs, dp_addr_t page, int on);
      int dp_backup_flag (dbe_storage_t * dbs, dp_addr_t page);
@@ -1200,7 +1200,12 @@ EXE_EXPORT (box_t, registry_get_all, (void));	/* returns the name,value, name,va
 
 
 /*rdf_core.c */
+/*! This splits an IRI as it is stored in RDF "prefix" and "local" tables. */
      int iri_split (char *iri, caddr_t * pref, caddr_t * name);
+/*! This splits an IRI to "prefix" and "local" parts, making "local" as short as it is allowed by TURTLE syntax. */
+     extern void iri_split_ttl_qname (const char *iri, caddr_t * pref, caddr_t * name, int abbreviate_nodeid);
+     extern void iri_split_ttl_qname_impl (const char *iri, caddr_t * pref, caddr_t * name, int abbreviate_nodeid, int flag);
+     int64 unbox_iri_int64 (caddr_t x);
 
      typedef struct nic_name_id_cache_element_s
      {
@@ -1211,11 +1216,11 @@ EXE_EXPORT (box_t, registry_get_all, (void));	/* returns the name,value, name,va
      typedef struct name_id_cache_s
      {
        dk_mutex_t *nic_mtx;
-       dk_hash_64_t *nic_id_to_name;
+       id_hash_t *nic_id_to_name;
        id_hash_t *nic_name_to_id;
        unsigned long nic_size;
        int nic_n_ways;
-       dk_hash_64_t **nic_in_array;
+       id_hash_t **nic_in_array;
        id_hash_t **nic_ni_array;
        dk_mutex_t *nic_ni_mtx;
        dk_mutex_t *nic_in_mtx;
@@ -1262,7 +1267,7 @@ EXE_EXPORT (box_t, registry_get_all, (void));	/* returns the name,value, name,va
      extern int correct_parent_links;
      extern long file_extend;
      extern int32 c_checkpoint_sync;
-     extern void (*db_read_cfg) (caddr_t * dbs, char *mode);
+     extern void (*db_read_cfg) (caddr_t * dbs, const char *mode);
      extern dk_mutex_t *time_mtx;
      extern dk_mutex_t *old_roots_mtx;
      extern buffer_desc_t *old_root_images;
@@ -1302,6 +1307,7 @@ EXE_EXPORT (box_t, registry_get_all, (void));	/* returns the name,value, name,va
      extern int sqlc_hook_enable;
      extern int cfg_setup (void);
      extern char *repl_server_enable;
+     extern void repl_read_db_levels (void);
      extern long repl_queue_max;
      extern int dive_cache_enable;
 
@@ -1339,10 +1345,11 @@ EXE_EXPORT (box_t, registry_get_all, (void));	/* returns the name,value, name,va
 
      void srv_set_cfg (void (*replace_log) (char *str),
     void (*set_checkpoint_interval) (int32 f),
-    void (*read_cfg) (caddr_t * it, char *mode),
-    void (*s_read_cfg) (caddr_t * it, char *mode), dk_set_t (*read_storages) (caddr_t ** temp_file));
+    void (*read_cfg) (caddr_t * it, const char *mode),
+    void (*s_read_cfg) (caddr_t * it, const char *mode), dk_set_t (*read_storages) (caddr_t ** temp_file));
 
      void db_recover_keys (char *keys);
+     extern char *http_log_file_check (struct tm *now);	/* http log name checking */
      int http_init_part_one (void);
      int http_init_part_two (void);
 
@@ -1359,6 +1366,7 @@ EXE_EXPORT (box_t, registry_get_all, (void));	/* returns the name,value, name,va
      int cmpf_geo (buffer_desc_t * buf, int irow, it_cursor_t * itc);
      void itc_geo_insert (it_cursor_t * itc, buffer_desc_t * buf, row_delta_t * rd);
      caddr_t geo_wkt (caddr_t g);
+     caddr_t geo_wkb (caddr_t g);
      extern dk_mutex_t *geo_reg_mtx;
      void itc_geo_unregister (it_cursor_t * itc);
      caddr_t geo_parse_wkt (char *str, caddr_t * err_ret);
@@ -1374,6 +1382,7 @@ EXE_EXPORT (box_t, registry_get_all, (void));	/* returns the name,value, name,va
      void dbs_cpt_recov_write_extents (dbe_storage_t * dbs);
      int buf_ext_check (buffer_desc_t * buf);
      void kf_set_extent_map (dbe_key_frag_t * kf);
+     dp_addr_t em_free_count (extent_map_t * em, int type);
      void dbs_extent_open (dbe_storage_t * dbs);
      void dbs_extent_init (dbe_storage_t * dbs);
      void em_dp_allocated (extent_map_t * em, dp_addr_t dp, int is_temp);
@@ -1413,7 +1422,6 @@ EXE_EXPORT (box_t, registry_get_all, (void));	/* returns the name,value, name,va
      unsigned int64 rdtsc ();
 
      extern int aq_max_threads;
-     extern int in_log_replay;
      extern int32 dbs_check_extent_free_pages;
 #ifndef NDEBUG
      void ws_lt_trace (lock_trx_t * lt);
@@ -1426,8 +1434,9 @@ EXE_EXPORT (box_t, registry_get_all, (void));	/* returns the name,value, name,va
      extern int32 em_ra_startup_threshold;
      extern int enable_col_by_default;
      caddr_t file_stat_int (caddr_t fname, int what);
-     void strses_set_int32 (dk_session_t * ses, int64 offset, int32 val);
 
 #define GPF_NOW_T(s) (*((long*)-1) = -1)
 
+
+VIRT_API_END
 #endif /* _WIFN_H */

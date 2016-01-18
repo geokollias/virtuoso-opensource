@@ -68,15 +68,9 @@
 #include "sqlofn.h"
 #include "statuslog.h"
 #include "bif_text.h"
+#include "xml.h"
 #include "xmltree.h"
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 #include "xmlparser.h"
-#ifdef __cplusplus
-}
-#endif
 #include "repl.h"
 #include "replsr.h"
 #include "sqltype.h"		/* for XMLTYPE_TO_ENTITY */
@@ -88,6 +82,8 @@ extern "C"
 #include "http_client.h"	/* for MD5Init and the like */
 #include "sparql.h"
 #include "cluster.h"
+#include "sql3.h"
+#include "aqueue.h"
 
 #define box_bool(n) ((caddr_t)((ptrlong)((n) ? 1 : 0)))
 
@@ -266,7 +262,7 @@ bif_string_or_wide_or_uname_arg (caddr_t * qst, state_slot_t ** args, int nth, c
   return arg;
 }
 
-caddr_t
+dk_session_t *
 bif_strses_arg (caddr_t * qst, state_slot_t ** args, int nth, const char *func)
 {
   caddr_t arg = bif_arg (qst, args, nth, func);
@@ -274,7 +270,7 @@ bif_strses_arg (caddr_t * qst, state_slot_t ** args, int nth, const char *func)
   if (dtp != DV_STRING_SESSION)
     sqlr_new_error ("22023", "SR002",
 	"Function %s needs a string output as argument %d, not an arg of type %s (%d)", func, nth + 1, dv_type_title (dtp), dtp);
-  return arg;
+  return (dk_session_t *) arg;
 }
 
 dk_session_t *
@@ -816,7 +812,7 @@ bif_strict_array_or_null_arg (caddr_t * qst, state_slot_t ** args, int nth, cons
 
 
 dbe_key_t *
-bif_key_arg (caddr_t * qst, state_slot_t ** args, int n, char *fn)
+bif_key_arg (caddr_t * qst, state_slot_t ** args, int n, const char *fn)
 {
   query_instance_t *qi = (query_instance_t *) qst;
   caddr_t tb_name = bif_string_arg (qst, args, n, fn);
@@ -1013,7 +1009,7 @@ bif_dbg_obj_princ (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 	      }
 	    else
 	      {
-		caddr_t iri = dk_set_pop (&iri_labels);
+		caddr_t iri = (caddr_t) dk_set_pop (&iri_labels);
 		if (!iri)
 		  goto done_iid;	/* see below */
 		printf ("=<%s>", iri);
@@ -1059,10 +1055,10 @@ bif_proc_table_result (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args,
   int n_args = qst ? BOX_ELEMENTS (args) : n_ext_args;
   int n_slots, ha_dtp_check_done = 0;
   char autonull[10];
-  caddr_t nullptr;
+  caddr_t db_null_ptr;
   caddr_t pvals_ptr;
   state_slot_t **pvals;
-  BOX_AUTO (nullptr, autonull, 0, DV_DB_NULL);
+  BOX_AUTO (db_null_ptr, autonull, 0, DV_DB_NULL);
 
   n_slots = ha && ha->ha_slots ? BOX_ELEMENTS (ha->ha_slots) : 0;
 
@@ -1135,7 +1131,7 @@ bif_proc_table_result (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args,
     {
       state_slot_t *ssl = ha->ha_slots[inx];
       vals[inx + 1].ssl_type = SSL_CONSTANT;
-      vals[inx + 1].ssl_constant = nullptr;
+      vals[inx + 1].ssl_constant = db_null_ptr;
       if (ssl)
 	vals[inx].ssl_sqt = ssl->ssl_sqt;
       pvals[inx + 1] = &vals[inx + 1];
@@ -1164,7 +1160,7 @@ bif_proc_table_result (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args,
   }
   END_QR_RESET;
   ha->ha_slots = saved_slots;
-  BOX_DONE (nullptr, autonull);
+  BOX_DONE (db_null_ptr, autonull);
   BOX_DONE (pvals_ptr, pvals_buf);
   return NULL;
 }
@@ -1576,7 +1572,7 @@ bif_define_int (caddr_t name, bif_t bif, bif_metadata_t * bmd)
     }
 end:
   id_hash_set (name_to_bif_metadata_idhash, (caddr_t) (&name), (caddr_t) (&bmd));
-  sethash (bif, bif_to_bif_metadata_hash, bmd);
+  sethash ((void *) bif, bif_to_bif_metadata_hash, bmd);
 }
 
 bif_metadata_t *
@@ -1648,13 +1644,13 @@ bif_define_ex (const char *raw_name, bif_t bif, ...)
 	    break;
 	  }
 	case BMD_VECTOR_IMPL:
-	  bmd->bmd_vector_impl = va_arg (tail, void *);
+	  bmd->bmd_vector_impl = (bif_vec_t) va_arg (tail, void *);
 	  break;
 	case BMD_SQL_OPTIMIZER_IMPL:
-	  bmd->bmd_sql_optimizer_impl = va_arg (tail, void *);
+	  bmd->bmd_sql_optimizer_impl = (bif_sql_optimizer_t *) va_arg (tail, void *);
 	  break;
 	case BMD_SPARQL_OPTIMIZER_IMPL:
-	  bmd->bmd_sparql_optimizer_impl = va_arg (tail, void *);
+	  bmd->bmd_sparql_optimizer_impl = (bif_sparql_optimizer_t *) va_arg (tail, void *);
 	  break;
 	case BMD_RET_TYPE:
 	  bmd->bmd_ret_type = va_arg (tail, bif_type_t *);
@@ -2887,7 +2883,7 @@ bif_space (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 /* These two functions are for the needs of ltrim, rtrim and trim */
 #define skip_any_of_these_func(type) \
 type * \
-type##_skip_any_of_these (type *str, type *skip_str, int len) \
+type##_skip_any_of_these (type *str, const type *skip_str, int len) \
 { \
   type *s = (( type *) str);  \
 \
@@ -2923,7 +2919,7 @@ skip_any_of_these_func (char) skip_any_of_these_func (wchar_t)
    zero byte of the string in case there were nothing to trim.) */
 #define skip_from_right_any_of_these(type) \
 type * \
-type##_skip_from_right_any_of_these (type *str, type *skip_str, int len) \
+type##_skip_from_right_any_of_these (type *str, const type *skip_str, int len) \
 { \
   type *s; \
   s = ((( type *) str) + len - 1);  /* Pointer to the last char. */ \
@@ -3046,7 +3042,7 @@ bif_trim (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   int n_args = BOX_ELEMENTS (args);
   caddr_t str = bif_string_or_wide_or_null_arg (qst, args, 0, "trim");
   caddr_t skip_str_orig = NULL;
-  caddr_t skip_str = NULL;
+  const char *skip_str = NULL;
   long len;
   long from;
   long to;
@@ -3390,7 +3386,7 @@ typedef void *(*memmem_fun_t) (const void *needle, size_t needle_len, const void
 caddr_t
 bif_replace (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "replace";
+  const char *me = "replace";
   int n_args = BOX_ELEMENTS (args);
   caddr_t src_str = bif_string_or_wide_or_null_arg (qst, args, 0, me);
   caddr_t from_str = bif_string_or_wide_or_null_arg (qst, args, 1, me);
@@ -3522,10 +3518,11 @@ bif_replace (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 
 
 void
-sprintf_escaped_id (caddr_t str, char *out, dk_session_t * ses)
+sprintf_escaped_id (ccaddr_t str, char *out, dk_session_t * ses)
 {
   int len = box_length (str) - 1;
-  char *sp, *dp;
+  const char *sp;
+  char *dp;
 
   for (sp = str, dp = out; *sp && sp - str < len && (ses || dp - out < SPRINTF_BUF_SPACE - 1);)
     {
@@ -3547,10 +3544,11 @@ sprintf_escaped_id (caddr_t str, char *out, dk_session_t * ses)
 
 
 void
-sprintf_escaped_str_literal (caddr_t str, char *out, dk_session_t * ses)
+sprintf_escaped_str_literal (const char *str, char *out, dk_session_t * ses)
 {
   int len = (int) strlen (str);
-  char *sp, *dp;
+  const char *sp;
+  char *dp;
 
   for (sp = str, dp = out; *sp && sp - str < len && (ses || dp - out < SPRINTF_BUF_SPACE - 1);)
     {
@@ -3611,7 +3609,7 @@ sprintf_escaped_table_name (char *out, char *name)
 
 
 caddr_t
-box_sprintf_escaped (caddr_t str, int is_id)
+box_sprintf_escaped (ccaddr_t str, int is_id)
 {
   char dest[SPRINTF_BUF_SPACE + SPRINTF_BUF_MARGIN + 1];
   dest[SPRINTF_BUF_SPACE] = '\0';
@@ -3633,7 +3631,7 @@ box_sprintf_escaped (caddr_t str, int is_id)
 caddr_t
 bif_sprintf (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  static char *szMe = "sprintf";
+  static const char *szMe = "sprintf";
   dk_session_t *ses = strses_allocate ();
   char tmp[SPRINTF_BUF_SPACE + SPRINTF_BUF_MARGIN + 1];
   char format[100];
@@ -4352,7 +4350,7 @@ retry_unrdf:
 
 			      dks_esc_write (ses, val_tail, val_end - val_tail, WS_CHARSET (ws, qst), default_charset, DKS_ESC_URI);
 			      converted = strses_string (ses);
-			      dk_free_box (ses);
+			      dk_free_box ((caddr_t) ses);
 
 			      if (NULL == connvar_valplace)
 				dk_free_box (connvar_value);
@@ -4876,7 +4874,7 @@ retry_unrdf:
     if (!hide_errors)
       {
 	while (NULL != res)
-	  dk_free_tree (dk_set_pop (&res));
+	  dk_free_tree ((caddr_t) dk_set_pop (&res));
 	err_ret[0] = err;
 	return NULL;
       }
@@ -4911,7 +4909,7 @@ format_mismatch:
 
     default:
       while (NULL != res)
-	dk_free_tree (dk_set_pop (&res));
+	dk_free_tree ((caddr_t) dk_set_pop (&res));
 
       return NEW_DB_NULL;
     }
@@ -5182,7 +5180,7 @@ bif_fix_identifier_case (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 caddr_t
 bif_locate (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "locate";
+  const char *me = "locate";
   int n_args = BOX_ELEMENTS (args);
   caddr_t str1 = bif_string_or_uname_or_wide_or_null_arg (qst, args, 0, me);
   caddr_t str2 = bif_string_or_uname_or_wide_or_null_arg (qst, args, 1, me);
@@ -7703,6 +7701,19 @@ connection_set (client_connection_t * cli, caddr_t name, caddr_t val)
   cli->cli_globals_dirty = 1;
 }
 
+client_connection_t *
+cli_aqr_ancestor (client_connection_t * cli, int level)
+{
+  while ((0 != level) && (NULL != cli->cli_aqr))
+    {
+      client_connection_t *parent_cli = cli->cli_aqr->aqr_aq->aq_creator_cli;
+      if ((NULL == parent_cli) || (cli == parent_cli))
+	break;
+      cli = parent_cli;
+      level--;
+    }
+  return cli;
+}
 
 caddr_t
 bif_connection_set (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
@@ -7713,6 +7724,8 @@ bif_connection_set (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   caddr_t val = bif_arg (qst, args, 1, "connection_set");
   if (!box_outlives_qi (val))
     sqlr_new_error ("22023", "SR049", "Data type is not suitable for storage into a global variable (connection_set)");
+  if (2 < BOX_ELEMENTS (args))
+    cli = cli_aqr_ancestor (cli, bif_long_arg (qst, args, 2, "connection_set"));
   connection_set (cli, name, val);
   return 0;
 }
@@ -7725,7 +7738,10 @@ bif_connection_get (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   client_connection_t *cli = qi->qi_client;
   int n_args = BOX_ELEMENTS (args);
   caddr_t name = bif_string_or_uname_arg (qst, args, 0, "connection_get");
-  caddr_t *place = (caddr_t *) id_hash_get (cli->cli_globals, (caddr_t) & name);
+  caddr_t *place;
+  if (2 < n_args)
+    cli = cli_aqr_ancestor (cli, bif_long_arg (qst, args, 2, "connection_get"));
+  place = (caddr_t *) id_hash_get (cli->cli_globals, (caddr_t) & name);
   if (!place)
     {
       if (n_args > 1)
@@ -7737,10 +7753,36 @@ bif_connection_get (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 
 
 caddr_t
+bif_connection_swap (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
+{
+  query_instance_t *qi = (query_instance_t *) qst;
+  client_connection_t *cli = qi->qi_client;
+  caddr_t name = bif_string_or_uname_arg (qst, args, 0, "connection_swap");
+  caddr_t v = bif_arg (qst, args, 1, "connection_swap");
+  caddr_t *place;
+  int res;
+  if (2 < BOX_ELEMENTS (args))
+    cli = cli_aqr_ancestor (cli, bif_long_arg (qst, args, 2, "connection_swap"));
+  place = (caddr_t *) id_hash_get (cli->cli_globals, (caddr_t) & name);
+  if (!place)
+    {
+      caddr_t name2 = box_copy (name);
+      caddr_t val2 = NULL;
+      id_hash_set (cli->cli_globals, (caddr_t) & name2, (caddr_t) & val2);
+      place = (caddr_t *) id_hash_get (cli->cli_globals, (caddr_t) & name2);
+    }
+  res = qst_swap_or_get_copy (qst, args[1], place);
+  return box_num (res);
+}
+
+caddr_t
 bif_connection_is_dirty (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   query_instance_t *qi = (query_instance_t *) qst;
-  return box_num (qi->qi_client->cli_globals_dirty);
+  client_connection_t *cli = qi->qi_client;
+  if (0 < BOX_ELEMENTS (args))
+    cli = cli_aqr_ancestor (cli, bif_long_arg (qst, args, 0, "connection_is_dirty"));
+  return box_num (cli->cli_globals_dirty);
 }
 
 caddr_t
@@ -7751,7 +7793,8 @@ bif_connection_vars (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   id_hash_iterator_t it;
   dk_set_t set = NULL;
   caddr_t *name, *val;
-
+  if (1 < BOX_ELEMENTS (args))
+    cli = cli_aqr_ancestor (cli, bif_long_arg (qst, args, 1, "connection_vars"));
   id_hash_iterator (&it, cli->cli_globals);
   while (hit_next (&it, (caddr_t *) & name, (caddr_t *) & val))
     {
@@ -7771,7 +7814,8 @@ bif_connection_vars_set (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   int len = 0, ix;
   id_hash_iterator_t it;
   caddr_t *name, *val1, vname;
-
+  if (1 < BOX_ELEMENTS (args))
+    cli = cli_aqr_ancestor (cli, bif_long_arg (qst, args, 1, "connection_is_dirty"));
   if (dtp != DV_DB_NULL && dtp != DV_ARRAY_OF_POINTER)
     sqlr_new_error ("22023", "SR050",
 	"connenction_vars_set expects a vector or null as argument " "not of type %s (%d)", dv_type_title (dtp), dtp);
@@ -7782,7 +7826,6 @@ bif_connection_vars_set (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 	  "connenction_vars_set expects a vector of even length, "
 	  "not of length %d (of type %s (%d))", len, dv_type_title (dtp), dtp);
     }
-
   for (ix = 0; ix < len; ix += 2)
     {
       vname = ((caddr_t *) val)[ix];
@@ -7793,7 +7836,6 @@ bif_connection_vars_set (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       if (!box_outlives_qi (((caddr_t *) val)[ix + 1]))
 	sqlr_new_error ("22023", "SR053", "Data type is not suitable for storage into a global variable (connection_set)");
     }
-
   id_hash_iterator (&it, cli->cli_globals);
   while (hit_next (&it, (caddr_t *) & name, (caddr_t *) & val1))
     {
@@ -7832,213 +7874,12 @@ bif_check (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   return 0;
 }
 
-#include "sql3.h"
-
-caddr_t
-sql_lex_analyze (const char *str2, caddr_t * qst, int max_lexems, int use_strval, int find_lextype)
-{
-  if (!str2)
-    {
-      return list (1, list (3, 0, 0, "SQL lex analyzer: input text is NULL, not a string"));
-    }
-  else
-    {
-      SCS_STATE_FRAME;
-      dk_set_t lexems = NULL;
-      sql_comp_t sc;
-      caddr_t result_array = NULL;
-      caddr_t str;
-      yyscan_t scanner;
-      memset (&sc, 0, sizeof (sc));
-
-      if (!parse_mtx)
-	parse_mtx = mutex_allocate ();
-      MP_START ();
-      parse_enter ();
-      SCS_STATE_PUSH;
-      str = (caddr_t) t_alloc_box (20 + strlen (str2), DV_SHORT_STRING);
-      snprintf (str, box_length (str), "EXEC SQL %s;", str2);
-
-      yy_string_input_init (str);
-      scn3yylex_init (&scanner);
-      sql_err_state[0] = 0;
-      sql_err_native[0] = 0;
-      if (0 == setjmp_splice (&(global_scs->parse_reset)))
-	{
-	  int lextype, olex = -1;
-	  long n_lexem;
-	  sql_yy_reset (scanner);
-	  /* No need as soon as thing is reentrant: scn3yyrestart (NULL, scanner); */
-	  for (n_lexem = 0;;)
-	    {
-	      YYSTYPE yylval;
-	      caddr_t boxed_plineno, boxed_text, boxed_lextype;
-	      lextype = scn3yylex (&yylval, scanner);
-	      if (!lextype)
-		break;
-	      if (olex == lextype && lextype == ';')
-		continue;
-	      boxed_plineno = box_num (global_scs->scs_scn3c.plineno);
-	      /* if use_strval is given this means names etc. are expected to be in proper casemode,
-	         so must check for DV_SYMBOL otherwise stored procedure with lower case would fail on startup
-	         when cm_upper is set  */
-	      boxed_text = ((use_strval && (DV_STRINGP (yylval.strval) || DV_SYMBOL == DV_TYPE_OF (yylval.strval))) ?
-		  box_dv_short_string (yylval.strval) : box_dv_short_nchars (scn3_get_yytext (scanner), scn3_get_yyleng (scanner)));
-	      boxed_lextype = box_num (lextype);
-	      dk_set_push (&lexems, list (3, boxed_plineno, boxed_text, boxed_lextype));
-	      olex = lextype;
-	      if (max_lexems && (++n_lexem) >= max_lexems)
-		break;
-	      if (find_lextype && find_lextype == lextype)
-		break;
-	    }
-	  lexems = dk_set_nreverse (lexems);
-	}
-      else
-	{
-	  char err[1000];
-	  snprintf (err, sizeof (err), "SQL lex analyzer: %s ", sql_err_text);
-	  lexems = dk_set_nreverse (lexems);
-	  dk_set_push (&lexems, list (2, global_scs->scs_scn3c.plineno, box_dv_short_string (err)));
-	  goto cleanup;
-	}
-    cleanup:
-      sql_pop_all_buffers (scanner);
-      scn3yylex_destroy (scanner);
-      SCS_STATE_POP;
-      parse_leave ();
-      MP_DONE ();
-      sc_free (&sc);
-      result_array = (caddr_t) (dk_set_to_array (lexems));
-      dk_set_free (lexems);
-      return result_array;
-    }
-}
-
-
 static caddr_t
 bif_sql_lex_analyze (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   caddr_t str = bif_string_arg (qst, args, 0, "sql_lex_analyze");
-  return sql_lex_analyze (str, qst, 0, 0, 0);
+  return (caddr_t) sql_lex_analyze (str, qst, 0, 0, 0);
 }
-
-#define SQL_SPLIT_TEXT_DEFAULT 0x0
-#define SQL_SPLIT_TEXT_KEEP_SEMICOLON 0x1
-#define SQL_SPLIT_TEXT_KEEP_EMPTY_STATEMENTS 0x2
-#define SQL_SPLIT_TEXT_VERBOSE 0x4
-
-extern dk_session_t *scn3split_ses_code;
-extern dk_session_t *scn3split_ses_tail;
-
-caddr_t
-sql_split_text (const char *str2, caddr_t * qst, int flags)
-{
-  dk_set_t res = NULL;
-  sql_comp_t sc;
-  caddr_t str;
-  caddr_t start_filename = NULL;
-  int has_useful_lexems;
-  int start_lineno;
-  int start_plineno;
-  SCS_STATE_FRAME;
-  yyscan_t scanner;
-  memset (&sc, 0, sizeof (sc));
-
-  if (!parse_mtx)
-    parse_mtx = mutex_allocate ();
-  MP_START ();
-  parse_enter ();
-  SCS_STATE_PUSH;
-  str = (caddr_t) t_alloc_box (20 + strlen (str2), DV_SHORT_STRING);
-  snprintf (str, box_length (str), "EXEC SQL %s", str2);
-  yy_string_input_init (str);
-  scn3yylex_init (&scanner);
-  sql_err_state[0] = 0;
-  sql_err_native[0] = 0;
-  if (0 == setjmp_splice (&(global_scs->parse_reset)))
-    {
-      int lextype = -1;
-      /*int trail_pline = -1; */
-      caddr_t full_text, descr;
-      size_t full_text_blen;
-      scn3split_yy_reset (scanner);
-      /* No need as soon as thing is reentrant: scn3splityyrestart (NULL, scanner); */
-      global_scs->scs_scn3c.split_ses = strses_allocate ();
-      has_useful_lexems = 0;
-      start_lineno = global_scs->scs_scn3c.lineno;
-      start_plineno = global_scs->scs_scn3c.plineno;
-      start_filename = box_dv_short_string (scn3_get_file_name ());
-      while (0 != lextype)
-	{
-	  YYSTYPE yylval;
-	  caddr_t end_filename;
-	  lextype = scn3splityylex (&yylval, scanner);
-
-	  if (!lextype)
-	    goto commit_the_statement;	/* see below */
-	  if ((WS_WHITESPACE > lextype) && (';' != lextype))
-	    has_useful_lexems = 1;
-	  if (((';' == lextype) || ('}' == lextype)) && (0 == global_scs->scs_scn3c.lexdepth))
-	    {
-	      /*trail_pline = global_scs->scs_scn3c.plineno; */
-	      goto commit_the_statement;	/* see below */
-	    }
-	  continue;
-
-	commit_the_statement:
-	  end_filename = box_dv_short_string (scn3_get_file_name ());
-	  full_text = strses_string (global_scs->scs_scn3c.split_ses);
-	  dk_free_tree (global_scs->scs_scn3c.split_ses);
-	  global_scs->scs_scn3c.split_ses = strses_allocate ();
-	  full_text_blen = box_length (full_text);
-	  if (!has_useful_lexems && !(flags & SQL_SPLIT_TEXT_KEEP_EMPTY_STATEMENTS))
-	    goto nothing_to_commit;
-	  if (full_text_blen < 2)
-	    goto nothing_to_commit;
-	  if ((';' == full_text[full_text_blen - 2]) && !(flags & SQL_SPLIT_TEXT_KEEP_SEMICOLON))
-	    full_text[full_text_blen - 2] = ' ';
-	  if (flags & SQL_SPLIT_TEXT_VERBOSE)
-	    {
-	      descr = list (8,
-		  full_text,
-		  start_filename, box_num (start_lineno), box_num (start_plineno),
-		  box_copy (end_filename), box_num (global_scs->scs_scn3c.lineno), box_num (global_scs->scs_scn3c.plineno),
-		  box_num (param_inx));
-	    }
-	  else
-	    descr = full_text;
-	  dk_set_push (&res, descr);
-	nothing_to_commit:
-	  has_useful_lexems = 0;
-	  start_filename = end_filename;
-	  start_lineno = global_scs->scs_scn3c.lineno;
-	  start_plineno = global_scs->scs_scn3c.plineno;
-	  param_inx = 0;
-	  if (!lextype)
-	    break;
-	}
-    }
-  else
-    {
-      char err[1000];
-      snprintf (err, sizeof (err), "SQL lex splitter: %s ", sql_err_text);
-      dk_set_push (&res, list (2, global_scs->scs_scn3c.plineno, box_dv_short_string (err)));
-      goto cleanup;
-    }
-cleanup:
-  scn3split_pop_all_buffers (scanner);
-  scn3splityylex_destroy (scanner);
-  dk_free_box (global_scs->scs_scn3c.split_ses);	/* must be released inside semaphore */
-  global_scs->scs_scn3c.split_ses = NULL;
-  SCS_STATE_POP;
-  parse_leave ();
-  MP_DONE ();
-  sc_free (&sc);
-  dk_free_box (start_filename);
-  return revlist_to_array (res);
-}
-
 
 static caddr_t
 bif_sql_split_text (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
@@ -8191,7 +8032,7 @@ hexno (char c)
 caddr_t
 bif_split_and_decode (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "split_and_decode";
+  const char *me = "split_and_decode";
   int n_args = BOX_ELEMENTS (args);
   caddr_t inputs = bif_string_or_null_arg (qst, args, 0, me);
   long int convert_names_to	/* 0=PrEsErVe, 1=UPPERCASE, 2=lowercase */
@@ -8671,7 +8512,7 @@ wrong_item_type:
 caddr_t
 bif_get_keyword (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "get_keyword";
+  const char *me = "get_keyword";
   int n_args = BOX_ELEMENTS (args);
   caddr_t item = bif_arg (qst, args, 0, me);
   caddr_t arr = (caddr_t) bif_array_or_null_arg (qst, args, 1, me);
@@ -8719,7 +8560,7 @@ bif_get_keyword (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 }
 
 caddr_t
-get_keyword_int (caddr_t * arr, char *item1, const char *me)
+get_keyword_int_zero (caddr_t * arr, char *item1, const char *me, int *is_null)
 {
   int inx;
   dtp_t vectype = DV_TYPE_OF (arr);
@@ -8728,11 +8569,19 @@ get_keyword_int (caddr_t * arr, char *item1, const char *me)
   caddr_t *item = (caddr_t *) box_dv_short_string (item1);
   inx = find_index_to_vector ((caddr_t) item, (caddr_t) arr, len, vectype, 0, 2, me);
   dk_free_box ((box_t) item);
+  *is_null = 0;
   if (inx)
     return (gen_aref (arr, inx, vectype, me));
+  *is_null = 1;
   return NULL;
 }
 
+caddr_t
+get_keyword_int (caddr_t * arr, char *item1, const char *me)
+{
+  int dummy = 0;
+  return get_keyword_int_zero (arr, item1, me, &dummy);
+}
 
 /* same as the above but only for DV_ARRAY_OF_VECTOR with string keys */
 
@@ -8754,7 +8603,7 @@ get_keyword_ucase_int (caddr_t * arr, const char *item, caddr_t dflt)
 caddr_t
 bif_get_keyword_ucase (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "get_keyword_ucase";
+  const char *me = "get_keyword_ucase";
   int n_args = BOX_ELEMENTS (args);
   caddr_t item = bif_string_or_uname_arg (qst, args, 0, me);
   caddr_t arr = (caddr_t) bif_array_or_null_arg (qst, args, 1, me);
@@ -8968,7 +8817,7 @@ caddr_t
 bif_position (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   int n_args = BOX_ELEMENTS (args);
-  char *me = "position";
+  const char *me = "position";
   caddr_t item = bif_arg (qst, args, 0, me);
   caddr_t arr = (caddr_t) bif_array_arg (qst, args, 1, me);
   long int start = (long) ((n_args > 2) ? bif_long_arg (qst, args, 2, me) - 1 : 0);
@@ -9086,7 +8935,7 @@ caddr_t uname_one_of_these;
 caddr_t
 bif_one_of_these (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  char *me = "one_of_these";
+  const char *me = "one_of_these";
   int n_args = BOX_ELEMENTS (args);
   caddr_t item = bif_arg (qst, args, 0, me);
   int inx;
@@ -9651,7 +9500,7 @@ bif_tlsf_dump (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   int ht_mode = AB_ALLOCD;
   if (BOX_ELEMENTS (args) > 2)
     {
-      hit = bif_arg (qst, args, 2, "tlsf_dump");
+      hit = bif_dict_iterator_arg (qst, args, 2, "tlsf_dump", 0);
       ht_mode = bif_long_arg (qst, args, 3, "tlsf_dump");
       if (DV_DICT_ITERATOR == DV_TYPE_OF (hit))
 	ht = hit->hit_hash;
@@ -10017,7 +9866,7 @@ do_long_string:
 	  {
 	    du_thread_t *self = THREAD_CURRENT_THREAD;
 	    err = thr_get_error_code (self);
-	    dk_free_tree (subresults);
+	    dk_free_tree ((caddr_t) subresults);
 	  }
 	  END_QR_RESET;
 	  if (err)
@@ -10315,8 +10164,8 @@ do_bin:
 	  {
 	    long utf8_len, actual_utf8_len;
 	    virt_mbstate_t state;
-	    wchar_t *wide = (wchar_t *) data;
-	    wchar_t *wide_work;
+	    const wchar_t *wide = (const wchar_t *) data;
+	    const wchar_t *wide_work;
 	    int wide_len = box_length (data) / sizeof (wchar_t) - 1;
 
 	    wide_work = wide;
@@ -10376,8 +10225,8 @@ do_wide:
 	return ret;
       case DV_UNAME:
 	{
-	  unsigned char *utf8 = (unsigned char *) data;
-	  unsigned char *utf8work;
+	  const unsigned char *utf8 = (const unsigned char *) data;
+	  const unsigned char *utf8work;
 	  size_t utf8_len = box_length (data) - 1;
 	  size_t wide_len;
 	  virt_mbstate_t state;
@@ -10728,7 +10577,7 @@ caddr_t
 bif_blob_dps (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
   QNCAST (query_instance_t, qi, qst);
-  caddr_t bh = bif_arg (qst, args, 0, "blob_dps");
+  blob_handle_t *bh = (blob_handle_t *) bif_arg (qst, args, 0, "blob_dps");
   dk_set_t l;
 
   dtp_t dtp = DV_TYPE_OF (bh);
@@ -10755,8 +10604,6 @@ bif_lisp_read (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 }
 
 
-int32 dbf_no_raw_exit;
-
 caddr_t
 bif_raw_exit (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
@@ -10769,8 +10616,6 @@ bif_raw_exit (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     return 0;
   if (qi->qi_client && qi->qi_client->cli_session)
     session_flush (qi->qi_client->cli_session);
-  if (dbf_no_raw_exit)
-    sqlr_new_error ("NOREX", "NOREX", "raw_exit called when raw_exit disabled");
   if (!f && !atomic)
     IN_CPT (((query_instance_t *) qst)->qi_trx);	/* not during checkpoint */
   call_exit (0);
@@ -11699,7 +11544,7 @@ bif_remove_user_struct (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 caddr_t
 bif_grant_user_role (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  static char *me = "sec_grant_user_role";
+  static const char *me = "sec_grant_user_role";
   oid_t u_id = (oid_t) bif_long_arg (qst, args, 0, me);
   oid_t g_id = (oid_t) bif_long_arg (qst, args, 1, me);
   user_t *user, *gr;
@@ -11783,7 +11628,7 @@ bif_user_set_password (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 caddr_t
 bif_revoke_user_role (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  static char *me = "sec_revoke_user_role";
+  static const char *me = "sec_revoke_user_role";
   oid_t u_id = (oid_t) bif_long_arg (qst, args, 0, me);
   oid_t g_id = (oid_t) bif_long_arg (qst, args, 1, me);
   user_t *user, *gr;
@@ -11915,7 +11760,7 @@ bif_log_text_array_impl (caddr_t * inst, caddr_t * arr)
   else
     log_text_array_as_user (cli->cli_user, qi->qi_trx, (caddr_t) arr);
   while (NULL != temp_blobs)
-    dk_free_tree (dk_set_pop (&temp_blobs));
+    dk_free_tree ((caddr_t) (dk_set_pop (&temp_blobs)));
 }
 
 caddr_t
@@ -11923,7 +11768,7 @@ bif_log_text_array (caddr_t * inst, caddr_t * err_ret, state_slot_t ** args)
 {
   caddr_t *arr;
   if (1 == BOX_ELEMENTS (args))
-    arr = box_copy (bif_array_of_pointer_arg (inst, args, 0, "log_text_array"));
+    arr = (caddr_t *) box_copy ((caddr_t) (bif_array_of_pointer_arg (inst, args, 0, "log_text_array")));
   else
     {
       caddr_t qry_text = bif_string_arg (inst, args, 0, "log_text_array");
@@ -11942,7 +11787,7 @@ caddr_t
 bif_log_text (caddr_t * inst, caddr_t * err_ret, state_slot_t ** args)
 {
   int inx, len = BOX_ELEMENTS (args);
-  caddr_t *arr = (caddr_t *) dk_alloc_box (len * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
+  caddr_t *arr = dk_alloc_list (len);
   for (inx = 0; inx < len; inx++)
     arr[inx] = bif_arg (inst, args, inx, "log_text");
   bif_log_text_array_impl (inst, arr);
@@ -12054,7 +11899,7 @@ print_object_to_new_string (caddr_t xx, const char *fun_name, caddr_t * err_ret,
   END_WRITE_FAIL (out);
   if (!STRSES_CAN_BE_STRING (out))
     {
-      return out;
+      return (caddr_t) out;
     }
   else
     res = strses_string (out);
@@ -12084,7 +11929,7 @@ bif_deserialize (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
     return NEW_DB_NULL;
   if (DV_STRING_SESSION == dtp)
     {
-      return read_object (xx);
+      return (caddr_t) read_object ((dk_session_t *) xx);
     }
   if (!IS_BLOB_HANDLE_DTP (dtp))
     sqlr_new_error ("22023", "SR581", "deserialize() requires a blob or NULL or string argument");
@@ -12128,13 +11973,13 @@ bif_serialize_to_string_session (caddr_t * qst, caddr_t * err_ret, state_slot_t 
 	"Cannot serialize the data of type %s (%u) in serialize", dv_type_title (tag), (unsigned) tag);
   }
   END_WRITE_FAIL (out);
-  return out;
+  return (caddr_t) out;
 }
 
 static caddr_t
 bif_deserialize_from_string_session (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  dk_session_t *in = (dk_session_t *) bif_strses_arg (qst, args, 0, "deserialize");
+  dk_session_t *in = bif_strses_arg (qst, args, 0, "deserialize");
   caddr_t ret;
   ret = (caddr_t) read_object (in);
   return ret;
@@ -12556,16 +12401,6 @@ bif_ddl_change (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
   return 0;
 }
 
-caddr_t
-bif_table_exists (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
-{
-  char *tb = bif_string_arg (qst, args, 0, "table_exists");
-  dbe_table_t *tb_def = sch_name_to_table (wi_inst.wi_schema, tb);
-  if (NULL != tb_def)
-    return box_num (1);
-  return box_num (0);
-}
-
 #if 0
 caddr_t
 bif_ddl_table_renamed (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
@@ -12820,7 +12655,7 @@ end:
 	  box_dv_short_string (tb_name)) : (caddr_t *) list (2, box_dv_short_string ("__proc_changed (?)"),
 	  box_dv_short_string (name));
       log_text_array (qi->qi_trx, (caddr_t) arr);
-      dk_free_tree (arr);
+      dk_free_tree ((caddr_t) arr);
     }
   qr_free (rdproc);
   return NULL;
@@ -13674,7 +13509,7 @@ lc_result_array (int *set_ret, mem_pool_t * mp, srv_stmt_t * lc, int fmt, dk_set
 	{
 	case LC_BOX_ARRAY:
 	  org_set = set;
-	  row = dk_alloc_box (n_out * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
+	  row = dk_alloc_list (n_out);
 	  for (sslinx = 0; sslinx < n_out; sslinx++)
 	    {
 	      state_slot_t *ssl = out_slots[sslinx];
@@ -13698,7 +13533,7 @@ lc_result_array (int *set_ret, mem_pool_t * mp, srv_stmt_t * lc, int fmt, dk_set
 
 
 void
-exec_read_lc (srv_stmt_t * lc, int rc, caddr_t * err_ret, mem_pool_t * mp, int fmt, void *all_res)
+exec_read_lc (srv_stmt_t * lc, int rc, caddr_t * err_ret, mem_pool_t * mp, int fmt, dk_set_t * all_res)
 {
   if (LC_INIT == rc)
     rc = lc_exec (lc, NULL, NULL, 0);
@@ -14478,7 +14313,7 @@ bif_busy_meter (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       tb = sch_name_to_table (wi_inst.wi_schema, tb_name);
       if (tb)
 	{
-	  counts = dk_alloc_box_zero (dk_set_length (tb->tb_keys) * sizeof (long), DV_STRING);
+	  counts = (long *) dk_alloc_box_zero (dk_set_length (tb->tb_keys) * sizeof (long), DV_STRING);
 	}
     }
 
@@ -14551,7 +14386,7 @@ caddr_t
 bif_getrusage (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
 #ifdef HAVE_GETRUSAGE
-  caddr_t *res = dk_alloc_box_zero (sizeof (caddr_t) * 10, DV_ARRAY_OF_POINTER);
+  caddr_t *res = dk_alloc_list (10);
   struct rusage ru;
   getrusage (RUSAGE_SELF, &ru);
   res[0] = box_num (ru.ru_utime.tv_sec * 1000 + ru.ru_utime.tv_usec / 1000);
@@ -14604,12 +14439,10 @@ bif_rdtsc (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 }
 
 
-void dk_alloc_cache_status (resource_t ** cache);
-
 caddr_t
 bif_alloc_cache_status (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
-  dk_alloc_cache_status ((resource_t **) THREAD_CURRENT_THREAD->thr_alloc_cache);
+  dk_alloc_cache_status (THREAD_CURRENT_THREAD->thr_alloc_cache);
   return 0;
 }
 
@@ -14849,6 +14682,8 @@ bif_server_version_check (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args
   return NEW_DB_NULL;
 }
 
+int clflt_in_recov = 0;
+
 caddr_t
 bif_server_id_check (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
 {
@@ -14870,7 +14705,7 @@ bif_server_id_check (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args)
       db_id[inx] = (unsigned char) c;
     }
 
-  if (memcmp (db_id, wi_inst.wi_master->dbs_id, sizeof (db_id)))
+  if (!clflt_in_recov && memcmp (db_id, wi_inst.wi_master->dbs_id, sizeof (db_id)))
     {
       log_error ("The transaction log file has been produced by different server instance.");
       call_exit (0);
@@ -16723,6 +16558,7 @@ sql_bif_init (void)
   bif_define_ex ("connection_id", bif_connection_id, BMD_RET_TYPE, &bt_varchar, BMD_NO_CLUSTER, BMD_DONE);
   bif_define_ex ("connection_set", bif_connection_set, BMD_NO_CLUSTER, BMD_DONE);
   bif_define_ex ("connection_get", bif_connection_get, BMD_NO_CLUSTER, BMD_DONE);
+  bif_define_ex ("connection_swap", bif_connection_swap, BMD_NO_CLUSTER, BMD_DONE);
   bif_define_ex ("connection_vars_set", bif_connection_vars_set, BMD_NO_CLUSTER, BMD_DONE);
   bif_define_ex ("connection_vars", bif_connection_vars, BMD_NO_CLUSTER, BMD_DONE);
   bif_define_ex ("connection_is_dirty", bif_connection_is_dirty, BMD_NO_CLUSTER, BMD_DONE);
@@ -16839,7 +16675,6 @@ sql_bif_init (void)
   bif_define ("replay", bif_replay);
   bif_define ("txn_killall", bif_txn_killall);
 
-  bif_define ("table_exists", bif_table_exists);
   bif_define ("__ddl_changed", bif_ddl_change);
   /*bif_define ("__ddl_table_renamed", bif_ddl_table_renamed); */
   bif_define ("__ddl_index_def", bif_ddl_index_def);
@@ -17135,7 +16970,7 @@ bif_set_vectored (bif_t bif, bif_vec_t vectored)
 }
 
 
-char *bpel_run_check_proc = "RESTART_ALL_BPEL_INSTANCES ()";
+const char *bpel_run_check_proc = "RESTART_ALL_BPEL_INSTANCES ()";
 
 #if 0
 #define CHECKP(x)  fprintf (stderr, x "." );  fflush (stderr)

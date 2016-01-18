@@ -710,3 +710,31 @@ void t_id_hash_copy (id_hash_t * to, id_hash_t * from) { dbg_t_id_hash_copy (__F
 #undef t_id_tree_hash_create
 id_hash_t * t_id_tree_hash_create (id_hashed_key_t buckets) { return dbg_t_id_tree_hash_create (__FILE__, __LINE__, buckets); }
 #endif
+
+
+
+void
+id_sethash (void * key, id_hash_t * ht, void * data)
+{
+  id_hash_set (ht, (caddr_t)&key, (caddr_t)&data);
+}
+
+
+void *
+id_gethash (void * key, id_hash_t * ht)
+{
+  void ** place = (void**)id_hash_get (ht, (caddr_t)&key);
+  return place ? *place : NULL;
+}
+
+int
+id_remhash (void * key, id_hash_t * ht)
+{
+  return id_hash_remove (ht, (caddr_t)&key);
+}
+
+id_hash_t *
+id_hash_table_allocate (int sz)
+{
+  return id_hash_allocate (sz, sizeof (ptrlong), sizeof (ptrlong), boxint_hash, boxint_hashcmp);
+}

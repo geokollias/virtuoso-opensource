@@ -282,7 +282,7 @@ ws_dav (ws_connection_t * ws, query_t * http_call)
   char p_name[PATH_ELT_MAX_CHARS + 20];
   char method_name[100];
   int inx = 0;
-  char *szContentType = ws_header_field (ws->ws_lines, "Content-type:", "application/octet-stream");
+  const char *szContentType = ws_header_field (ws->ws_lines, "Content-type:", "application/octet-stream");
   log_dav (ws, 0);
   pmethod = strchr (ws->ws_req_line, '\x20');
   if (pmethod)

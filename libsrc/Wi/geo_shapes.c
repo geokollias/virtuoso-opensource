@@ -126,7 +126,7 @@ geo_t *
 geo_alloc_safe (geo_flags_t geo_flags_, int len_, int srcode_, dk_session_t * ses)
 {
   geo_t *res = NULL;
-  int head_sz, gcb_bcount, gcb_sz, full_sz;
+  size_t head_sz, gcb_bcount, gcb_sz, full_sz;
   switch (GEO_TYPE (geo_flags_))
     {
     case GEO_NULL_SHAPE:
@@ -1601,69 +1601,73 @@ ewkt_kwd_metas_t ewkt_keyword_metas[] = {
   {"CURVEZ", 20, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
   {"CURVEZM", 21, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
   {"EMPTY", 22, EWKT_KWD_GEO_TYPE, GEO_NULL_SHAPE, 0, 0, 0, 0},
+  {"GEOMETRY", 27, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
   {"GEOMETRYCOLLECTION", 23, EWKT_KWD_GEO_TYPE, GEO_COLLECTION, -1, -1, -1, 0},
   {"GEOMETRYCOLLECTIONM", 24, EWKT_KWD_GEO_TYPE, GEO_COLLECTION_M, -1, -1, -1, 0},
   {"GEOMETRYCOLLECTIONZ", 25, EWKT_KWD_GEO_TYPE, GEO_COLLECTION_Z, -1, -1, -1, 0},
   {"GEOMETRYCOLLECTIONZM", 26, EWKT_KWD_GEO_TYPE, GEO_COLLECTION_Z_M, -1, -1, -1, 0},
-  {"GEOMETRY", 27, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
   {"GEOMETRYZ", 28, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
   {"GEOMETRYZM", 29, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
-  {"LINESTRING", 30, EWKT_KWD_GEO_TYPE, GEO_LINESTRING, 1, 2, 3, 0},
-  {"LINESTRINGM", 31, EWKT_KWD_GEO_TYPE, GEO_LINESTRING_M, 1, 3, 4, 0},
-  {"LINESTRINGZ", 32, EWKT_KWD_GEO_TYPE, GEO_LINESTRING_Z, 1, 3, 4, 0},
-  {"LINESTRINGZM", 33, EWKT_KWD_GEO_TYPE, GEO_LINESTRING_Z_M, 1, 4, 4, 0},
-  {"M", 34, EWKT_KWD_MODIF, GEO_A_M, 0, 0, 0, 0},
-  {"MULTICURVE", 35, EWKT_KWD_GEO_TYPE, GEO_MULTI_CURVE, 2, 2, 2, 0},
-  {"MULTICURVEM", 36, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
-  {"MULTICURVEZ", 37, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
-  {"MULTICURVEZM", 38, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
-  {"MULTILINESTRING", 39, EWKT_KWD_GEO_TYPE, GEO_MULTI_LINESTRING, 2, 2, 3, 0},
-  {"MULTILINESTRINGM", 40, EWKT_KWD_GEO_TYPE, GEO_MULTI_LINESTRING_M, 2, 3, 4, 0},
-  {"MULTILINESTRINGZ", 41, EWKT_KWD_GEO_TYPE, GEO_MULTI_LINESTRING_Z, 2, 3, 4, 0},
-  {"MULTILINESTRINGZM", 42, EWKT_KWD_GEO_TYPE, GEO_MULTI_LINESTRING_Z_M, 2, 4, 4, 0},
-  {"MULTIPATCH", 43, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
-  {"MULTIPOINT", 44, EWKT_KWD_GEO_TYPE, GEO_POINTLIST, 1, 2, 3, 0},
-  {"MULTIPOINTM", 45, EWKT_KWD_GEO_TYPE, GEO_POINTLIST_M, 1, 3, 4, 0},
-  {"MULTIPOINTZ", 46, EWKT_KWD_GEO_TYPE, GEO_POINTLIST_Z, 1, 3, 4, 0},
-  {"MULTIPOINTZM", 47, EWKT_KWD_GEO_TYPE, GEO_POINTLIST_Z_M, 1, 4, 4, 0},
-  {"MULTIPOLYGON", 48, EWKT_KWD_GEO_TYPE, GEO_MULTI_POLYGON, 3, 2, 3, 0},
-  {"MULTIPOLYGONM", 49, EWKT_KWD_GEO_TYPE, GEO_MULTI_POLYGON_M, 3, 3, 4, 0},
-  {"MULTIPOLYGONZ", 50, EWKT_KWD_GEO_TYPE, GEO_MULTI_POLYGON_Z, 3, 3, 4, 0},
-  {"MULTIPOLYGONZM", 51, EWKT_KWD_GEO_TYPE, GEO_MULTI_POLYGON_Z_M, 3, 4, 4, 0},
-  {"MULTISURFACE", 52, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
-  {"MULTISURFACEM", 53, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
-  {"MULTISURFACEZ", 54, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
-  {"MULTISURFACEZM", 55, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
-  {"POINT", 56, EWKT_KWD_GEO_TYPE, GEO_POINT, 1, 2, 3, 0},
-  {"POINTM", 57, EWKT_KWD_GEO_TYPE, GEO_POINT_M, 1, 3, 4, 0},
-  {"POINTZ", 58, EWKT_KWD_GEO_TYPE, GEO_POINT_Z, 1, 3, 4, 0},
-  {"POINTZM", 59, EWKT_KWD_GEO_TYPE, GEO_POINT_Z_M, 1, 4, 4, 0},
-  {"POLYGON", 60, EWKT_KWD_GEO_TYPE, GEO_POLYGON, 2, 2, 3, 0},
-  {"POLYGONM", 61, EWKT_KWD_GEO_TYPE, GEO_POLYGON_M, 2, 3, 4, 0},
-  {"POLYGONZ", 62, EWKT_KWD_GEO_TYPE, GEO_POLYGON_Z, 2, 3, 4, 0},
-  {"POLYGONZM", 63, EWKT_KWD_GEO_TYPE, GEO_POLYGON_Z_M, 2, 4, 4, 0},
-  {"POLYHEDRALSURFACE", 64, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
-  {"POLYHEDRALSURFACEM", 65, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
-  {"POLYHEDRALSURFACEZ", 66, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
-  {"POLYHEDRALSURFACEZM", 67, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
-  {"POLYLINE", 68, EWKT_KWD_GEO_TYPE, GEO_MULTI_LINESTRING, 2, 2, 3, 1},
-  {"POLYLINEM", 69, EWKT_KWD_GEO_TYPE, -1, 2, 2, 2, 1},
-  {"POLYLINEZ", 70, EWKT_KWD_GEO_TYPE, GEO_MULTI_LINESTRING_Z, 2, 3, 3, 1},
-  {"RING", 71, EWKT_KWD_GEO_TYPE, GEO_RING, 1, 2, 3, 0},
-  {"RINGM", 72, EWKT_KWD_GEO_TYPE, GEO_RING_M, 1, 3, 4, 0},
-  {"RINGZ", 73, EWKT_KWD_GEO_TYPE, GEO_RING_Z, 1, 3, 4, 0},
-  {"RINGZM", 74, EWKT_KWD_GEO_TYPE, GEO_RING_Z_M, 1, 4, 4, 0},
-  {"SRID", 75, EWKT_KWD_EXT, EWKT_KWD_SRID, 0, 0, 0, 0},
-  {"SURFACE", 76, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
-  {"SURFACEM", 77, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
-  {"SURFACEZ", 78, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
-  {"SURFACEZM", 79, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
-  {"TIN", 80, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
-  {"TINM", 81, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
-  {"TINZ", 82, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
-  {"TINZM", 83, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
-  {"Z", 84, EWKT_KWD_MODIF, GEO_A_Z, 0, 0, 0, 0},
-  {"ZM", 85, EWKT_KWD_MODIF, GEO_A_Z | GEO_A_M, 0, 0, 0, 0}
+  {"LINEARRING", 30, EWKT_KWD_GEO_TYPE, GEO_RING, 1, 2, 3, 1},	/* LINEARRING[Z][M] is a non-standard tag introduced by com.vividsolutions.jts.io.WKTWriter and then migrated to GEOS */
+  {"LINEARRINGM", 31, EWKT_KWD_GEO_TYPE, GEO_RING_M, 1, 3, 4, 1},
+  {"LINEARRINGZ", 32, EWKT_KWD_GEO_TYPE, GEO_RING_Z, 1, 3, 4, 1},
+  {"LINEARRINGZM", 33, EWKT_KWD_GEO_TYPE, GEO_RING_Z_M, 1, 4, 4, 1},
+  {"LINESTRING", 34, EWKT_KWD_GEO_TYPE, GEO_LINESTRING, 1, 2, 3, 0},
+  {"LINESTRINGM", 35, EWKT_KWD_GEO_TYPE, GEO_LINESTRING_M, 1, 3, 4, 0},
+  {"LINESTRINGZ", 36, EWKT_KWD_GEO_TYPE, GEO_LINESTRING_Z, 1, 3, 4, 0},
+  {"LINESTRINGZM", 37, EWKT_KWD_GEO_TYPE, GEO_LINESTRING_Z_M, 1, 4, 4, 0},
+  {"M", 38, EWKT_KWD_MODIF, GEO_A_M, 0, 0, 0, 0},
+  {"MULTICURVE", 39, EWKT_KWD_GEO_TYPE, GEO_MULTI_CURVE, 2, 2, 2, 0},
+  {"MULTICURVEM", 40, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
+  {"MULTICURVEZ", 41, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
+  {"MULTICURVEZM", 42, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
+  {"MULTILINESTRING", 43, EWKT_KWD_GEO_TYPE, GEO_MULTI_LINESTRING, 2, 2, 3, 0},
+  {"MULTILINESTRINGM", 44, EWKT_KWD_GEO_TYPE, GEO_MULTI_LINESTRING_M, 2, 3, 4, 0},
+  {"MULTILINESTRINGZ", 45, EWKT_KWD_GEO_TYPE, GEO_MULTI_LINESTRING_Z, 2, 3, 4, 0},
+  {"MULTILINESTRINGZM", 46, EWKT_KWD_GEO_TYPE, GEO_MULTI_LINESTRING_Z_M, 2, 4, 4, 0},
+  {"MULTIPATCH", 47, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
+  {"MULTIPOINT", 48, EWKT_KWD_GEO_TYPE, GEO_POINTLIST, 1, 2, 3, 0},
+  {"MULTIPOINTM", 49, EWKT_KWD_GEO_TYPE, GEO_POINTLIST_M, 1, 3, 4, 0},
+  {"MULTIPOINTZ", 50, EWKT_KWD_GEO_TYPE, GEO_POINTLIST_Z, 1, 3, 4, 0},
+  {"MULTIPOINTZM", 51, EWKT_KWD_GEO_TYPE, GEO_POINTLIST_Z_M, 1, 4, 4, 0},
+  {"MULTIPOLYGON", 52, EWKT_KWD_GEO_TYPE, GEO_MULTI_POLYGON, 3, 2, 3, 0},
+  {"MULTIPOLYGONM", 53, EWKT_KWD_GEO_TYPE, GEO_MULTI_POLYGON_M, 3, 3, 4, 0},
+  {"MULTIPOLYGONZ", 54, EWKT_KWD_GEO_TYPE, GEO_MULTI_POLYGON_Z, 3, 3, 4, 0},
+  {"MULTIPOLYGONZM", 55, EWKT_KWD_GEO_TYPE, GEO_MULTI_POLYGON_Z_M, 3, 4, 4, 0},
+  {"MULTISURFACE", 56, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
+  {"MULTISURFACEM", 57, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
+  {"MULTISURFACEZ", 58, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
+  {"MULTISURFACEZM", 59, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
+  {"POINT", 60, EWKT_KWD_GEO_TYPE, GEO_POINT, 1, 2, 3, 0},
+  {"POINTM", 61, EWKT_KWD_GEO_TYPE, GEO_POINT_M, 1, 3, 4, 0},
+  {"POINTZ", 62, EWKT_KWD_GEO_TYPE, GEO_POINT_Z, 1, 3, 4, 0},
+  {"POINTZM", 63, EWKT_KWD_GEO_TYPE, GEO_POINT_Z_M, 1, 4, 4, 0},
+  {"POLYGON", 64, EWKT_KWD_GEO_TYPE, GEO_POLYGON, 2, 2, 3, 0},
+  {"POLYGONM", 65, EWKT_KWD_GEO_TYPE, GEO_POLYGON_M, 2, 3, 4, 0},
+  {"POLYGONZ", 66, EWKT_KWD_GEO_TYPE, GEO_POLYGON_Z, 2, 3, 4, 0},
+  {"POLYGONZM", 67, EWKT_KWD_GEO_TYPE, GEO_POLYGON_Z_M, 2, 4, 4, 0},
+  {"POLYHEDRALSURFACE", 68, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
+  {"POLYHEDRALSURFACEM", 69, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
+  {"POLYHEDRALSURFACEZ", 70, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
+  {"POLYHEDRALSURFACEZM", 71, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
+  {"POLYLINE", 72, EWKT_KWD_GEO_TYPE, GEO_MULTI_LINESTRING, 2, 2, 3, 1},
+  {"POLYLINEM", 73, EWKT_KWD_GEO_TYPE, -1, 2, 2, 2, 1},
+  {"POLYLINEZ", 74, EWKT_KWD_GEO_TYPE, GEO_MULTI_LINESTRING_Z, 2, 3, 3, 1},
+  {"RING", 75, EWKT_KWD_GEO_TYPE, GEO_RING, 1, 2, 3, 0},
+  {"RINGM", 76, EWKT_KWD_GEO_TYPE, GEO_RING_M, 1, 3, 4, 0},
+  {"RINGZ", 77, EWKT_KWD_GEO_TYPE, GEO_RING_Z, 1, 3, 4, 0},
+  {"RINGZM", 78, EWKT_KWD_GEO_TYPE, GEO_RING_Z_M, 1, 4, 4, 0},
+  {"SRID", 79, EWKT_KWD_EXT, EWKT_KWD_SRID, 0, 0, 0, 0},
+  {"SURFACE", 80, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
+  {"SURFACEM", 81, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
+  {"SURFACEZ", 82, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
+  {"SURFACEZM", 83, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
+  {"TIN", 84, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
+  {"TINM", 85, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
+  {"TINZ", 86, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
+  {"TINZM", 87, EWKT_KWD_GEO_TYPE, -1, 1, 2, 2, 0},
+  {"Z", 88, EWKT_KWD_MODIF, GEO_A_Z, 0, 0, 0, 0},
+  {"ZM", 89, EWKT_KWD_MODIF, GEO_A_Z | GEO_A_M, 0, 0, 0, 0}
 };
 
 dk_hash_t *ewkt_geotype_metas = NULL;
@@ -1683,7 +1687,7 @@ ewkt_find_metas_by_geotype (int geotype)
 	    continue;
 	  if (0 > ptr->kwd_subtype)
 	    continue;
-	  old = gethash (((void *) ((ptrlong) (ptr->kwd_subtype))), ewkt_geotype_metas);
+	  old = (ewkt_kwd_metas_t *) gethash (((void *) ((ptrlong) (ptr->kwd_subtype))), ewkt_geotype_metas);
 	  if (NULL != old)
 	    {
 	      if (ptr->kwd_is_alias)
@@ -2244,19 +2248,19 @@ ewkt_destroy_input (ewkt_input_t * in)
 geo_t *
 ewkt_parse (const char *strg, caddr_t * err_ret)
 {
-  return ewkt_parse_2 (strg, SRID_DEFAULT, err_ret);
+  return ewkt_parse_2 (strg, GEO_SRCODE_OF_SRID (SRID_DEFAULT), err_ret);
 }
 
 geo_t *
-ewkt_parse_2 (const char *strg, int dflt_srid, caddr_t * err_ret)
+ewkt_parse_2 (const char *strg, int dflt_srcode, caddr_t * err_ret)
 {
   geo_t *res;
   ewkt_input_t in;
   int tkn;
   ewkt_token_val_t val;
   memset (&in, 0, sizeof (ewkt_input_t));
-  in.ewkt_srid = dflt_srid;
-  in.ewkt_srcode = GEO_SRCODE_OF_SRID (dflt_srid);
+  in.ewkt_srid = GEO_SRID (dflt_srcode);
+  in.ewkt_srcode = dflt_srcode;
   in.ewkt_source = in.ewkt_tail = in.ewkt_row_begin = (const unsigned char *) strg;
   if (0 == setjmp (in.ewkt_error_ctx))
     {
@@ -2408,6 +2412,293 @@ ewkt_print_sf12 (geo_t * g, dk_session_t * ses)
     }
   ewkt_print_sf12_one (g, ses, 1);
 }
+
+/* WKB printer */
+#ifndef DISABLE_WKB
+#ifndef _IEEE_FLOATS
+#error "WKB is implemented only for systems with IEEE doubles, sorry (_IEEE_FLOATS should be defined). To build the rest of Virtuoso, put DISABLE_WKB define in compilation options, and/or file the support request to authors"
+#endif
+#if 0
+#if 8 != sizeof (double)
+#error "WKB is implemented only for systems with 8-bit doubles, sorry. To build the rest of Virtuoso, put DISABLE_WKB define in compilation options, and/or file the support request to authors"
+#endif
+#endif
+
+#define WKB_PRINT_BYTE(ses,n) do { session_buffered_write_char (n, ses); } while (0)
+#define WKB_PRINT_INT32(ses,n) do { uint32 d=(n); session_buffered_write (ses, (char *)(&d), 4); } while (0)
+#define WKB_PRINT_DOUBLE(ses,n) do { double d=(n); session_buffered_write (ses, (char *)(&d), 8); } while (0)
+#if  __BYTE_ORDER == __BIG_ENDIAN
+#define WKB_PRINT_BOM(ses) WKB_PRINT_BYTE (ses, 0)
+#elif  __BYTE_ORDER == __LITTLE_ENDIAN
+#define WKB_PRINT_BOM(ses) WKB_PRINT_BYTE (ses, 1)
+#else
+#error "WKB is implemented only for big-endian and little-endian systems, sorry. To build the rest of Virtuoso, put DISABLE_WKB define in compilation options, and/or file the support request to authors"
+#endif
+
+
+void
+wkb_print_pcount_and_points (dk_session_t * ses, int geo_flags, int pcount, geoc * Xs, geoc * Ys, geoc * Zs, geo_measure_t * Ms)
+{
+  int inx;
+  WKB_PRINT_INT32 (ses, pcount);
+  for (inx = 0; inx < pcount; inx++)
+    {
+      WKB_PRINT_DOUBLE (ses, Xs[inx]);
+      WKB_PRINT_DOUBLE (ses, Ys[inx]);
+      if (geo_flags & GEO_A_Z)
+	WKB_PRINT_DOUBLE (ses, Zs[inx]);
+      if (geo_flags & GEO_A_M)
+	WKB_PRINT_DOUBLE (ses, Ms[inx]);
+    }
+}
+
+#define WKB_POINT		1
+#define WKB_LINESTRING		2
+#define WKB_POLYGON		3
+#define WKB_MULTIPOINT		4
+#define WKB_MULTILINESTRING	5
+#define WKB_MULTIPOLYGON	6
+#define WKB_GEOMETRYCOLLECTION	7
+
+#define WKB_TYPE_WITH_ZM(base,flags) (base + (((flags) & GEO_A_Z) ? 1000 : 0) + (((flags) & GEO_A_M) ? 2000 : 0))
+
+void
+wkb_print (geo_t * g, dk_session_t * ses, int basic_wkb_only, char set_byte_order)
+{
+  int g_type_no_zm = GEO_TYPE_NO_ZM (g->geo_flags);
+  WKB_PRINT_BOM (ses);
+  switch (g_type_no_zm)
+    {
+    case GEO_POINT:
+      WKB_PRINT_INT32 (ses, WKB_TYPE_WITH_ZM (WKB_POINT, g->geo_flags));
+      WKB_PRINT_DOUBLE (ses, g->XYbox.Xmin);
+      WKB_PRINT_DOUBLE (ses, g->XYbox.Ymin);
+      if (g->geo_flags & GEO_A_Z)
+	WKB_PRINT_DOUBLE (ses, g->_.point.point_ZMbox.Zmin);
+      if (g->geo_flags & GEO_A_M)
+	WKB_PRINT_DOUBLE (ses, g->_.point.point_ZMbox.Mmin);
+      return;
+    case GEO_LINESTRING:
+    case GEO_RING:
+      WKB_PRINT_INT32 (ses, WKB_TYPE_WITH_ZM (WKB_LINESTRING, g->geo_flags));
+      wkb_print_pcount_and_points (ses, g->geo_flags, g->_.pline.len, g->_.pline.Xs, g->_.pline.Ys, g->_.pline.Zs, g->_.pline.Ms);
+      return;
+    case GEO_POLYGON:
+      {
+	int inx, len = g->_.parts.len;
+	WKB_PRINT_INT32 (ses, WKB_TYPE_WITH_ZM (WKB_POLYGON, g->geo_flags));
+	WKB_PRINT_INT32 (ses, len);
+	for (inx = 0; inx < len; inx++)
+	  {
+	    geo_t *itm = g->_.parts.items[inx];
+	    if (GEO_TYPE (itm->geo_flags) != (GEO_RING | (g->geo_flags & (GEO_A_Z | GEO_A_M))))
+	      sqlr_new_error ("22023", "GEO12", "(E)WKB serialization does not support weird polygons with non-ring internals");
+	    wkb_print_pcount_and_points (ses, itm->geo_flags, itm->_.pline.len, itm->_.pline.Xs, itm->_.pline.Ys, itm->_.pline.Zs,
+		itm->_.pline.Ms);
+	  }
+	return;
+      }
+    case GEO_POINTLIST:
+      {
+	int inx, len = g->_.pline.len;
+	WKB_PRINT_INT32 (ses, WKB_TYPE_WITH_ZM (WKB_MULTIPOINT, g->geo_flags));
+	WKB_PRINT_INT32 (ses, len);
+	for (inx = 0; inx < len; inx++)
+	  {
+	    WKB_PRINT_BOM (ses);
+	    WKB_PRINT_INT32 (ses, WKB_TYPE_WITH_ZM (WKB_POINT, g->geo_flags));
+	    WKB_PRINT_DOUBLE (ses, g->_.pline.Xs[inx]);
+	    WKB_PRINT_DOUBLE (ses, g->_.pline.Ys[inx]);
+	    if (g->geo_flags & GEO_A_Z)
+	      WKB_PRINT_DOUBLE (ses, g->_.pline.Zs[inx]);
+	    if (g->geo_flags & GEO_A_M)
+	      WKB_PRINT_DOUBLE (ses, g->_.pline.Ms[inx]);
+	  }
+	return;
+      }
+    case GEO_MULTI_LINESTRING:
+    case GEO_MULTI_POLYGON:
+    case GEO_COLLECTION:
+      {
+	int inx, len = g->_.parts.len;
+	int wkb_type_base = (
+	    (GEO_MULTI_LINESTRING == g_type_no_zm) ? WKB_MULTILINESTRING : (
+		(GEO_MULTI_POLYGON == g_type_no_zm) ? WKB_MULTIPOLYGON : WKB_GEOMETRYCOLLECTION));
+	WKB_PRINT_INT32 (ses, WKB_TYPE_WITH_ZM (wkb_type_base, g->geo_flags));
+	WKB_PRINT_INT32 (ses, len);
+	for (inx = 0; inx < len; inx++)
+	  {
+	    geo_t *itm = g->_.parts.items[inx];
+	    wkb_print (itm, ses, basic_wkb_only, set_byte_order);
+	  }
+	return;
+      }
+    default:
+      sqlr_new_error ("22023", "GEO13", "(E)WKB serialization of geometries of type %d is not supported", GEO_TYPE (g->geo_flags));
+    }
+}
+
+/* WKB reader */
+
+#define UINT32_SWAP_ENDIAN(x) ((((x) & 0xff000000) >> 24) | (((x) & 0x00ff0000) >> 8) | (((x) & 0x0000ff00) << 8) | (((x) & 0x000000ff) << 24))
+#define WKB_READ_BYTE(ses,n) do { (n) = session_buffered_read_char (ses); } while (0)
+#define WKB_READ_INT32(ses,n) do { \
+  uint32 res; \
+  if (ses->dks_in_fill - ses->dks_in_read >= 4) \
+    { \
+      res = ((int32 *)((void *)(ses->dks_in_buffer + ses->dks_in_read)))[0]; \
+      ses->dks_in_read += 4; \
+    } \
+  else \
+    session_buffered_read (ses, (caddr_t) (& res), 4); \
+  if (!bom_eq_our) \
+    res = UINT32_SWAP_ENDIAN(res); \
+  (n) = res; \
+} while (0)
+
+#define WKB_READ_DOUBLE(ses,n) do { \
+  union \
+    { \
+      uint32 l[2]; \
+      double d; \
+    } ds, ds2; \
+  if (ses->dks_in_fill - ses->dks_in_read >= 8) \
+    { \
+      ds.d = ((double *)((void *)(ses->dks_in_buffer + ses->dks_in_read)))[0]; \
+      ses->dks_in_read += 8; \
+    } \
+  else \
+    session_buffered_read (ses, (caddr_t) (&(ds.d)), 8); \
+  if (bom_eq_our) \
+    (n) = ds.d; \
+  else \
+    { \
+      ds2.l[0] = UINT32_SWAP_ENDIAN(ds.l[1]); \
+      ds2.l[1] = UINT32_SWAP_ENDIAN(ds.l[0]); \
+      (n) = ds2.d; \
+    } \
+  } while (0)
+#if  __BYTE_ORDER == __BIG_ENDIAN
+#define WKB_READ_BOM(ses) do { bom_eq_our = (0 == session_buffered_read_char (ses)); } while (0)
+#else
+#define WKB_READ_BOM(ses) do { bom_eq_our = (1 == session_buffered_read_char (ses)); } while (0)
+#endif
+
+
+void
+wkb_read_ses_points (dk_session_t * ses, int bom_eq_our, int geo_flags, int pcount, geoc * Xs, geoc * Ys, geoc * Zs,
+    geo_measure_t * Ms)
+{
+  int inx;
+  for (inx = 0; inx < pcount; inx++)
+    {
+      WKB_READ_DOUBLE (ses, Xs[inx]);
+      WKB_READ_DOUBLE (ses, Ys[inx]);
+      if (geo_flags & GEO_A_Z)
+	WKB_READ_DOUBLE (ses, Zs[inx]);
+      if (geo_flags & GEO_A_M)
+	WKB_READ_DOUBLE (ses, Ms[inx]);
+    }
+}
+
+#define ZM_OF_WKB_TYPE(type) ((((type)/2000) ? GEO_A_M : 0) | ((((type) % 2000) / 1000) ? GEO_A_Z : 0))
+#define BASE_OF_WKB_TYPE(type) ((type)%1000)
+
+geo_t *
+wkb_read_ses (dk_session_t * ses, int srcode, int basic_wkb_only)
+{
+  geo_t *g;
+  int bom_eq_our, wkb_type, wkb_base_type, expected_wkb_subtype, g_zm, inx, len;
+  WKB_READ_BOM (ses);
+  WKB_READ_INT32 (ses, wkb_type);
+  g_zm = ZM_OF_WKB_TYPE (wkb_type);
+  wkb_base_type = BASE_OF_WKB_TYPE (wkb_type);
+  switch (wkb_base_type)
+    {
+    case WKB_POINT:
+      g = geo_alloc (GEO_POINT | g_zm, 0, srcode);
+      WKB_READ_DOUBLE (ses, g->XYbox.Xmin);
+      WKB_READ_DOUBLE (ses, g->XYbox.Ymin);
+      if (g->geo_flags & GEO_A_Z)
+	WKB_READ_DOUBLE (ses, g->_.point.point_ZMbox.Zmin);
+      if (g->geo_flags & GEO_A_M)
+	WKB_READ_DOUBLE (ses, g->_.point.point_ZMbox.Mmin);
+      return g;
+    case WKB_LINESTRING:
+      WKB_READ_INT32 (ses, len);
+      g = geo_alloc (GEO_LINESTRING | g_zm, len, srcode);
+      wkb_read_ses_points (ses, bom_eq_our, g->geo_flags, len, g->_.pline.Xs, g->_.pline.Ys, g->_.pline.Zs, g->_.pline.Ms);
+      return g;
+    case WKB_POLYGON:
+      WKB_READ_INT32 (ses, len);
+      g = geo_alloc (GEO_POLYGON | g_zm, len, srcode);
+      for (inx = 0; inx < len; inx++)
+	{
+	  int ring_len;
+	  geo_t *itm;
+	  WKB_READ_INT32 (ses, ring_len);
+	  itm = g->_.parts.items[inx] = geo_alloc (GEO_RING | g_zm, ring_len, srcode);
+	  wkb_read_ses_points (ses, bom_eq_our, itm->geo_flags, itm->_.pline.len, itm->_.pline.Xs, itm->_.pline.Ys, itm->_.pline.Zs,
+	      itm->_.pline.Ms);
+	}
+      return g;
+    case WKB_MULTIPOINT:
+      WKB_READ_INT32 (ses, len);
+      g = geo_alloc (GEO_POINTLIST | g_zm, len, srcode);
+      expected_wkb_subtype = WKB_TYPE_WITH_ZM (WKB_POINT, g_zm);
+      for (inx = 0; inx < len; inx++)
+	{
+	  int wkb_subtype;
+	  WKB_READ_BOM (ses);
+	  WKB_READ_INT32 (ses, wkb_subtype);
+	  if (wkb_subtype != expected_wkb_subtype)
+	    {
+	      dk_free_box ((caddr_t) g);
+	      sqlr_new_error ("22023", "GEO14", "WKB multipoint (type %d) contains sub-geometry of type %d, expected type is %d",
+		  wkb_type, wkb_subtype, expected_wkb_subtype);
+	    }
+	  WKB_READ_DOUBLE (ses, g->_.pline.Xs[inx]);
+	  WKB_READ_DOUBLE (ses, g->_.pline.Ys[inx]);
+	  if (g->geo_flags & GEO_A_Z)
+	    WKB_READ_DOUBLE (ses, g->_.pline.Zs[inx]);
+	  if (g->geo_flags & GEO_A_M)
+	    WKB_READ_DOUBLE (ses, g->_.pline.Ms[inx]);
+	}
+      return g;
+    case WKB_MULTILINESTRING:
+    case WKB_MULTIPOLYGON:
+    case WKB_GEOMETRYCOLLECTION:
+      {
+	int g_type_no_zm = (
+	    (WKB_MULTILINESTRING == wkb_base_type) ? GEO_MULTI_LINESTRING : (
+		(WKB_MULTIPOLYGON == wkb_base_type) ? GEO_MULTI_POLYGON : GEO_COLLECTION));
+	WKB_READ_INT32 (ses, len);
+	g = geo_alloc (g_type_no_zm | g_zm, len, srcode);
+	QR_RESET_CTX
+	{
+	  for (inx = 0; inx < len; inx++)
+	    {
+	      g->_.parts.items[inx] = wkb_read_ses (ses, srcode, basic_wkb_only);
+	    }
+	}
+	QR_RESET_CODE
+	{
+	  caddr_t err = thr_get_error_code (THREAD_CURRENT_THREAD);
+	  dk_free_box ((caddr_t) g);
+	  POP_QR_RESET;
+	  sqlr_resignal (err);
+	}
+	END_QR_RESET return g;
+      }
+    default:
+      sqlr_new_error ("22023", "GEO15", "WKB contains unsupported geometry type %d", wkb_type);
+    }
+  return NULL;
+}
+
+#endif /* DISABLE_WKB */
+
+/* DXF printer */
 
 #define SES_DXF_REAL(ses,mark,v) do { char tmpbuf[60]; snprintf (tmpbuf, sizeof(tmpbuf), "\n%3d\n" GEOC_DXF_STAR_FMT, (mark), GEOC_DXF_PREC, (double)(v)); SES_PRINT ((ses), tmpbuf); } while (0)
 
@@ -3277,7 +3568,7 @@ geo_XY_inoutside_ring (geoc pX, geoc pY, geo_t * ring)
   geoc *Ys = ring->_.pline.Ys;
   if ((ring->geo_flags & GEO_IS_CHAINBOXED) && ring->_.pline.pline_gcb->gcb_is_set)
     {
-      geo_XYbox_t *gcb_ptr = gcb_ptr = ring->_.pline.pline_gcb->gcb_boxes;
+      geo_XYbox_t *gcb_ptr = ring->_.pline.pline_gcb->gcb_boxes;
       int inx;
       int gcb_next_stop;
       int gcb_step = MIN ((len - 1), ring->_.pline.pline_gcb->gcb_step);

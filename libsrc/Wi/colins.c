@@ -29,7 +29,8 @@
 #include "sqlnode.h"
 #include "arith.h"
 #include "log.h"
-
+#include "datesupp.h"
+#include "sqlbif.h"
 
 
 int dbf_compress_mask = 0
@@ -394,7 +395,7 @@ itc_asc_ck (it_cursor_t * itc)
 }
 
 
-int col_ins_error;
+int col_ins_error = 0;
 int enable_pogs_check;
 
 
@@ -605,48 +606,6 @@ oow:
   col_ins_error = 1;
 }
 
-
-void
-itc_str_seg_check (it_cursor_t * itc, buffer_desc_t * buf)
-{
-  /* take a seg of str and the planned inserts and check that the result would be in order */
-  dbe_key_t *key = itc->itc_insert_key;
-  caddr_t *rev = itc_box_col_seg (itc, buf, &key->key_row_var[0]);
-  int n_rows = BOX_ELEMENTS (rev);
-  db_buf_t rev_1, rev_prev;
-  int is_first = 1, str2_cmp, word_cmp;
-  mem_pool_t *mp = mem_pool_alloc ();
-  int first_set = itc->itc_set;
-  int set = 0, row = 0;
-
-  while (row < n_rows || set < itc->itc_range_fill)
-    {
-      if (set < itc->itc_range_fill && row == itc->itc_ranges[set].r_first)
-	{
-	  rev_1 = (db_buf_t) mp_box_deserialize_string (mp, (caddr_t) itcp (itc, 0, set + first_set), INT32_MAX, 0);
-	  set++;
-	}
-      else if (row < n_rows)
-	{
-	  rev_1 = (db_buf_t) rev[row];
-	  row++;
-	}
-      if (!is_first)
-	{
-	  str2_cmp = cmp_boxes ((caddr_t) rev_prev, (caddr_t) rev_1, NULL, NULL);
-	  if (DVC_LESS != str2_cmp)
-	    goto oow;
-	  is_first = 0;
-	}
-      rev_prev = rev_1;
-    }
-  dk_free_tree ((caddr_t) rev);
-  mp_free (mp);
-  return;
-oow:
-  col_ins_error = 1;
-}
-
 int rq_check_ctr = 0;
 int rq_check_mod = 1;
 int rq_check_min = 0;
@@ -660,7 +619,7 @@ extern client_connection_t *rfwd_cli;
 
 //#define RQ_CHECK_TEXT "select count (*) from rdf_quad a table option (index rdf_quad) where not exists (select 1 from rq_rows b table option (loop) where a.g = b.g and a.p = b.p and a.o = b.o and a.s = b.s)"/
 //#define RQ_CHECK_TEXT "select count (*)  from rdf_quad a table option (index rdf_quad_op, index_only, no cluster) where not exists (select 1 from rdf_quad b table option (loop, index rdf_quad_op, index_only, no cluster) where  a.p = b.p and a.o = b.o )"
-//#define RQ_CHECK_TEXT "select count (*) from rdf_quad a table option (loop, index rdf_quad_pogs, no cluster) where not exists (select 1 from rdf_quad b table option (loop, index rdf_quad_pogs, no cluster)  where a.g = b.g and a.p = b.p and a.o = b.o and a.s = b.s)"
+#define RQ_CHECK_TEXT "select count (*) from rdf_quad a table option (loop, index rdf_quad_pogs, no cluster) where not exists (select 1 from rdf_quad b table option (loop, index rdf_quad_pogs, no cluster)  where a.g = b.g and a.p = b.p and a.o = b.o and a.s = b.s)"
 //#define RQ_CHECK_TEXT "select count (*)  from rdf_quad a table option (index rdf_quad_gs, index_only, no cluster) where not exists (select 1 from rdf_quad b table option (loop, index rdf_quad_gs, index_only, no cluster) where  a.g = b.g and a.s = b.s )"
 //#define RQ_CHECK_TEXT "select count (*) from post_tag a where not exists (select 1 from  post_tag b  table option (loop) where a.pst_tagid = b.pst_tagid and a.pst_postid = b.pst_postid)"
 //#define RQ_CHECK_TEXT "select 0, count (s), count (p), count (o), count (g) from rdf_quad table option (index rdf_quad) where p =  #i292339462 and s > #ib390000000"
@@ -727,7 +686,7 @@ rq_check (it_cursor_t * itc)
 caddr_t *
 rq_check_page_bounds (it_cursor_t * itc, buffer_desc_t * buf)
 {
-  caddr_t *bounds = dk_alloc_box (4 * sizeof (caddr_t), DV_ARRAY_OF_POINTER);
+  caddr_t *bounds = dk_alloc_list (4);
   int save = itc->itc_map_pos;
   int lower = MAX (0, itc->itc_map_pos - 4);
   int upper = MIN (itc->itc_map_pos + 4, buf->bd_content_map->pm_count - 1);
@@ -776,7 +735,7 @@ rq_range_check (it_cursor_t * itc, caddr_t * bounds)
     qr_rec_exec (qr2, qi->qi_client, &lc, qi, NULL, 2, ":0", bounds[0], QRP_RAW, ":1", bounds[2], QRP_RAW);
   lc_next (lc);
   dc_batch_sz = bs;
-  dk_free_box (bounds);
+  dk_free_box ((caddr_t) bounds);
   n = unbox (lc_nth_col (lc, 0));
   lc_free (lc);
   if (n)
@@ -1314,7 +1273,7 @@ ceic_even_split (ce_ins_ctx_t * ceic, int first_ce_inx)
   for (ctr = 0; ctr < n_avail; ctr++)
     {
       int bytes;
-      move_ce = cer->cer_ces->data;
+      move_ce = (db_buf_t) (cer->cer_ces->data);
       bytes = ce_total_bytes (move_ce);
       cer->cer_ces = cer->cer_ces->next;
       next_diff = ((int) pm1->pm_bytes_free + bytes) - ((int) pm2->pm_bytes_free - bytes);
@@ -3368,7 +3327,7 @@ ceic_right_ce_refs (ce_ins_ctx_t * top_ceic, ce_ins_ctx_t * ceic, buffer_desc_t 
       db_buf_t old_str, new_str;
       old_str = ceic_updated_col (top_ceic, buf, r, cl);
       new_str = ceic_reloc_ref (ceic, old_str, -1);
-      if (!box_equal (old_str, new_str))
+      if (!box_equal ((cbox_t) old_str, (cbox_t) new_str))
 	ceic_upd_rd (top_ceic, r, ceic->ceic_nth_col, new_str);
       if (!ceic->ceic_reloc)
 	break;
@@ -3886,7 +3845,8 @@ itc_col_insert_rows (it_cursor_t * itc, buffer_desc_t * buf, int is_update)
 
 
 void
-upd_col_error (it_cursor_t * itc, buffer_desc_t * buf, mem_pool_t * mp, char *code, char *virt_code, char *string, ...)
+upd_col_error (it_cursor_t * itc, buffer_desc_t * buf, mem_pool_t * mp, const char *code, const char *virt_code, const char *string,
+    ...)
 {
   static char temp[2000];
   va_list list;
@@ -4084,7 +4044,8 @@ upd_col_pk (update_node_t * upd, caddr_t * inst)
 	  itc->itc_lock_lt = itc->itc_ltrx;
 	itc_range (itc, itc->itc_col_row, itc->itc_col_row + 1);
 	first_pl = pl;
-	mp_array_add (mp, (caddr_t **) & itc->itc_vec_rds, &itc->itc_n_sets, (void *) upd_col_rd (upd, inst, itc, buf, nth, mp));
+	mp_array_add (mp, (caddr_t **) & itc->itc_vec_rds, &itc->itc_n_sets, (caddr_t) ((void *) upd_col_rd (upd, inst, itc, buf,
+		    nth, mp)));
 	for (next = nth + 1; next < n_sets; next++)
 	  {
 	    placeholder_t *next_pl;
@@ -4107,8 +4068,8 @@ upd_col_pk (update_node_t * upd, caddr_t * inst)
 	    }
 	    SET_THR_TMP_POOL (NULL);
 	    itc_range (itc, next_pl->itc_col_row, next_pl->itc_col_row + 1);
-	    mp_array_add (mp, (caddr_t **) & itc->itc_vec_rds, &itc->itc_n_sets, (void *) upd_col_rd (upd, inst, itc, buf, next,
-		    mp));
+	    mp_array_add (mp, (caddr_t **) & itc->itc_vec_rds, &itc->itc_n_sets, (caddr_t) ((void *) upd_col_rd (upd, inst, itc,
+			buf, next, mp)));
 	  }
 	if (!to_unregister)
 	  itc_unregister_inner ((it_cursor_t *) first_pl, buf, 0);
@@ -4539,7 +4500,6 @@ next_set:
 
 
 void itc_col_dbg_log (it_cursor_t * itc);
-int col_ins_error = 0;
 int dbf_col_ins_dbg_log = 0;
 
 
@@ -4641,7 +4601,6 @@ itc_col_log_insert (it_cursor_t * itc)
 
 extern int32 cl_non_logged_write_mode;
 dk_session_t *dbg_log_ses;
-caddr_t bif_curdatetime (caddr_t * qst, caddr_t * err_ret, state_slot_t ** args);
 
 void
 col_dbg_log_new ()
@@ -4713,8 +4672,8 @@ itc_col_dbg_log (it_cursor_t * itc)
   }
   END_WRITE_FAIL (dbg_log_ses);
   mutex_leave (log_write_mtx);
-  dk_free_tree (ses);
-  dk_free_tree (h);
+  dk_free_tree ((caddr_t) ses);
+  dk_free_tree ((caddr_t) h);
   lt->lt_log = save;
   lt->lt_replicate = repl;
 }
@@ -4739,8 +4698,13 @@ itc_col_vec_insert (it_cursor_t * itc, insert_node_t * ins)
   if (ins && ins->ins_seq_col)
     sqlr_new_error ("42000", "COL..", "A column-wise index does not support the fetch option of insert");
   if (enable_cset && itc->itc_insert_key->key_is_primary && tb_is_rdf_quad (itc->itc_insert_key->key_table))
-    csetp_set_bloom (itc->itc_out_state, (iri_id_t *) (ITC_P_VEC (itc, 0))->dc_values, (iri_id_t *) (ITC_P_VEC (itc, 1))->dc_values,
-	itc->itc_n_sets);
+    {
+      data_col_t *p_dc = ITC_P_VEC (itc, 0);
+      data_col_t *s_dc = ITC_P_VEC (itc, 1);
+      iri_id_t *pp = (iri_id_t *) p_dc ? (iri_id_t *) p_dc->dc_values : (iri_id_t *) itc->itc_search_params[0];
+      iri_id_t *ps = s_dc ? (iri_id_t *) s_dc->dc_values : (iri_id_t *) itc->itc_search_params[1];
+      csetp_set_bloom (itc->itc_out_state, pp, ps, itc->itc_n_sets);
+    }
   itc_col_free (itc);
   for (;;)
     {
@@ -4838,8 +4802,6 @@ itc_col_vec_insert (it_cursor_t * itc, insert_node_t * ins)
 	    itc_pogs_seg_check (itc, buf);
 	  else if (strstr (itc->itc_insert_key->key_name, "post_tag"))
 	    itc_gs_seg_check (itc, buf);
-	  else if (strstr (itc->itc_insert_key->key_name, "r_good"))
-	    itc_str_seg_check (itc, buf);
 	}
       if (col_ins_error)
 	{
